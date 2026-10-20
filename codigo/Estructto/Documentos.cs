@@ -71,6 +71,7 @@ namespace NovoFtool
         {
             if (i != docAtivo) TrocarDoc(i);
             if (!PodeDescartar()) return;
+            docs[docAtivo].Esp?.Descartar();
             docs.RemoveAt(docAtivo);
             if (docs.Count == 0) docs.Add(new Documento());
             CarregarDoc(Math.Min(docAtivo, docs.Count - 1));

@@ -186,20 +186,24 @@ namespace NovoFtool
 
         async void Gerar()
         {
-            if (!Ler()) return;
-            if (dirs.Count == 0) { status.Text = "✕ Marque ao menos uma direção."; status.Foreground = TemaPlant.BErro; return; }
-            JsonNode g = null;
-            bool ok = await Tentar(status, async () =>
+            try
             {
-                await Motor.Chamar("PATCH", "/api/config", new JsonObject { ["vento"] = Config() });
-                g = await Motor.Post("/api/acoes/gerar");
-            }, "Gerando as ações de vento…");
-            if (!ok) return;
-            geracao = g;
-            var casos = Lista(g?["casos"]).Select(x => S(x)).Where(x => x.StartsWith("V")).ToList();
-            if (!casos.Contains(casoSel) && casos.Count > 0) casoSel = casos[0];
-            status.Text = "✓ " + casos.Count + " casos de vento gerados (" + string.Join(", ", casos) + ")."; status.Foreground = TemaPlant.BSucesso;
-            MontarPrevia();
+                if (!Ler()) return;
+                if (dirs.Count == 0) { status.Text = "✕ Marque ao menos uma direção."; status.Foreground = TemaPlant.BErro; return; }
+                JsonNode g = null;
+                bool ok = await Tentar(status, async () =>
+                {
+                    await Motor.Chamar("PATCH", "/api/config", new JsonObject { ["vento"] = Config() });
+                    g = await Motor.Post("/api/acoes/gerar");
+                }, "Gerando as ações de vento…");
+                if (!ok) return;
+                geracao = g;
+                var casos = Lista(g?["casos"]).Select(x => S(x)).Where(x => x.StartsWith("V")).ToList();
+                if (!casos.Contains(casoSel) && casos.Count > 0) casoSel = casos[0];
+                status.Text = "✓ " + casos.Count + " casos de vento gerados (" + string.Join(", ", casos) + ")."; status.Foreground = TemaPlant.BSucesso;
+                MontarPrevia();
+            }
+            catch (Exception ex) { Caixa.Erro(this, Title, ex.Message); }   // async void: exceção solta derruba o programa
         }
 
         // ---------- prévia ----------

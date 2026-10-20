@@ -140,24 +140,28 @@ namespace NovoFtool
 
         async void Salvar()
         {
-            if (!Ler()) return;
-            bool ok = await Tentar(status, async () =>
+            try
             {
-                var ficam = pavs.Where(p => p.Orig != null && p.Orig == p.Nome).Select(p => p.Orig).ToHashSet();
-                foreach (var nome in orig.Keys.Where(n => !ficam.Contains(n)))
-                    await Motor.Chamar("DELETE", "/api/modelo/pavimento/" + Uri.EscapeDataString(nome));
-                foreach (var p in pavs)
+                if (!Ler()) return;
+                bool ok = await Tentar(status, async () =>
                 {
-                    var d = new JsonObject { ["z"] = p.Z, ["diafragma"] = p.Diaf };
-                    if (p.Orig != null && p.Orig == p.Nome)
+                    var ficam = pavs.Where(p => p.Orig != null && p.Orig == p.Nome).Select(p => p.Orig).ToHashSet();
+                    foreach (var nome in orig.Keys.Where(n => !ficam.Contains(n)))
+                        await Motor.Chamar("DELETE", "/api/modelo/pavimento/" + Uri.EscapeDataString(nome));
+                    foreach (var p in pavs)
                     {
-                        var o = orig[p.Orig];
-                        if (Math.Abs(o.z - p.Z) > 1e-9 || o.diaf != p.Diaf) await Motor.Chamar("PATCH", "/api/modelo/pavimento/" + Uri.EscapeDataString(p.Nome), d);
+                        var d = new JsonObject { ["z"] = p.Z, ["diafragma"] = p.Diaf };
+                        if (p.Orig != null && p.Orig == p.Nome)
+                        {
+                            var o = orig[p.Orig];
+                            if (Math.Abs(o.z - p.Z) > 1e-9 || o.diaf != p.Diaf) await Motor.Chamar("PATCH", "/api/modelo/pavimento/" + Uri.EscapeDataString(p.Nome), d);
+                        }
+                        else { d["nome"] = p.Nome; await Motor.Post("/api/modelo/pavimento", d); }
                     }
-                    else { d["nome"] = p.Nome; await Motor.Post("/api/modelo/pavimento", d); }
-                }
-            }, "Gravando os pavimentos…");
-            if (ok) { DialogResult = true; }
+                }, "Gravando os pavimentos…");
+                if (ok) { DialogResult = true; }
+            }
+            catch (Exception ex) { Caixa.Erro(this, Title, ex.Message); }   // async void: exceção solta derruba o programa
         }
     }
 }

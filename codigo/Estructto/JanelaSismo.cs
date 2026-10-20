@@ -160,20 +160,24 @@ namespace NovoFtool
 
         async void Gerar()
         {
-            if (!Ler()) return;
-            var c = new JsonObject { ["zona"] = zona };
-            if (zona > 0)
+            try
             {
-                c["classe_terreno"] = classe; c["categoria_utilizacao"] = categoria; c["sistema_resistente"] = sistemaRes; c["sistema"] = sistemaT;
-                if (!double.IsNaN(lx) && !double.IsNaN(ly)) c["dimensoes"] = new JsonObject { ["lx"] = lx, ["ly"] = ly };
+                if (!Ler()) return;
+                var c = new JsonObject { ["zona"] = zona };
+                if (zona > 0)
+                {
+                    c["classe_terreno"] = classe; c["categoria_utilizacao"] = categoria; c["sistema_resistente"] = sistemaRes; c["sistema"] = sistemaT;
+                    if (!double.IsNaN(lx) && !double.IsNaN(ly)) c["dimensoes"] = new JsonObject { ["lx"] = lx, ["ly"] = ly };
+                }
+                JsonNode g = null;
+                if (!await Tentar(status, async () => { await Motor.Chamar("PATCH", "/api/config", new JsonObject { ["sismo"] = c }); g = await Motor.Post("/api/acoes/gerar"); }, "Gerando as ações sísmicas…")) return;
+                geracao = g;
+                var casos = Lista(g?["casos"]).Select(x => S(x)).Where(x => x.StartsWith("S")).ToList();
+                status.Text = casos.Count == 0 ? "Zona 0: nenhum caso sísmico gerado." : "✓ " + casos.Count + " casos sísmicos gerados (" + string.Join(", ", casos) + ").";
+                status.Foreground = casos.Count == 0 ? TemaPlant.BTexto3 : TemaPlant.BSucesso;
+                MontarPrevia();
             }
-            JsonNode g = null;
-            if (!await Tentar(status, async () => { await Motor.Chamar("PATCH", "/api/config", new JsonObject { ["sismo"] = c }); g = await Motor.Post("/api/acoes/gerar"); }, "Gerando as ações sísmicas…")) return;
-            geracao = g;
-            var casos = Lista(g?["casos"]).Select(x => S(x)).Where(x => x.StartsWith("S")).ToList();
-            status.Text = casos.Count == 0 ? "Zona 0: nenhum caso sísmico gerado." : "✓ " + casos.Count + " casos sísmicos gerados (" + string.Join(", ", casos) + ").";
-            status.Foreground = casos.Count == 0 ? TemaPlant.BTexto3 : TemaPlant.BSucesso;
-            MontarPrevia();
+            catch (Exception ex) { Caixa.Erro(this, Title, ex.Message); }   // async void: exceção solta derruba o programa
         }
 
         void MontarPrevia()

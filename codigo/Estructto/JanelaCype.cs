@@ -19,7 +19,7 @@ namespace NovoFtool
 {
     public class JanelaCype : JanelaEscura
     {
-        public event Action<JsonNode> Importado;   // {modelo, avisos} do motor
+        public event Action<string, JsonNode> Importado;   // (arquivo .ed3, {modelo, avisos} do motor)
         readonly Func<JsonObject, Task<JsonNode>> comparar, importar;
         readonly Border hostCab = new Border(), hostCorpo = new Border();
         readonly TextBlock lblArq = new TextBlock();
@@ -72,20 +72,24 @@ namespace NovoFtool
 
         async void Rodar(bool importarModelo)
         {
-            if (ocupado) return;
-            if (conteudo == null) { Escolher(); return; }
-            ocupado = true;
-            lblArq.Text = arquivo + " · " + (importarModelo ? "importando…" : "calculando e comparando…");
             try
             {
-                var corpo = new JsonObject { ["nome"] = arquivo, ["conteudo_base64"] = Convert.ToBase64String(conteudo) };
-                if (importarModelo) { imp = await importar(corpo); Importado?.Invoke(imp); }
-                else cmp = await comparar(corpo);
-                erro = null;
+                if (ocupado) return;
+                if (conteudo == null) { Escolher(); return; }
+                ocupado = true;
+                lblArq.Text = arquivo + " · " + (importarModelo ? "importando…" : "calculando e comparando…");
+                try
+                {
+                    var corpo = new JsonObject { ["nome"] = arquivo, ["conteudo_base64"] = Convert.ToBase64String(conteudo) };
+                    if (importarModelo) { imp = await importar(corpo); Importado?.Invoke(arquivo, imp); }
+                    else cmp = await comparar(corpo);
+                    erro = null;
+                }
+                catch (Exception ex) { erro = ComandosAnalise.MensagemMotor(ex); }
+                finally { ocupado = false; }
+                Montar();
             }
-            catch (Exception ex) { erro = ComandosAnalise.MensagemMotor(ex); }
-            finally { ocupado = false; }
-            Montar();
+            catch (Exception ex) { Caixa.Erro(this, Title, ex.Message); }   // async void: exceção solta derruba o programa
         }
 
         void Montar()
@@ -114,7 +118,7 @@ namespace NovoFtool
                     S(cmp, "arquivo") + " · " + Lista(cmp["hipoteses"]).Count() + " hipóteses · " + linhasT.Count + " grandezas · " + taxas.Count + " barras com taxa", chips);
             }
             else if (imp != null && erro == null)
-                hostCab.Child = Cabecalho(Nivel.Ok, "✓", "Obra importada como modelo", "Calcule (F5) para ver resultados; use Comparar para conferir com o CYPE.");
+                hostCab.Child = Cabecalho(Nivel.Ok, "✓", "Obra importada como modelo", "Aberta numa aba nova (modelo espacial): calcule (F5) lá; use Comparar para conferir com o CYPE.");
 
             if (cmp == null && imp == null)
             {
