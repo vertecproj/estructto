@@ -136,6 +136,7 @@ namespace NovoFtool
         {
             if (extrasRegistrados) return;
             extrasRegistrados = true;
+            RegistrarExportar();   // Exportar.cs
             Action<string> run = c => Executar(c);
             Action<string> preenche = c => { Comando.Focus(); Comando.Text = c + " "; Comando.CaretIndex = Comando.Text.Length; };
             Extra("Selecionar tudo", "SELTODAS", "sel", "Ctrl+A", "todas barras", "Seleciona todas as barras.", () => run("SELTODAS"));
