@@ -150,7 +150,7 @@ namespace NovoFtool
 
         void MontarCasosNaFaixa(F.RibbonTabItem abaCargas, F.RibbonTabItem abaRes)
         {
-            cbCaso = new F.ComboBox { Header = "Caso ativo", IsEditable = false, Width = 250, ToolTip = new F.ScreenTip { Title = "Caso de carga ativo", Text = "As cargas aplicadas e mostradas no desenho são as deste caso. Troque para lançar as cargas de outro caso (G, Q, vento...).", Width = 300 } };
+            cbCaso = new F.ComboBox { Header = "Caso ativo", IsEditable = false, Width = 220, ToolTip = new F.ScreenTip { Title = "Caso de carga ativo", Text = "As cargas aplicadas e mostradas no desenho são as deste caso. Troque para lançar as cargas de outro caso (G, Q, vento...).", Width = 300 } };
             cbCaso.SelectionChanged += (s, e) =>
             {
                 if (listasOcupadas || cbCaso.SelectedIndex < 0 || cbCaso.SelectedIndex == M.CasoAtivo) return;
@@ -159,7 +159,7 @@ namespace NovoFtool
             };
             var g = new F.RibbonGroupBox { Header = "Casos de carga" };
             g.Items.Add(cbCaso);
-            g.Items.Add(Botao("tabela", "Casos e combinações", AbrirCasos, "Cria casos (permanente, sobrecarga, vento...) e combinações ELU/ELS, ou gera as combinações da NBR 8681/8800.", "CASOS"));
+            g.Items.Add(Botao("tabela", "Casos e combinações", AbrirCasosConforme, "Cria casos (permanente, sobrecarga, vento...) e combinações ELU/ELS, ou gera as combinações da NBR 8681/8800. Com o motor Python, abre os casos do motor.", "CASOS"));
             abaCargas.Groups.Insert(0, g);
 
             cbResultado = new F.ComboBox { Header = "Mostrar", IsEditable = false, Width = 290, ToolTip = new F.ScreenTip { Title = "Resultado mostrado", Text = "Um caso isolado, uma combinação, ou a envoltória (mínimos e máximos) de todas as combinações ELU ou ELS. Diagramas, tabelas, verificação e relatório usam esta escolha.", Width = 300 } };
