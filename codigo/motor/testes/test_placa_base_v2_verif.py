@@ -4,7 +4,7 @@ Valores esperados derivados à mão (memória nos comentários), sem copiar as f
 - bloco de compressão: equilíbrio de forças e de momentos (AISC DG1 3.3/3.4, σc,Rd da NBR 8800 6.6.5);
 - chapa: CBCA (t ≥ √[6M/(1,25·fy/γa1)], CBCA.md:342 e casos 1–4 de CBCA.md:358–362) e Pfeil/DG1 (Z = t²/4);
 - ACI 318-19 cap. 17: 17.6.2 (hef' com 3 bordas), 17.6.3, 17.6.4, 17.7.2, 17.7.3, 17.8; φ = 0,70 (condição B).
-Unidades do motor: kN, m, kN/m². Testes ``expectedFailure`` marcam achados V2-xx abertos.
+Unidades do motor: kN, m, kN/m². Achados V2-01 a V2-07 corrigidos em 20/10/2026 (PLACA-BASE-V2.md §9).
 """
 import math
 import sys
@@ -81,16 +81,17 @@ class Chapa(unittest.TestCase):
         fr = .1075/.25                                     # x = H/2 = 0,25 > m
         Mm = .1075**2*(2*fc + fc*(1 - fr))/6
         self.assertLess(Mm, Mn)
-        # tração: x = 0,20 − 0,15 + 0,0075 = 0,0575; b = min(0,40; 2·(2x + 0,016)) = 0,262; Trow = 182,27
+        # tração: x = 0,20 − 0,15 + 0,0075 = 0,0575; V2-04: 2x por chumbador (DG1), z = ±0,15, recortado
+        # na placa (±0,20): [−0,2; −0,0925] ∪ [0,0925; 0,2] → b = 0,215; Trow = 182,27 (Td CBCA = 181,8 < Trow)
         Trow = 4081.6327*(.45 - math.sqrt(.08)) - 500
-        Mt = Trow*.0575/.262
+        Mt = Trow*.0575/.215
         fd = 1.25*250000/1.1
         # Pfeil: fp = max(10 204; 0,85·20 000/1,4 = 12 143) → Mn = 12 143·0,12²/2 = 87,43
         Mpf = .85*20000/1.4*.12**2/2
         f = p.forcas_bloco(-500, 150, CO4, .5, .4, SIG20)
         r = p.espessura_placa_nbr(f, .5, .4, W, 16)
         self.assertAlmostEqual(r['t_cbca'], math.sqrt(6*Mn/fd), places=5)      # 45,54 mm
-        self.assertAlmostEqual(r['EspNecT'], math.sqrt(6*Mt/fd), delta=1e-5)   # 29,07 mm
+        self.assertAlmostEqual(r['EspNecT'], math.sqrt(6*Mt/fd), delta=1e-5)   # 32,09 mm
         self.assertAlmostEqual(r['t_pfeil'], math.sqrt(4*Mpf*1.1/250000), places=5)  # 39,23 mm
 
     def test_caso1_trapezio(self):
@@ -99,7 +100,16 @@ class Chapa(unittest.TestCase):
         r = p.espessura_placa_nbr(f, .5, .4, W, 16)
         self.assertAlmostEqual(r['t_cbca'], math.sqrt(6*35.28/(1.25*250000/1.1)), places=6)
 
-    @unittest.expectedFailure
+    def test_V2_06_caso3_sem_tracao_no_bloco(self):
+        # H/3 < e = 0,20 < e_crit = 0,25 − 200/(2·4081,6) = 0,2255: o bloco não traciona chumbadores, mas o
+        # CBCA caso 3 dá fc = 4·(40 + 200·0,2)/(0,2·(0,5/3 + 0,2)) = 4363,6 e Td = fc·0,2/4 − 200 = 18,18 kN.
+        f = p.forcas_bloco(-200, 40, CO4, .5, .4, SIG20)
+        self.assertEqual(f['T_total'], 0)
+        r = p.espessura_placa_nbr(f, .5, .4, W, 16)
+        td = 4*80/(.2*(.5/3 + .2))*.2/4 - 200
+        self.assertAlmostEqual(r['Td_cbca'], td, places=6)
+        self.assertAlmostEqual(r['EspNecT'], math.sqrt(6*td*.0575/.215/(1.25*250000/1.1)), places=8)   # 10,13 mm
+
     def test_V2_01_tracao_entre_mesas(self):
         # Achado V2-01 (CRÍTICO): chumbadores entre as mesas (x = |y| − d/2 + tf/2 ≤ 0) são descartados
         # no lado tracionado (placa_base.py:688); sob arrancamento a chapa sai com EspNec = 0 e passa sem aviso.
@@ -111,6 +121,18 @@ class Chapa(unittest.TestCase):
         t_min = math.sqrt(6*(30*.285/8/.3)/(1.25*250000/1.1))
         aviso = any('mesas' in a for a in r['avisos'])
         self.assertTrue(r['chapa']['EspNec'] >= t_min or aviso)
+        # modelo adotado: faixa biengastada, a = b = 0,1425, M = 60·0,1425³/0,285² = 2,1375 sobre a largura
+        # da mesa (união de ±0,10 ± 0,1425 recortada em ±bf/2 = 0,20) → 10,69 kN·m/m → t = 15,0 mm
+        self.assertEqual(r['chapa']['modelo_tracao'], 'faixa biengastada entre mesas')
+        self.assertAlmostEqual(r['chapa']['EspNecT'], math.sqrt(6*(60*.285/8/.2)/(1.25*250000/1.1)), places=8)
+
+    def test_V2_03_furo_alargado_e_V2_07_sismo(self):
+        # M20 (> 3/4"): furo alargado Ø + 17,5 mm (AISC tab. 14-2, 7/8") → lf = 0,05 − 0,0375/2 = 0,03125
+        d = dict(H=.5, B=.4, esp=.025, borda=.05, fileiras=2, por_fileira=2, diametro_mm=20, classe='5.8')
+        r = p.verificar_placa_base(d, dict(N=50., V=30., M=0., sismo=True), W)
+        self.assertAlmostEqual(r['fixacao']['lf'], .05 - .0375/2, places=12)
+        self.assertTrue(any('17.10' in a for a in r['avisos']))
+        self.assertFalse(any('17.10' in a for a in p.verificar_placa_base(d, dict(N=50., V=30., M=0.), W)['avisos']))
 
 
 class ACI(unittest.TestCase):
@@ -138,6 +160,8 @@ class ACI(unittest.TestCase):
         self.assertAlmostEqual(v['concreto: ruptura da borda ao corte']['resistente'], .7*vcbg/1000, places=6)  # 49,14
         # 17.7.3: grupo de 4, quatro bordas a 250 → hef' = max(166,7; 500/3) = 166,7; ANc = 900·800; kcp = 2
         ncp = 900*800/(9*h*h)*nb
+        # V2-02: n_ef = 2 → pior par (mesma fileira): ANc = 500·800 (o grupo de 4 daria 900·800 = 433,8 kN)
+        ncp = 500*800/(9*h*h)*nb
         self.assertAlmostEqual(v['concreto: arrancamento por alavanca (pryout)']['resistente'], .7*2*ncp/1000, places=6)
         it = (100/(.7*ncbg/1000) + 40/(.7*vcbg/1000))/1.2   # 17.8: ambas as razões > 0,2
         self.assertAlmostEqual(v['concreto: interação tração–corte']['taxa'], it, places=6)   # 1,370
@@ -152,7 +176,6 @@ class ACI(unittest.TestCase):
         self.assertAlmostEqual(v['concreto: fendilhamento lateral']['resistente'], .7*nsbg/1000, places=6)
         self.assertAlmostEqual(v['concreto: fendilhamento lateral']['solicitante'], 100.)
 
-    @unittest.expectedFailure
     def test_V2_02_pryout_so_chumbadores_efetivos(self):
         # Achado V2-02 (CRÍTICO, impacto baixo): com furo alargado só 2 chumbadores resistem ao corte
         # (n_ef = 2), mas o pryout (17.7.3) usa o cone do grupo de 4 (placa_base.py:846). O grupo que
