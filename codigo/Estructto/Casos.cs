@@ -51,7 +51,7 @@ namespace NovoFtool
             if (resCasos == null) return;
             if (resSel.StartsWith("env:") && CombinacoesDaEnvoltoria().Count == 0)
             {
-                Log("Não há combinações " + resSel.Substring(4) + ": crie em Cargas → Casos e combinações. Mostrando o caso ativo.");
+                Log("Não há combinações " + resSel.Substring(4) + ": crie em Ações › Casos e combinações. Mostrando o caso ativo.");
                 resSel = "ativo";
             }
             bool rot = resCasos.Rotativa;

@@ -1,8 +1,9 @@
-# ftool — Estructto (Gabriel + Bruno)
+# Estructto
 
-Programa de pórtico plano (clone do Ftool) com verificação e memorial, usado no projeto da **coluna para guincho CSM 400 kgf**
-(Elementos de Máquina I / Mecânica dos Sólidos, UNIVALI). A planilha de cálculo fica no OneDrive:
-`ELEMENTOS DE MÁQUINA\PLANILHA DE CÁLCULO.xlsx`; os dois têm de dar o mesmo resultado.
+Programa de cálculo estrutural: interface WPF (.NET 8) em `codigo/Estructto` + motor Python em `codigo/motor`
+(pórtico espacial 3D, NBR 8800, 14762, 6118, 6123, 15421, 6120, ligações, importação `.ed3` do CYPE e servidor MCP).
+Unificação e fases: [docs/UNIFICACAO.md](docs/UNIFICACAO.md). Nasceu no projeto da **coluna para guincho CSM 400 kgf**
+(UNIVALI); a planilha `ELEMENTOS DE MÁQUINA\PLANILHA DE CÁLCULO.xlsx` (OneDrive) tem de dar o mesmo resultado.
 
 **Regra do projeto:** toda decisão, critério ou mudança vai para um `.md` aqui (e uma linha no [CHANGELOG](docs/CHANGELOG.md)).
 Gabriel e Bruno trabalham em máquinas diferentes; a memória do Claude não é compartilhada.
@@ -13,6 +14,8 @@ Gabriel e Bruno trabalham em máquinas diferentes; a memória do Claude não é 
 |---|---|---|
 | `Estructto.exe` | programa pronto (arquivo único, não precisa de .NET instalado) | não |
 | `codigo/Estructto/` | interface WPF do Estructto (C#, .NET 8) | não |
+| `codigo/motor/` | motor Python (`prossen_estrutural`, nome interno do pacote), testes, exemplos e `empacotar.ps1` | não |
+| `codigo/.mcp.json` | servidor MCP `estructto` para clientes de IA | não |
 | `codigo/portico/` | motor de cálculo (`src/Nucleo.cs`), testes, tabelas embutidas (`perfis-*.csv`, `chumbadores.csv`) e scripts | não |
 | `exemplos/` | modelos `.estructto` / `.ftl` de teste e PNGs de memorial | não (citados nos docs) |
 | `referencias/` | PDFs das aulas e tabelas | sim |
@@ -34,6 +37,8 @@ Gabriel e Bruno trabalham em máquinas diferentes; a memória do Claude não é 
 ## Comandos
 
 ```
+cd codigo\motor; $env:PROSSEN_PULAR_LENTOS=1; python -m unittest discover -s testes   # testes do motor Python (sem a variável: inclui os lentos)
+cd codigo\Estructto; dotnet build -c Release                                          # interface (0 erros)
 codigo\portico\compilar.ps1 -Testes        # testes do motor (todos têm de passar)
 codigo\portico\compilar.ps1                # Portico.exe (versão simples, WinForms)
 codigo\portico\sincronizar-planilha.ps1 -Planilha "<caminho>\PLANILHA DE CÁLCULO.xlsx"   # aba CHUMBADORES = CSV
@@ -57,3 +62,9 @@ Em desenvolvimento, sem empacotar: `$env:ESTRUCTTO_MOTOR = "<pasta que contém p
 
 Conferência visual sem abrir o programa: `codigo\Estructto\capturar.ps1` gera PNG de todas as telas em `C:\dev\build\EstructtoV2\capturas`
 (`Estructto.exe --capturas <pasta>`). Regras de interface: `docs\v2\GUIA-DESIGN.md`; histórico da modernização: `docs\v2\RELATORIO.md`.
+
+## MCP (uso por IA)
+
+`codigo/.mcp.json` registra o servidor `estructto` (stdio, `python -m prossen_estrutural.servidor_mcp`, `PYTHONPATH=motor`).
+Abra o cliente MCP (ex.: Claude Code) na pasta `codigo`, ou rode à mão: `cd codigo; $env:PYTHONPATH="motor"; python -m prossen_estrutural.servidor_mcp --pasta <trabalho>`.
+Precisa de python com `numpy` e `mcp`. Arquivos só dentro da pasta de trabalho; todo resultado exige verificação por engenheiro responsável.

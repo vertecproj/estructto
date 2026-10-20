@@ -182,7 +182,7 @@ namespace NovoFtool
                 av.AppendLine((biblioteca.Count == 1 ? "O arquivo define a carga nodal " : "O arquivo define as cargas nodais ") + string.Join(", ", biblioteca) + ", mas não foi possível ler em quais nós " + (biblioteca.Count == 1 ? "ela está aplicada." : "elas estão aplicadas."));
             // O trecho dos nos (depois das barras) e identico nos arquivos de exemplo, que nao tem apoio nem carga
             // atribuidos; sem um exemplo com apoio/carga aplicados nao da para saber onde o Ftool grava isso.
-            av.Append("Apoios e cargas aplicadas não são lidos do .ftl (formato não documentado): aplique-os pelas abas Estrutura e Cargas.");
+            av.Append("Apoios e cargas aplicadas não são lidos do .ftl (formato não documentado): aplique-os pelas abas Modelo e Ações.");
             aviso = av.ToString();
             return m;
         }

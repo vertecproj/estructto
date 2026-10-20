@@ -4,6 +4,7 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 
 ## 20/10/2026 — Gabriel (início da unificação com o motor Python)
 
+- Marca única **Estructto**: relatório (cabeçalho, carimbo, logo `docs/logo-estructto.svg`), servidor MCP `estructto` (+ `codigo/.mcp.json` e teste stdio), CLI/servidor web e textos da interface alinhados às abas novas (Modelo, Ações, Análise, Dimensionamento). Pacote Python segue `prossen_estrutural` (interno).
 - Ponte com o motor Python ([UNIFICACAO-MOTOR.md](UNIFICACAO-MOTOR.md)): `MotorModelo.cs` converte o modelo e lê resultados; opção Motor em
   Análise › Opções (Interno padrão; Python roda no F5 com progresso); `--conferir-motor` (análise confere a 10⁻¹¹ nos guinchos);
   `codigo/motor/empacotar.ps1` + publish põe `motor\` ao lado do exe; motor desligado ao sair.

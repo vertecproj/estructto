@@ -217,7 +217,7 @@ class TestRelatorio(unittest.TestCase):
         self.assertIn("PROSSEN ENGENHARIA", self.h)
         self.assertIn("CREA e nº da ART", self.h)
         self.assertIn("20/10/2026 às 05:12", self.h)
-        self.assertIn("PROSSEN Estrutural 0.9.0", self.h)
+        self.assertIn("Estructto 0.9.0", self.h)
 
     def test_markdown_sem_html_e_tabelas_gfm(self):
         self.assertNotRegex(self.m, r"</?(table|div|span|svg|style|tr|td)\b")

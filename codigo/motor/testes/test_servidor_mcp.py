@@ -487,6 +487,15 @@ class TestStdio(unittest.TestCase):
                 env={**os.environ, "PYTHONPATH": str(SOFTWARE)}, cwd=str(RAIZ))
             self._conferir(*self._rodar(p))
 
+    def test_stdio_com_o_mcp_json_da_raiz(self):
+        """Lê `codigo/.mcp.json` (servidor "estructto", PYTHONPATH relativo, cwd = codigo); troca só o executável."""
+        cfg = json.loads((RAIZ / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["estructto"]
+        self.assertEqual(cfg["args"], ["-m", "prossen_estrutural.servidor_mcp"])
+        with tempfile.TemporaryDirectory() as pasta:
+            p = StdioServerParameters(command=sys.executable, args=[*cfg["args"], "--pasta", pasta],
+                                      env={**os.environ, **cfg.get("env", {})}, cwd=str(RAIZ))
+            self._conferir(*self._rodar(p))
+
 
 if __name__ == "__main__":
     unittest.main()

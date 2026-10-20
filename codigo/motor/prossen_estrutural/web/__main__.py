@@ -9,7 +9,7 @@ from .servidor import criar_servidor
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="python -m prossen_estrutural.web", description="Interface web local do PROSSEN Estrutural")
+    ap = argparse.ArgumentParser(prog="python -m prossen_estrutural.web", description="Interface web local do Estructto")
     ap.add_argument("--porta", type=int, default=8765, help="porta em 127.0.0.1 (0 = qualquer livre)")
     ap.add_argument("--pasta", default=str(Path(__file__).resolve().parents[2] / "trabalho"), help="pasta de trabalho")
     ap.add_argument("--abrir", action="store_true", help="abrir o navegador")
@@ -19,7 +19,7 @@ def main(argv=None):
     pasta.mkdir(parents=True, exist_ok=True)
     srv = criar_servidor(a.porta, pasta)
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
-    print(f"PROSSEN Estrutural em {url}  (pasta de trabalho: {srv.pasta}; Ctrl+C encerra)", file=sys.stderr, flush=True)
+    print(f"Estructto em {url}  (pasta de trabalho: {srv.pasta}; Ctrl+C encerra)", file=sys.stderr, flush=True)
     if a.abrir:
         webbrowser.open(url)
     try:

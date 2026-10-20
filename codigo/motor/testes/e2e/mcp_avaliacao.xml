@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- 10 perguntas de avaliação do servidor MCP prossen-estrutural (padrão mcp-builder). Cada resposta é um número
+<!-- 10 perguntas de avaliação do servidor MCP estructto (padrão mcp-builder). Cada resposta é um número
      verificável por solução fechada ou contagem (não depende de regra de norma que muda); o teste
      test_e2e_mcp.TestAvaliacao confere cada uma chamando as ferramentas. Unidades: kN, m, kN·m. -->
 <evaluation>
   <qa_pair id="1">
-    <question>Quantas ferramentas o servidor MCP prossen-estrutural expõe em list_tools?</question>
+    <question>Quantas ferramentas o servidor MCP estructto expõe em list_tools?</question>
     <answer>42</answer>
   </qa_pair>
   <qa_pair id="2">

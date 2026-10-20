@@ -1,1 +1,1 @@
-"""Interface web local do PROSSEN Estrutural: `python -m prossen_estrutural.web`."""
+"""Interface web local do Estructto: `python -m prossen_estrutural.web`."""

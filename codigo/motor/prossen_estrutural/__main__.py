@@ -18,7 +18,7 @@ def _f(v, casas=2):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m prossen_estrutural",
-                                 description="Calcula um modelo estrutural e grava o relatório (html, md, json).")
+                                 description="Estructto: calcula um modelo estrutural e grava o relatório (html, md, json).")
     ap.add_argument("modelo", help="arquivo .json do modelo")
     ap.add_argument("-o", "--saida", required=True, help="pasta de saída (criada se não existir)")
     ap.add_argument("--pdelta", action="store_true", help="análise de 2ª ordem P-Δ nas combinações ELU")

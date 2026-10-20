@@ -163,7 +163,7 @@ def _comparar_cype(srv, a, q, c):
 
 def _arquivos(srv, a, q, c):
     ext = q.get("ext", "json")
-    if ext not in ("json", "ed3"):  # só modelos PROSSEN e obras do CYPE 3D
+    if ext not in ("json", "ed3"):  # só modelos Estructto e obras do CYPE 3D
         raise projeto.ErroEntrada(f"ext: use json ou ed3 (recebido {ext!r})", "ext")
     return [str(p.relative_to(srv.pasta)).replace("\\", "/") for p in sorted(srv.pasta.rglob(f"*.{ext}"))]
 
@@ -231,7 +231,7 @@ class Manipulador(BaseHTTPRequestHandler):
     # HTTP/1.1: conexão persistente (a interface pede ~70 arquivos; com 1.0 cada um abriria um socket e o Windows
     # esgota portas em TIME_WAIT: net::ERR_NO_BUFFER_SPACE). Toda resposta leva Content-Length.
     protocol_version = "HTTP/1.1"
-    server_version = "PROSSEN"
+    server_version = "Estructto"
     sys_version = ""
 
     def log_message(self, fmt, *args):

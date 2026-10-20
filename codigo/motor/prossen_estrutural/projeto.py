@@ -1,4 +1,4 @@
-"""Camada única de operações do PROSSEN Estrutural (ESPEC §6): CLI, servidor MCP e interface web
+"""Camada única de operações do Estructto (ESPEC §6): CLI, servidor MCP e interface web
 são adaptadores finos sobre este módulo.
 
 Aqui só há montagem de dados e chamadas aos motores (solver, ações, aço, concreto): nenhuma fórmula

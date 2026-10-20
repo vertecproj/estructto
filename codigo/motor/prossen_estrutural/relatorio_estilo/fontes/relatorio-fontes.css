@@ -1,4 +1,4 @@
-/* PROSSEN Estrutural, fontes do relatório impresso embutidas (data URI, WOFF, subconjunto latino + símbolos de engenharia).
+/* Estructto, fontes do relatório impresso embutidas (data URI, WOFF, subconjunto latino + símbolos de engenharia).
    Gerado por fontTools a partir de fontes/*.ttf (Barlow, OFL-1.1: ver OFL-Barlow.txt). Dono: designer-identidade.
    Uso: relatorio.py embute ESTE arquivo DEPOIS de relatorio.css no mesmo <style>; a última @font-face de mesma família e peso vence.
    Sem ele, o relatório servido por /api/relatorio.html ou salvo na pasta de trabalho não acha fontes/ e cai para Arial. */
