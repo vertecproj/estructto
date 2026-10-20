@@ -108,3 +108,20 @@ class TestModelo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMolasRecalquesJSON(unittest.TestCase):
+    def test_ida_e_volta(self):
+        m = Modelo()
+        m.add(No("a", 0, 0, 0, apoio=(True,) * 6, molas=(0, 0, 5e3, 0, 0, 0), recalques=(0, 0, -0.01, 0, 0, 0)))
+        m.add(No("b", 1, 0, 0))
+        d = m.to_dict()
+        self.assertEqual(d["nos"]["a"]["recalques"], [0, 0, -0.01, 0, 0, 0])
+        self.assertNotIn("molas", d["nos"]["b"])  # sem mola: JSON igual ao de antes
+        m2 = Modelo.from_dict(json.loads(json.dumps(d)))
+        self.assertEqual(m2.nos["a"].molas, (0, 0, 5e3, 0, 0, 0))
+        self.assertEqual(m2.nos["a"].recalques, (0, 0, -0.01, 0, 0, 0))
+        from prossen_estrutural.projeto import _esquema
+        self.assertEqual(_esquema(d), [])
+        d["nos"]["b"]["molas"] = [1, 2]
+        self.assertEqual(_esquema(d)[0]["campo"], "nos.b.molas")

@@ -25,9 +25,12 @@ Leitura: `POST /api/calcular`, `GET /api/resultados?alvo=deslocamentos|reacoes|e
 `GET /api/verificacao` → `MotorResultado` (convenções do Estructto: ux, uy, giro, Rx, Ry, Rm; N tração +, V e M como `ResBarra`;
 em pé M = −My e V = −Vz; deitado M = Mz e V = −Vy).
 
-Não aceito ainda: molas e recalques. O envio para com a mensagem "O motor Python ainda não calcula apoios elásticos (molas) nem
-recalques, e este modelo tem: nó 3 (mola X, recalque Y)... Para calcular, escolha "Interno (Nucleo.cs)" em Análise › Opções › Motor, ou
-tire essas molas e recalques." Ignorado: carga giratória (só a posição lançada vai ao motor) e o ψ informativo.
+Molas e recalques (20/10/2026): `molas` = [MolaX, 0, MolaY, 0, MolaGiro, 0] (kN/m, kN·m/rad; giro em ry) e `recalques` =
+[RecalqueX, 0, RecalqueY, 0, 0, 0]/1000 (mm → m; só onde o GL está travado, como o Nucleo.cs). No motor (`No.molas`, `No.recalques`,
+globais) a mola entra na diagonal de K (estática, P-Δ, modal; reação = −k·u) e o recalque é deslocamento prescrito, ação permanente
+do 1º caso tipo G (o Nucleo.cs aplica em todos os casos; com mais de um caso o motor não soma o recalque várias vezes). Recalque em GL
+livre → ValueError. Conferência com o Nucleo.cs (balanço em mola de giro, viga em 2 molas, biengastada e contínua com recalque):
+diferença relativa máxima 1,4e-15. Ignorado: carga giratória (só a posição lançada vai ao motor) e o ψ informativo.
 
 ## Carga distribuída linear no motor
 

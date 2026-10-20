@@ -17,11 +17,23 @@ class No:
     y: float
     z: float
     apoio: tuple = (False,) * 6  # restrições ux, uy, uz, rx, ry, rz
+    molas: tuple = (0.0,) * 6      # rigidez elástica global: kN/m (ux, uy, uz), kN·m/rad (rx, ry, rz)
+    recalques: tuple = (0.0,) * 6  # deslocamento prescrito (m, rad) nos GL travados
 
     def __post_init__(self):
         self.apoio = tuple(bool(a) for a in self.apoio)
-        if len(self.apoio) != 6:
-            raise ValueError(f"nó {self.id}: apoio precisa de 6 valores (ux, uy, uz, rx, ry, rz)")
+        self.molas = tuple(float(a) for a in self.molas)
+        self.recalques = tuple(float(a) for a in self.recalques)
+        for nome, v in (("apoio", self.apoio), ("molas", self.molas), ("recalques", self.recalques)):
+            if len(v) != 6:
+                raise ValueError(f"nó {self.id}: {nome} precisa de 6 valores (ux, uy, uz, rx, ry, rz)")
+        gls = ("ux", "uy", "uz", "rx", "ry", "rz")
+        for k in range(6):
+            if self.molas[k] < 0:
+                raise ValueError(f"nó {self.id}: mola {gls[k]} negativa ({self.molas[k]})")
+            if self.recalques[k] and not self.apoio[k]:
+                raise ValueError(f"nó {self.id}: recalque em {gls[k]} = {self.recalques[k]}, mas esse GL "
+                                 f"não está travado (apoio); recalque só vale em GL travado")
 
 
 @dataclass
@@ -149,7 +161,9 @@ class Modelo:
         return {
             "versao_formato": VERSAO_FORMATO,
             "nome": self.nome,
-            "nos": {k: lst(v, "apoio") for k, v in self.nos.items()},
+            "nos": {k: {c: x for c, x in lst(v, "apoio", "molas", "recalques").items()
+                        if c not in ("molas", "recalques") or any(x)}  # sem mola/recalque: JSON de antes
+                    for k, v in self.nos.items()},
             "materiais": {k: asdict(v) for k, v in self.materiais.items()},
             "secoes": {k: asdict(v) for k, v in self.secoes.items()},
             "barras": {k: asdict(v) for k, v in self.barras.items()},

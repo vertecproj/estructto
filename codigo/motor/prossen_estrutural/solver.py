@@ -51,6 +51,10 @@ Convenções:
   com Secao.props "Ay" (m², cortante Vy, plano xy com Iz) e "Az" (m², Vz, plano xz com Iy); rigidez,
   engastamento de carga pontual (o da uniforme não muda) e flechas exatos do elemento de Timoshenko.
   P-Δ: Kg de Euler (aproximação, erro da ordem de Φ·N/Ncr).
+- No.molas (6, globais, kN/m e kN·m/rad) somam na diagonal de K (estática, P-Δ, modal); reação do nó
+  com mola em GL livre = -k·u. No.recalques (6, m e rad, só em GL travado) são deslocamentos prescritos
+  (F_livre -= K_lp·u_p; reação = K·u - F): ação permanente indireta do 1º caso tipo G (ponderada pelo
+  fator desse caso; sem caso G -> ValueError).
 - Pavimento com diafragma=True: nós com |z - pav.z| <= 0,001 m ficam vinculados no plano
   (ux_i = ux_c - (y_i - y_c)·rz_c; uy_i = uy_c + (x_i - x_c)·rz_c; rz_i = rz_c), c = centro
   geométrico dos nós vinculados, 3 GL mestres virtuais, por transformação exata u = T·u_red.
@@ -348,6 +352,12 @@ def _montar(modelo, elems, idx, ndof, N=None):
             kn += e.T.T @ (d[:, None] * e.T)
         val.append(kn.ravel())
         Fb[g] -= e.T.T @ (e.A.T @ fc + e.fr)
+    # molas nodais (globais) na diagonal: estática, P-Δ e modal passam todos por aqui
+    for n, i in idx.items():
+        km = modelo.nos[n].molas
+        if any(km):
+            g = np.r_[6 * i:6 * i + 6]
+            lin.append(g); col.append(g); val.append(np.asarray(km, float))
     if not lin:
         return sp.csr_matrix((ndof, ndof)), Fb
     K = sp.coo_matrix((np.concatenate(val), (np.concatenate(lin), np.concatenate(col))),
@@ -603,13 +613,19 @@ def analisar(modelo, caso, pdelta=False, n_pontos=N_PONTOS, tol=1e-6, max_iter=3
     restr = np.array([r for n in ids for r in modelo.nos[n].apoio], bool)
     Tr, restr_r, rotulos, pavs, mestres = _diafragmas(modelo, ids, idx, restr)
     Fn = _cargas(modelo, fatores, elems, idx, ndof)
+    # recalques: ação permanente indireta do 1º caso G (ponderada pelo seu fator; combinar soma uma vez só)
+    cg = next((c for c, cc in modelo.casos.items() if cc.tipo == "G"), None)
+    u0 = fatores.get(cg, 0.0) * np.array([d for n in ids for d in modelo.nos[n].recalques], float)
+    if cg is None and any(any(modelo.nos[n].recalques) for n in ids):
+        raise ValueError("recalques exigem um caso permanente (tipo G) no modelo: entram no 1º caso G")
 
     def resolver(N=None):
         K, Fb = _montar(modelo, elems, idx, ndof, N)
         F = Fn + Fb
-        ur = _resolver((Tr.T @ K @ Tr).tocsr(), Tr.T @ F, restr_r, rotulos,
+        # GL travado não é escravo de diafragma (T = identidade nele): u = T·u_r + u0
+        ur = _resolver((Tr.T @ K @ Tr).tocsr(), Tr.T @ (F - K @ u0), restr_r, rotulos,
                        None if N is None else nome)
-        return Tr @ ur, ur, K, F
+        return Tr @ ur + u0, ur, K, F
 
     u, ur, K, F = resolver()
     fe = _forcas(modelo, elems, idx, u)
@@ -630,8 +646,9 @@ def analisar(modelo, caso, pdelta=False, n_pontos=N_PONTOS, tol=1e-6, max_iter=3
     r = Resultado()
     for i, n in enumerate(ids):
         r.deslocamentos[n] = u[6 * i:6 * i + 6].copy()
-        if any(modelo.nos[n].apoio):
-            r.reacoes[n] = np.where(modelo.nos[n].apoio, Rg[6 * i:6 * i + 6], 0.0)
+        no = modelo.nos[n]
+        if any(no.apoio) or any(no.molas):  # mola: reação = -k·u (força do apoio elástico na estrutura)
+            r.reacoes[n] = np.where(no.apoio, Rg[6 * i:6 * i + 6], -np.asarray(no.molas) * u[6 * i:6 * i + 6])
     for bid, (f, ul) in fe.items():
         r.esforcos[bid], r.flechas[bid] = _secoes(elems[bid], f, ul, n_pontos, pdelta)
     for nome, nos in pavs.items():

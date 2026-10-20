@@ -256,15 +256,20 @@ def _apoio(v, err):
 
 
 def _c_no(m, d, err, ignorar):
-    _chaves(d, {"id", "x", "y", "z", "apoio"}, err)
+    _chaves(d, {"id", "x", "y", "z", "apoio", "molas", "recalques"}, err)
     id_ = str(d["id"]) if d.get("id") not in (None, "") else _id_livre(m.nos, "n")
     if id_ in m.nos and id_ != ignorar:
         err("id", f"id '{id_}' repetido")
     x, y, z = (_num(d.get(c), c, err) for c in ("x", "y", "z"))
     ap = _apoio(d.get("apoio", "livre"), err)
-    if None in (x, y, z, ap):
+    extra = {c: _vetor(d[c], 6, c, err) for c in ("molas", "recalques") if d.get(c) is not None}
+    if None in (x, y, z, ap) or None in extra.values():
         return None
-    return No(id_, x, y, z, ap)
+    try:
+        return No(id_, x, y, z, ap, **extra)
+    except ValueError as e:  # mola negativa, recalque em GL livre
+        err("recalques" if "recalque" in str(e) else "molas", str(e))
+        return None
 
 
 def _c_material(m, d, err, ignorar):
@@ -489,7 +494,7 @@ def para_dict(modelo):
 
 
 _NUM_CAMPOS = {"x", "y", "z", "E", "G", "A", "Iy", "Iz", "J", "rot", "a", "peso"}
-_VET_CAMPOS = {"apoio": 6, "F": None, "q": 3, "q2": 3}
+_VET_CAMPOS = {"apoio": 6, "molas": 6, "recalques": 6, "F": None, "q": 3, "q2": 3}
 
 
 def _esquema(d):

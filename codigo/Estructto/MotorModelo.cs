@@ -64,23 +64,15 @@ namespace NovoFtool
         public static async Task Enviar(Modelo m)
         {
             m.GarantirCasos();
-            var erros = new List<string>();
-            foreach (No n in m.Nos)
-            {
-                var o = new List<string>();
-                if (n.MolaX != 0) o.Add("mola X"); if (n.MolaY != 0) o.Add("mola Y"); if (n.MolaGiro != 0) o.Add("mola de giro");
-                if (n.RecalqueX != 0) o.Add("recalque X"); if (n.RecalqueY != 0) o.Add("recalque Y");
-                if (o.Count > 0) erros.Add("nó " + n.Id + " (" + string.Join(", ", o) + ")");
-            }
-            if (erros.Count > 0) throw new MotorErro(0, "O motor Python ainda não calcula apoios elásticos (molas) nem recalques, e este modelo tem: "
-                + string.Join("; ", erros) + ". Para calcular, escolha \"Interno (Nucleo.cs)\" em Análise › Opções › Motor, ou tire essas molas e recalques.");
-
             var nos = new JsonObject();
             foreach (No n in m.Nos)
                 nos[IdNo(n.Id)] = new JsonObject
                 {
                     ["x"] = n.X, ["y"] = 0.0, ["z"] = n.Y,
-                    ["apoio"] = new JsonArray(n.ApoioX, true, n.ApoioY, true, n.ApoioGiro, true)
+                    ["apoio"] = new JsonArray(n.ApoioX, true, n.ApoioY, true, n.ApoioGiro, true),
+                    // mola de giro em ry (rigidez não tem sinal); recalque em mm -> m, só onde travado (igual ao Nucleo.cs)
+                    ["molas"] = new JsonArray(n.MolaX, 0.0, n.MolaY, 0.0, n.MolaGiro, 0.0),
+                    ["recalques"] = new JsonArray(n.ApoioX ? n.RecalqueX / 1000 : 0.0, 0.0, n.ApoioY ? n.RecalqueY / 1000 : 0.0, 0.0, 0.0, 0.0)
                 };
             var materiais = new JsonObject();
             foreach (string nome in m.Barras.Select(b => b.Material).Distinct())
