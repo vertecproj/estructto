@@ -53,7 +53,7 @@ namespace NovoFtool
         bool semSobreporCones;
         string filtroBuscaCh = "";
         int filtroTipoCh;              // 0 = Todos, 1 = Mecânico, 2 = Químico
-        bool verTodosNaoServem;
+        readonly HashSet<string> famAbertas = new HashSet<string>();   // famílias abertas no painel Trocar (fabricante|linha)
         string chumbAntes = "";
         string msgDim = "";
         StackPanel btsFiltroTipoCh;
@@ -606,6 +606,27 @@ namespace NovoFtool
                 linNome.Children.Add(info);
                 corpo.Children.Add(linNome);
 
+                // atalho: − / + troca o diâmetro dentro da mesma família (mesma linha do fabricante); ao lado, o hef do diâmetro
+                var familia = Chumbadores.Lista.Where(c => c.Linha == chAt.Linha && c.Fabricante == chAt.Fabricante).ToList();
+                var roscas = familia.Select(c => c.Rosca).Distinct().OrderBy(x => x).ToList();
+                var hefs = familia.Where(c => c.Rosca == chAt.Rosca).OrderBy(c => c.Hef).ToList();
+                int iRosca = roscas.IndexOf(chAt.Rosca), iHef = hefs.IndexOf(chAt);
+                Action Trocar(Chumbador alvo) => alvo == null ? null : () =>
+                {
+                    if (string.IsNullOrEmpty(chumbAntes)) chumbAntes = edit.Chumbador;
+                    edit.Chumbador = alvo.Nome; Recalcular();
+                };
+                Chumbador NoDiametro(int j) => j < 0 || j >= roscas.Count ? null
+                    : familia.Where(c => c.Rosca == roscas[j]).OrderBy(c => Math.Abs(c.Hef - chAt.Hef)).ThenBy(c => c.Hef).First();
+                var stDiam = Stepper(chAt.Pol, Trocar(NoDiametro(iRosca - 1)), Trocar(NoDiametro(iRosca + 1)), 58, AbrirOverlayTrocar,
+                    "Diâmetro anterior / próximo da linha " + chAt.Linha.Replace("Walsywa ", "") + " (" + roscas.Count + " diâmetros). Clique no valor para ver a lista completa.");
+                UIElement stHef = hefs.Count > 1
+                    ? Horiz(Gap(12), Tx("hef", 12, TemaPlant.BTexto2), Gap(6),
+                            Stepper(chAt.Hef.ToString("0") + " mm", Trocar(iHef > 0 ? hefs[iHef - 1] : null), Trocar(iHef < hefs.Count - 1 ? hefs[iHef + 1] : null), 64, null,
+                                    "Profundidade de ancoragem (hef) disponível neste diâmetro."))
+                    : null;
+                corpo.Children.Add(Linha("Diâmetro", Horiz(stDiam, stHef), 8, "Troca rápida dentro da mesma família. Para outra família, use Trocar."));
+
                 // quantidade (+ classe da barra se químico)
                 UIElement extra = null;
                 if (chAt.Quimico)
@@ -663,14 +684,25 @@ namespace NovoFtool
             var sp = new StackPanel();
             if (!r.TemEsforcos || r.Ch == null) { sp.Children.Add(Tx("—", 12, TemaPlant.BTexto2)); return sp; }
             double nTab = Chumbadores.Coef(r.TipoCarga, r.RiscoAlto);
+            string condicao = "carga " + Chumbadores.NomesTipos[r.TipoCarga] + " com " + (r.RiscoAlto ? "alto" : "baixo") + " risco";
+            bool digitado = r.Ch.Tu > 0 && edit.CoefChumbador > 0, abaixo = digitado && edit.CoefChumbador < nTab - 1e-9;
             string origem;
             if (r.Ch.Tu <= 0) origem = "carga recomendada do fabricante";
-            else if (edit.CoefChumbador > 0) origem = "digitado (a tabela Walsywa pede " + Num.Fmt(nTab, 0) + ")";
-            else origem = "tabela Walsywa: " + Chumbadores.NomesTipos[r.TipoCarga] + ", " + (r.RiscoAlto ? "alto" : "baixo") + " risco";
-            var l1 = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = TemaPlant.BTexto2 };
+            else if (abaixo) origem = "digitado por você, ABAIXO do que a Walsywa recomenda: n = " + Num.Fmt(nTab, 0) + " para " + condicao;
+            else if (digitado) origem = "digitado por você (a Walsywa recomenda " + Num.Fmt(nTab, 0) + " para " + condicao + ")";
+            else origem = "recomendado pela Walsywa para " + condicao;
+            var l1 = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = abaixo ? TemaPlant.BAlerta : TemaPlant.BTexto2 };
             l1.Inlines.Add(new System.Windows.Documents.Run("n = " + Num.Fmt(r.NRef, r.NRef == Math.Floor(r.NRef) ? 0 : 1)) { Foreground = TemaPlant.BTexto1, FontWeight = FontWeights.Bold });
             l1.Inlines.Add(new System.Windows.Documents.Run(" · " + origem));
             sp.Children.Add(l1);
+            if (digitado)
+            {
+                var volta = Link("usar o recomendado (n = " + Num.Fmt(nTab, 0) + ")", () => { edit.CoefChumbador = 0; Recalcular(); },
+                    "O coeficiente vem da tabela da Walsywa (catálogo pág. 07), conforme o tipo de carga e o grau de risco escolhidos acima.");
+                volta.Margin = new Thickness(0, 2, 0, 0);
+                volta.HorizontalAlignment = HorizontalAlignment.Left;
+                sp.Children.Add(volta);
+            }
             bool cOk = r.NComb >= r.NRef;
             var l2 = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11.5, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 1, 0, 0) };
             l2.Inlines.Add(new System.Windows.Documents.Run("obtido no concreto "));
@@ -1232,7 +1264,9 @@ namespace NovoFtool
         {
             FecharFlutuantes();
             if (string.IsNullOrEmpty(chumbAntes) && !string.IsNullOrEmpty(edit.Chumbador)) chumbAntes = edit.Chumbador;
-            verTodosNaoServem = false;
+            famAbertas.Clear();
+            Chumbador emUso = Chumbadores.Achar(edit.Chumbador);
+            if (emUso != null) famAbertas.Add(emUso.Fabricante + "|" + emUso.Linha);
             PreencherOverlayTrocar();
             overlayTrocar.Visibility = Visibility.Visible;
         }
@@ -1259,18 +1293,28 @@ namespace NovoFtool
                 return true;
             }).Select(c => { ResPlaca tc = PlacaCalc.CandidatoChumbador(r, edit, m, c); return new { Ch = c, Res = tc, Ok = tc.ChOk }; }).ToList();
 
-            var passam = todos.Where(x => x.Ok).OrderBy(x => x.Ch.Rosca).ThenBy(x => x.Ch.Hef).ThenBy(x => x.Res.ApFix).ToList();
-            var recom = passam.Take(3).ToList();
-            var maiores = passam.Skip(3).ToList();
-            var naoServem = todos.Where(x => !x.Ok).OrderBy(x => x.Ch.Rosca).ThenBy(x => x.Ch.Hef).ToList();
-
-            void TituloGrupo(string s, int qt)
+            // Cabeçalho de uma família (linha do fabricante): clique abre/fecha; mostra quantos passam e o menor que passa
+            void TituloFamilia(string chave, Chumbador c0, int qt, int qtOk, Chumbador menor, bool aberta)
             {
-                var t = Tx(s.ToUpperInvariant() + "  ·  " + qt, 10.5, TemaPlant.BTexto2, FontWeights.SemiBold);
-                t.Margin = new Thickness(16, 12, 16, 4);
-                listaTrocar.Children.Add(t);
+                var bd = new Border { Padding = new Thickness(12, 9, 16, 9), BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Background = TemaPlant.BSup2, Cursor = Cursors.Hand };
+                bd.MouseEnter += (s, e) => bd.Background = TemaPlant.BSupHover;
+                bd.MouseLeave += (s, e) => bd.Background = TemaPlant.BSup2;
+                var dp = new DockPanel();
+                var dir = new TextBlock { FontSize = 11.5, Foreground = TemaPlant.BTexto2, VerticalAlignment = VerticalAlignment.Center };
+                dir.Inlines.Add(new System.Windows.Documents.Run(qt + (qt == 1 ? " modelo · " : " modelos · ")));
+                dir.Inlines.Add(new System.Windows.Documents.Run(qtOk + " passa" + (qtOk == 1 ? "" : "m")) { Foreground = qtOk > 0 ? TemaPlant.BSucesso : TemaPlant.BErro, FontWeight = FontWeights.SemiBold });
+                if (menor != null && !aberta) dir.Inlines.Add(new System.Windows.Documents.Run(" · menor: " + menor.Pol + " hef " + menor.Hef.ToString("0")));
+                DockPanel.SetDock(dir, Dock.Right); dp.Children.Add(dir);
+                var esq = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+                esq.Inlines.Add(new System.Windows.Documents.Run(aberta ? "▾  " : "▸  ") { Foreground = TemaPlant.BTexto2 });
+                esq.Inlines.Add(new System.Windows.Documents.Run(c0.Linha.Replace("Walsywa ", "")) { FontSize = 13.5, FontWeight = FontWeights.Bold, Foreground = TemaPlant.BTexto1 });
+                esq.Inlines.Add(new System.Windows.Documents.Run("   " + c0.Fabricante + " · " + (c0.Quimico ? "químico" : "mecânico")) { FontSize = 11.5, Foreground = TemaPlant.BTexto2 });
+                dp.Children.Add(esq);
+                bd.Child = dp;
+                bd.MouseLeftButtonDown += (s, e) => { if (!famAbertas.Remove(chave)) famAbertas.Add(chave); PreencherOverlayTrocar(); e.Handled = true; };
+                listaTrocar.Children.Add(bd);
             }
-            void LinhaCandidato(Chumbador c, ResPlaca tc, bool ok)
+            void LinhaCandidato(Chumbador c, ResPlaca tc, bool ok, bool mostraDiam, bool menorQuePassa)
             {
                 bool emUso = r.Ch == c;
                 bool eraAntes = !emUso && !string.IsNullOrEmpty(chumbAntes) && (c.Nome == chumbAntes || c.Codigo == chumbAntes);
@@ -1289,12 +1333,14 @@ namespace NovoFtool
                 FrameworkElement dir = emUso ? (FrameworkElement)Chip("em uso", Nivel.Info, null, null, 10.5) : Tx(ok ? Pct(tc.ApFix) : "✕", 12, ok ? Cores(NivelAp(tc.ApFix, true)).fg : TemaPlant.BErro, FontWeights.SemiBold);
                 dir.VerticalAlignment = VerticalAlignment.Center; dir.Margin = new Thickness(12, 0, 0, 0);
                 DockPanel.SetDock(dir, Dock.Right); dp.Children.Add(dir);
-                var diam = Tx(c.Pol, 14, ok ? TemaPlant.BTexto1 : TemaPlant.BTexto3, FontWeights.SemiBold); diam.Width = 50;
+                // o diâmetro só aparece na primeira linha de cada diâmetro: a lista fica "família → diâmetro → hef"
+                var diam = Tx(mostraDiam ? c.Pol : "", 14, ok ? TemaPlant.BTexto1 : TemaPlant.BTexto3, FontWeights.SemiBold); diam.Width = 50;
                 DockPanel.SetDock(diam, Dock.Left); dp.Children.Add(diam);
                 var meio = new StackPanel();
                 var lin1 = new WrapPanel();
-                lin1.Children.Add(Tx(c.Linha.Replace("Walsywa ", "") + " hef " + c.Hef.ToString("0"), 12.5, ok ? TemaPlant.BTexto1 : TemaPlant.BTexto2, FontWeights.SemiBold));
-                lin1.Children.Add(Tx("  " + c.Fabricante + " · " + (c.Quimico ? "químico" : "mecânico") + " · furo Ø" + Num.Fmt(c.Furo, c.Furo == Math.Floor(c.Furo) ? 0 : 1) + " × " + Num.Fmt(c.Hef, 0), 11.5, TemaPlant.BTexto2));
+                lin1.Children.Add(Tx("hef " + c.Hef.ToString("0") + " mm", 12.5, ok ? TemaPlant.BTexto1 : TemaPlant.BTexto2, FontWeights.SemiBold));
+                lin1.Children.Add(Tx("  furo Ø" + Num.Fmt(c.Furo, c.Furo == Math.Floor(c.Furo) ? 0 : 1) + " × " + Num.Fmt(c.Hef, 0), 11.5, TemaPlant.BTexto2));
+                if (menorQuePassa) { var tg = Chip("menor que passa", Nivel.Ok, "O menor desta família que passa nesta placa.", null, 10); tg.Margin = new Thickness(8, 0, 0, 0); lin1.Children.Add(tg); }
                 if (eraAntes) lin1.Children.Add(Tx("  · antes", 11.5, TemaPlant.BAlerta, FontWeights.SemiBold));
                 meio.Children.Add(lin1);
                 if (!ok)
@@ -1316,18 +1362,27 @@ namespace NovoFtool
                 bd.MouseLeftButtonDown += (s, e) => { edit.Chumbador = c.Nome; overlayTrocar.Visibility = Visibility.Collapsed; Recalcular(); e.Handled = true; };
                 listaTrocar.Children.Add(bd);
             }
-            if (recom.Count > 0) { TituloGrupo("Recomendados", recom.Count); foreach (var x in recom) LinhaCandidato(x.Ch, x.Res, true); }
-            if (maiores.Count > 0) { TituloGrupo("Maiores (passam com mais folga)", maiores.Count); foreach (var x in maiores) LinhaCandidato(x.Ch, x.Res, true); }
-            if (naoServem.Count > 0)
+            // Agrupado por família (linha do fabricante) e, dentro dela, por diâmetro e hef. A família em uso vem
+            // primeiro e aberta; as outras fechadas, mostrando quantas passam e a menor que passa. Com busca, tudo aberto.
+            bool buscando = q != "";
+            var familias = todos.GroupBy(x => x.Ch.Fabricante + "|" + x.Ch.Linha)
+                .OrderByDescending(gr => r.Ch != null && gr.Any(x => x.Ch == r.Ch))
+                .ThenByDescending(gr => gr.Any(x => x.Ok))
+                .ThenBy(gr => gr.First().Ch.Quimico)
+                .ThenBy(gr => gr.Min(x => x.Ch.Rosca))
+                .ToList();
+            foreach (var gr in familias)
             {
-                TituloGrupo("Não servem aqui", naoServem.Count);
-                var mostrar = verTodosNaoServem ? naoServem : naoServem.Take(6).ToList();
-                foreach (var x in mostrar) LinhaCandidato(x.Ch, x.Res, false);
-                if (!verTodosNaoServem && naoServem.Count > mostrar.Count)
+                var itens = gr.OrderBy(x => x.Ch.Rosca).ThenBy(x => x.Ch.Hef).ToList();
+                var menor = itens.FirstOrDefault(x => x.Ok);
+                bool aberta = buscando || famAbertas.Contains(gr.Key);
+                TituloFamilia(gr.Key, itens[0].Ch, itens.Count, itens.Count(x => x.Ok), menor?.Ch, aberta);
+                if (!aberta) continue;
+                double roscaAnt = -1;
+                foreach (var x in itens)
                 {
-                    var mais = Link("+ " + (naoServem.Count - mostrar.Count) + " modelos ocultos · ver todos", () => { verTodosNaoServem = true; PreencherOverlayTrocar(); });
-                    mais.Margin = new Thickness(16, 10, 16, 14);
-                    listaTrocar.Children.Add(mais);
+                    LinhaCandidato(x.Ch, x.Res, x.Ok, x.Ch.Rosca != roscaAnt, menor != null && x.Ch == menor.Ch);
+                    roscaAnt = x.Ch.Rosca;
                 }
             }
             if (todos.Count == 0) { var t = Tx("Nenhum chumbador com esse filtro.", 12, TemaPlant.BTexto2); t.Margin = new Thickness(16, 14, 16, 14); listaTrocar.Children.Add(t); }

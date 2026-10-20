@@ -8,6 +8,11 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   propriedades WPF (sai o WinForms), vista com HUD/diagramas/mapa de calor, placa de base refeita em 3 passos com 3D, janelas e tela inicial
   novas, Ctrl+K e entrada dinâmica no cursor. Cálculo inalterado (200 testes). Detalhe e decisões: [v2/RELATORIO.md](v2/RELATORIO.md).
 - Modo `--capturas` + `capturar.ps1` para conferência visual automática. Build passa a sair em `C:\dev\build\EstructtoV2`.
+- Placa → Fixação (pedido do Bruno): painel **Trocar chumbador** agrupado por família (linha do fabricante) → diâmetro → hef; a família
+  em uso abre, as outras ficam fechadas mostrando quantos passam e o menor que passa. No cartão, linha **Diâmetro** com − / + (troca o
+  diâmetro na mesma família, mantendo o hef mais próximo) e − / + do hef. Texto do coeficiente explica a origem ("recomendado pela
+  Walsywa para carga dinâmica com alto risco") e avisa quando o n digitado fica abaixo, com link "usar o recomendado". Só interface
+  (`JanelaPlaca.cs`); cálculo inalterado. Build, capturas e 200 testes ok (SDK .NET 8 instalado no PC do Bruno).
 
 ## 19/10/2026 — Bruno
 
