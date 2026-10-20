@@ -389,12 +389,14 @@ namespace NovoFtool
                 if (!modoEsp) return;
                 modoEsp = false;
                 LimparPlano();
+                MostrarEdicao3D(false);
                 Vista.ResumoExterno = null;
                 PainelProp.Content = Insp;
                 MostrarVista3D(false);
                 return;
             }
             modoEsp = true;
+            MostrarEdicao3D(true);
             Vista.ResumoExterno = ResumoEspacial;
             TelaInicial.Visibility = Visibility.Collapsed;
             MostrarVista3D(true);

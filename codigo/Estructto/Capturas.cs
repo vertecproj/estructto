@@ -298,6 +298,49 @@ namespace NovoFtool
             if (Niveis.GerarPilares(j, 0, -2).Count != 2 * n0) throw new InvalidOperationException("gerar pilares: esperado nó + pilar por nó do térreo");
         }
 
+        // Pelo caminho real: botão da faixa → painel → Aplicar (um PUT /api/modelo) → um Ctrl+Z desfaz a operação inteira.
+        static void CapturasEdicao(MainWindow w)
+        {
+            var jg = new JanelaGerar3D("portico_plano");
+            PrepararDialogoForaDaTela(jg);
+            jg.Show();
+            EsperarIdle();
+            if (!jg.Montar()) throw new InvalidOperationException("JanelaGerar3D (pórtico plano): valores padrão inválidos");
+            jg.Close();
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Gerar(jg.Dados, "Pórtico (edição)", jg.G, jg.Q), "gerando"));
+            Func<int> nb = () => w.EspacialAtivo.Json["barras"].AsObject().Count;
+            w.Faixa.SelectedTabItem = w.abaModelo;   // aba Modelo: grupo Modificar com os botões do espacial
+            int b0 = nb(), c0 = w.EspacialAtivo.Json["cargas_distribuidas"].AsArray().Count;
+            Action<string, string, (string, string)[]> rodar = (op, png, campos) =>
+            {
+                w.AbrirEdicaoEsp(op);
+                var p = w.PainelEdicaoAberto ?? throw new InvalidOperationException("painel " + op + " não abriu");
+                EsperarIdle();
+                foreach (var (k, v) in campos) { if (p.Campos[k] is ComboBox cb) cb.SelectedItem = v; else ((TextBox)p.Campos[k]).Text = v; }
+                EsperarIdle();
+                CapturarDialogo(p, "48-painel-" + op + ".png");
+                Esperar(p.Executar());
+                p.Close();
+                EsperarIdle();
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                CapturarPrincipal(w, "48-edicao-" + png);
+            };
+            rodar("copiar", "copiado-3x", new[] { ("dy", "6"), ("n", "3") });
+            if (nb() != 4 * b0 || w.EspacialAtivo.Json["cargas_distribuidas"].AsArray().Count != 4 * c0) throw new InvalidOperationException("copiar 3×: esperado " + 4 * b0 + " barras, há " + nb() + " " + w.StatusMsg.Text);
+            Esperar(w.DesfazerEspacial());
+            if (nb() != b0) throw new InvalidOperationException("um Ctrl+Z não desfez a cópia inteira: " + nb());
+            Esperar(w.OperarEspacial(d => d.Trocar(false), null));
+            if (nb() != 4 * b0) throw new InvalidOperationException("refazer não voltou a cópia");
+            rodar("espelhar", "espelhado", new[] { ("plano", "Y"), ("valor", "-3") });
+            if (nb() != 8 * b0) throw new InvalidOperationException("espelhar: esperado " + 8 * b0 + " barras, há " + nb());
+            rodar("rotacionar", "rotacionado", new[] { ("centro", "6; 0"), ("ang", "30"), ("n", "0") });
+            if (nb() != 8 * b0) throw new InvalidOperationException("rotacionar mudou o número de barras");
+            Esperar(w.CalcularEspacial());
+            if (!w.EspacialAtivo.Calculado) throw new InvalidOperationException("modelo editado não calculou: " + w.StatusMsg.Text);
+            w.FecharEspaciaisSemPerguntar();
+            EsperarIdle();
+        }
+
         static void CapturasEspacial(MainWindow w)
         {
             var jg = new JanelaGerar3D("edificio");
@@ -1160,6 +1203,8 @@ namespace NovoFtool
                 // 41) Modelo espacial (motor Python, DocumentoEspacial.cs): edifício gerado em 3D, calculado, mapa de aproveitamento
                 CapturasEspacial(w);
                 CapturasPlanos(w);   // 43) níveis e planos de trabalho
+                // 48) Edição em lote do modelo espacial (EdicaoEspacial.cs): pórtico copiado 3×, espelhado e rotacionado
+                CapturasEdicao(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
