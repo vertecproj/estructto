@@ -17,6 +17,9 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   Build ok, 200 testes ok, capturas 09-ribbon-* conferidas.
 - Vista 3D (fase 4 de UNIFICACAO.md): `Vista3D.cs` com `Viewport3D` nativo, entrada neutra (nós/barras/esforços/aproveitamento/deslocamentos)
   e adaptador do modelo 2D. Botão "Vista 3D" na aba Vista. Detalhes e decisão (sem HelixToolkit) em [VISTA3D.md](VISTA3D.md). Capturas 40-vista3d-*.
+- Modelo espacial ([MODELO-ESPACIAL.md](MODELO-ESPACIAL.md)): documento 3D cuja fonte é o JSON do motor (`DocumentoEspacial.cs`). Abre
+  .json/.ed3/exemplos, Gerar 3D (edifício, galpão, pórtico), edição por PATCH, desfazer/refazer e F5 pelo motor, mapa de aproveitamento e
+  diagramas na Vista3D, salva .json. 2D sem mudança. Capturas 41-*.
 
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 

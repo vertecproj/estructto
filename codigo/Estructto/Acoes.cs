@@ -125,7 +125,7 @@ namespace NovoFtool
             AtualizarTabelas();
             Diagnosticar();
             MostrarPropriedades();
-            TelaInicial.Visibility = M.Barras.Count == 0 && arquivo == null && !alterado ? Visibility.Visible : Visibility.Collapsed;
+            TelaInicial.Visibility = Esp == null && M.Barras.Count == 0 && arquivo == null && !alterado ? Visibility.Visible : Visibility.Collapsed;
             if (TelaInicial.Visibility == Visibility.Visible) MontarTelaInicial();
         }
 
@@ -149,19 +149,21 @@ namespace NovoFtool
 
         internal void Desfazer()
         {
+            if (Esp != null) { _ = TrocarEspacial(true); return; }   // modelo espacial: pilha do motor
             if (desfazer.Count == 0) { Log("Nada para desfazer."); return; }
             refazer.Push(atual); Restaurar(desfazer.Pop()); Log("Desfeito.");
         }
 
         void Refazer()
         {
+            if (Esp != null) { _ = TrocarEspacial(false); return; }
             if (refazer.Count == 0) { Log("Nada para refazer."); return; }
             desfazer.Push(atual); Restaurar(refazer.Pop()); Log("Refeito.");
         }
 
         void AtualizarTitulo()
         {
-            string nome = arquivo == null ? "Sem título" : System.IO.Path.GetFileName(arquivo);
+            string nome = Esp != null ? Esp.Nome : arquivo == null ? "Sem título" : System.IO.Path.GetFileName(arquivo);
             DocModelo.Title = nome + (alterado ? " *" : "");
             Title = "Estructto — " + nome + (alterado ? " *" : "");
             RedesenharAbas();
@@ -171,6 +173,7 @@ namespace NovoFtool
 
         internal void Resolver(bool avisar)
         {
+            if (Esp != null) { AtualizarEspacial3D(false); return; }   // modelo espacial: resultados do motor (DocumentoEspacial.cs)
             Vista.Resolvido = false;
             erroCalculo = "";
             Aviso.Visibility = Visibility.Collapsed;
@@ -605,7 +608,7 @@ namespace NovoFtool
 
         void AbrirDialogo()
         {
-            var d = new OpenFileDialog { Multiselect = true, Filter = "Modelos (*.estructto;*.portico;*.ftl)|*.estructto;*.portico;*.ftl|Estructto (*.estructto)|*.estructto|Portico antigo (*.portico)|*.portico|Ftool original (*.ftl)|*.ftl" };
+            var d = new OpenFileDialog { Multiselect = true, Filter = "Modelos (*.estructto;*.portico;*.ftl;*.json;*.ed3)|*.estructto;*.portico;*.ftl;*.json;*.ed3|Modelo espacial do motor (*.json)|*.json|Obra do CYPE 3D (*.ed3)|*.ed3|Estructto (*.estructto)|*.estructto|Portico antigo (*.portico)|*.portico|Ftool original (*.ftl)|*.ftl" };
             if (d.ShowDialog(this) == true) foreach (string f in d.FileNames) Abrir(f);
         }
 
@@ -617,6 +620,8 @@ namespace NovoFtool
 
         internal void Abrir(string caminho)
         {
+            if (EhEspacial(caminho) && !docs.Any(x => x.Arquivo != null && string.Equals(System.IO.Path.GetFullPath(x.Arquivo), System.IO.Path.GetFullPath(caminho), StringComparison.OrdinalIgnoreCase)))
+            { _ = AbrirEspacialArquivo(caminho); return; }   // .json do motor / .ed3 do CYPE: DocumentoEspacial.cs
             // ja aberto: so troca para a aba dele
             GuardarDoc();
             int ja = docs.FindIndex(x => x.Arquivo != null && string.Equals(System.IO.Path.GetFullPath(x.Arquivo), System.IO.Path.GetFullPath(caminho), StringComparison.OrdinalIgnoreCase));
@@ -648,6 +653,7 @@ namespace NovoFtool
 
         bool Salvar(bool como)
         {
+            if (Esp != null) return SalvarEspacial(como);
             string c = arquivo;
             if (como || c == null)
             {

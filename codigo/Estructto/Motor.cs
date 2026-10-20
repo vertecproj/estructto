@@ -23,11 +23,18 @@ namespace NovoFtool
 
         public static bool Ligado => proc != null && !proc.HasExited;
 
+        // Pasta de trabalho do servidor (caminhos de abrir/salvar sao relativos a ela).
+        public static string Pasta => Path.Combine(Path.GetTempPath(), "Estructto", "trabalho");
+
+        // Quem deixou o modelo atual no servidor (DocumentoEspacial.cs). PUT /api/modelo (ponte 2D) troca o modelo: zera.
+        public static object Dono;
+
         // Chamada unica a uma rota. metodo: GET, POST, PUT, PATCH, DELETE. rota: "/api/calcular", "/api/modal?n=6"...
         // Erro HTTP do motor vira MotorErro com a mensagem que o motor mandou.
         public static async Task<JsonNode> Chamar(string metodo, string rota, object corpo = null)
         {
             await Garantir();
+            if (metodo == "PUT") Dono = null;
             var req = new HttpRequestMessage(new HttpMethod(metodo), origem + rota);
             if (metodo != "GET")
             {
@@ -47,9 +54,10 @@ namespace NovoFtool
         static async Task Garantir()
         {
             if (Ligado) return;
+            Dono = null;
             int porta = PortaLivre();
             origem = "http://127.0.0.1:" + porta;
-            string pasta = Path.Combine(Path.GetTempPath(), "Estructto", "trabalho");
+            string pasta = Pasta;
             Directory.CreateDirectory(pasta);
             string args = $"--porta {porta} --pasta \"{pasta}\"";
             var exe = Path.Combine(AppContext.BaseDirectory, "motor", "estructto-motor.exe");

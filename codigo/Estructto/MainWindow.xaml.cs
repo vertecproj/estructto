@@ -318,7 +318,8 @@ namespace NovoFtool
             cbMaterial.Text = Biblioteca.Materiais[0].Nome;
             abaModelo = Aba("Modelo", "M",
                 Grupo("Gerar",
-                    Botao("assist", "Gerar estrutura", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas.")),
+                    Botao("assist", "Gerar estrutura", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas."),
+                    Botao("3d", "Gerar 3D", () => AbrirGerador3D(), "Modelo espacial no motor Python: edifício, galpão ou pórtico 3D (abre numa aba nova, em 3D).")),
                 Grupo("Desenhar",
                     BotaoFerramenta("sel", "Selecionar", Ferramenta.Selecionar, "Clique num nó ou barra. Arraste da esquerda p/ direita = janela (só o que está dentro); da direita p/ esquerda = cruzamento (o que tocar). Shift/Ctrl soma.", "Esc"),
                     BotaoFerramenta("barra", "Barra", Ferramenta.Barra, "Clique os pontos em sequência. Digite um número para o comprimento exato na direção do mouse, ou x,y  @dx,dy  @L<ângulo. Botão direito ou Esc termina.", "B + Enter"),
@@ -488,6 +489,7 @@ namespace NovoFtool
 
         internal void Calcular()
         {
+            if (Esp != null) { _ = CalcularEspacial(); return; }   // modelo espacial: motor Python
             Resolver(true);
             if (cbMotor != null && cbMotor.SelectedIndex == 1 && Vista.Resolvido && !motorRodando) _ = CalcularMotor();
         }
@@ -552,6 +554,7 @@ namespace NovoFtool
             BsAbas.Items.Clear();
             BsAbas.Items.Add(BotaoBs("Novo", "Ctrl+N", Novo, "Cria um novo modelo em branco em uma nova aba."));
             BsAbas.Items.Add(BotaoBs("Abrir...", "Ctrl+O", AbrirDialogo, "Abre um modelo salvo (.estructto, .portico) ou importa um arquivo .ftl do Ftool."));
+            BsAbas.Items.Add(BotaoBs("Exemplos 3D...", "", AbrirExemplosEspaciais, "Abre um modelo espacial de exemplo do motor Python (edifício, galpão, pórtico)."));
             BsAbas.Items.Add(BotaoBs("Salvar", "Ctrl+S", () => Salvar(false), "Salva as alterações do modelo atual no disco."));
             BsAbas.Items.Add(BotaoBs("Salvar como...", "Ctrl+Shift+S", () => Salvar(true), "Salva uma cópia do modelo atual com outro nome ou em outra pasta."));
             BsAbas.Items.Add(new F.SeparatorTabItem());
