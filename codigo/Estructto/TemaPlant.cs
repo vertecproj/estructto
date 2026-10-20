@@ -103,7 +103,17 @@ namespace NovoFtool
             CorFundoTextoCanvas = C("#CC141820"),
             CorCaixaHud        = C("#E6181C24"),   // Surface.Overlay (HUD sobre o canvas)
             CorFundoMedida     = C("#EB181C24"),
-            CorSombraModal     = C("#A60A0D14");
+            CorSombraModal     = C("#A60A0D14"),
+            // vista 3D "Realista" (Vista3D.cs): materiais, luzes, chão, sombra e arestas
+            CorAco3D           = C("#A9B3BF"),   // aço: cinza metálico frio
+            CorConcreto3D      = C("#CFC6B8"),   // concreto: cinza claro quente
+            CorBrilhoAco3D     = C("#5C6672"),   // especular do aço (discreto)
+            CorLuzChave3D      = C("#E2DDD3"),   // luz principal (sol), levemente quente
+            CorLuzEnch3D       = C("#4A5262"),   // luz de enchimento, fria
+            CorLuzAmb3D        = C("#5C6068"),   // luz ambiente
+            CorChao3D          = C("#2A313C"),   // centro do chão (some no fundo do canvas)
+            CorSombra3D        = C("#000000"),   // sombra no chão (alfa no pincel)
+            CorAresta3D        = C("#0A0D12");   // contorno das peças
 
         // ---------- Aliases de compatibilidade (nomes ja usados no codigo) ----------
         public static readonly Color

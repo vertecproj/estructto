@@ -2,6 +2,13 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Vista 3D Realista (branch wt-vista3d)
+
+- Botão **Realista** em Vista › Navegar (lembra a escolha): perfis reais extrudados (I, U, L, tubos, caixão, maciços) com as
+  dimensões do catálogo ou do JSON do motor, aço metálico/concreto quente, três luzes, contorno de ~1 px, sombra suave no chão e
+  chão em degradê; aproveitamento tinge o material e a deformada usa as peças reais. ~2.400 barras em ~150 ms (malhas juntadas).
+  HelixToolkit.SharpDX avaliado e não adotado. Detalhe: [VISTA3D.md](VISTA3D.md#modo-realista). Capturas `42-*`.
+
 ## 20/10/2026 — Gabriel (início da unificação com o motor Python)
 
 - Marca única **Estructto**: relatório (cabeçalho, carimbo, logo `docs/logo-estructto.svg`), servidor MCP `estructto` (+ `codigo/.mcp.json` e teste stdio), CLI/servidor web e textos da interface alinhados às abas novas (Modelo, Ações, Análise, Dimensionamento). Pacote Python segue `prossen_estrutural` (interno).

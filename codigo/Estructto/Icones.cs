@@ -1,4 +1,4 @@
-// Icones do Estructto v2 - vocabulario unico, desenhado no quadro de 32x32 (ver docs/v2/GUIA-DESIGN.md, item F).
+﻿// Icones do Estructto v2 - vocabulario unico, desenhado no quadro de 32x32 (ver docs/v2/GUIA-DESIGN.md, item F).
 //  * Traco de 2 unidades (= 2 px a 32 px, 1 px a 16 px), pontas e juncoes ARREDONDADAS, sem contorno escuro.
 //  * Duotone: o corpo do objeto leva a cor do acento com ~18% de opacidade; o traco leva a cor cheia.
 //  * Cores = tokens do TemaPlant e as MESMAS do canvas: estrutura cinza-claro, apoio/selecao azul, carga ambar,
@@ -148,6 +148,8 @@ namespace NovoFtool
                 ["zoomtudo"] = C(Du(A, "M11,11 H21 V21 H11 Z"), TB("zoomtudo", L)),
                 ["zoommais"] = TB("zoommais", L, A, 1, 3),
                 ["3d"] = TB("3d", L, A, 1, 4),
+                ["realista"] = C(Fa(L2, "M5,26 L17,30 L29,25 L17,21 Z", 0x30), Fa(L, "M6,10 L16,5 L26,10 L16,15 Z", 0xD0), Fa(L, "M6,10 L16,15 V27 L6,22 Z", 0x80), Fa(L, "M26,10 L16,15 V27 L26,22 Z", 0x38),
+                                   S(L, "M6,10 L16,5 L26,10 V22 L16,27 L6,22 Z M6,10 L16,15 L26,10 M16,15 V27", 1.5)),
                 ["zoommenos"] = TB("zoommenos", L, A, 1, 2),
                 ["painel"] = TB("painel", L),
                 ["aplicar"] = TB("check", A),
@@ -190,7 +192,7 @@ namespace NovoFtool
             "engaste","rotula","rolo","roloh","livre","rotulab","placa","parafuso","solda","eixo","pincel",
             "cargano","cargadist","cargamom","peso","limpar",
             "calc","def","normal","cortante","momento","verif","comparar","reac","valores","unir","tirar","separar","selmembro","nomes","mais","menos",
-            "zoomtudo","zoommais","zoommenos","3d","painel","aplicar","ajuda",
+            "zoomtudo","zoommais","zoommenos","3d","realista","painel","aplicar","ajuda",
             "grade","snap","ortho","polar","objsnap","rastro",
             "busca","fechar","filtro","olho","olhooff","config","setad","setae","setac","setab","maismais","menosmenos","chevb","chevd","aviso","info","ok","erro" };
 

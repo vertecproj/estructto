@@ -114,6 +114,128 @@ namespace NovoFtool
             t.GetAwaiter().GetResult();
         }
 
+        // Pórtico espacial 2 x 2 vãos, 2 pavimentos (entrada neutra da Vista3D), com aproveitamento e deslocamentos inventados.
+        static Modelo3D Portico2x2()
+        {
+            var esp = new Modelo3D(); int idn = 0;
+            var rnd = new Random(7);
+            for (int k = 0; k <= 2; k++) for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++)
+                esp.Nos.Add(new No3D { Id = ++idn, X = i * 6, Y = j * 5, Z = k * 3.5, Apoios = k == 0 ? new[] { true, true, true, true, true, true } : new bool[6],
+                                       Desl = new[] { 0.004 * k, 0.002 * k, -0.001 * k * (i == 1 || j == 1 ? 2 : 1) } });
+            Func<int, int, int, int> nid = (i, j, k) => 1 + i + 3 * j + 9 * k;
+            int idb = 0;
+            for (int k = 0; k < 2; k++) for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++)
+            {
+                esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k), Nj = nid(i, j, k + 1), Secao = "W 250 x 32,7", Aprov = 0.4 + 0.7 * rnd.NextDouble() });
+                if (i < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i + 1, j, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
+                if (j < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i, j + 1, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
+            }
+            return esp;
+        }
+
+        // 42) Vista 3D Realista x analítica: guincho (modelo 2D), pórtico espacial 2 x 2 e exemplos do motor (concreto e galpão).
+        // Atalho para iterar só nelas: variável ESTRUCTTO_CAPTURAS=3d.
+        static void CapturasRealista(MainWindow w)
+        {
+            var abaVista = w.Faixa.Tabs.First(t => (t.Header as string) == "Vista");
+            foreach (bool real in new[] { true, false })
+            {
+                string suf = real ? "realista" : "analitico";
+                w.DefinirRealista(real);
+                w.Faixa.SelectedTabItem = abaVista;
+                w.MostrarDiagrama(Diagrama.Nenhum);
+                w.MostrarVista3D(true);
+                EsperarIdle();
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                CapturarPrincipal(w, "42-" + suf + "-guincho");
+                if (real)
+                {
+                    foreach (var (d, nome) in new[] { (Diagrama.Verificacao, "aproveitamento"), (Diagrama.Deformada, "deformada") })
+                    {
+                        w.MostrarDiagrama(d, d == Diagrama.Verificacao);
+                        w.Faixa.SelectedTabItem = abaVista;
+                        EsperarIdle();
+                        w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                        CapturarPrincipal(w, "42-realista-guincho-" + nome);
+                    }
+                    w.MostrarDiagrama(Diagrama.Nenhum);
+                    w.Faixa.SelectedTabItem = abaVista;
+                }
+
+                var esp = Portico2x2();
+                w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = false;
+                w.vista3D.Carregar(esp, false);
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                CapturarPrincipal(w, "42-" + suf + "-portico2x2");
+                w.vista3D.ZoomFator(3.5);
+                CapturarPrincipal(w, "42-" + suf + "-portico2x2-detalhe");
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                if (real)
+                {
+                    w.vista3D.MostrarAproveitamento = true;
+                    w.vista3D.Carregar(esp, false);
+                    w.vista3D.Escolher(esp.Barras[4]);
+                    if (w.vista3D.Selecionado != esp.Barras[4]) throw new InvalidOperationException("Realista: escolher barra falhou");
+                    CapturarPrincipal(w, "42-realista-portico2x2-aproveitamento");
+                    w.vista3D.MostrarAproveitamento = false; w.vista3D.MostrarDeformada = true;
+                    w.vista3D.Carregar(esp, false);
+                    CapturarPrincipal(w, "42-realista-portico2x2-deformada");
+                    w.vista3D.MostrarDeformada = false;
+                    w.vista3D.Carregar(esp, false);
+                    w.vista3D.MostrarVista(VistaPadrao.Frente, false);
+                    CapturarPrincipal(w, "42-realista-portico2x2-frente");
+                }
+
+                // desempenho: ~2.400 barras (12 x 10 vãos, 6 pavimentos); tempos em 42-tempos.txt
+                {
+                    var g = new Modelo3D(); int nx = 12, ny = 10, nz = 6;
+                    Func<int, int, int, int> id = (i, j, k) => 1 + i + (nx + 1) * (j + (ny + 1) * k);
+                    for (int k = 0; k <= nz; k++) for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++)
+                        g.Nos.Add(new No3D { Id = id(i, j, k), X = i * 6, Y = j * 5, Z = k * 3.2, Apoios = k == 0 ? new[] { true, true, true, true, true, true } : new bool[6] });
+                    for (int k = 0; k < nz; k++) for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++)
+                    {
+                        g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = id(i, j, k), Nj = id(i, j, k + 1), Secao = "W 250 x 32,7" });
+                        if (i < nx) g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = id(i, j, k + 1), Nj = id(i + 1, j, k + 1), Secao = "W 310 x 38,7" });
+                        if (j < ny) g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = id(i, j, k + 1), Nj = id(i, j + 1, k + 1), Secao = "W 310 x 38,7" });
+                    }
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    w.vista3D.Carregar(g, false);
+                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                    double tCarregar = sw.Elapsed.TotalMilliseconds;
+                    sw.Restart();
+                    CapturarPrincipal(w, "42-" + suf + "-2400barras");
+                    double tCaptura = sw.Elapsed.TotalMilliseconds;
+                    sw.Restart();
+                    object achou = null;
+                    for (int r = 0; r < 20; r++) achou = w.vista3D.Acertar(new Point(w.vista3D.ActualWidth / 2, w.vista3D.ActualHeight / 2));
+                    double tPick = sw.Elapsed.TotalMilliseconds / 20;
+                    File.AppendAllText(Path.Combine(pastaSaida, "42-tempos.txt"), string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        "{0}: {1} barras, carregar+enquadrar {2:0} ms, 2 capturas {3:0} ms, picking {4:0.0} ms ({5}){6}", suf, g.Barras.Count, tCarregar, tCaptura, tPick, achou?.GetType().Name ?? "nada", Environment.NewLine));
+                }
+                w.MostrarVista3D(false);
+                EsperarIdle();
+
+                foreach (string ex in real ? new[] { "edificio_concreto", "galpao_aco" } : new[] { "edificio_concreto" })
+                {
+                    Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo(ex), "exemplo"));
+                    EsperarIdle();
+                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                    CapturarPrincipal(w, "42-" + suf + "-" + ex);
+                    if (real && ex == "edificio_concreto")
+                    {
+                        Esperar(w.CalcularEspacial());
+                        w.MostrarDiagrama(Diagrama.Verificacao);
+                        EsperarIdle();
+                        w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                        CapturarPrincipal(w, "42-realista-edificio_concreto-aproveitamento");
+                        w.MostrarDiagrama(Diagrama.Nenhum);
+                    }
+                    w.FecharEspaciaisSemPerguntar();
+                    EsperarIdle();
+                }
+            }
+        }
+
         static void CapturasEspacial(MainWindow w)
         {
             var jg = new JanelaGerar3D("edificio");
@@ -430,6 +552,17 @@ namespace NovoFtool
                 w.TelaInicial.Visibility = Visibility.Collapsed;
                 w.Resolver(true);
                 EsperarIdle();
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "3d")   // só as capturas 42) da vista 3D
+                {
+                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
+                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
+                    bool antes = Config.Realista3D;
+                    CapturasRealista(w);
+                    w.DefinirRealista(antes);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
 
                 // 02) Modelo aberto
                 w.MostrarDiagrama(Diagrama.Nenhum);
@@ -899,19 +1032,9 @@ namespace NovoFtool
                     CapturarPrincipal(w, "40-vista3d-" + nome);
                 }
                 // pórtico espacial 2 x 2 vãos, 2 pavimentos, com aproveitamento, deformada e uma barra escolhida
-                var esp = new Modelo3D(); int idn = 0;
-                var rnd = new Random(7);
-                for (int k = 0; k <= 2; k++) for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++)
-                    esp.Nos.Add(new No3D { Id = ++idn, X = i * 6, Y = j * 5, Z = k * 3.5, Apoios = k == 0 ? new[] { true, true, true, true, true, true } : new bool[6],
-                                           Desl = new[] { 0.004 * k, 0.002 * k, -0.001 * k * (i == 1 || j == 1 ? 2 : 1) } });
-                Func<int, int, int, int> nid = (i, j, k) => 1 + i + 3 * j + 9 * k;
-                int idb = 0;
-                for (int k = 0; k < 2; k++) for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++)
-                {
-                    esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k), Nj = nid(i, j, k + 1), Secao = "W 250 x 32,7", Aprov = 0.4 + 0.7 * rnd.NextDouble() });
-                    if (i < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i + 1, j, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
-                    if (j < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i, j + 1, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
-                }
+                bool realAntes = Config.Realista3D;
+                w.DefinirRealista(false);   // 40) é a vista analítica; a Realista tem as capturas 42)
+                var esp = Portico2x2();
                 w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = true;
                 w.vista3D.Carregar(esp, false);
                 w.vista3D.Escolher(esp.Barras[4]);
@@ -923,6 +1046,11 @@ namespace NovoFtool
                 w.MostrarVista3D(false);
                 w.MostrarDiagrama(Diagrama.Nenhum);
                 EsperarIdle();
+
+                // 42) Vista 3D Realista (perfis reais, sombra, arestas) lado a lado com a analítica
+                CapturasRealista(w);
+                w.DefinirRealista(realAntes);
+                w.MostrarVista3D(false);
 
                 // 41) Modelo espacial (motor Python, DocumentoEspacial.cs): edifício gerado em 3D, calculado, mapa de aproveitamento
                 CapturasEspacial(w);

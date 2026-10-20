@@ -441,7 +441,8 @@ namespace NovoFtool
                     Botao("zoomtudo", "Enquadrar", () => Vista.ZoomTudo(), "Mostra o modelo inteiro (ou duplo clique na roda do mouse).", "F4"),
                     Botao("zoommais", "Aproximar", () => Vista.ZoomFator(1.4), "Aproxima a visualização em torno do centro da tela (ou use a roda do mouse).", null, true),
                     Botao("zoommenos", "Afastar", () => Vista.ZoomFator(1 / 1.4), "Afasta a visualização para enxergar uma área maior do modelo.", null, true),
-                    Botao("3d", "Vista 3D", AlternarVista3D, "Alterna entre o desenho 2D e a vista 3D (órbita com o botão esquerdo, pan com o do meio, roda para zoom).")),
+                    Botao("3d", "Vista 3D", AlternarVista3D, "Alterna entre o desenho 2D e a vista 3D (órbita com o botão esquerdo, pan com o do meio, roda para zoom)."),
+                    tgRealista = Alternar("realista", "Realista", DefinirRealista, "Vista 3D com os perfis reais, materiais (aço e concreto), luz, sombra no chão e arestas — como o \"Sombreado com arestas\" do Revit. Desligado = vista analítica (barras finas). A escolha fica guardada.")),
                 Grupo("Mostrar", tgReac, tgValores, tgCargas, tgNomes),
                 Grupo("Grade", cGrade),
                 Grupo("Painéis",
@@ -449,6 +450,7 @@ namespace NovoFtool
                     Botao("painel", "Propriedades", () => Alternar(PainelProp), "Mostra/oculta o painel Propriedades.", null, true),
                     Botao("tabela", "Tabelas", () => Alternar(PainelTabelas), "Mostra/oculta as tabelas de nós, barras e verificação.", "TABELAS", true)),
                 Grupo("Ajuda", Botao("ajuda", "Atalhos e ajuda", MostrarAjuda, "Como usar e lista de atalhos.", "F1")));
+            tgRealista.IsChecked = Config.Realista3D;
             abaVista.ToolTip = "Zoom, o que aparece no desenho (reações, valores, cargas, nomes), passo da grade, painéis e ajuda.";
 
             // abas contextuais (aparecem com a selecao)
