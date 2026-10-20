@@ -30,23 +30,7 @@ namespace NovoFtool
         void LigarEventos()
         {
             Vista.MouseMundo += p => Coord.Text = "X " + Num.Fmt(p.X, 3).PadLeft(8) + " m   Y " + Num.Fmt(p.Y, 3).PadLeft(8) + " m";
-            Vista.Clique += CliqueNaVista;
-            Vista.SelecaoMudou += SelecaoMudou;
-            Vista.NoArrastado += (n, de, para) => Confirmar("Nó " + n.Id + " movido para (" + Num.Fmt(para.X, 3) + "; " + Num.Fmt(para.Y, 3) + ").");
-            Vista.FimComando += () =>
-            {
-                if (Vista.InicioBarra != null) { Vista.InicioBarra = null; Log("Barra terminada."); }
-                else if (Vista.MedidaIni != null && Vista.MedidaFim == null) { Vista.MedidaIni = null; Vista.Etiqueta = "MEDIR — clique o 1º ponto (ou digite x,y).   Botão direito ou Esc encerra."; Log("Medida cancelada."); }
-                else AcionarFerramenta(Ferramenta.Selecionar);
-                Vista.InvalidateVisual();
-            };
-            Vista.MenuContexto += MenuContexto;
-            Vista.DuploClique += o =>
-            {
-                if (o is Barra b && Vista.Resolvido) AbrirVerificacao(b);
-                else if (o is No n && n.Placa != null) AbrirPlaca(n);
-                else { PainelProp.Show(); PainelProp.IsActive = true; }
-            };
+            Vista.SelecaoMudou += SelecaoMudou;   // controle 2D escondido: só o estado do HUD (o desenho é a Vista3D)
             Vista.Verificar = b => VerificarMotor(b) ?? VerificarAtual(b, Biblioteca.AcharSecao(b.Secao));
             Insp.Verificar = b => Vista.Resolvido && b.Res != null ? Vista.Verificar(b) : null;
             Insp.Acoes = AcoesDoInspector;
@@ -61,7 +45,7 @@ namespace NovoFtool
             TabNos.SelectionChanged += (s, e) => SelecionarDaTabela(TabNos);
             TabBarras.SelectionChanged += (s, e) => SelecionarDaTabela(TabBarras);
             TabVerif.SelectionChanged += (s, e) => SelecionarDaTabela(TabVerif);
-            TabVerif.MouseDoubleClick += (s, e) => { var b = Vista.Sel.OfType<Barra>().FirstOrDefault(); if (b != null) AbrirVerificacao(b); };
+            TabVerif.MouseDoubleClick += (s, e) => VerificarBarraConforme(null);
             ListaAvisos.SelectionChanged += (s, e) => { if (ListaAvisos.SelectedItem is ListBoxItem it && it.Tag is IEnumerable<object> objs) { if (objs.FirstOrDefault() is RefMotor r) SelecionarEsp(r); else Vista.Selecionar(objs); } };
             SeloAvisos.Click += (s, e) => { PainelAvisos.Show(); PainelAvisos.IsSelected = true; PainelAvisos.IsActive = true; };
             Comando.KeyDown += ComandoTecla;
@@ -91,10 +75,6 @@ namespace NovoFtool
             alterado = false;
             atual = m.ParaXml();
             desfazer.Clear(); refazer.Clear();
-            stGrade.IsChecked = m.MostrarGrade; stAtrair.IsChecked = m.AtrairGrade;
-            tgPeso.IsChecked = m.PesoProprio; tgTimo.IsChecked = m.Timoshenko;
-            cGrade.Text = Num.Fmt(m.Grade, 3).TrimEnd('0').TrimEnd(',');
-            cSeg.Text = Num.Fmt(m.Seguranca, 2); cFlecha.Text = Num.Fmt(m.LimiteFlecha, 0);
             AtualizarTitulo();
             Atualizar();
             Vista.ZoomTudo();
@@ -142,7 +122,6 @@ namespace NovoFtool
             foreach (Barra b in m.Barras) if (ids.Contains("b" + b.Id)) Vista.Sel.Add(b);
             atual = xml;
             alterado = true;
-            tgPeso.IsChecked = m.PesoProprio; tgTimo.IsChecked = m.Timoshenko;
             AtualizarTitulo();
             Atualizar();
             SelecaoMudou();
@@ -216,7 +195,6 @@ namespace NovoFtool
             if (trocou) Vista.Crescer();
             Vista.MapaCalor = calor && d == Diagrama.Verificacao;
             if (tgCalor != null) tgCalor.IsChecked = Vista.MapaCalor;
-            if (d != Diagrama.Nenhum && Vista.Ferr != Ferramenta.Selecionar) UsarFerramenta(Ferramenta.Selecionar);
             foreach (var kv in btnDiag) kv.Value.IsChecked = kv.Key == d;
             if (d != Diagrama.Nenhum) Faixa.SelectedTabItem = d == Diagrama.Verificacao ? abaDimens : abaAnalise;
             Resolver(d != Diagrama.Nenhum);
@@ -238,357 +216,7 @@ namespace NovoFtool
             if (tgCalor != null) tgCalor.IsChecked = Vista.Diag == Diagrama.Verificacao && Vista.MapaCalor;
         }
 
-        void MudarCriterio()
-        {
-            double s, f;
-            if (!Num.Ler(cSeg.Text, out s) || s <= 0) s = M.Seguranca;
-            if (!Num.Ler(cFlecha.Text, out f) || f <= 0) f = M.LimiteFlecha;
-            cSeg.Text = Num.Fmt(s, 2); cFlecha.Text = Num.Fmt(f, 0);
-            if (s == M.Seguranca && f == M.LimiteFlecha) return;
-            M.Seguranca = s; M.LimiteFlecha = f;
-            Confirmar("Critérios: segurança " + Num.Fmt(s, 2) + ", flecha L/" + Num.Fmt(f, 0) + ".");
-        }
-
-        // ================= ferramentas =================
-
-        // Regra Autodesk/CYPE: com itens selecionados, o comando de atributo aplica neles na hora;
-        // sem selecao, entra no modo de clicar nos itens (botao direito ou Esc encerra).
-        void AcionarFerramenta(Ferramenta f)
-        {
-            var nos = Vista.Sel.OfType<No>().ToList();
-            var barras = Vista.Sel.OfType<Barra>().ToList();
-            bool deNo = f >= Ferramenta.ApoioEngaste && f <= Ferramenta.ApoioLivre || f == Ferramenta.CargaNo || f == Ferramenta.Placa;
-            if (deNo && nos.Count > 0)
-            {
-                if (f == Ferramenta.CargaNo) AplicarCargaNo(nos);
-                else if (f == Ferramenta.Placa) AbrirPlaca(nos[0]);
-                else AplicarApoio(f, nos);
-                SincronizarFerramenta();
-                return;
-            }
-            if (f == Ferramenta.CargaBarra && barras.Count > 0) { AplicarCargaBarra(barras); SincronizarFerramenta(); return; }
-            UsarFerramenta(Vista.Ferr == f && f != Ferramenta.Selecionar ? Ferramenta.Selecionar : f);
-        }
-
-        internal void UsarFerramenta(Ferramenta f)
-        {
-            Vista.Ferr = f;
-            Vista.InicioBarra = null;
-            Vista.MedidaIni = null;
-            Vista.MedidaFim = null;
-            Vista.DinLimpar();
-            Vista.LimparRastreio();   // pontos de rastreamento valem por comando, como no AutoCAD
-            if (f != Ferramenta.Selecionar && Vista.Sel.Count > 0) { Vista.Sel.Clear(); SelecaoMudou(); }
-            SincronizarFerramenta();
-            string dica = f == Ferramenta.Barra ? "BARRA — clique o 1º ponto (ou digite x,y)."
-                : f == Ferramenta.No ? "NÓ — clique onde inserir."
-                : f == Ferramenta.Medir ? "MEDIR — clique o 1º ponto (ou digite x,y)."
-                : f == Ferramenta.CargaNo ? "CARGA NO NÓ — clique nos nós (Fx/Fy/Mz da aba Ações)."
-                : f == Ferramenta.CargaBarra ? "CARGA NA BARRA — clique nas barras."
-                : f == Ferramenta.Rotula ? "RÓTULA — clique perto da ponta da barra."
-                : f == Ferramenta.Placa ? "PLACA DE BASE — clique no nó do pé do pilar."
-                : f >= Ferramenta.ApoioEngaste && f <= Ferramenta.ApoioLivre ? "APOIO — clique nos nós."
-                : null;
-            Vista.Etiqueta = dica == null ? null : dica + "   Botão direito ou Esc encerra.";
-            if (dica != null) Log(dica);
-            Vista.Cursor = f == Ferramenta.Selecionar ? Cursors.Arrow : Cursors.Cross;
-            Vista.InvalidateVisual();
-        }
-
-        void SincronizarFerramenta()
-        {
-            foreach (var kv in btnFerr) foreach (var b in kv.Value) b.IsChecked = kv.Key == Vista.Ferr;
-        }
-
-        double? Ler(Fluent.TextBox t, string nome)
-        {
-            double v;
-            if (Num.Ler(t.Text, out v)) return v;
-            Log("Valor inválido em " + nome + ": \"" + t.Text + "\".");
-            return null;
-        }
-
-        void AplicarApoio(Ferramenta f, IEnumerable<No> nos)
-        {
-            var lista = nos.ToList();
-            if (lista.Count == 0) { Log("Selecione um ou mais nós."); return; }
-            foreach (No n in lista)
-            {
-                n.ApoioX = f == Ferramenta.ApoioEngaste || f == Ferramenta.ApoioRotula || f == Ferramenta.ApoioRoloH;
-                n.ApoioY = f == Ferramenta.ApoioEngaste || f == Ferramenta.ApoioRotula || f == Ferramenta.ApoioRoloV;
-                n.ApoioGiro = f == Ferramenta.ApoioEngaste;
-                if (f == Ferramenta.ApoioLivre) { n.MolaX = n.MolaY = n.MolaGiro = 0; n.RecalqueX = n.RecalqueY = 0; n.Placa = null; }
-                if (!n.ApoioGiro && n.Placa != null && f != Ferramenta.ApoioEngaste) { }
-            }
-            Confirmar((f == Ferramenta.ApoioLivre ? "Apoio removido de " : "Apoio aplicado em ") + Pl.N(lista.Count, "nó", "nós") + ".");
-        }
-
-        void AplicarCargaNo(IEnumerable<No> nos)
-        {
-            var lista = nos.ToList();
-            if (lista.Count == 0) { Log("Selecione um ou mais nós."); return; }
-            double? fx = Ler(cFx, "Fx"), fy = Ler(cFy, "Fy"), mz = Ler(cMz, "Mz");
-            if (fx == null || fy == null || mz == null) return;
-            foreach (No n in lista) { n.Fx = fx.Value; n.Fy = fy.Value; n.Mz = mz.Value; }
-            Confirmar("Carga aplicada em " + Pl.N(lista.Count, "nó", "nós") + ".");
-        }
-
-        void AplicarCargaBarra(IEnumerable<Barra> barras)
-        {
-            var lista = barras.ToList();
-            double? qx = Ler(cQx, "qx"), qy = Ler(cQy, "qy"), qi = Ler(cQi, "q⊥ início"), qf = Ler(cQf, "q⊥ fim");
-            if (qx == null || qy == null || qi == null || qf == null) return;
-            foreach (Barra b in lista) { b.QGlobalX = qx.Value; b.QGlobalY = qy.Value; b.QLocalIni = qi.Value; b.QLocalFim = qf.Value; }
-            Confirmar("Carga aplicada em " + Pl.N(lista.Count, "barra", "barras") + ".");
-        }
-
-        void RotularSel(bool ini, bool fim)
-        {
-            var bs = Vista.Sel.OfType<Barra>().ToList();
-            if (bs.Count == 0) { Log("Selecione barras."); return; }
-            bool novo = !(ini ? bs[0].RotulaInicio : bs[0].RotulaFim);
-            foreach (Barra b in bs) { if (ini) b.RotulaInicio = novo; if (fim) b.RotulaFim = novo; }
-            Confirmar("Rótulas alteradas em " + Pl.N(bs.Count, "barra", "barras") + ".");
-        }
-
-        void CliqueNaVista(double x, double y)
-        {
-            switch (Vista.Ferr)
-            {
-                case Ferramenta.Barra: PontoBarra(x, y); break;
-                case Ferramenta.Medir: PontoMedida(x, y); break;
-                case Ferramenta.No:
-                    M.ObterNo(x, y, Vista.TolMundo);
-                    Confirmar("Nó inserido em (" + Num.Fmt(x, 3) + "; " + Num.Fmt(y, 3) + ").");
-                    break;
-                case Ferramenta.ApoioEngaste: case Ferramenta.ApoioRotula: case Ferramenta.ApoioRoloV: case Ferramenta.ApoioRoloH: case Ferramenta.ApoioLivre:
-                {
-                    No n = Vista.NoEm(x, y);
-                    if (n == null) { Log("Clique sobre um nó."); return; }
-                    AplicarApoio(Vista.Ferr, new[] { n });
-                    break;
-                }
-                case Ferramenta.Rotula:
-                {
-                    Barra b = Vista.BarraEm(x, y);
-                    if (b == null) { Log("Clique sobre uma barra, perto da ponta."); return; }
-                    No a = M.NoPorId(b.N1), c = M.NoPorId(b.N2);
-                    if (Math.Pow(a.X - x, 2) + Math.Pow(a.Y - y, 2) <= Math.Pow(c.X - x, 2) + Math.Pow(c.Y - y, 2)) b.RotulaInicio = !b.RotulaInicio; else b.RotulaFim = !b.RotulaFim;
-                    Confirmar("Rótula alterada na barra " + b.Id + ".");
-                    break;
-                }
-                case Ferramenta.CargaNo:
-                {
-                    No n = Vista.NoEm(x, y);
-                    if (n == null) { Log("Clique sobre um nó."); return; }
-                    AplicarCargaNo(new[] { n });
-                    break;
-                }
-                case Ferramenta.CargaBarra:
-                {
-                    Barra b = Vista.BarraEm(x, y);
-                    if (b == null) { Log("Clique sobre uma barra."); return; }
-                    AplicarCargaBarra(new[] { b });
-                    break;
-                }
-                case Ferramenta.Placa:
-                {
-                    No n = Vista.NoEm(x, y);
-                    if (n == null) { Log("Clique no nó do pé do pilar."); return; }
-                    AbrirPlaca(n);
-                    break;
-                }
-            }
-        }
-
-        void PontoBarra(double x, double y)
-        {
-            Vista.DinLimpar();
-            if (Vista.InicioBarra == null)
-            {
-                Vista.InicioBarra = new Point(x, y);
-                Vista.Etiqueta = "BARRA — próximo ponto: clique, ou digite o comprimento (na direção do mouse), x,y, @dx,dy, @L<ângulo.   Botão direito/Esc termina.";
-                Vista.InvalidateVisual();
-                return;
-            }
-            Point a = Vista.InicioBarra.Value;
-            if (Math.Abs(a.X - x) < 1e-9 && Math.Abs(a.Y - y) < 1e-9) return;
-            if (!SecaoValida(cbSecao.Text)) { Log("Seção \"" + cbSecao.Text + "\" não reconhecida; corrija na aba Modelo."); return; }
-            int antes = M.Barras.Count;
-            No n1 = M.ObterNo(a.X, a.Y, 1e-6), n2 = M.ObterNo(x, y, 1e-6);
-            M.AddBarra(n1, n2, 1e-6);
-            for (int i = antes; i < M.Barras.Count; i++)
-            {
-                M.Barras[i].Secao = cbSecao.Text;
-                if (Biblioteca.AcharMaterial(cbMaterial.Text) != null) M.Barras[i].Material = cbMaterial.Text;
-            }
-            Vista.InicioBarra = new Point(x, y);
-            Confirmar("Barra até (" + Num.Fmt(x, 3) + "; " + Num.Fmt(y, 3) + ").");
-            Vista.Garantir(new Point(x, y));
-        }
-
-        internal void PontoMedida(double x, double y)
-        {
-            Vista.DinLimpar();
-            if (Vista.MedidaIni == null || Vista.MedidaFim != null)
-            {
-                Vista.MedidaIni = new Point(x, y);
-                Vista.MedidaFim = null;
-                Vista.Etiqueta = "MEDIR — clique o 2º ponto (ou digite x,y, @dx,dy, @L<ângulo).   Botão direito/Esc cancela.";
-                Vista.InvalidateVisual();
-                return;
-            }
-            Point a = Vista.MedidaIni.Value, b = new Point(x, y);
-            if (Math.Abs(a.X - b.X) < 1e-9 && Math.Abs(a.Y - b.Y) < 1e-9) return;
-            Vista.MedidaFim = b;
-            string res = "Medida (" + Num.Fmt(a.X, 3) + "; " + Num.Fmt(a.Y, 3) + ") → (" + Num.Fmt(b.X, 3) + "; " + Num.Fmt(b.Y, 3) + "):  " + Vista.TextoMedida(a, b);
-            StatusMsg.Text = res;
-            Log(res);
-            Vista.Etiqueta = "MEDIR — clique para iniciar nova medida.   Botão direito ou Esc encerra.";
-            Vista.InvalidateVisual();
-        }
-
-        static bool SecaoValida(string s) { SecoesExtras.Garantir(s); return Biblioteca.AcharSecao(s) != null; }
-
-        void AplicarSecao(bool todas)
-        {
-            if (!SecaoValida(cbSecao.Text)) { Log("Seção não reconhecida: " + cbSecao.Text + "."); return; }
-            if (Biblioteca.AcharMaterial(cbMaterial.Text) == null) { Log("Material não reconhecido: " + cbMaterial.Text + "."); return; }
-            var alvo = todas ? M.Barras.ToList() : Vista.Sel.OfType<Barra>().ToList();
-            if (alvo.Count == 0) { Log("Nenhuma barra selecionada: " + cbSecao.Text + " vale para as próximas barras desenhadas."); return; }
-            foreach (Barra b in alvo) { b.Secao = cbSecao.Text; b.Material = cbMaterial.Text; }
-            SincronizarMembros(alvo);
-            Confirmar("Seção " + cbSecao.Text + " aplicada em " + Pl.N(alvo.Count, "barra", "barras") + ".");
-        }
-
-        void Apagar()
-        {
-            if (Vista.Sel.Count == 0) { Log("Selecione nós ou barras para apagar."); return; }
-            int qt = Vista.Sel.Count;
-            foreach (object o in Vista.Sel.ToList())
-            {
-                if (o is Barra b && M.Barras.Contains(b)) M.RemoverBarra(b);
-                else if (o is No n && M.Nos.Contains(n)) M.RemoverNo(n);
-            }
-            Vista.Sel.Clear();
-            Confirmar(Pl.N(qt, "item apagado", "itens apagados") + ". Ctrl+Z desfaz.");
-            SelecaoMudou();
-        }
-
-        void DividirSelecao()
-        {
-            if (Esp != null) { AbrirEdicaoEsp("dividir"); return; }
-            var bs = Vista.Sel.OfType<Barra>().ToList();
-            if (bs.Count == 0) { Log("Selecione as barras a dividir."); return; }
-            string r = Pergunta.Mostrar(this, "Dividir barra", "Dividir cada barra selecionada em quantas partes iguais? (2 a 100)", "2");
-            int n;
-            if (r == null || !int.TryParse(r, out n) || n < 2 || n > 100) { if (r != null) Log("Número de partes inválido."); return; }
-            foreach (Barra b in bs)
-            {
-                No a = M.NoPorId(b.N1), c = M.NoPorId(b.N2);
-                double ax = a.X, ay = a.Y, cx = c.X, cy = c.Y;
-                for (int i = 1; i < n; i++) M.ObterNo(ax + (cx - ax) * i / n, ay + (cy - ay) * i / n, 1e-6);
-            }
-            Vista.Sel.Clear();
-            Confirmar(Pl.N(bs.Count, "barra dividida", "barras divididas") + " em " + n + ".");
-            SelecaoMudou();
-        }
-
-        void LimparCargas()
-        {
-            var nos = Vista.Sel.OfType<No>().ToList(); var bs = Vista.Sel.OfType<Barra>().ToList();
-            bool tudo = Vista.Sel.Count == 0;
-            foreach (No n in tudo ? M.Nos : nos) { n.Fx = n.Fy = n.Mz = 0; }
-            foreach (Barra b in tudo ? M.Barras : bs) { b.QGlobalX = b.QGlobalY = b.QLocalIni = b.QLocalFim = 0; }
-            Confirmar(tudo ? "Todas as cargas removidas." : "Cargas removidas da seleção.");
-        }
-
-        void MudarGrade(string txt)
-        {
-            double g;
-            if (!Num.Ler(txt, out g) || g <= 0) { cGrade.Text = Num.Fmt(M.Grade, 3); return; }
-            if (Math.Abs(g - M.Grade) < 1e-12) return;
-            M.Grade = g;
-            Confirmar("Grade = " + Num.Fmt(g, 3) + " m.");
-        }
-
-        internal ContextMenu CriarMenuContexto(object o)
-        {
-            var cm = new ContextMenu();
-            void Add(string t, Action a, string atalho = null, string dica = null, string ic = null)
-            {
-                var mi = new MenuItem { Header = t, InputGestureText = atalho, ToolTip = dica };
-                if (ic != null) mi.Icon = Icone(ic, 16);
-                mi.Click += (s, e) => a();
-                cm.Items.Add(mi);
-            }
-            if (o is No)
-            {
-                var ap = new MenuItem { Header = "Apoio", Icon = Icone("engaste", 16), ToolTip = "Define o tipo de vinculação externa dos nós selecionados." };
-                foreach (var par in new[]
-                {
-                    ("Engaste", Ferramenta.ApoioEngaste, "Trava deslocamentos X, Y e giro nos nós selecionados.", "engaste"),
-                    ("Fixo (2º gênero)", Ferramenta.ApoioRotula, "Trava deslocamentos X e Y, deixando o giro livre.", "rotula"),
-                    ("Móvel (1º gênero)", Ferramenta.ApoioRoloV, "Trava apenas o deslocamento vertical Y (rolete).", "rolo"),
-                    ("Móvel horizontal", Ferramenta.ApoioRoloH, "Trava apenas o deslocamento horizontal X.", "roloh"),
-                    ("Sem apoio", Ferramenta.ApoioLivre, "Remove apoios, molas, recalques e placa de base do nó.", "livre")
-                })
-                {
-                    var mi = new MenuItem { Header = par.Item1, ToolTip = par.Item3, Icon = Icone(par.Item4, 16) };
-                    var f = par.Item2;
-                    mi.Click += (s, e) => AplicarApoio(f, Vista.Sel.OfType<No>());
-                    ap.Items.Add(mi);
-                }
-                cm.Items.Add(ap);
-                Add("Aplicar carga da aba Ações", () => AplicarCargaNo(Vista.Sel.OfType<No>()), null, "Aplica Fx, Fy e Mz preenchidos na aba Ações aos nós selecionados.", "cargano");
-                Add("Placa de base...", () => AbrirPlaca(Vista.Sel.OfType<No>().FirstOrDefault()), null, "Abre a janela de dimensionamento e verificação da placa de base deste nó.", "placa");
-                cm.Items.Add(new Separator());
-                Add("Apagar", Apagar, "Del", "Remove os nós selecionados e as barras conectadas a eles.", "apagar");
-            }
-            else if (o is Barra)
-            {
-                Add("Verificar barra...", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), null, "Abre a verificação detalhada da barra e compara opções de perfis da mesma família.", "verif");
-                Add("Aplicar seção da aba Modelo", () => AplicarSecao(false), null, "Atribui a seção e o material escolhidos na aba Modelo às barras selecionadas.", "aplicar");
-                Add("Aplicar carga distribuída da aba Ações", () => AplicarCargaBarra(Vista.Sel.OfType<Barra>()), null, "Aplica as cargas distribuídas qx, qy e q⊥ da aba Ações às barras selecionadas.", "cargadist");
-                var ro = new MenuItem { Header = "Rótula", Icon = Icone("rotulab", 16), ToolTip = "Adiciona ou remove articulações (momento nulo) nas pontas das barras selecionadas." };
-                foreach (var par in new[]
-                {
-                    ("No início", true, false, "Liga ou desliga a rótula na extremidade inicial da barra."),
-                    ("No fim", false, true, "Liga ou desliga a rótula na extremidade final da barra."),
-                    ("Nas duas pontas", true, true, "Liga ou desliga rótulas nas duas extremidades (barra de treliça).")
-                })
-                {
-                    var mi = new MenuItem { Header = par.Item1, ToolTip = par.Item4 };
-                    bool i1 = par.Item2, i2 = par.Item3;
-                    mi.Click += (s, e) => RotularSel(i1, i2);
-                    ro.Items.Add(mi);
-                }
-                cm.Items.Add(ro);
-                Add("Tirar trecho da barra contínua", TirarTrecho, "TIRAR", "Tira os trechos selecionados da barra contínua (o resto continua unido).", "tirar");
-                Add("Selecionar a barra contínua", SelecionarMembro, "SELMEMBRO", "Seleciona todos os trechos da barra contínua do trecho selecionado.", "selmembro");
-                Add("Dividir...", DividirSelecao, null, "Divide as barras selecionadas em partes iguais criando nós intermediários.", "dividir");
-                cm.Items.Add(new Separator());
-                Add("Apagar", Apagar, "Del", "Remove as barras selecionadas do modelo.", "apagar");
-            }
-            else
-            {
-                Add("Desenhar barra", () => UsarFerramenta(Ferramenta.Barra), "B", "Ativa a ferramenta para desenhar novas barras clicando nos pontos.", "barra");
-                Add("Medir distância", () => UsarFerramenta(Ferramenta.Medir), "Ctrl+M", "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos da vista.", "medir");
-                Add("Enquadrar", () => Vista.ZoomTudo(), "F4", "Ajusta o zoom para mostrar o modelo inteiro na tela.", "zoomtudo");
-                Add("Selecionar todas as barras", () => Vista.Selecionar(M.Barras.Cast<object>()), "Ctrl+A", "Seleciona todas as barras do modelo de uma só vez.", "sel");
-                Add("Desfazer", Desfazer, "Ctrl+Z", "Desfaz a última alteração realizada no modelo.", "desfazer");
-            }
-            cm.Items.Add(new Separator());
-            Add("Propriedades", () => { PainelProp.Show(); PainelProp.IsActive = true; }, null, "Mostra e ativa o painel Propriedades para editar os dados do item selecionado.", "painel");
-            return cm;
-        }
-
-        void MenuContexto(object o, Point p)
-        {
-            var cm = CriarMenuContexto(o);
-            cm.PlacementTarget = Vista; cm.Placement = System.Windows.Controls.Primitives.PlacementMode.RelativePoint;
-            cm.HorizontalOffset = p.X; cm.VerticalOffset = p.Y; cm.IsOpen = true;
-        }
+        // (ferramentas do desenho 2D removidas: o desenho é a Vista3D — Comandos3D.cs, Vista3D.Grips.cs)
 
         // ================= arquivos =================
 
@@ -652,58 +280,7 @@ namespace NovoFtool
             Config.ApagarRecuperacao();
         }
 
-        void ExportarCsv()
-        {
-            if (!Vista.Resolvido) { Log("Calcule a estrutura antes de exportar (há um erro ou falta apoio)."); return; }
-            var d = new SaveFileDialog { Filter = "CSV (*.csv)|*.csv", FileName = (arquivo == null ? "resultados" : System.IO.Path.GetFileNameWithoutExtension(arquivo)) + ".csv" };
-            if (d.ShowDialog(this) != true) return;
-            var sb = new StringBuilder();
-            sb.AppendLine("NÓS");
-            sb.AppendLine("Nó;X (m);Y (m);Desl. X (mm);Desl. Y (mm);Giro (rad);Reação X (kN);Reação Y (kN);Reação M (kN.m)");
-            foreach (No n in M.Nos)
-            {
-                double[] r = n.Res ?? new double[6];
-                sb.AppendLine(string.Join(";", n.Id, Num.Fmt(n.X, 3), Num.Fmt(n.Y, 3), Num.Fmt(r[0] * 1000, 3), Num.Fmt(r[1] * 1000, 3), r[2].ToString("0.000000"), Num.Fmt(r[3], 2), Num.Fmt(r[4], 2), Num.Fmt(r[5], 2)));
-            }
-            sb.AppendLine();
-            sb.AppendLine("BARRAS");
-            sb.AppendLine("Barra;Nó inicial;Nó final;Perfil;Material;L (m);N mín (kN);N máx (kN);Q mín (kN);Q máx (kN);M mín (kN.m);M máx (kN.m);Flecha (mm);Aproveitamento (%);Situação");
-            foreach (Barra b in M.Barras)
-            {
-                if (b.Res == null) continue;
-                double n0, n1, q0, q1, m0, m1;
-                Extremos(b, 0, out n0, out n1); Extremos(b, 1, out q0, out q1); Extremos(b, 2, out m0, out m1);
-                Verif v = Vista.Verificar(b);
-                sb.AppendLine(string.Join(";", b.Id, b.N1, b.N2, b.Secao, b.Material, Num.Fmt(b.Res.L, 3), Num.Fmt(n0, 2), Num.Fmt(n1, 2), Num.Fmt(q0, 2), Num.Fmt(q1, 2), Num.Fmt(m0, 2), Num.Fmt(m1, 2),
-                    Num.Fmt(Flecha(b) * 1000, 2), v.Aplicavel ? Num.Fmt(v.Ap * 100, 0) : "", v.Aplicavel ? (v.Passa ? "passa" : "não passa (" + v.Critico + ")") : v.Motivo));
-            }
-            try { File.WriteAllText(d.FileName, sb.ToString(), new UTF8Encoding(true)); Log("Exportado: " + d.FileName); }
-            catch (Exception ex) { Caixa.Erro(this, "Não foi possível exportar", ex.Message); }
-        }
-
         // ================= janelas =================
-
-        void AbrirVerificacao(Barra b)
-        {
-            if (b == null) b = Vista.Sel.OfType<Barra>().FirstOrDefault();
-            if (b == null) { Log("Selecione uma barra (clique nela) e repita."); return; }
-            if (!Vista.Resolvido || b.Res == null) { Log("Sem resultados: corrija os avisos e calcule (F5)."); return; }
-            // envoltoria: a janela mostra a combinacao que mais solicita esta barra
-            Secao sec = Biblioteca.AcharSecao(b.Secao);
-            Barra bb = b;
-            string crit = FixarCombinacaoCritica(i => { bb.Res = Vista.Envoltoria[bb][i]; var v = Verificador.Barra(M, bb, sec); return v.Aplicavel ? v.Ap : -1; });
-            var j = new JanelaVerificacao(M, b) { Owner = this };
-            if (crit != null) j.Title += " — combinação crítica: " + crit;
-            bool trocou = j.ShowDialog() == true && j.PerfilEscolhido != null;
-            if (j.MudouSeguranca) { cSeg.Text = Num.Fmt(M.Seguranca, 2); Confirmar("Coeficiente de segurança: " + Num.Fmt(M.Seguranca, 2) + "."); }
-            if (crit != null) RestaurarResultado();
-            if (trocou)
-            {
-                b.Secao = j.PerfilEscolhido;
-                SincronizarMembros(new[] { b });   // barra continua: todos os trechos trocam juntos
-                Confirmar((b.Membro != 0 ? "Barra contínua B" + b.Membro + " (" + M.Trechos(b.Membro).Count + " trechos)" : "Barra " + b.Id) + " trocada para " + j.PerfilEscolhido + ".");
-            }
-        }
 
         // Placa: no resultado da tela; na envoltoria, a combinacao com o pior aproveitamento (parafuso ou chapa).
         internal ResPlaca PlacaPior(No n)

@@ -370,7 +370,7 @@ namespace NovoFtool
             {
                 var bv = new F.Button { Header = "Medir", LargeIcon = Icone("medir", 32), Icon = Icone("medir", 16), Size = F.RibbonControlSize.Middle, ToolTip = Dica("Medir", dica, "Ctrl+M") };
                 Tamanho(bv, true);
-                bv.Click += (s, e) => { if (!Medir3D()) AcionarFerramenta(Ferramenta.Medir); };
+                bv.Click += (s, e) => Medir3D();
                 nav.Items.Add(bv);
             }
         }

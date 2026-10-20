@@ -86,9 +86,6 @@ namespace NovoFtool
         void SelecaoMudou()
         {
             bool barras = Vista.Sel.OfType<Barra>().Any(), nos = Vista.Sel.OfType<No>().Any();
-            CtxBarra.Visibility = barras ? Visibility.Visible : Visibility.Collapsed;
-            CtxNo.Visibility = nos ? Visibility.Visible : Visibility.Collapsed;
-            if (barras) tgEixoFraco.IsChecked = Vista.Sel.OfType<Barra>().All(b => b.EixoFraco);
             MostrarPropriedades();
             SincronizarArvore();
             SincronizarTabelas();
@@ -102,23 +99,8 @@ namespace NovoFtool
             Insp.Mostrar(M, Vista.Sel);
         }
 
-        // Acoes rapidas do Inspector: apoio para nos, verificar para barras (mesmos caminhos da faixa).
-        IEnumerable<AcaoRapida> AcoesDoInspector(IList<object> alvos)
-        {
-            var nos = alvos.OfType<No>().ToList();
-            var barras = alvos.OfType<Barra>().ToList();
-            if (nos.Count > 0 && barras.Count == 0)
-            {
-                Func<No, string> tipo = n => !n.TemApoio ? "livre" : n.ApoioX && n.ApoioY && n.ApoioGiro ? "engaste" : n.ApoioX && n.ApoioY && !n.ApoioGiro && n.MolaX == 0 && n.MolaY == 0 && n.MolaGiro == 0 ? "fixo" : !n.ApoioX && n.ApoioY && !n.ApoioGiro && n.MolaX == 0 && n.MolaY == 0 && n.MolaGiro == 0 ? "rolete" : "outro";
-                string comum = nos.Select(tipo).Distinct().Count() == 1 ? tipo(nos[0]) : "";
-                yield return new AcaoRapida { Grupo = "Apoio", Texto = "Engaste", Icone = "engaste", Ativo = comum == "engaste", Dica = "Trava X, Y e giro nos nós selecionados.", Executar = () => AplicarApoio(Ferramenta.ApoioEngaste, Vista.Sel.OfType<No>()) };
-                yield return new AcaoRapida { Grupo = "Apoio", Texto = "Fixo", Icone = "rotula", Ativo = comum == "fixo", Dica = "Apoio fixo: trava X e Y, giro livre.", Executar = () => AplicarApoio(Ferramenta.ApoioRotula, Vista.Sel.OfType<No>()) };
-                yield return new AcaoRapida { Grupo = "Apoio", Texto = "Móvel", Icone = "rolo", Ativo = comum == "rolete", Dica = "Apoio móvel: trava só Y.", Executar = () => AplicarApoio(Ferramenta.ApoioRoloV, Vista.Sel.OfType<No>()) };
-                yield return new AcaoRapida { Grupo = "Apoio", Texto = "Livre", Icone = "livre", Ativo = comum == "livre", Dica = "Remove apoio, molas e placa de base dos nós selecionados.", Executar = () => AplicarApoio(Ferramenta.ApoioLivre, Vista.Sel.OfType<No>()) };
-            }
-            if (barras.Count > 0)
-                yield return new AcaoRapida { Grupo = "", Texto = "Verificar", Icone = "verif", Dica = "Abre a verificação detalhada da barra (compara perfis da família).", Executar = () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()) };
-        }
+        // Inspector 2D (só aparece sem modelo 3D aberto): sem ações rápidas; no 3D o painel é o do motor (DocumentoEspacial.cs).
+        IEnumerable<AcaoRapida> AcoesDoInspector(IList<object> alvos) { yield break; }
 
         // ---------- arvore ----------
 

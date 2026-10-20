@@ -241,3 +241,16 @@ do usuário e confere as contagens em cada passo:
 - Desenhar 3D: sem atração a interseção/perpendicular/extensão nem rastreamento (o 2D tem); o material da barra nova não
   segue a seção escolhida.
 - Setas das cargas sem rótulo de valor; cargas da combinação mostrada (fatoradas) não são desenhadas, só as do caso ativo.
+
+## Pontos de entrada (tela inicial, novo arquivo, Arquivo)
+
+Para quem monta a tela inicial, o fluxo de "novo arquivo" e o menu Arquivo (worktree `wt-inicio`). Todos em `MainWindow`
+(`DocumentoEspacial.cs`); cada documento abre numa aba nova da barra de arquivos.
+
+| Membro | Faz |
+|---|---|
+| `Task NovoDocumento(JsonObject modelo = null, string titulo = null, bool silencioso = false)` | documento novo. `modelo` = JSON do motor (mesmo formato de `GET /api/modelo`; serve de gabarito) ou `null` = em branco. Abre em planta (vista de topo), plano de trabalho no térreo, ferramenta Selecionar. `silencioso` = erro do motor só na barra de status |
+| `Task AbrirArquivo(string caminho)` | abre qualquer arquivo como documento 3D: `.estructto` (contêiner novo ou XML antigo, convertido), `.portico`, `.ftl`, `.json` do motor, `.ed3` do CYPE. Se já estiver aberto, só troca de aba |
+| `IReadOnlyList<string> ArquivosRecentes` | últimos arquivos abertos/salvos, o mais recente primeiro (`Config.Recentes`) |
+
+Também existem `NovoEmBranco()` (= `NovoDocumento()`), `AbrirGerador3D(tipo)` e `AbrirExemplosEspaciais()`.

@@ -176,7 +176,7 @@ namespace NovoFtool
             j.Title = "Placa de base — nó " + noId + (crit != null ? " — combinação crítica: " + crit : "");
             j.Candidatos = new List<No>();   // ponytail: "Aplicar também em" só no próprio nó; copiar a placa para outros nós pelo comando PLACA em cada um
             j.AvaliarEm = (no, pl) => { var p0 = no.Placa; no.Placa = pl; try { return PiorPlaca(pe).R; } finally { no.Placa = p0; } };
-            if (Capturas.Ativo) { placaAberta = j; return; }
+            if (Capturas.Ativo) { placaAberta = j; placaComparar = (pe.M, pe.No); return; }
             j.ShowDialog();
             if (!j.Mudou || Esp != d) return;
             if (pe.No.Placa == null) d.Placas.Remove(noId); else d.Placas[noId] = pe.No.Placa.Copiar();
@@ -184,6 +184,7 @@ namespace NovoFtool
             Log(pe.No.Placa == null ? "Placa de base removida do nó " + noId + "." : "Placa de base do nó " + noId + " atualizada.");
         }
         internal JanelaPlaca placaAberta;   // capturas: a janela fica aberta para renderizar
+        internal (Modelo, No) placaComparar;   // capturas: pé de pilar da última placa (JanelaComparar)
 
         // Anexo do relatório do motor: tabela e memorial das placas (PlacaPior desviado para a ponte, nós com o número do motor).
         internal async Task<Func<FlowDocument>> AnexoPlacasEsp()

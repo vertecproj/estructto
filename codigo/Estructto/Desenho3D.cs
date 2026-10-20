@@ -85,19 +85,19 @@ namespace NovoFtool
 
         // ================= desenhar no modelo espacial (Modelo › Desenhar 3D) =================
 
-        F.RibbonGroupBox grpDesenho3D, grpDesenho2D;
+        F.RibbonGroupBox grpDesenho3D, grpConfig3D;
         readonly Dictionary<Ferramenta3D, F.ToggleButton> btnFerr3D = new Dictionary<Ferramenta3D, F.ToggleButton>();
 
-        // Chamado uma vez ao montar a faixa: grupo "Desenhar 3D" ao lado do "Desenhar" 2D (só um dos dois aparece) e a paleta.
+        // Chamado uma vez ao montar a faixa: grupos "Barras" (Member do Plant 3D: Selecionar, Barra, Pilar, Medir) e
+        // "Configurações" (Member Settings: seção, material, giro, ponto cardinal, apoio na base) no fim da aba Modelo.
         internal void MontarDesenho3D()
         {
-            grpDesenho2D = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Desenhar");
-            grpDesenho3D = new F.RibbonGroupBox { Header = "Desenhar 3D", Visibility = Visibility.Collapsed };
+            grpDesenho3D = new F.RibbonGroupBox { Header = "Barras" };
             foreach (var (f, ic, txt, nome, dica, atalho) in new[]
             {
-                (Ferramenta3D.Selecionar, "sel", "Selecionar", "Selecionar 3D", "Clique escolhe; arraste da esquerda p/ direita = janela, da direita p/ esquerda = cruzamento. Shift soma, Ctrl tira, Esc limpa.", "Esc"),
-                (Ferramenta3D.Barra, "barra", "Barra", "Barra 3D", "Clique os pontos em sequência no plano de trabalho (atrai nós, meios e grade; F8/Shift ortogonal). Digite o comprimento, Tab o ângulo, ou x,y,z / @dx,dy,dz. Esc ou botão direito termina.", null),
-                (Ferramenta3D.Pilar, "3d", "Pilar", "Pilar 3D", "Clique o ponto no plano de trabalho: num nível com outro abaixo, o pilar desce até ele; no nível mais baixo, sobe até o próximo (3 m sem níveis).", null),
+                (Ferramenta3D.Selecionar, "sel", "Selecionar", "Selecionar", "Clique escolhe; arraste da esquerda p/ direita = janela, da direita p/ esquerda = cruzamento. Shift soma, Ctrl tira, Esc limpa. Grips: clique num □ e no destino (Ctrl copia).", "S / Esc"),
+                (Ferramenta3D.Barra, "barra", "Barra", "Barra", "Viga ou barra qualquer: cliques em sequência no plano de trabalho (snap a objetos, ORTO F8, polar F10). Digite o comprimento, Tab o ângulo, ou x,y,z / @dx,dy,dz. Enter, Esc ou botão direito termina.", "L"),
+                (Ferramenta3D.Pilar, "3d", "Pilar", "Pilar", "Clique o ponto no plano de trabalho: num nível com outro abaixo, o pilar desce até ele; no nível mais baixo, sobe até o próximo (3 m sem níveis).", "PI"),
             })
             {
                 var b = new F.ToggleButton { Header = txt, LargeIcon = Icone(ic, 32), Icon = Icone(ic, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(nome, dica, atalho) };
@@ -106,19 +106,16 @@ namespace NovoFtool
                 Reg(ic, nome, atalho, dica, () => UsarFerramenta3D(f));
                 btnFerr3D[f] = b; grpDesenho3D.Items.Add(b);
             }
+            grpConfig3D = new F.RibbonGroupBox { Header = "Configurações" };
             MontarSecaoDesenho3D();
-            MontarMedir3D();   // Vista3D.Snap.cs
-            int i = grpDesenho2D != null ? abaModelo.Groups.IndexOf(grpDesenho2D) + 1 : 1;
-            abaModelo.Groups.Insert(Math.Min(i, abaModelo.Groups.Count), grpDesenho3D);
-            var gerar = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Gerar");
-            gerar?.Items.Add(Botao("3d", "Modelo 3D vazio", NovoEspacialVazio, "Modelo espacial em branco no motor Python, para desenhar com Barra e Pilar (Desenhar 3D).", null, true));
+            MontarMedir3D();   // Vista3D.Snap.cs (botão Medir no grupo Barras)
+            abaModelo.Groups.Add(grpDesenho3D);
+            abaModelo.Groups.Add(grpConfig3D);
         }
-
-        internal void NovoEspacialVazio() => _ = AbrirEspacial(() => DocumentoEspacial.Vazio("Modelo 3D"), "criando modelo vazio");
 
         internal void UsarFerramenta3D(Ferramenta3D f)
         {
-            if (Esp == null || vista3D == null) { MostrarToast("Desenhar 3D vale no modelo espacial: Modelo › Gerar 3D ou Modelo 3D vazio.", true); SincronizarFerr3D(); return; }
+            if (Esp == null || vista3D == null) { MostrarToast("Nenhum modelo aberto: Ctrl+N cria um em branco.", true); SincronizarFerr3D(); return; }
             vista3D.Ferramenta = vista3D.Ferramenta == f && f != Ferramenta3D.Selecionar ? Ferramenta3D.Navegar : f;
             vista3D.Focus();
         }
@@ -131,10 +128,7 @@ namespace NovoFtool
         void AtualizarFaixa3D()
         {
             if (grpDesenho3D == null) return;
-            bool esp = Esp != null;
-            grpDesenho3D.Visibility = esp ? Visibility.Visible : Visibility.Collapsed;
-            if (grpDesenho2D != null) grpDesenho2D.Visibility = esp ? Visibility.Collapsed : Visibility.Visible;
-            if (!esp && vista3D != null && vista3D.Ferramenta != Ferramenta3D.Navegar) vista3D.Ferramenta = Ferramenta3D.Navegar;   // 2D: vista 3D só de leitura
+            if (Esp == null && vista3D != null && vista3D.Ferramenta != Ferramenta3D.Navegar) vista3D.Ferramenta = Ferramenta3D.Navegar;   // sem modelo: só olhar
             SincronizarFerr3D();
         }
 
@@ -155,7 +149,8 @@ namespace NovoFtool
             if (d == null) return;
             try
             {
-                var ids = await d.DesenharBarras(segs, SecaoDesenho3D(d), ApoioBase3D);
+                var ids = await d.DesenharBarras(segs, SecaoDesenho3D(d), ApoioBase3D, MaterialDesenho3D(d), giro3D * Math.PI / 180);
+                foreach (string id in ids) if (cardinal3D != 5) d.Cardinais[id] = cardinal3D; else d.Cardinais.Remove(id);
                 if (Esp == d) DepoisDeMudarEspacial(ids.Count == 1 ? "Barra " + ids[0] + " desenhada." : Pl.N(ids.Count, "barra desenhada", "barras desenhadas") + ".");
             }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
@@ -199,9 +194,35 @@ namespace NovoFtool
             };
             tgApoioBase3D = new F.ToggleButton { Header = "Apoio na base", Icon = Icone("engaste", 16), LargeIcon = Icone("engaste", 32), Size = F.RibbonControlSize.Middle,
                 ToolTip = Dica("Apoio na base", "Nó novo desenhado no nível mais baixo nasce engastado (6 GL travados).") };
-            grpDesenho3D.Items.Add(cbSecao3D);
-            grpDesenho3D.Items.Add(tgApoioBase3D);
+            cbMaterial3D = new F.ComboBox { Header = "Material", IsEditable = false, Width = 190, ToolTip = Dica("Material", "Material das próximas barras: os do modelo (vazio = o da última barra).") };
+            cbMaterial3D.DropDownOpened += (s, e) =>
+            {
+                cbMaterial3D.Items.Clear();
+                foreach (var kv in Esp?.Json["materiais"] as JsonObject ?? new JsonObject()) cbMaterial3D.Items.Add(kv.Key);
+                cbMaterial3D.SelectedItem = material3D;
+            };
+            cbMaterial3D.SelectionChanged += (s, e) => { if (cbMaterial3D.SelectedItem is string v) material3D = v; };
+            var tbGiro = new F.TextBox { Header = "Giro (°)", Text = "0", Width = 150, ToolTip = Dica("Giro da seção", "Rotação do perfil em torno do próprio eixo nas próximas barras (Angle do Plant 3D). Ctrl+R no desenho soma 90°.") };
+            void LerGiro() { if (Num.Ler(tbGiro.Text, out double g)) giro3D = g; tbGiro.Text = Num.Fmt(giro3D, 1); }
+            tbGiro.LostFocus += (s, e) => LerGiro(); tbGiro.KeyDown += (s, e) => { if (e.Key == Key.Enter) LerGiro(); };
+            cbCardinal3D = new F.ComboBox { Header = "Ponto cardinal", IsEditable = false, Width = 190,
+                ToolTip = Dica("Ponto cardinal (justificação)", "Onde o eixo desenhado passa na seção: 1 a 9 da caixa da seção (7 8 9 em cima, 1 2 3 embaixo, como o teclado numérico) ou o centroide. Guardado por barra no .estructto (o desenho deslocado do perfil fica para o Realista); a análise usa o eixo.") };
+            foreach (string c in Cardinais) cbCardinal3D.Items.Add(c);
+            cbCardinal3D.SelectedIndex = 4;
+            cbCardinal3D.SelectionChanged += (s, e) => { if (cbCardinal3D.SelectedIndex >= 0) cardinal3D = cbCardinal3D.SelectedIndex + 1; };
+            grpConfig3D.Items.Add(cbSecao3D);
+            grpConfig3D.Items.Add(cbMaterial3D);
+            grpConfig3D.Items.Add(tbGiro);
+            grpConfig3D.Items.Add(cbCardinal3D);
+            grpConfig3D.Items.Add(tgApoioBase3D);
         }
+
+        // ---------- Configurações: material, giro e ponto cardinal das próximas barras ----------
+        F.ComboBox cbMaterial3D, cbCardinal3D;
+        string material3D; double giro3D; int cardinal3D = 5;
+        static readonly string[] Cardinais = { "1 inferior esquerdo", "2 inferior centro", "3 inferior direito", "4 meio esquerdo", "5 centro", "6 meio direito", "7 superior esquerdo", "8 superior centro", "9 superior direito", "10 centroide" };
+        string MaterialDesenho3D(DocumentoEspacial d) => material3D != null && d.Json["materiais"]?[material3D] != null ? material3D : null;
+        internal void GirarDesenho3D(double graus) { giro3D = (giro3D + graus) % 360; Log("Giro das próximas barras: " + Num.Fmt(giro3D, 0) + "°.", false); }
 
         // Itens: seções do modelo + "Do catálogo…"; mostra a que vale agora.
         internal void ListarSecoes3D()
@@ -251,14 +272,14 @@ namespace NovoFtool
         // (ou A-572 GR.50 no mesmo lote). apoioBase: nó novo na cota do nível mais baixo nasce engastado.
         // Devolve os ids das barras criadas.
         // ponytail: material não segue a seção (perfil de concreto do catálogo herda o aço da última barra); trocar em Propriedades em lote.
-        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs, string secao = null, bool apoioBase = false) => Motor.Exclusivo(async () =>
+        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs, string secao = null, bool apoioBase = false, string materialEscolhido = null, double rot = 0) => Motor.Exclusivo(async () =>
         {
             await Garantir();
             var nos = Json["nos"].AsObject();
             var itens = new JsonArray(); var novos = new List<(string Id, Point3D P)>();
             var ult = (Json["barras"] as JsonObject)?.LastOrDefault().Value;
             secao ??= (Json["secoes"] as JsonObject)?.Select(x => x.Key).FirstOrDefault() ?? "W310x38.7";
-            string material = (string)ult?["material"] ?? (Json["materiais"] as JsonObject)?.Select(x => x.Key).FirstOrDefault();
+            string material = materialEscolhido ?? (string)ult?["material"] ?? (Json["materiais"] as JsonObject)?.Select(x => x.Key).FirstOrDefault();
             double zBase = Niveis.Lista(Json).Min(n => n.Z);
             if (Json["secoes"]?[secao] == null) itens.Add(new JsonObject { ["tipo"] = "secao", ["dados"] = new JsonObject { ["perfil"] = secao } });
             if (material == null) { material = "A-572 GR.50"; itens.Add(new JsonObject { ["tipo"] = "material", ["dados"] = new JsonObject { ["aco"] = material } }); }
@@ -281,7 +302,7 @@ namespace NovoFtool
             {
                 string ni = No(a), nj = No(b);
                 if (ni == nj) continue;
-                itens.Add(new JsonObject { ["tipo"] = "barra", ["dados"] = new JsonObject { ["ni"] = ni, ["nj"] = nj, ["secao"] = secao, ["material"] = material } });
+                itens.Add(new JsonObject { ["tipo"] = "barra", ["dados"] = new JsonObject { ["ni"] = ni, ["nj"] = nj, ["secao"] = secao, ["material"] = material, ["rot"] = rot } });
             }
             var r = await Motor.Post("/api/modelo/lote", new JsonObject { ["itens"] = itens });
             TemHistorico = true;

@@ -39,6 +39,7 @@ namespace NovoFtool
         public double[] N, V, M;   // valores em estações igualmente espaçadas de ni a nj (kN, kN·m); null = sem diagrama
         public double? Aprov;      // aproveitamento (1 = no limite); null = sem verificação
         public double RotPerfil;   // giro extra (graus) só do desenho do perfil no modo Realista (2D: perfil deitado = 90)
+        public int Cardinal = 5;   // ponto cardinal 1..9 (teclado numérico) ou 10 = centroide; o Render3D pode deslocar o perfil
         public object Origem;
     }
 

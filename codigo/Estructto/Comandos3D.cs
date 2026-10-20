@@ -153,6 +153,7 @@ namespace NovoFtool
                     case Key.A when !editando: ExecutarComando("SELTODAS"); return true;
                     case Key.D1 when !editando: case Key.NumPad1 when !editando: ExecutarComando("PROPRIEDADES"); return true;
                     case Key.F9: Calcular(); return true;
+                    case Key.R when vista3D?.Desenhando == true: GirarDesenho3D(90); return true;   // Ctrl+R gira o perfil das próximas barras
                     case Key.NumPad7: ExecutarComando("TOPO"); return true;
                     case Key.NumPad1: ExecutarComando("FRENTE"); return true;
                     case Key.NumPad3: ExecutarComando("LADO"); return true;

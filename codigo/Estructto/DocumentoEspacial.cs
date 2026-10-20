@@ -82,6 +82,7 @@ namespace NovoFtool
         public JsonArray Validacao = new JsonArray();  // GET /api/validar do último Recarregar
         // Fora do motor (o motor não guarda): placas de base por nó (JanelaPlaca, Legado3D.cs) e a grade estrutural (GR).
         public Dictionary<string, PlacaBase> Placas = new Dictionary<string, PlacaBase>();
+        public Dictionary<string, int> Cardinais = new Dictionary<string, int>();   // ponto cardinal (1..10) por barra; sem entrada = 5 (centro)
         public JsonObject Grade;                       // {"x": [..], "y": [..], "nx": [..], "ny": [..]} em m; null = sem grade
         public string Origem;                          // arquivo antigo convertido ao abrir (null = nativo)
         public Dictionary<string, JsonNode> PiorPorBarra = new Dictionary<string, JsonNode>();
@@ -188,12 +189,16 @@ namespace NovoFtool
             foreach (var kv in Placas) placas[kv.Key] = JsonSerializer.SerializeToNode(kv.Value);
             var c = new JsonObject { ["formato"] = "estructto", ["versao"] = 3, ["modelo"] = Json.DeepClone(), ["placas"] = placas };
             if (Grade != null) c["grade"] = Grade.DeepClone();
+            var card = new JsonObject();
+            foreach (var kv in Cardinais) if (Json["barras"]?[kv.Key] != null) card[kv.Key] = kv.Value;
+            if (card.Count > 0) c["cardinal"] = card;
             return c.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         }
 
         static async Task<DocumentoEspacial> DoContainer(JsonObject c, string caminho)
         {
             var d = new DocumentoEspacial { Arquivo = caminho, Json = (JsonObject)c["modelo"].DeepClone(), Grade = c["grade"]?.DeepClone() as JsonObject };
+            foreach (var kv in c["cardinal"] as JsonObject ?? new JsonObject()) d.Cardinais[kv.Key] = (int)kv.Value;
             foreach (var kv in c["placas"] as JsonObject ?? new JsonObject())
                 try { var p = kv.Value.Deserialize<PlacaBase>(); if (p != null) d.Placas[kv.Key] = p; } catch (JsonException) { d.Avisos.Add("placa do nó " + kv.Key + " ilegível: ignorada"); }
             await Motor.Exclusivo(async () => { await d.Garantir(); await d.Recarregar(); });
@@ -378,7 +383,8 @@ namespace NovoFtool
             {
                 var b = kv.Value;
                 if (!ids.TryGetValue((string)b["ni"], out int ni) || !ids.TryGetValue((string)b["nj"], out int nj)) continue;
-                var b3 = new Barra3D { Id = ++ib, Ni = ni, Nj = nj, Secao = (string)b["secao"] ?? "", Rot = (double)(b["rot"] ?? 0.0) * 180 / Math.PI, Origem = Ref("barra", kv.Key) };
+                var b3 = new Barra3D { Id = ++ib, Ni = ni, Nj = nj, Secao = (string)b["secao"] ?? "", Rot = (double)(b["rot"] ?? 0.0) * 180 / Math.PI, Origem = Ref("barra", kv.Key),
+                                   Cardinal = Cardinais.TryGetValue(kv.Key, out int cd) ? cd : 5 };
                 var e = esforcos?[kv.Key];
                 if (e != null) { b3.N = Vetor(e["N"]); b3.V = Vetor(e["Vz"]); b3.M = Vetor(e["My"]); }
                 if (PiorPorBarra.TryGetValue(kv.Key, out var l) && Taxa(l) >= 0) b3.Aprov = Taxa(l);
@@ -469,16 +475,30 @@ namespace NovoFtool
         internal Task AbrirEspacialArquivo(string caminho) => AbrirEspacial(() => DocumentoEspacial.AbrirArquivo(caminho), "abrindo " + Path.GetFileName(caminho), caminho);
 
         // Documento em branco: plano de desenho no térreo (z = 0) e vista de topo, como uma folha de CAD — até orbitar (Shift + arrastar).
-        internal async Task NovoEmBranco(bool silencioso = false)
+        internal Task NovoEmBranco(bool silencioso = false) => NovoDocumento(null, null, silencioso);
+
+        // ===== Pontos de entrada para a tela inicial, o "novo arquivo" e o Arquivo (worktree wt-inicio; docs/MODELO-ESPACIAL.md) =====
+
+        // Documento novo numa aba nova. modelo = JSON do motor (gabarito: "nos", "barras", "secoes"... no formato de
+        // GET /api/modelo) ou null = em branco. Abre em planta (vista de topo), plano de trabalho no térreo, ferramenta Selecionar.
+        public async Task NovoDocumento(JsonObject modelo = null, string titulo = null, bool silencioso = false)
         {
             int n = docs.Count(x => x.Esp != null) + 1;
-            await AbrirEspacial(() => DocumentoEspacial.Vazio("Modelo " + n), "criando o modelo em branco", null, silencioso);
+            titulo ??= "Modelo " + n;
+            await AbrirEspacial(() => modelo == null ? DocumentoEspacial.Vazio(titulo) : DocumentoEspacial.DoModelo((JsonObject)modelo.DeepClone(), titulo, null),
+                                "criando " + titulo, null, silencioso);
             if (Esp == null || vista3D == null) return;
-            alterado = false; AtualizarTitulo();
+            alterado = modelo != null; AtualizarTitulo();
             vista3D.PlanoAtual = PlanoTrabalho.Horizontal(0, "Térreo (z = 0,00 m)");
             vista3D.MostrarVista(VistaPadrao.Topo, false);
             vista3D.Ferramenta = Ferramenta3D.Selecionar;
         }
+
+        // Abre qualquer arquivo como documento 3D (.estructto novo ou antigo, .portico, .ftl, .json, .ed3); já aberto = troca de aba.
+        public Task AbrirArquivo(string caminho) => AbrirTarefa(caminho);
+
+        // Últimos arquivos abertos/salvos (mais recente primeiro).
+        public IReadOnlyList<string> ArquivosRecentes => Config.Recentes();
 
         // Chamado ao trocar de documento: liga ou desliga a vista 3D forçada e o painel de propriedades do motor.
         void AplicarModoEspacial()
@@ -1079,7 +1099,7 @@ namespace NovoFtool
         internal Task OperarEspacial(Func<DocumentoEspacial, Task> f, string msg) => Espacial(f, msg);
         internal Task MostrarCombinacaoEspacial(string comb) => MudarResultadoEsp(comb ?? "");
         internal string TextoResultado => NomeResultado();
-        internal void EscolherEspacial(string tipo, string id) => SelecionarEsp(Esp.Ref(tipo, id));
+        internal void EscolherEspacial(string tipo, string id) => SelecionarEsp(tipo == null ? null : Esp.Ref(tipo, id));
         internal void FecharEspaciaisSemPerguntar()
         {
             GuardarDoc();

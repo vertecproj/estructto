@@ -84,7 +84,6 @@ namespace NovoFtool
                 ComMotor(true, w => ComandosAnalise.AbrirVerificarBarra(w, id));
                 return;
             }
-            if (!MotorAtivo) { AbrirVerificacao(b); return; }
             b ??= Vista.Sel.OfType<Barra>().FirstOrDefault();
             if (b == null) { MostrarToast("Selecione uma barra (clique nela) e repita."); return; }
             ComMotor(true, w => ComandosAnalise.AbrirVerificarBarra(w, "b" + b.Id));
@@ -99,6 +98,7 @@ namespace NovoFtool
         async void TesteMotor(string png)
         {
             string txt = System.IO.Path.ChangeExtension(png, ".txt");
+            cbMotor ??= CriarCbMotor();   // legado escondido: Interno + motor (fora da faixa)
             cbMotor.SelectedIndex = 1;
             ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras);
             for (int i = 0; i < 1200; i++)   // ate 2 min
