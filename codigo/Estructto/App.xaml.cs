@@ -24,6 +24,14 @@ namespace NovoFtool
                 System.IO.File.WriteAllText(e.Args[1], r);
                 System.Environment.Exit(r.Contains("TODOS PASSARAM") ? 0 : 1);
             }
+            // Estructto.exe --testes-snap <saida.txt> : motor de snap e medidas da Vista3D (Snap3D.cs, Medir3D.cs)
+            if (e.Args.Length >= 2 && e.Args[0] == "--testes-snap")
+            {
+                string r;
+                try { r = TestesSnap.Rodar(); } catch (System.Exception ex) { r = "ERRO: " + ex; }
+                System.IO.File.WriteAllText(e.Args[1], r);
+                System.Environment.Exit(r.Contains("TODOS PASSARAM") ? 0 : 1);
+            }
             // Estructto.exe --testes-exportar <pasta> [raiz do repo] : DWG/DXF/STEP do guincho e do edifício (Exportar.cs)
             if (e.Args.Length >= 2 && e.Args[0] == "--testes-exportar")
             {

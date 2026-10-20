@@ -912,7 +912,7 @@ namespace NovoFtool
             else if (ctrl && k == Key.F4) { FecharDoc(docAtivo); e.Handled = true; }
             else if (ctrl && k == Key.E) { ExportarCsv(); e.Handled = true; }
             else if (ctrl && k == Key.P) { AbrirRelatorio(); e.Handled = true; }
-            else if (ctrl && k == Key.M && !editando) { AcionarFerramenta(Ferramenta.Medir); e.Handled = true; }
+            else if (ctrl && k == Key.M && !editando) { if (!Medir3D()) AcionarFerramenta(Ferramenta.Medir); e.Handled = true; }   // espacial: Medir 3D
             else if (ctrl && k == Key.A && !editando) { Vista.Selecionar(M.Barras.Cast<object>()); e.Handled = true; }
             else if (k == Key.F1) { MostrarAjuda(); e.Handled = true; }
             else if (k == Key.F2) { MostrarHistorico(); e.Handled = true; }
@@ -1005,6 +1005,7 @@ namespace NovoFtool
         void Executar(string t)
         {
             t = (t ?? "").Trim();
+            if (Comando3D(t)) return;   // modelo espacial: ME/MEDIR e snaps one-off END/MID... (Vista3D.Snap.cs)
             if (t == "") { if (Vista.InicioBarra != null) { Vista.InicioBarra = null; Log("Barra terminada."); Vista.InvalidateVisual(); } return; }
             Point p;
             if (LerPonto(t, out p))

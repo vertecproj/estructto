@@ -2,6 +2,16 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Snap igual ao AutoCAD e Medir AutoCAD + Inventor na Vista 3D (branch wt-snap)
+
+- Snap 3D novo (`Snap3D.cs`, motor puro): extremidade, meio, centro, nó, interseção real e aparente, perpendicular, extensão,
+  paralelo, mais próximo e grade; rastreio por pausa de 0,5 s (F11), polar com incremento (F10), ORTO (F8), F3; one-off por
+  Shift+botão direito ou END/MID/INT/PER/NEA… na linha de comando. Marcadores do AutoSnap em amarelo (`SnapOverlay.cs`).
+- Coordenada digitada como no AutoCAD: com 1º ponto `x,y,z` é relativo; `#` absoluto, `@` relativo, `L<a` polar.
+- Medir 3D (Ctrl+M, ME/MEDIR, botão em Desenhar 3D e em Vista): automático (ponto, barra, 2 pontos, 2 barras = distância mínima
+  e ângulo, 3 pontos = ângulo) + Distância, Ângulo, Área, Raio, Cadeia (+/−); painel com acumulado e histórico.
+- Testes `--testes-snap` (68) e capturas 50–53 (`ESTRUCTTO_CAPTURAS=snap`). Detalhe: [docs/v3/SNAP-MEDIR.md](v3/SNAP-MEDIR.md).
+
 ## 20/10/2026 — Exportar o modelo 3D para DWG, DXF e STEP (branch wt-export)
 
 - Arquivo › Exportar (DWG…, DXF…, STEP…) e paleta (Ctrl+K), para o modelo espacial e o 2D. DWG/DXF AC1032 em mm com ACadSharp 3.8.0:

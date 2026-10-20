@@ -185,11 +185,12 @@ No documento espacial o grupo **Desenhar 3D** (Selecionar, Barra, Pilar) substit
 - **Plano de trabalho** (`PlanoTrabalho`): horizontal z = c (padrão z = 0) ou vertical x = c / y = c. A grade do plano
   (passo `PassoGrade`, 1 m) aparece enquanto Barra/Pilar estão ligados; o mouse é projetado no plano pelo raio da câmera.
   Plano de perfil na vista (raio paralelo) avisa para girar a vista.
-- **Atração** (como o 2D): nó a 10 px na tela (em qualquer cota) > meio de barra > ortogonal/polar 0/90° nos eixos do plano a partir
-  do 1º ponto (F8 liga, Shift força) > ponto da grade a 10 px > plano. Marcador animado (`Anim.Entrar`, 120 ms) a cada troca.
+- **Atração**: snap igual ao AutoCAD (extremidade, meio, centro, nó, interseção real e aparente, perpendicular, extensão, paralelo,
+  mais próximo; rastreio F11, polar F10, ORTO F8, F3; one-off por Shift+botão direito ou END/MID...) — ver
+  [v3/SNAP-MEDIR.md](v3/SNAP-MEDIR.md). Marcador animado (`Anim.Entrar`, 120 ms) a cada troca.
 - **Entrada dinâmica**: elástico até o cursor + caixinhas Comprimento/Ângulo (ângulo no plano, do eixo U para o W); digitar
-  número trava o comprimento, Tab o ângulo, Enter confirma. Vírgula, `;` ou `@` passam para coordenada: `x,y,z`, `@dx,dy,dz`
-  (relativa ao 1º ponto) ou `u,w` (2 valores = no plano).
+  número trava o comprimento, Tab o ângulo, Enter confirma. Vírgula, `;` ou `@` passam para coordenada: `x,y,z` / `u,w` (com 1º
+  ponto: relativa a ele, como no AutoCAD), `@dx,dy,dz` (relativa), `#x,y,z` (absoluta) ou `L<a` (polar no plano).
 - **Criação**: cada clique = um `POST /api/modelo/lote` dentro de `Motor.Exclusivo` (nós novos + barra; atômico, um passo de
   `/api/desfazer`). Ponta a até 1 mm de um nó existente reaproveita o nó. Material: o da última barra (modelo sem material ganha
   A-572 GR.50 no mesmo lote).
@@ -207,7 +208,7 @@ No documento espacial o grupo **Desenhar 3D** (Selecionar, Barra, Pilar) substit
 | Membro de `Vista3D` | |
 |---|---|
 | `PlanoTrabalho PlanoAtual { get; set; }` + `event Action<PlanoTrabalho> PlanoMudou` | plano atual; `PlanoTrabalho.Horizontal(z)`, `EmX(x)`, `EmY(y)`, `new PlanoTrabalho('Z', z, nome)`; `N`, `U`, `W`, `Projetar(p)`, `Ponto(u, w)` |
-| `Ferramenta3D Ferramenta { get; set; }` + `event Action FerramentaMudou` | `Navegar`, `Selecionar`, `Barra`, `Pilar`; `MainWindow.UsarFerramenta3D(f)` faz o mesmo pela faixa |
+| `Ferramenta3D Ferramenta { get; set; }` + `event Action FerramentaMudou` | `Navegar`, `Selecionar`, `Barra`, `Pilar`, `Medir`; `MainWindow.UsarFerramenta3D(f)` faz o mesmo pela faixa |
 | `Selecao3D Selecao` + `event Action SelecaoMudou` | `Selecao.Nos` / `Selecao.Barras`: ids do motor (`HashSet<string>`) |
 | `Selecionar(nos, barras, mods)`, `LimparSelecao()`, `SelecionarCaixa(a, b, mods)` | trocar/somar (Shift)/tirar (Ctrl) por id ou por caixa de tela |
 | `Func<IList<(Point3D A, Point3D B)>, Task> CriarBarras` | quem cria as barras (MainWindow → `DocumentoEspacial.DesenharBarras`) |
