@@ -592,6 +592,7 @@ namespace NovoFtool
                 Left = dono.Left + (dono.ActualWidth - ActualWidth) / 2;
                 Top = dono.Top + Math.Max(60, dono.ActualHeight * 0.14);
                 visual.Caixa.Focus();
+                Anim.Abrir(this);
             };
             Deactivated += (s, e) => FecharSeguro();
         }

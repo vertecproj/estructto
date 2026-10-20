@@ -61,6 +61,12 @@ namespace NovoFtool
             MontarBastidores();
             MontarStatus();
             LigarEventos();
+            // animacoes da interface (Anim.cs, docs/ANIMACOES.md)
+            Anim.Iniciar(Faixa, Insp);
+            Faixa.SelectedTabChanged += (s, e) => { if (Faixa.SelectedTabItem != null) foreach (var g in Faixa.SelectedTabItem.Groups) Anim.Entrar(g, 0, Anim.Rapido); };
+            Anim.AoMostrar(Aviso, 8);
+            foreach (var la in AvalonDock.Layout.Extensions.Descendents(Docas.Layout).OfType<AvalonDock.Layout.LayoutAnchorable>()) Anim.AoMostrar(la.Content as UIElement, 0, Anim.Rapido);
+            Loaded += (s, e) => Bastidor.AreAnimationsEnabled = Anim.Ligado;
             Hud = new HudVista(Vista, (d, calor) => MostrarDiagrama(d, calor), () => { try { return Vista.Resolvido ? "Mostrando: " + NomeResultado() : ""; } catch { return ""; } }, f => Escala(f));
             GridVista.Children.Add(Hud);
             Vista.SizeChanged += (s, e) => Hud.Compacto = Vista.ActualHeight < 340;
@@ -495,7 +501,7 @@ namespace NovoFtool
         async System.Threading.Tasks.Task CalcularMotor()
         {
             motorRodando = true;
-            var barra = new ProgressBar { IsIndeterminate = true, Width = 90, Height = 6, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+            var barra = Anim.Brilho(90, 4); barra.Margin = new Thickness(0, 0, 10, 0); barra.VerticalAlignment = VerticalAlignment.Center;
             StatusBotoes.Children.Insert(0, barra);
             var antes = Mouse.OverrideCursor; Mouse.OverrideCursor = Cursors.AppStarting;
             var prog = new Progress<string>(s => StatusMsg.Text = "Motor Python: " + s + "…");

@@ -260,6 +260,7 @@ namespace NovoFtool
             raiz.Children.Add(rod);
 
             ConteudoInicio.Content = raiz;
+            Anim.Escalonar(raiz);
         }
 
         static Style estiloHero;
