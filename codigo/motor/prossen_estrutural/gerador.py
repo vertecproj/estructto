@@ -1,4 +1,5 @@
 """Gerador de estruturas paramétricas (ESPEC §6.2 #14 e §6.3): pórtico plano, edifício e galpão.
+Treliças, contraventamentos e terças: `geradores_extra` (mesma entrada `gerar_estrutura`).
 
 `gerar_estrutura(modelo, dados)` valida tudo, confere conflitos de ids e só então muta o modelo
 (tudo ou nada). Não importa `projeto`: `projeto.gerar_estrutura` delega a esta função e converte
@@ -274,8 +275,11 @@ def gerar_estrutura(modelo, dados):
     if not isinstance(dados, dict):
         raise ErroGerador([("dados", f"esperado objeto, recebido {type(dados).__name__}")])
     tipo = dados.get("tipo")
+    from . import geradores_extra
+    if tipo in geradores_extra.TIPOS:  # treliças, contraventamentos, terças (docs/v3/TRELICAS.md)
+        return geradores_extra.gerar(modelo, dados)
     if tipo not in TIPOS:
-        raise ErroGerador([("tipo", f"'{tipo}' inválido; use um de {list(TIPOS)}")])
+        raise ErroGerador([("tipo", f"'{tipo}' inválido; use um de {list(TIPOS + geradores_extra.TIPOS)}")])
     erros = [(c, "chave desconhecida") for c in dados if c not in _CHAVES[tipo]]
 
     d = {}

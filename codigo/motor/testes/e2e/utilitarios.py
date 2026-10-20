@@ -43,7 +43,8 @@ QUARENTA = frozenset((
     "lote_adicionar elemento_editar elemento_remover estrutura_gerar config_definir acoes_gerar "
     "combinacoes_listar analise_caso analise_combinacao analise_modal projeto_calcular resultados_consultar "
     "verificacao_listar verificacao_barra estabilidade_consultar ligacao_tipos ligacao_verificar perfis_listar "
-    "perfil_consultar materiais_listar normas_implementadas relatorio_gerar modelo_importar_cype cype_comparar").split())
+    "perfil_consultar materiais_listar normas_implementadas relatorio_gerar modelo_importar_cype cype_comparar "
+    "ligacoes_identificar ligacoes_grupos ligacoes_grupo_editar ligacoes_grupo_dimensionar").split())
 
 # Edifício de concreto do F2/F5 (PLANO §6.3): 3x2 vãos de 5 m, 4 pavimentos de 3 m, C30, pilar 25x50, viga 20x50
 EDIFICIO_F2 = {"tipo": "edificio", "material": {"concreto": 30},

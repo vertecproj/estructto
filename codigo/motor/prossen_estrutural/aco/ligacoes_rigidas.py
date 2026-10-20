@@ -147,7 +147,9 @@ def cisalhamento_painel(dc, tw, fy, Nc=0.0, Ny=math.inf):
 # ---------------------------------------------------------------- entradas
 
 def _ent(rotulo, unidade, padrao, minimo=None, maximo=None, opcoes=None, descricao=""):
-    e = {"rotulo": rotulo, "unidade": unidade, "padrao": padrao, "descricao": descricao or rotulo}
+    e = {"rotulo": rotulo, "unidade": unidade, "padrao": padrao}
+    if descricao:
+        e["ajuda"] = descricao   # texto longo; "descricao" do campo é o rótulo (ligacoes.tipos_ligacao)
     if minimo is not None:
         e["min"] = minimo
     if maximo is not None:
@@ -998,8 +1000,8 @@ _E_CHAPA_TOPO = dict(
     **_E_VIGA, **_E_PAR, **_E_CHAPA,
     tp=_ent("Espessura da chapa de topo", "mm", 22.4, 6.3, 100.0),
     bp=_ent("Largura da chapa (0 = bf+25)", "mm", 0.0, 0.0, 1000.0),
-    g=_ent("Gabarito horizontal (0 = auto)", "mm", 0.0, 0.0, 600.0),
-    pf=_ent("Furo → face da mesa (0 = auto)", "mm", 0.0, 0.0, 200.0, descricao="0 = CBCA 6.1.1 (30/35/40 mm)"),
+    g=_ent("Gabarito (0 = auto)", "mm", 0.0, 0.0, 600.0),
+    pf=_ent("Furo → face mesa (0 = auto)", "mm", 0.0, 0.0, 200.0, descricao="0 = CBCA 6.1.1 (30/35/40 mm)"),
     n_linhas_extras=_ent("Linhas extras por mesa", "-", 0, 0, 6,
                          descricao="linhas de 2 parafusos além da 1ª linha interna, para dentro, em cada mesa"),
     s_linhas=_ent("Passo das linhas extras", "mm", 75.0, 30.0, 300.0),
@@ -1043,7 +1045,7 @@ _E_FLANGE = dict(
 _E_PAINEL = dict(
     perfil_viga=_E_VIGA["perfil_viga"], perfil_pilar=_ent("Perfil do pilar", "-", None),
     **{k: v for k, v in _E_PILAR.items() if k != "perfil_pilar"},
-    ln=_ent("Comprimento de apoio ℓn (0 = tf)", "mm", 0.0, 0.0, 500.0,
+    ln=_ent("ℓn de apoio (0 = tf)", "mm", 0.0, 0.0, 500.0,
             descricao="extensão da força na mesa do pilar (5.7.3/5.7.4); 0 = tf da viga"),
     mesa_soldada=_ent("Mesa da viga soldada", "-", True, opcoes=[True, False],
                       descricao="força aplicada por solda (verifica 5.7.2); parafusada = T-stub na ligação"))
@@ -1115,24 +1117,6 @@ TIPOS = {
         entradas=_E_EMENDA_PILAR, verificar=verificar_emenda_pilar,
         sugerir=_sugerir_emenda("emenda_pilar", "perfil_pilar"), esforcos=_ESF),
 }
-
-
-def esquema():
-    """Entradas de TIPOS no formato de `ligacoes.tipos_ligacao()` (JSON puro, sem funções)."""
-    out = []
-    for tipo, t in TIPOS.items():
-        campos = []
-        for nome, ent in t["entradas"].items():
-            c = dict(nome=nome, unidade=ent["unidade"], descricao=ent["descricao"], padrao=ent["padrao"],
-                     rotulo=ent["rotulo"][:28])
-            for k in ("opcoes", "min", "max"):
-                if k in ent:
-                    c[k] = ent[k]
-            campos.append(c)
-        out.append(dict(tipo=tipo, nome=t["nome"], familia=t["familia"], liga=t["liga"], descricao=t["descricao"],
-                        campos=campos, esforcos=[dict(nome=n, unidade="kN·m" if n == "M" else "kN")
-                                                 for n in t["esforcos"]]))
-    return out
 
 
 def verificar(tipo, dados, esforcos):

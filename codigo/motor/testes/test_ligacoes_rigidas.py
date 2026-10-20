@@ -278,6 +278,9 @@ class TestTiposEGeometria(unittest.TestCase):
                 self.assertLessEqual(len(c["rotulo"]), 28)
                 self.assertNotIn(c["nome"], ("b", "eh"))   # rótulos fixos de projeto.py
         json.dumps(lg.tipos_ligacao())
+        r = lg.verificar_ligacao("painel_alma_pilar", dict(perfil_viga="W460x89", perfil_pilar="W310x97"), {"M": 100})
+        self.assertEqual(r, lr.verificar("painel_alma_pilar", dict(perfil_viga="W460x89", perfil_pilar="W310x97"),
+                                         {"M": 100}))
 
     def test_entradas_invalidas(self):
         with self.assertRaises(ValueError) as cm:

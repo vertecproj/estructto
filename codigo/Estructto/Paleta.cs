@@ -111,7 +111,7 @@ namespace NovoFtool
             ["Vento"] = "nbr 6123 v0 s1 s2 s3 pressao", ["Sismo"] = "nbr 15421 terremoto zona sismica", ["Pavimentos"] = "andares diafragma cota",
             ["Combinações"] = "nbr 8681 elu els gama psi", ["Modos de vibração"] = "modal frequencia periodo massa", ["Estabilidade"] = "gama z gamaz deslocamento limite",
             ["Verificação de barras"] = "nbr 8800 lista todas taxa", ["Catálogo de perfis"] = "perfil propriedades w hp", ["Importar CYPE"] = "comparar cype ed3 validar",
-            ["Parafusos"] = "ligacao parafusada", ["Filete de solda"] = "ligacao soldada", ["Chapa simples"] = "shear tab ligacao", ["Ligação de tração"] = "area liquida tracionada"
+            ["Gerenciar ligações"] = "grupos ligacoes iguais pior dimensionar aplicar agrupar", ["Parafusos"] = "ligacao parafusada", ["Filete de solda"] = "ligacao soldada", ["Chapa simples"] = "shear tab ligacao", ["Ligação de tração"] = "area liquida tracionada"
         };
 
         void Reg(string icone, string texto, string atalho, string dica, Action acao)
@@ -136,6 +136,7 @@ namespace NovoFtool
         {
             if (extrasRegistrados) return;
             extrasRegistrados = true;
+            RegistrarExportar();   // Exportar.cs
             Action<string> run = c => Executar(c);
             Action<string> preenche = c => { Comando.Focus(); Comando.Text = c + " "; Comando.CaretIndex = Comando.Text.Length; };
             Extra("Selecionar tudo", "SELTODAS", "sel", "Ctrl+A", "todas barras", "Seleciona todas as barras.", () => run("SELTODAS"));

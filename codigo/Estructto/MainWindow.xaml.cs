@@ -1,4 +1,4 @@
-﻿// Janela principal: monta a faixa (Fluent.Ribbon), os bastidores (menu Arquivo), a barra de status e liga os eventos.
+// Janela principal: monta a faixa (Fluent.Ribbon), os bastidores (menu Arquivo), a barra de status e liga os eventos.
 // A logica fica nos arquivos parciais Acoes.cs (comandos e arquivos) e Paineis.cs (arvore, propriedades, tabelas, avisos).
 using System;
 using System.Collections.Generic;
@@ -50,7 +50,7 @@ namespace NovoFtool
             ArqInicio.Click += (s, e) => { MontarTelaInicial(); TelaInicial.Visibility = TelaInicial.Visibility == Visibility.Visible && M.Barras.Count > 0 ? Visibility.Collapsed : Visibility.Visible; };
             ArqNovo.Click += (s, e) => Novo();
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(EsconderAbaDocumento), System.Windows.Threading.DispatcherPriority.Loaded);
-            var selo = TemaPlant.Selo();
+            var selo = TemaPlant.Selo(24);
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => TemaPlant.AjustarFaixa(this, selo)), System.Windows.Threading.DispatcherPriority.Loaded);
             Faixa.SelectedTabChanged += (s, e) => Dispatcher.BeginInvoke(new Action(() => TemaPlant.AjustarFaixa(Faixa, null)), System.Windows.Threading.DispatcherPriority.Loaded);
             TemaPlant.AplicarDock(Docas);
@@ -358,6 +358,7 @@ namespace NovoFtool
             MontarEdicao3D(abaModelo.Groups.First(g => (string)g.Header == "Modificar"));   // só no modelo espacial (EdicaoEspacial.cs)
             abaModelo.ToolTip = "Gerar e desenhar a estrutura, modificar, apoios e rótulas, seções e materiais, barras contínuas.";
             MontarDesenho3D();   // Desenhar 3D (modelo espacial), Vista3D.cs
+            MontarTrelicas();    // Treliças e contraventamentos (Modelo › Gerar + paleta), JanelaTrelicas.cs
 
             // ACOES (antes "Cargas"): casos de carga (inseridos por MontarCasosNaFaixa), cargas no no e na barra, peso proprio
             cFx = Campo("Fx (kN)", "0", "Positivo para a direita."); cFy = Campo("Fy (kN)", "0", "Positivo para cima. Gravidade = negativo."); cMz = Campo("Mz (kN·m)", "0", "Positivo anti-horário.");
@@ -413,6 +414,8 @@ namespace NovoFtool
             var abaLigacoes = Aba("Ligações e bases", "L",
                 Grupo("Bases",
                     BotaoFerramenta("placa", "Placa de base", Ferramenta.Placa, "Placa de base com chumbadores no pé do pilar (nó onde chega uma só barra). Com um nó selecionado, abre a verificação da placa dele.")),
+                Grupo("Grupos",
+                    Botao("unir", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Modelo 3D: identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
                 Grupo("Ligações",
                     Botao("parafuso", "Parafusos", () => AbrirLigacaoTipo("parafuso"), "Ligação parafusada: cisalhamento, pressão de contato e tração nos parafusos (NBR 8800, motor Python)."),
                     Botao("solda", "Filete de solda", () => AbrirLigacaoTipo("solda_filete"), "Solda de filete: resistência do metal de solda e do metal-base (NBR 8800, motor Python)."),
@@ -433,7 +436,7 @@ namespace NovoFtool
             // VISTA
             tgReac = Alternar("reac", "Reações", v => { Vista.MostrarReacoes = v; Vista.InvalidateVisual(); }, "Mostra as reações de apoio.", true);
             tgValores = Alternar("valores", "Valores", v => { Vista.MostrarValores = v; Vista.InvalidateVisual(); }, "Escreve os valores nos diagramas.", true);
-            tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); }, "Mostra as cargas no desenho.", true);
+            tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); if (vista3D != null) { vista3D.MostrarCargas = v; vista3D.Reconstruir(); } }, "Mostra as cargas no desenho (2D e Vista 3D).", true);
             tgNomes = Alternar("nomes", "Nomes", v => { Vista.MostrarNomes = v; Vista.InvalidateVisual(); }, "Escreve perfil e comprimento ao lado das barras.", true);
             tgValores.IsChecked = true; tgCargas.IsChecked = true; tgReac.IsChecked = true; tgNomes.IsChecked = true;   // tudo visivel por padrao
             cGrade = Campo("Passo da grade (m)", "0,5", "Espaçamento da grade de desenho.", 50);
@@ -598,6 +601,7 @@ namespace NovoFtool
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Importar .ftl do Ftool...", null, ImportarDialogo, "Importa a geometria, seções, materiais e casos de carga de um arquivo .ftl do Ftool original."));
             BsAbas.Items.Add(BotaoBs("Importar/comparar CYPE...", null, () => ComandosAnalise.AbrirCype(this), "Importa um modelo do CYPE 3D (.ed3) ou compara os resultados com os do CYPE (motor Python)."));
+            BsAbas.Items.Add(TabExportar());   // Exportar.cs: DWG, DXF, STEP
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Ajuda e atalhos", "F1", MostrarAjuda, "Abre a janela de ajuda com o passo a passo, convenções de sinais e lista de atalhos."));
             BsAbas.Items.Add(BotaoBs("Sair", "Alt+F4", Close, "Fecha o programa (pergunta antes caso existam alterações não salvas)."));
@@ -769,7 +773,7 @@ namespace NovoFtool
         {
             Bastidor.Background = TemaPlant.B(TemaPlant.Titulo);
             var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            sp.Children.Add(new Image { Source = TemaPlant.Selo(), Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center });
+            sp.Children.Add(new Image { Source = TemaPlant.Selo(24), Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center });
             sp.Children.Add(new TextBlock { Text = " ▾", Foreground = TemaPlant.B(TemaPlant.Texto), FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
             return sp;
         }

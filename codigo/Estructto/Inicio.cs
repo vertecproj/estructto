@@ -194,7 +194,7 @@ namespace NovoFtool
             if (!comp)
             {
                 var cab = new DockPanel { Margin = new Thickness(0, 0, 0, 14) };
-                var logo = new Image { Source = TemaPlant.Selo(), Width = 36, Height = 36, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+                var logo = new Image { Source = TemaPlant.Selo(32), Width = 32, Height = 32, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
                 DockPanel.SetDock(logo, Dock.Left); cab.Children.Add(logo);
                 var tit = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
                 tit.Children.Add(new TextBlock { Text = "Estructto", FontSize = 24, FontWeight = FontWeights.Light, Foreground = TemaPlant.BTexto1 });

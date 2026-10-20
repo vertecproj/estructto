@@ -383,6 +383,13 @@ namespace NovoFtool
             tSub.Margin = new Thickness(0, 2, 0, 0);
             Dica(tSub, sub + (r.TemEsforcos ? "\nN, V e M no pé do pilar, nos eixos da placa (N > 0 = tração nas fixações)." : ""));
             txt.Children.Add(tSub);
+            // Nucleo.cs é o método legado (pivô na borda, sem bloco de compressão, n global).
+            // Mantido para bater com a planilha; ver docs/v3/PLACA-BASE-V2.md.
+            var tLeg = Tx("Método legado (pivô na borda) — use o motor Python para o método NBR com bloco de compressão", 11.5, TemaPlant.BAlerta, FontWeights.SemiBold);
+            tLeg.TextWrapping = TextWrapping.Wrap;
+            tLeg.Margin = new Thickness(0, 3, 0, 0);
+            Dica(tLeg, "Este cálculo apoia a placa na borda e aplica o coeficiente global n. Ele subestima a tração nos chumbadores sob momento. O motor Python (prossen_estrutural.aco.placa_base) usa NBR 8800 6.6.5, bloco retangular, chapa CBCA e ACI 318 cap. 17 com esforços de cálculo.");
+            txt.Children.Add(tLeg);
             dp.Children.Add(txt);
             cabecalho.Child = dp;
         }

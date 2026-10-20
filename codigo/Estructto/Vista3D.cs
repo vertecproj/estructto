@@ -95,10 +95,20 @@ namespace NovoFtool
         }
     }
 
+    // Carga do caso ativo (Ações › Caso ativo), em eixos globais. Quem monta o Modelo3D já filtra pelo caso.
+    // Nodal: No + F (kN). Pontual: Barra + T (0..1 de ni a nj) + F (kN). Distribuída: Barra + F (q em ni) e F2 (q em nj), kN/m.
+    public sealed class Carga3D
+    {
+        public int No, Barra; public double T; public Vector3D F, F2; public bool Distribuida;
+    }
+
     public sealed class Modelo3D
     {
         public List<No3D> Nos = new List<No3D>();
         public List<Barra3D> Barras = new List<Barra3D>();
+        public List<Carga3D> Cargas = new List<Carga3D>();
+        // Barras fora do plano/nível isolado: linhas claras sem picking nem atração (PlanosTrabalho.cs › FiltrarPlano).
+        public List<(Point3D A, Point3D B)> Fantasmas = new List<(Point3D, Point3D)>();
 
         // Eixo local y da barra: a vertical global projetada no plano normal à barra (barra vertical: -X·sinal),
         // girado de rot graus em torno da barra. É o lado para onde os diagramas são desenhados.
@@ -193,6 +203,8 @@ namespace NovoFtool
         Modelo3D mod = new Modelo3D();
         public Diagrama3D Diagrama;
         public bool MostrarAproveitamento, MostrarDeformada, MostrarLegenda = true;   // legenda própria (a janela principal já tem a do HUD)
+        public bool MostrarCargas = true;        // Vista › Mostrar › Cargas (o mesmo botão do 2D)
+        public double EscalaCargas = 1;
         public double EscalaDeformada = 1, EscalaDiagrama = 1;
         public object Selecionado;
         public bool Realista;                    // perfis reais, materiais, sombra e arestas (Config.Realista3D)
@@ -266,6 +278,7 @@ namespace NovoFtool
 
         public void Carregar(Modelo3D m, bool enquadrar)
         {
+            fantasmasNovos = (m?.Fantasmas.Count ?? 0) > 0 && mod.Fantasmas.Count == 0;
             mod = m ?? new Modelo3D();
             formas.Clear();   // as seções podem ter mudado
             nosPorId = new Dictionary<int, No3D>();
@@ -280,6 +293,7 @@ namespace NovoFtool
         }
 
         Dictionary<int, No3D> nosPorId = new Dictionary<int, No3D>();
+        bool fantasmasNovos;
         No3D NoPorId(int id) { return nosPorId.TryGetValue(id, out No3D n) ? n : null; }
         static Point3D P(No3D n) { return new Point3D(n.X, n.Y, n.Z); }
 
@@ -483,8 +497,81 @@ namespace NovoFtool
                     }
             }
 
+            if (MostrarCargas && mod.Cargas.Count > 0) DesenharCargas(g);
+
+            // fantasmas (fora de `mapa` e de mod.Nos: o picking, a seleção e a atração não os veem); entram com fade
+            if (mod.Fantasmas.Count > 0)
+            {
+                var mg = new MeshGeometry3D();
+                foreach (var (a, b) in mod.Fantasmas) Prisma(mg, a, b, h * 0.3);
+                Color cf = TemaPlant.BTexto3.Color;
+                var br = new SolidColorBrush(Color.FromArgb(0x50, cf.R, cf.G, cf.B));
+                var mat = new MaterialGroup(); mat.Children.Add(new DiffuseMaterial(Brushes.Transparent)); mat.Children.Add(new EmissiveMaterial(br));
+                g.Children.Add(Geo(mg, mat, true));
+                if (fantasmasNovos) { fantasmasNovos = false; Anim.Valor(br, Brush.OpacityProperty, 0, 1, Anim.Espacial); }
+            }
+
             cena.Content = g;
             sobre.InvalidateVisual();
+        }
+
+        // Setas das cargas (cor de carga do TemaPlant, fora do picking). A ponta toca o ponto de aplicação; o comprimento é
+        // proporcional ao módulo, com escala própria: a maior força mede 11% do tamanho do modelo e a maior q 8% (vezes EscalaCargas).
+        // Distribuída: "pente" de setas ao longo da barra com altura linear de q a q2 e a linha das caudas.
+        // Realista: a ponta fica na face do perfil (meia largura da seção para fora), não no eixo escondido dentro dele.
+        void DesenharCargas(Model3DGroup g)
+        {
+            double fmax = mod.Cargas.Where(c => !c.Distribuida).Select(c => c.F.Length).DefaultIfEmpty(0).Max();
+            double qmax = mod.Cargas.Where(c => c.Distribuida).Select(c => Math.Max(c.F.Length, c.F2.Length)).DefaultIfEmpty(0).Max();
+            double lf = 0.22 * raio * EscalaCargas, lq = 0.16 * raio * EscalaCargas, t = raio * 0.0022, hc = raio * 0.011;
+            var m = new MeshGeometry3D();
+            var barras = mod.Barras.ToDictionary(b => b.Id);
+            void Seta(Point3D ponta, Vector3D v, double len, double folga)
+            {
+                if (len < 1e-9 || v.Length < 1e-12) return;
+                v.Normalize();
+                ponta -= v * folga;
+                double cab = Math.Min(hc * 2.6, len * 0.5);
+                Point3D baseCab = ponta - v * cab;
+                Prisma(m, ponta - v * len, baseCab, t);
+                Vector3D u = Vector3D.CrossProduct(v, Math.Abs(v.Z) > 0.9 ? new Vector3D(1, 0, 0) : new Vector3D(0, 0, 1)); u.Normalize();
+                Vector3D w = Vector3D.CrossProduct(v, u);
+                double r = Math.Min(hc, cab * 0.45);
+                Point3D[] q = { baseCab + (u + w) * r, baseCab + (w - u) * r, baseCab + (-u - w) * r, baseCab + (u - w) * r };
+                for (int i = 0; i < 4; i++) Tri(m, ponta, q[(i + 1) % 4], q[i]);
+                Quad(m, q[0], q[1], q[2], q[3]);
+            }
+            double Folga(Barra3D b) => Realista ? FormaDe(b.Secao, raio * 0.012).Larg / 2 : 0;
+            foreach (Carga3D c in mod.Cargas)
+            {
+                if (!c.Distribuida && c.Barra == 0)
+                {
+                    No3D n = NoPorId(c.No); if (n == null || fmax < 1e-12) continue;
+                    Seta(P(n), c.F, c.F.Length / fmax * lf, 0);
+                    continue;
+                }
+                if (!barras.TryGetValue(c.Barra, out Barra3D b)) continue;
+                No3D na = NoPorId(b.Ni), nc = NoPorId(b.Nj); if (na == null || nc == null) continue;
+                Vector3D e = P(nc) - P(na);
+                if (!c.Distribuida) { if (fmax > 1e-12) Seta(P(na) + e * c.T, c.F, c.F.Length / fmax * lf, Folga(b)); continue; }
+                if (qmax < 1e-12) continue;
+                int k = Math.Max(4, Math.Min(16, (int)Math.Round(e.Length / (raio * 0.07))));
+                Point3D? cauda = null;
+                for (int i = 0; i <= k; i++)
+                {
+                    double s = (double)i / k;
+                    Vector3D q = c.F + (c.F2 - c.F) * s;
+                    double len = q.Length / qmax * lq;
+                    Point3D p = P(na) + e * s;
+                    if (len < 1e-9) { cauda = p; continue; }
+                    Vector3D dir = q / q.Length; double f = Folga(b);
+                    Seta(p, q, len, f);
+                    Point3D tc = p - dir * (len + f);
+                    if (cauda != null) Prisma(m, cauda.Value, tc, t * 0.8);
+                    cauda = tc;
+                }
+            }
+            if (m.Positions.Count > 0) g.Children.Add(Geo(m, Mat(TemaPlant.CorCarga, true), true));   // fora de `mapa`: o picking passa por elas
         }
 
         // ================= modo Realista =================
@@ -967,7 +1054,7 @@ namespace NovoFtool
             if (direito && inicio != null) { inicio = null; DinLimpar(); AtualizarCursor(); }   // botão direito termina a corrente (igual ao 2D)
             if (!clique) return;
             if (Desenhando) _ = ClicarTela(p);
-            else Escolher(Acertar(p));
+            else SelecionarClique(p, Keyboard.Modifiers);   // Navegar também escolhe: a seleção (Selecao) é uma só para a edição
         }
 
         public object Acertar(Point p)
@@ -1044,7 +1131,7 @@ namespace NovoFtool
         public event Action SelecaoMudou;
         public Selecao3D Selecao { get; } = new Selecao3D();
         public Func<IList<(Point3D A, Point3D B)>, Task> CriarBarras;   // null = vista só de leitura (modelo 2D)
-        public Func<double, double> AlturaAndar;                         // z da base -> altura do pilar (null = 3 m)
+        public Func<double, double> AlturaAndar;                         // z clicado -> altura do pilar (null = 3 m; < 0 = para baixo)
         public double PassoGrade = 1;                                    // m
         public bool Orto;                                                // F8; Shift força na hora
 
@@ -1179,7 +1266,7 @@ namespace NovoFtool
         {
             mouseTela = tela; mouseDentro = true;
             if (ferr == Ferramenta3D.Selecionar) { SelecionarClique(tela, mods); return; }
-            if (ferr == Ferramenta3D.Navegar) { Escolher(Acertar(tela)); return; }
+            if (ferr == Ferramenta3D.Navegar) { SelecionarClique(tela, mods); return; }
             AtualizarCursor();
             await Ponto(PontoFinal());
         }
@@ -1194,7 +1281,9 @@ namespace NovoFtool
             if (ferr == Ferramenta3D.Pilar)
             {
                 double h = AlturaAndar?.Invoke(p.Value.Z) ?? 3;
-                segs.Add((p.Value, p.Value + new Vector3D(0, 0, h > 1e-6 ? h : 3)));
+                if (Math.Abs(h) < 1e-6) h = 3;
+                Point3D q = p.Value + new Vector3D(0, 0, h);
+                segs.Add(h > 0 ? (p.Value, q) : (q, p.Value));   // ni embaixo
             }
             else if (inicio == null) { inicio = p; AtualizarCursor(); return; }
             else
@@ -1355,7 +1444,7 @@ namespace NovoFtool
                     double h = AlturaAndar?.Invoke(pf.Value.Z) ?? 3;
                     Point t = Tela(pf.Value + new Vector3D(0, 0, h));
                     dc.DrawLine(PElastico, s, t);
-                    var ft = Ft("h = " + Num.Fmt(h, 2) + " m", TemaPlant.BTexto1, 11);
+                    var ft = Ft("h = " + Num.Fmt(Math.Abs(h), 2) + " m" + (h < 0 ? " ↓" : ""), TemaPlant.BTexto1, 11);
                     dc.DrawRoundedRectangle(TemaPlant.BCaixaHud, null, new Rect(t.X + 10, t.Y - 4, ft.Width + 10, ft.Height + 4), 4, 4);
                     dc.DrawText(ft, new Point(t.X + 15, t.Y - 2));
                 }
@@ -1378,7 +1467,7 @@ namespace NovoFtool
             string et = Aviso;
             if (et == null && Desenhando)
                 et = (ferr == Ferramenta3D.Barra ? (inicio == null ? "BARRA — clique o 1º ponto" : "BARRA — próximo ponto (Esc ou botão direito termina)")
-                                                 : "PILAR — clique a base (h do pavimento)")
+                                                 : "PILAR — clique o ponto (até o nível de baixo; na base, até o de cima)")
                      + " · plano " + plano.Nome + (Orto ? " · ORTO" : "") + " · digite x,y,z ou @dx,dy,dz";
             else if (et == null && ferr == Ferramenta3D.Selecionar)
                 et = Selecao.Count > 0 ? "SELECIONAR — " + Pl.N(Selecao.Nos.Count, "nó", "nós") + " · " + Pl.N(Selecao.Barras.Count, "barra", "barras") + " · Shift soma, Ctrl tira, Esc limpa"
@@ -1540,7 +1629,7 @@ namespace NovoFtool
             AtualizarFaixa3D();
             if (ligar && vista3D == null)
             {
-                vista3D = new Vista3D { Visibility = Visibility.Collapsed, MostrarLegenda = false, Realista = Config.Realista3D, Perfil = PerfilDaSecao };
+                vista3D = new Vista3D { Visibility = Visibility.Collapsed, MostrarLegenda = false, Realista = Config.Realista3D, Perfil = PerfilDaSecao, MostrarCargas = tgCargas?.IsChecked != false };
                 GridVista.Children.Insert(GridVista.Children.IndexOf(Vista) + 1, vista3D);   // acima do 2D, abaixo do HUD e avisos
                 vista3D.Escolheu += o =>
                 {
@@ -1587,7 +1676,7 @@ namespace NovoFtool
             {
                 (Ferramenta3D.Selecionar, "sel", "Selecionar", "Selecionar 3D", "Clique escolhe; arraste da esquerda p/ direita = janela, da direita p/ esquerda = cruzamento. Shift soma, Ctrl tira, Esc limpa.", "Esc"),
                 (Ferramenta3D.Barra, "barra", "Barra", "Barra 3D", "Clique os pontos em sequência no plano de trabalho (atrai nós, meios e grade; F8/Shift ortogonal). Digite o comprimento, Tab o ângulo, ou x,y,z / @dx,dy,dz. Esc ou botão direito termina.", null),
-                (Ferramenta3D.Pilar, "3d", "Pilar", "Pilar 3D", "Clique a base no plano de trabalho: cria a barra vertical de z até z + altura do pavimento (3 m sem pavimentos).", null),
+                (Ferramenta3D.Pilar, "3d", "Pilar", "Pilar 3D", "Clique o ponto no plano de trabalho: num nível com outro abaixo, o pilar desce até ele; no nível mais baixo, sobe até o próximo (3 m sem níveis).", null),
             })
             {
                 var b = new F.ToggleButton { Header = txt, LargeIcon = Icone(ic, 32), Icon = Icone(ic, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(nome, dica, atalho) };
@@ -1596,6 +1685,7 @@ namespace NovoFtool
                 Reg(ic, nome, atalho, dica, () => UsarFerramenta3D(f));
                 btnFerr3D[f] = b; grpDesenho3D.Items.Add(b);
             }
+            MontarSecaoDesenho3D();
             int i = grpDesenho2D != null ? abaModelo.Groups.IndexOf(grpDesenho2D) + 1 : 1;
             abaModelo.Groups.Insert(Math.Min(i, abaModelo.Groups.Count), grpDesenho3D);
             var gerar = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Gerar");
@@ -1642,24 +1732,88 @@ namespace NovoFtool
             if (d == null) return;
             try
             {
-                var ids = await d.DesenharBarras(segs);
+                var ids = await d.DesenharBarras(segs, SecaoDesenho3D(d), ApoioBase3D);
                 if (Esp == d) DepoisDeMudarEspacial(ids.Count == 1 ? "Barra " + ids[0] + " desenhada." : Pl.N(ids.Count, "barra desenhada", "barras desenhadas") + ".");
             }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
             AvisarHistorico(d);
         }
 
-        // Altura do pilar com base em z: até o próximo pavimento acima (0 conta como base); no topo, a do último andar; sem pavimentos, 3 m.
+        // Altura do pilar pelos níveis (Niveis.Lista: pavimentos + Térreo): clicado num nível com outro abaixo, desce até ele
+        // (< 0: o andar do nível ativo, o que a vista isolada mostra); senão sobe até o nível de cima; no topo sem nível, a do
+        // último andar; sem níveis, 3 m.
         double AlturaAndarEsp(double z)
         {
-            var pv = Esp?.Json?["pavimentos"];
-            IEnumerable<JsonNode> itens = pv is JsonObject o ? o.Select(kv => kv.Value) : pv as JsonArray ?? (IEnumerable<JsonNode>)new JsonNode[0];
-            var zs = new List<double> { 0 };
-            foreach (var p in itens) if (p?["z"] is JsonValue v && v.TryGetValue(out double zz)) zs.Add(zz);
-            zs = zs.Distinct().OrderBy(x => x).ToList();
-            double acima = zs.Where(x => x > z + 1e-6).DefaultIfEmpty(double.NaN).First();
-            if (!double.IsNaN(acima)) return acima - z;
-            return zs.Count >= 2 ? zs[zs.Count - 1] - zs[zs.Count - 2] : 3;
+            if (Esp == null) return 3;
+            var l = Niveis.Lista(Esp.Json);
+            double? abaixo = Niveis.Abaixo(l, z), acima = Niveis.Acima(l, z);
+            if (abaixo != null && l.Any(n => Math.Abs(n.Z - z) <= Niveis.Tol)) return abaixo.Value - z;
+            if (acima != null) return acima.Value - z;
+            return l.Count >= 2 ? l[^1].Z - l[^2].Z : 3;
+        }
+
+        // ---------- Desenhar 3D › Seção e Apoio na base ----------
+        F.ComboBox cbSecao3D; F.ToggleButton tgApoioBase3D;
+        string secao3D;                                  // escolhida no seletor (null = a da última barra)
+        bool montandoSecao3D;
+        const string DoCatalogo = "Do catálogo…";
+        internal bool ApoioBase3D { get => tgApoioBase3D?.IsChecked == true; set { if (tgApoioBase3D != null) tgApoioBase3D.IsChecked = value; } }
+
+        // Seção das barras novas: a do seletor, se ainda estiver no modelo; senão a da última barra (null = DesenharBarras decide).
+        string SecaoDesenho3D(DocumentoEspacial d) =>
+            secao3D != null && d.Json["secoes"]?[secao3D] != null ? secao3D : (string)(d.Json["barras"] as JsonObject)?.LastOrDefault().Value?["secao"];
+
+        void MontarSecaoDesenho3D()
+        {
+            cbSecao3D = new F.ComboBox { Header = "Seção", IsEditable = false, Width = 190,
+                ToolTip = Dica("Seção", "Seção das barras e pilares desenhados: as do modelo, ou um perfil do catálogo do motor (entra no modelo ao escolher).") };
+            cbSecao3D.DropDownOpened += (s, e) => ListarSecoes3D();
+            cbSecao3D.SelectionChanged += (s, e) =>
+            {
+                if (montandoSecao3D || !(cbSecao3D.SelectedItem is string v)) return;
+                if (v == DoCatalogo) { ListarSecoes3D(); _ = EscolherDoCatalogo3D(); return; }
+                secao3D = v;
+            };
+            tgApoioBase3D = new F.ToggleButton { Header = "Apoio na base", Icon = Icone("engaste", 16), LargeIcon = Icone("engaste", 32), Size = F.RibbonControlSize.Middle,
+                ToolTip = Dica("Apoio na base", "Nó novo desenhado no nível mais baixo nasce engastado (6 GL travados).") };
+            grpDesenho3D.Items.Add(cbSecao3D);
+            grpDesenho3D.Items.Add(tgApoioBase3D);
+        }
+
+        // Itens: seções do modelo + "Do catálogo…"; mostra a que vale agora.
+        internal void ListarSecoes3D()
+        {
+            if (cbSecao3D == null) return;
+            montandoSecao3D = true;
+            cbSecao3D.Items.Clear();
+            var d = Esp;
+            if (d != null) foreach (var kv in d.Json["secoes"] as JsonObject ?? new JsonObject()) cbSecao3D.Items.Add(kv.Key);
+            cbSecao3D.Items.Add(DoCatalogo);
+            string atual = d == null ? null : SecaoDesenho3D(d);
+            cbSecao3D.SelectedItem = atual != null && cbSecao3D.Items.Contains(atual) ? atual : null;
+            montandoSecao3D = false;
+        }
+
+        async Task EscolherDoCatalogo3D()
+        {
+            if (Esp == null) return;
+            JsonNode lista;
+            try { lista = await Motor.Get("/api/catalogo"); }
+            catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; return; }
+            var j = new JanelaCatalogo(lista, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome))) { Owner = this };
+            j.PerfilEscolhido += nome => _ = UsarSecao3D(nome);
+            j.Show();
+        }
+
+        // Escolhe a seção do desenho; perfil do catálogo fora do modelo entra pelo motor (POST /api/modelo/secao, um desfazer).
+        internal async Task UsarSecao3D(string nome)
+        {
+            var d = Esp;
+            if (d == null) return;
+            if (d.Json["secoes"]?[nome] == null) await Espacial(dd => dd.GarantirSecao(nome), "Seção " + nome + " do catálogo entrou no modelo.");
+            if (Esp?.Json["secoes"]?[nome] == null) return;
+            secao3D = nome;
+            ListarSecoes3D();
         }
     }
 
@@ -1669,17 +1823,21 @@ namespace NovoFtool
         public static Task<DocumentoEspacial> Vazio(string titulo) => Criar(() => Motor.Post("/api/modelo/novo", new JsonObject { ["nome"] = titulo }), titulo, null);
 
         // Barras desenhadas na Vista3D: um POST /api/modelo/lote (atômico, um passo de desfazer). Ponta a até 1 mm de um nó
-        // existente reaproveita o nó. Seção e material = os da última barra do modelo (igual ao painel); modelo sem seção ou
-        // material recebe W310x38.7 e A-572 GR.50 no mesmo lote. Devolve os ids das barras criadas.
-        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs) => Motor.Exclusivo(async () =>
+        // existente reaproveita o nó. Seção = a do seletor (Desenhar 3D › Seção, que já põe o perfil do catálogo no modelo; se
+        // faltar, entra no mesmo lote); sem seção, a primeira do modelo ou W310x38.7. Material = o da última barra
+        // (ou A-572 GR.50 no mesmo lote). apoioBase: nó novo na cota do nível mais baixo nasce engastado.
+        // Devolve os ids das barras criadas.
+        // ponytail: material não segue a seção (perfil de concreto do catálogo herda o aço da última barra); trocar em Propriedades em lote.
+        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs, string secao = null, bool apoioBase = false) => Motor.Exclusivo(async () =>
         {
             await Garantir();
             var nos = Json["nos"].AsObject();
             var itens = new JsonArray(); var novos = new List<(string Id, Point3D P)>();
             var ult = (Json["barras"] as JsonObject)?.LastOrDefault().Value;
-            string secao = (string)ult?["secao"] ?? (Json["secoes"] as JsonObject)?.Select(x => x.Key).FirstOrDefault();
+            secao ??= (Json["secoes"] as JsonObject)?.Select(x => x.Key).FirstOrDefault() ?? "W310x38.7";
             string material = (string)ult?["material"] ?? (Json["materiais"] as JsonObject)?.Select(x => x.Key).FirstOrDefault();
-            if (secao == null) { secao = "W310x38.7"; itens.Add(new JsonObject { ["tipo"] = "secao", ["dados"] = new JsonObject { ["perfil"] = secao } }); }
+            double zBase = Niveis.Lista(Json).Min(n => n.Z);
+            if (Json["secoes"]?[secao] == null) itens.Add(new JsonObject { ["tipo"] = "secao", ["dados"] = new JsonObject { ["perfil"] = secao } });
             if (material == null) { material = "A-572 GR.50"; itens.Add(new JsonObject { ["tipo"] = "material", ["dados"] = new JsonObject { ["aco"] = material } }); }
             int k = 0;
             string No(Point3D p)
@@ -1690,7 +1848,9 @@ namespace NovoFtool
                 foreach (var (id, q) in novos) if ((q - p).Length < 1e-3) return id;
                 string nid;
                 do nid = "n" + (nos.Count + ++k); while (nos.ContainsKey(nid));
-                itens.Add(new JsonObject { ["tipo"] = "no", ["dados"] = new JsonObject { ["id"] = nid, ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z } });
+                var no = new JsonObject { ["id"] = nid, ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z };
+                if (apoioBase && Math.Abs(p.Z - zBase) <= Niveis.Tol) no["apoio"] = new JsonArray(true, true, true, true, true, true);
+                itens.Add(new JsonObject { ["tipo"] = "no", ["dados"] = no });
                 novos.Add((nid, p));
                 return nid;
             }

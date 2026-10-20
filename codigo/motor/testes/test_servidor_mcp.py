@@ -30,13 +30,14 @@ QUARENTA = {
     "analise_caso", "analise_combinacao", "analise_modal", "projeto_calcular", "resultados_consultar",
     "verificacao_listar", "verificacao_barra", "estabilidade_consultar", "ligacao_tipos", "ligacao_verificar",
     "perfis_listar", "perfil_consultar", "materiais_listar", "normas_implementadas", "relatorio_gerar",
-    "modelo_importar_cype", "cype_comparar"}
+    "modelo_importar_cype", "cype_comparar",
+    "ligacoes_identificar", "ligacoes_grupos", "ligacoes_grupo_editar", "ligacoes_grupo_dimensionar"}
 SOMENTE_LEITURA = {
     "modelo_exemplos", "modelo_exportar_json", "modelo_resumo", "modelo_validar", "modelo_geometria",
     "elementos_listar", "combinacoes_listar", "analise_caso", "analise_combinacao", "analise_modal",
     "projeto_calcular", "resultados_consultar", "verificacao_listar", "verificacao_barra",
     "estabilidade_consultar", "ligacao_tipos", "ligacao_verificar", "perfis_listar", "perfil_consultar",
-    "materiais_listar", "normas_implementadas", "cype_comparar"}
+    "materiais_listar", "normas_implementadas", "cype_comparar", "ligacoes_grupos", "ligacoes_grupo_dimensionar"}
 # ESPEC §8 + modelo_abrir e modelo_importar_json (substituem o modelo atual: decisão conservadora, ver relatório)
 DESTRUTIVAS = {"modelo_novo", "modelo_abrir", "modelo_salvar", "modelo_abrir_exemplo", "modelo_importar_json",
                "elemento_remover", "relatorio_gerar", "modelo_importar_cype"}
@@ -93,7 +94,7 @@ class TestCatalogo(Base):
         async def cena(c):
             return (await c.list_tools()).tools
         tools = rodar(cena)
-        self.assertEqual(len(tools), 42)
+        self.assertEqual(len(tools), 46)
         self.assertEqual({t.name for t in tools}, QUARENTA)
 
     def test_descricao_anotacoes_e_parametros_documentados(self):
@@ -345,6 +346,10 @@ class TestTodasAsFerramentas(Base):
             r["calc"] = await ok("projeto_calcular", {"n_pontos": 13})
             r["calc_barras"] = await ok("projeto_calcular", {"barras": ["b4"], "pdelta": True})
             r["calc"] = await ok("projeto_calcular")
+            r["lig_id"] = await ok("ligacoes_identificar")
+            r["lig_gr"] = await ok("ligacoes_grupos")
+            await ok("ligacoes_grupo_editar", {"acao": "renomear", "grupo": r["lig_gr"]["itens"][0]["id"], "nome": "Bases"})
+            r["lig_dim"] = await ok("ligacoes_grupo_dimensionar", {"grupo": r["lig_gr"]["itens"][0]["id"]})
             r["res_env"] = await ok("resultados_consultar", {"alvo": "esforcos", "ids": ["b4"]})
             r["res_comb"] = await ok("resultados_consultar", {"alvo": "deslocamentos", "ids": ["n5"], "combinacao": nome_comb})
             r["ver"] = await ok("verificacao_listar", {"tipo": "aco", "taxa_min": 0.0})

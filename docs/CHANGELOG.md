@@ -2,6 +2,36 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Exportar o modelo 3D para DWG, DXF e STEP (branch wt-export)
+
+- Arquivo › Exportar (DWG…, DXF…, STEP…) e paleta (Ctrl+K), para o modelo espacial e o 2D. DWG/DXF AC1032 em mm com ACadSharp 3.8.0:
+  uma POLYFACE MESH por barra na camada da seção (`ACO_`/`CONCRETO_`) + linhas na camada `ANALITICO`. STEP AP214 escrito à mão:
+  um PRODUCT por barra (FACETED_BREP de faces planas) numa montagem. Perfis = os do modo Realista (cópia em `GeometriaPerfis.cs`).
+- Testes `Estructto.exe --testes-exportar <pasta>` (38 asserções, guincho + edifício). Detalhe: [docs/v3/EXPORTAR.md](v3/EXPORTAR.md).
+## 20/10/2026 — Modelagem 3D ligada: seleção, planos, cargas e seção (branch wt-ligar3d)
+
+- Edição em lote usa a seleção múltipla da Vista3D (janela, cruzamento, Shift/Ctrl, árvore); nada escolhido = modelo inteiro.
+- Ativar nível/elevação troca o plano de desenho (`Vista3D.PlanoAtual`); fantasmas desenhados pela Vista3D, fora do picking e da
+  atração; Pilar pela altura dos níveis (desce ao nível de baixo).
+- Vista3D desenha as cargas do caso ativo (setas nodais/pontuais, pente q→q2), analítico e Realista, Vista › Mostrar › Cargas.
+- Desenhar 3D › Seção ▾ (modelo + Do catálogo…) e Apoio na base. Captura de ponta a ponta `49-fluxo3d-*`.
+  Detalhe em [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#fluxo-de-modelagem-3d-captura-de-ponta-a-ponta).
+## 20/10/2026 — Treliças, contraventamentos e terças (branch wt-trelicas)
+
+- Motor: tipos `trelica_plana` (Pratt, Howe, Warren, Warren-V, K, Fink; banzos paralelos, uma água, duas águas, arco), `trelicas_serie`,
+  `contraventamento` (X, diagonal, K, V, Λ, mão-francesa; entre 2 barras ou 4 nós, divide barras) e `tercas` (com tirantes) no mesmo
+  `gerar_estrutura` (API, MCP). Rota nova `POST /api/gerar-estrutura/previa` (cópia do modelo, não muda nada).
+- WPF: galeria **Treliças e contraventamentos** (Modelo › Gerar, Ctrl+K) com miniaturas, prévia ao vivo e Inserir (um Ctrl+Z).
+  Detalhe em [v3/TRELICAS.md](v3/TRELICAS.md). Capturas `50-*`.
+- Pendente: barra só de tração no motor; treliça espacial multiplanar; mísulas no galpão.
+## 20/10/2026 — Grupos de ligações: a pior do grupo dimensiona todas (branch wt-grupos)
+
+- Motor `aco/ligacoes_modelo.py`: identifica as ligações nos nós (base, viga–pilar mesa/alma, viga–viga, emenda, gusset, nó de
+  treliça), agrupa por assinatura, edições do usuário (renomear, travar, mover, dividir, unir, projeto) que sobrevivem à
+  re-identificação, dimensiona o grupo pela pior ligação em todas as combinações ELU. JSON: chave `ligacoes` (`versao_formato` 2 só com grupos).
+  Exposto em `projeto.py`, rotas `/api/ligacoes/...` e 4 ferramentas MCP. Interface: **Ligações e bases › Gerenciar ligações**
+  (`JanelaLigacoesGrupos.cs`), placa de base do grupo abre na JanelaPlaca com a pior base. Detalhe: [v3/LIGACOES-GRUPOS.md](v3/LIGACOES-GRUPOS.md). Capturas `49-*`.
+
 ## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
 
 - Modelo › Planos: **Nível ▾** (ativa e isola o andar em planta, resto em fantasma), **Elevação X/Y ▾**, **3D completo**, painel

@@ -4,7 +4,7 @@ Data: 20/10/2026. Contrato: `docs/v3/LIGACOES-CONTRATO.md`. Testes: `codigo/moto
 
 ## 1. Tipos registrados
 
-`TIPOS` segue o contrato (`nome`, `familia`, `liga`, `descricao`, `entradas`, `verificar`, `sugerir`). O registro em `ligacoes.tipos_ligacao()` é uma linha que acrescenta `ligacoes_rigidas.esquema()`, a versão JSON (sem funções) no formato antigo, com `rotulo`, `min`, `max` e `opcoes`.
+`TIPOS` segue o contrato (`nome`, `familia`, `liga`, `descricao`, `entradas`, `verificar`, `sugerir`). O registro é a inclusão de `"ligacoes_rigidas"` em `ligacoes._MODULOS_CONTRATO`; `tipos_ligacao()` lista os tipos e `verificar_ligacao()` despacha para `TIPOS[tipo]["verificar"]`. Texto longo de cada entrada fica em `ajuda`.
 
 | Tipo | Família | Liga | Resumo |
 |---|---|---|---|
@@ -152,9 +152,8 @@ Toda a geometria fica no referencial do contrato: x ao longo da barra, z na alma
 
 ## 5. Integração e pendências
 
-- `ligacoes.verificar_ligacao()` **ainda não despacha** para estes tipos. Eles aparecem em `tipos_ligacao()`, mas a verificação é por `ligacoes_rigidas.verificar(tipo, dados, esforcos)` ou por `TIPOS[tipo]["verificar"]`. O integrador deve rotear uma vez para os três módulos novos. O formato do resultado também difere: o contrato traz `taxa/ok/geometria`, o antigo traz `taxa_max/criterio`.
+- `verificar_ligacao()` devolve, para estes tipos, o resultado do contrato (`ok/taxa/verificacoes/geometria`), não o formato antigo (`taxa_max/criterio`).
 - `projeto.normas_implementadas()` não lista `aco.ligacoes_rigidas`. O módulo já expõe `COBERTURA`. O `COBERTURA` de `ligacoes.py` ainda diz que "ligações rígidas não estão implementadas".
-- Testes alterados para aceitar tipos novos: o conjunto exato virou subconjunto em `test_ligacoes.py`, `test_servidor_mcp.py`, `e2e/test_e2e_mcp.py` e `e2e/test_e2e_web.py`.
 - Falta implementar:
   - charneiras da mesa do pilar e da chapa estendida enrijecida (DG4 2ª ed., yield lines);
   - ligação por atrito;
