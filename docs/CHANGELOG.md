@@ -8,6 +8,11 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 - Animações (fase 8 adiantada para a casca atual): helper único `Anim.cs` (120/160 ms UI, 250–400 ms espacial, `CubicEase`, desliga com
   "efeitos de animação" do Windows e no modo `--capturas`). Aplicado em faixa, backstage, painéis, diálogos, tela inicial, HUD, Ctrl+K,
   dicas, aviso, diagramas da vista 2D, seleção e barra de status. Detalhe e uso em janelas novas: [ANIMACOES.md](ANIMACOES.md).
+- Faixa ligada às janelas do motor (`FaixaMotor.cs`): Modelo › Importar CYPE (também em Arquivo); Ações › Ações automáticas (Vento,
+  Sismo, Pavimentos, Combinações); Análise › Modal e estabilidade; Dimensionamento › Verificação de barras e Catálogo de perfis; Ligações
+  e bases › Ligações (Parafusos, Filete de solda, Chapa simples, Ligação de tração). Com Motor = Python, "Casos e combinações" e "Verificar
+  barra" abrem as janelas do motor. O modelo 2D vai ao motor antes de abrir (Estabilidade e Verificação calculam antes); erro do motor
+  vira toast. Paleta Ctrl+K e ajuda (F1) atualizadas; 11 ícones novos. Teste ao vivo: `Estructto.exe --teste-motor=saida.png arquivo`.
 
 - Ponte com o motor Python ([UNIFICACAO-MOTOR.md](UNIFICACAO-MOTOR.md)): `MotorModelo.cs` converte o modelo e lê resultados; opção Motor em
   Análise › Opções (Interno padrão; Python roda no F5 com progresso); `--conferir-motor` (análise confere a 10⁻¹¹ nos guinchos);

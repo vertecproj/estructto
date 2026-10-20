@@ -107,7 +107,11 @@ namespace NovoFtool
             ["Salvar"] = "gravar arquivo", ["Engaste"] = "apoio fixo travado", ["Fixo"] = "apoio rotulado segundo genero", ["Móvel"] = "apoio rolete primeiro genero",
             ["Dimensionar"] = "otimizar perfil escolher", ["Placa de base"] = "chumbador base pilar", ["Gerar estrutura"] = "assistente portico trelica galpao viga",
             ["Mapa de aproveitamento"] = "verificacao verificar mapa de calor cores norma passa heatmap", ["Dividir barra"] = "partir cortar", ["Mover"] = "deslocar move", ["Copiar"] = "duplicar copy",
-            ["Espelhar"] = "mirror simetria", ["Verificar barra"] = "comparar perfis alternativos", ["Tabelas"] = "nos barras dados"
+            ["Espelhar"] = "mirror simetria", ["Verificar barra"] = "comparar perfis alternativos", ["Tabelas"] = "nos barras dados",
+            ["Vento"] = "nbr 6123 v0 s1 s2 s3 pressao", ["Sismo"] = "nbr 15421 terremoto zona sismica", ["Pavimentos"] = "andares diafragma cota",
+            ["Combinações"] = "nbr 8681 elu els gama psi", ["Modos de vibração"] = "modal frequencia periodo massa", ["Estabilidade"] = "gama z gamaz deslocamento limite",
+            ["Verificação de barras"] = "nbr 8800 lista todas taxa", ["Catálogo de perfis"] = "perfil propriedades w hp", ["Importar CYPE"] = "comparar cype ed3 validar",
+            ["Parafusos"] = "ligacao parafusada", ["Filete de solda"] = "ligacao soldada", ["Chapa simples"] = "shear tab ligacao", ["Ligação de tração"] = "area liquida tracionada"
         };
 
         void Reg(string icone, string texto, string atalho, string dica, Action acao)
@@ -304,7 +308,7 @@ namespace NovoFtool
             MostrarDiagrama(Diagrama.Nenhum);
 
             ok(topo("calcr") == "Calcular", "busca difusa \"calcr\" acha: " + topo("calcr"));
-            ok(topo("verificacao") == "Mapa de aproveitamento", "sem acento \"verificacao\" acha: " + topo("verificacao"));
+            ok(topo("verificacao") == "Verificação de barras", "sem acento \"verificacao\" acha: " + topo("verificacao"));
             ok(topo("apagar") == "Apagar", "\"apagar\" acha: " + topo("apagar"));
 
             int idNo = M.NoPorId(3) != null ? 3 : (M.Nos.Count > 0 ? M.Nos[0].Id : -1);

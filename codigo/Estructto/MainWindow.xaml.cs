@@ -80,6 +80,8 @@ namespace NovoFtool
             string arqInicial = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--") && File.Exists(a));
             if (arqInicial != null)
                 Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => Abrir(arqInicial)), System.Windows.Threading.DispatcherPriority.Loaded);
+            foreach (string a in args)   // --teste-motor=<saida.png>: Verificação de barras ao vivo pelo botão da faixa (FaixaMotor.cs)
+                if (a.StartsWith("--teste-motor=")) Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => TesteMotor(a.Substring(14).Trim('"'))), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             foreach (string a in args)
                 if (a == "--tela2")
                 {
@@ -325,7 +327,8 @@ namespace NovoFtool
             abaModelo = Aba("Modelo", "M",
                 Grupo("Gerar",
                     Botao("assist", "Gerar estrutura", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas."),
-                    Botao("3d", "Gerar 3D", () => AbrirGerador3D(), "Modelo espacial no motor Python: edifício, galpão ou pórtico 3D (abre numa aba nova, em 3D).")),
+                    Botao("3d", "Gerar 3D", () => AbrirGerador3D(), "Modelo espacial no motor Python: edifício, galpão ou pórtico 3D (abre numa aba nova, em 3D)."),
+                    Botao("cype", "Importar CYPE", () => ComandosAnalise.AbrirCype(this), "Importa um modelo do CYPE 3D (.ed3) ou compara os resultados do Estructto com os do CYPE (motor Python).")),
                 Grupo("Desenhar",
                     BotaoFerramenta("sel", "Selecionar", Ferramenta.Selecionar, "Clique num nó ou barra. Arraste da esquerda p/ direita = janela (só o que está dentro); da direita p/ esquerda = cruzamento (o que tocar). Shift/Ctrl soma.", "Esc"),
                     BotaoFerramenta("barra", "Barra", Ferramenta.Barra, "Clique os pontos em sequência. Digite um número para o comprimento exato na direção do mouse, ou x,y  @dx,dy  @L<ângulo. Botão direito ou Esc termina.", "B + Enter"),
@@ -363,13 +366,21 @@ namespace NovoFtool
                     BotaoFerramenta("cargano", "Aplicar no nó", Ferramenta.CargaNo, "Aplica Fx, Fy e Mz (substitui a carga existente). Com nós selecionados aplica neles; senão clique nos nós.")),
                 Grupo("Carga distribuída", cQx, cQy, cQi, cQf,
                     BotaoFerramenta("cargadist", "Aplicar na barra", Ferramenta.CargaBarra, "Aplica as cargas distribuídas (substitui as existentes). Com barras selecionadas aplica nelas; senão clique nas barras.")),
-                Grupo("Outras", tgPeso, Botao("limpar", "Limpar cargas", LimparCargas, "Remove as cargas dos itens selecionados, ou de todo o modelo se nada estiver selecionado.", null, true)));
-            abaAcoes.ToolTip = "Casos de carga e combinações, forças e momentos nos nós, cargas distribuídas nas barras e peso próprio.";
+                Grupo("Outras", tgPeso, Botao("limpar", "Limpar cargas", LimparCargas, "Remove as cargas dos itens selecionados, ou de todo o modelo se nada estiver selecionado.", null, true)),
+                Grupo("Ações automáticas",
+                    Botao("vento", "Vento", () => ComMotor(false, ComandosAcoes.AbrirVento), "Vento estático pela NBR 6123 (V0, S1, S2, S3, coeficientes) e geração das forças por pavimento (motor Python).", null, true),
+                    Botao("sismo", "Sismo", () => ComMotor(false, ComandosAcoes.AbrirSismo), "Forças sísmicas horizontais equivalentes pela NBR 15421 (zona, classe do terreno, categoria de utilização) (motor Python).", null, true),
+                    Botao("pavimentos", "Pavimentos", () => ComMotor(false, ComandosAcoes.AbrirPavimentos), "Cotas dos pavimentos e diafragma rígido, usados pelo vento, sismo e deslocamentos entre pavimentos (motor Python).", null, true),
+                    Botao("combinacoes", "Combinações", () => ComMotor(false, ComandosAcoes.AbrirCombinacoes), "Uso da edificação e combinações ELU/ELS geradas pela NBR 8681 com γ e ψ (motor Python).")));
+            abaAcoes.ToolTip = "Casos de carga, forças e momentos nos nós, cargas distribuídas, peso próprio, vento, sismo, pavimentos e combinações.";
 
             // ANALISE: resultado mostrado (inserido por MontarCasosNaFaixa), opcoes e diagramas
             tgTimo = Alternar("eixo", "Deformação por cortante", v => { M.Timoshenko = v; Confirmar("Timoshenko " + (v ? "ligado" : "desligado") + "."); }, "Viga de Timoshenko (considera a deformação por cortante). Desligado = Euler-Bernoulli.");
             abaAnalise = Aba("Análise", "N",
                 Grupo("Opções", tgTimo, CriarCbMotor()),
+                Grupo("Modal e estabilidade",
+                    Botao("modal", "Modos de vibração", () => ComMotor(false, ComandosAnalise.AbrirModal), "Análise modal: frequências, períodos e massa participante dos primeiros modos (motor Python)."),
+                    Botao("estabilidade", "Estabilidade", () => ComMotor(true, ComandosAnalise.AbrirEstabilidade), "γz e deslocamentos-limite (NBR 6118/8800). Calcula o modelo no motor Python antes de abrir.")),
                 Grupo("Diagramas",
                     BotaoDiagrama("def", "Deformada", Diagrama.Deformada, "Configuração deformada (ampliada). Passe o mouse para ler os deslocamentos.", "D + Enter"),
                     BotaoDiagrama("normal", "Normal", Diagrama.Normal, "Esforço normal N (kN). Positivo = tração.", "N + Enter"),
@@ -377,7 +388,7 @@ namespace NovoFtool
                     BotaoDiagrama("momento", "Momento", Diagrama.Momento, "Momento fletor M (kN·m), desenhado do lado tracionado.", "M + Enter"),
                     Botao("mais", "Ampliar", () => Escala(1.4), "Aumenta a escala do diagrama ou da deformada.", "+", true),
                     Botao("menos", "Reduzir", () => Escala(1 / 1.4), "Diminui a escala do diagrama ou da deformada.", "-", true)));
-            abaAnalise.ToolTip = "Resultado mostrado (caso, combinação ou envoltória), opções do modelo de análise e diagramas de esforços e deformada.";
+            abaAnalise.ToolTip = "Resultado mostrado (caso, combinação ou envoltória), opções e motor de análise, modos de vibração, estabilidade e diagramas.";
 
             // DIMENSIONAMENTO: verificar, otimizar e criterios (o "n" global sai quando o motor Python entrar — REVISAO-TELAS 3.5)
             cSeg = Campo("Segurança", "2", "Coeficiente de segurança mínimo exigido nas verificações de barra e placa.", 48);
@@ -386,19 +397,26 @@ namespace NovoFtool
             cSeg.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); }; cFlecha.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); };
             abaDimens = Aba("Dimensionamento", "D",
                 Grupo("Verificar",
+                    Botao("veriflista", "Verificação de barras", () => ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras), "Lista de todas as barras com a taxa, o critério determinante e o item da NBR 8800. Calcula o modelo no motor Python antes de abrir."),
                     (tgCalor = BotaoCalor()),
-                    Botao("comparar", "Verificar barra", () => AbrirVerificacao(null), "Abre a verificação da barra selecionada com a lista de perfis da mesma família.", "COMPARAR", true)),
+                    Botao("comparar", "Verificar barra", () => VerificarBarraConforme(null), "Abre a verificação da barra selecionada com a lista de perfis da mesma família.", "COMPARAR", true)),
                 Grupo("Otimizar",
-                    Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Troca cada barra pelo perfil mais leve da mesma família que passa na verificação (considera a envoltória). Recalcula e repete até estabilizar. Ctrl+Z desfaz.", "DIMENSIONAR")),
+                    Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Troca cada barra pelo perfil mais leve da mesma família que passa na verificação (considera a envoltória). Recalcula e repete até estabilizar. Ctrl+Z desfaz.", "DIMENSIONAR"),
+                    Botao("catalogo", "Catálogo de perfis", () => ComandosAnalise.AbrirCatalogo(this), "Perfis do catálogo do motor com todas as propriedades geométricas (A, I, W, Z, r, J, Cw).")),
                 Grupo("Critérios", cSeg, cFlecha));
-            abaDimens.ToolTip = "Mapa de aproveitamento, verificação de cada barra, perfil mais leve que passa e critérios de segurança e flecha.";
+            abaDimens.ToolTip = "Verificação de todas as barras, mapa de aproveitamento, verificação de cada barra, perfil mais leve, catálogo e critérios.";
 
             // LIGACOES E BASES
             var abaLigacoes = Aba("Ligações e bases", "L",
                 Grupo("Bases",
                     BotaoFerramenta("placa", "Placa de base", Ferramenta.Placa, "Placa de base com chumbadores no pé do pilar (nó onde chega uma só barra). Com um nó selecionado, abre a verificação da placa dele.")),
+                Grupo("Ligações",
+                    Botao("parafuso", "Parafusos", () => AbrirLigacaoTipo("parafuso"), "Ligação parafusada: cisalhamento, pressão de contato e tração nos parafusos (NBR 8800, motor Python)."),
+                    Botao("solda", "Filete de solda", () => AbrirLigacaoTipo("solda_filete"), "Solda de filete: resistência do metal de solda e do metal-base (NBR 8800, motor Python)."),
+                    Botao("chapa", "Chapa simples", () => AbrirLigacaoTipo("chapa_simples"), "Ligação flexível com chapa simples (shear tab): parafusos, chapa e solda (NBR 8800, motor Python)."),
+                    Botao("tracao", "Ligação de tração", () => AbrirLigacaoTipo("ligacao_tracao"), "Ligação de barra tracionada: área líquida efetiva, ruptura e escoamento (NBR 8800, motor Python).")),
                 Grupo("Solda", CriarCbEletrodo()));
-            abaLigacoes.ToolTip = "Placas de base com chumbadores e eletrodo das soldas das barras.";
+            abaLigacoes.ToolTip = "Placas de base com chumbadores, ligações parafusadas e soldadas (NBR 8800) e eletrodo das soldas das barras.";
 
             // RELATORIO
             var abaRelatorio = Aba("Relatório", "R",
@@ -437,7 +455,7 @@ namespace NovoFtool
             ctxBarra = new F.RibbonTabItem { Header = "Barra", Group = CtxBarra, ToolTip = "Ações rápidas para as barras selecionadas." };
             tgEixoFraco = Alternar("eixo", "Perfil deitado", v => { foreach (Barra b in Vista.Sel.OfType<Barra>()) b.EixoFraco = v; SincronizarMembros(Vista.Sel.OfType<Barra>()); Confirmar(v ? "Perfil deitado: menor inércia (Iy) no plano." : "Perfil em pé: maior inércia (Ix) no plano."); }, "Ligado = perfil deitado: a menor inércia (Iy) fica no plano do pórtico. Desligado = em pé (Ix no plano). Fora do plano vale o outro eixo.");
             ctxBarra.Groups.Add(Grupo("Verificação",
-                Botao("comparar", "Verificar barra", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), "Abre a verificação detalhada da barra selecionada e compara perfis alternativos da família."),
+                Botao("comparar", "Verificar barra", () => VerificarBarraConforme(Vista.Sel.OfType<Barra>().FirstOrDefault()), "Abre a verificação detalhada da barra selecionada e compara perfis alternativos da família."),
                 Botao("dimens", "Dimensionar", () => DimensionarPerfis(true), "Perfil mais leve da família que passa, só nas barras selecionadas.", "DIMSEL", true), tgEixoFraco));
             ctxBarra.Groups.Add(Grupo("Ligações",
                 Botao("rotulab", "Rótula no início", () => RotularSel(true, false), "Liga/desliga a rótula no início das barras selecionadas.", null, true),
@@ -522,11 +540,7 @@ namespace NovoFtool
                 foreach (var v in r.Verificacao)
                     Log("  barra " + v.Barra + ": " + (v.Taxa.HasValue ? Num.Fmt(v.Taxa.Value * 100, 0) + "%" : "não verificada") + " · " + v.Criterio + " · " + v.Item + " · " + v.Combinacao, false);
             }
-            catch (Exception ex)
-            {
-                StatusMsg.Text = "⚠ Motor Python: " + ex.Message;
-                Log(StatusMsg.Text);
-            }
+            catch (Exception ex) { ErroMotor(ex); }
             finally
             {
                 StatusBotoes.Children.Remove(barra);
@@ -578,6 +592,7 @@ namespace NovoFtool
             BsAbas.Items.Add(bsRecentes);
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Importar .ftl do Ftool...", null, ImportarDialogo, "Importa a geometria, seções, materiais e casos de carga de um arquivo .ftl do Ftool original."));
+            BsAbas.Items.Add(BotaoBs("Importar/comparar CYPE...", null, () => ComandosAnalise.AbrirCype(this), "Importa um modelo do CYPE 3D (.ed3) ou compara os resultados com os do CYPE (motor Python)."));
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Ajuda e atalhos", "F1", MostrarAjuda, "Abre a janela de ajuda com o passo a passo, convenções de sinais e lista de atalhos."));
             BsAbas.Items.Add(BotaoBs("Sair", "Alt+F4", Close, "Fecha o programa (pergunta antes caso existam alterações não salvas)."));
