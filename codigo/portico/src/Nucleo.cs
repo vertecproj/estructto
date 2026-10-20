@@ -577,6 +577,13 @@ namespace Portico
         public double Psi { get; set; }
         public bool ShouldSerializePsi() { return Psi != 0; }
 
+        // Dados que so o motor Python usa (JSON opaco: config de vento/sismo/uso, pavimentos, tipo/subtipo dos casos),
+        // gravados pelas janelas Vento, Sismo, Pavimentos e Casos e reenviados por MotorModelo.Enviar. Nao entra no
+        // calculo deste nucleo; fica aqui so para ir no arquivo .estructto, no desfazer e no "modificado".
+        // Arquivos antigos sem o elemento: null.
+        [Browsable(false)] public string MotorExtra { get; set; }
+        public bool ShouldSerializeMotorExtra() { return !string.IsNullOrEmpty(MotorExtra); }
+
         [Browsable(false), XmlIgnore] public bool TemRotativa { get { return Nos.Any(n => n.Rotativa); } }
 
         // Posicao oposta do equipamento giratorio (180 graus): Fx e Mz dos nos giratorios trocam de sinal em todos os casos.
