@@ -223,7 +223,12 @@ namespace NovoFtool
                     return await DocumentoEspacial.DoModelo((System.Text.Json.Nodes.JsonObject)imp["modelo"].DeepClone(), "novo (CYPE)", imp["avisos"]);
                 }, "importando"));
                 if (w.EspacialAtivo?.Json["barras"]?.AsObject().Count is not > 0) throw new InvalidOperationException("obra do CYPE não abriu como documento espacial");
+                // F5 logo depois de importar (a ativação da aba ainda pode estar recolocando o modelo no motor)
+                Esperar(w.CalcularEspacial());
+                if (!w.EspacialAtivo.Calculado) throw new InvalidOperationException("F5 depois de importar do CYPE não calculou: " + w.StatusMsg.Text);
+                w.MostrarDiagrama(Diagrama.Verificacao);
                 EsperarIdle();
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                 CapturarPrincipal(w, "42-espacial-importado-cype");
             }
             string troca = w.EspacialAtivo.Troca;
