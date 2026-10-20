@@ -106,6 +106,69 @@ namespace NovoFtool
             throw new FileNotFoundException("Modelo padrao guincho-com-placa.estructto nao encontrado.");
         }
 
+        static void Esperar(System.Threading.Tasks.Task t)
+        {
+            var limite = DateTime.Now.AddMinutes(5);
+            while (!t.IsCompleted && DateTime.Now < limite) { EsperarIdle(); System.Threading.Thread.Sleep(15); }
+            if (!t.IsCompleted) throw new TimeoutException("tarefa do motor não terminou em 5 min");
+            t.GetAwaiter().GetResult();
+        }
+
+        static void CapturasEspacial(MainWindow w)
+        {
+            var jg = new JanelaGerar3D("edificio");
+            PrepararDialogoForaDaTela(jg);
+            jg.Show();
+            EsperarIdle();
+            CapturarDialogo(jg, "41-gerar3d-edificio.png");
+            if (!jg.Montar()) throw new InvalidOperationException("JanelaGerar3D: valores padrão inválidos");
+            jg.Close();
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Gerar(jg.Dados, jg.Titulo, jg.G, jg.Q), "gerando"));
+            var d = w.EspacialAtivo ?? throw new InvalidOperationException("modelo espacial não abriu");
+            EsperarIdle();
+            w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+            CapturarPrincipal(w, "41-espacial-edificio");
+
+            // editar (PATCH) e desfazer pelo motor
+            string barra = d.Json["barras"].AsObject().First(kv => (string)kv.Value["params"]?["papel"] == "viga").Key;
+            string sec0 = (string)d.Json["barras"][barra]["secao"], sec1 = (string)d.Json["barras"].AsObject().First(kv => (string)kv.Value["secao"] != sec0).Value["secao"];
+            Esperar(w.EditarEspacial("barra", barra, new System.Text.Json.Nodes.JsonObject { ["secao"] = sec1 }));
+            if ((string)w.EspacialAtivo.Json["barras"][barra]["secao"] != sec1) throw new InvalidOperationException("PATCH da barra não mudou a seção");
+            Esperar(w.DesfazerEspacial());
+            if ((string)w.EspacialAtivo.Json["barras"][barra]["secao"] != sec0) throw new InvalidOperationException("desfazer do motor não voltou a seção: " + w.StatusMsg.Text);
+
+            Esperar(w.CalcularEspacial());
+            if (!d.Calculado) throw new InvalidOperationException("cálculo do motor falhou: " + w.StatusMsg.Text);
+            EsperarIdle();
+            w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+            CapturarPrincipal(w, "41-espacial-aproveitamento");
+            var pior = d.ParaVista().Barras.OrderByDescending(b => b.Aprov ?? 0).First();
+            w.vista3D.Escolher(pior);
+            EsperarIdle();
+            CapturarPrincipal(w, "41-espacial-barra");
+            foreach (var (dg, nome) in new[] { (Diagrama.Momento, "momento"), (Diagrama.Deformada, "deformada") })
+            {
+                w.MostrarDiagrama(dg);
+                EsperarIdle();
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                CapturarPrincipal(w, "41-espacial-" + nome);
+            }
+
+            // salvar (JSON do motor) e abrir de novo; exemplo do motor
+            string tmp = Path.Combine(Path.GetTempPath(), "estructto-espacial-teste.json");
+            File.WriteAllText(tmp, d.JsonFormatado());
+            Esperar(w.AbrirEspacialArquivo(tmp));
+            if (w.EspacialAtivo == d || w.EspacialAtivo.Json["barras"].AsObject().Count != d.Json["barras"].AsObject().Count) throw new InvalidOperationException("JSON salvo não reabriu igual");
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo("galpao_aco"), "exemplo"));
+            Esperar(w.CalcularEspacial());
+            EsperarIdle();
+            w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+            CapturarPrincipal(w, "41-espacial-exemplo-galpao");
+            w.FecharEspaciaisSemPerguntar();
+            w.MostrarDiagrama(Diagrama.Nenhum);
+            EsperarIdle();
+        }
+
         static void EsperarIdle()
         {
             var disp = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
@@ -783,6 +846,9 @@ namespace NovoFtool
                 w.MostrarVista3D(false);
                 w.MostrarDiagrama(Diagrama.Nenhum);
                 EsperarIdle();
+
+                // 41) Modelo espacial (motor Python, DocumentoEspacial.cs): edifício gerado em 3D, calculado, mapa de aproveitamento
+                CapturasEspacial(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",

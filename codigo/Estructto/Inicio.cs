@@ -225,6 +225,7 @@ namespace NovoFtool
             var ass = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, comp ? 6 : 14) };
             foreach (var a in AssistentesInicio()) { var c = CartaoAssistente(a.titulo, a.sub, a.tipo, a.modelo, comp); c.Margin = new Thickness(0, 0, 8, 0); ass.Children.Add(c); }
             raiz.Children.Add(ass);
+            raiz.Children.Add(LinhaEspacialInicio(comp));   // modelo espacial (DocumentoEspacial.cs)
 
             // recentes
             var rec = Config.Recentes().Take(comp ? 3 : 6).ToList();

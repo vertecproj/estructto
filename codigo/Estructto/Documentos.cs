@@ -16,8 +16,9 @@ namespace NovoFtool
         class Documento
         {
             public Modelo M; public string Arquivo; public bool Alterado; public string Atual;
+            public DocumentoEspacial Esp;   // modelo espacial (DocumentoEspacial.cs); null = documento 2D
             public string[] Desfazer = new string[0], Refazer = new string[0];
-            public string Nome { get { return Arquivo == null ? "Sem título" : System.IO.Path.GetFileName(Arquivo); } }
+            public string Nome { get { return Esp != null ? Esp.Nome : Arquivo == null ? "Sem título" : System.IO.Path.GetFileName(Arquivo); } }
         }
 
         readonly List<Documento> docs = new List<Documento> { new Documento() };
@@ -44,6 +45,7 @@ namespace NovoFtool
             desfazer.Clear(); foreach (string x in d.Desfazer.Reverse()) desfazer.Push(x);
             refazer.Clear(); foreach (string x in d.Refazer.Reverse()) refazer.Push(x);
             AtualizarTitulo(); Atualizar();
+            AplicarModoEspacial();
         }
 
         void TrocarDoc(int i)
@@ -54,7 +56,7 @@ namespace NovoFtool
             Log("Modelo ativo: " + docs[i].Nome + ".");
         }
 
-        bool DocVazio { get { return M.Barras.Count == 0 && M.Nos.Count == 0 && arquivo == null && !alterado; } }
+        bool DocVazio { get { return Esp == null && M.Barras.Count == 0 && M.Nos.Count == 0 && arquivo == null && !alterado; } }
 
         // aba nova (ou reaproveita a atual se ela estiver vazia) antes de carregar outro modelo
         void PrepararDocNovo()

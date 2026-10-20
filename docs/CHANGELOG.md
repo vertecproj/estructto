@@ -34,6 +34,9 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   Verificar barra (`JanelaVerificarBarraMotor`, critério × item NBR × combinação × Sd ≤ Rd), Ligação (`JanelaLigacao`, campos de /api/ligacoes/tipos),
   Comparar/Importar CYPE (`JanelaCype`) e Catálogo de perfis (`JanelaCatalogo`). Abertura por `ComandosAnalise.Abrir...(dono)` (faixa ainda não
   liga os botões). Capturas 40–46 com JSON reais do motor embutidos (`codigo/Estructto/amostras/`).
+- Modelo espacial ([MODELO-ESPACIAL.md](MODELO-ESPACIAL.md)): documento 3D cuja fonte é o JSON do motor (`DocumentoEspacial.cs`). Abre
+  .json/.ed3/exemplos, Gerar 3D (edifício, galpão, pórtico), edição por PATCH, desfazer/refazer e F5 pelo motor, mapa de aproveitamento e
+  diagramas na Vista3D, salva .json. 2D sem mudança. Capturas 41-*.
 
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 

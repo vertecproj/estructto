@@ -589,13 +589,14 @@ namespace NovoFtool
                 GridVista.Children.Insert(GridVista.Children.IndexOf(Vista) + 1, vista3D);   // acima do 2D, abaixo do HUD e avisos
                 vista3D.Escolheu += o =>
                 {
+                    if (Esp != null) return;   // modelo espacial: DocumentoEspacial.cs trata a escolha
                     object alvo = o is No3D n ? n.Origem : o is Barra3D b ? b.Origem : null;
                     Vista.Sel.Clear();
                     if (alvo != null) Vista.Sel.Add(alvo);
                     SelecaoMudou();
                 };
             }
-            if (vista3D == null) return;
+            if (vista3D == null || (!ligar && Esp != null)) return;   // modelo espacial: sempre 3D
             bool primeira = ligar && vista3D.Visibility != Visibility.Visible;
             vista3D.Visibility = ligar ? Visibility.Visible : Visibility.Collapsed;
             Vista.Visibility = ligar ? Visibility.Hidden : Visibility.Visible;
@@ -605,6 +606,7 @@ namespace NovoFtool
         // Recarrega a vista 3D a partir do modelo 2D e do diagrama ativo (chamado depois de cada cálculo).
         internal void Atualizar3D(bool enquadrar = false)
         {
+            if (Esp != null) { AtualizarEspacial3D(enquadrar); return; }
             if (!Em3D) return;
             Diagrama d = Vista.Diag;
             vista3D.Diagrama = !Vista.Resolvido ? Diagrama3D.Nenhum : d == Diagrama.Normal ? Diagrama3D.N : d == Diagrama.Cortante ? Diagrama3D.V : d == Diagrama.Momento ? Diagrama3D.M : Diagrama3D.Nenhum;
