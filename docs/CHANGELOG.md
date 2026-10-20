@@ -4,6 +4,10 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 
 ## 20/10/2026 — Gabriel (início da unificação com o motor Python)
 
+- Animações (fase 8 adiantada para a casca atual): helper único `Anim.cs` (120/160 ms UI, 250–400 ms espacial, `CubicEase`, desliga com
+  "efeitos de animação" do Windows e no modo `--capturas`). Aplicado em faixa, backstage, painéis, diálogos, tela inicial, HUD, Ctrl+K,
+  dicas, aviso, diagramas da vista 2D, seleção e barra de status. Detalhe e uso em janelas novas: [ANIMACOES.md](ANIMACOES.md).
+
 - Ponte com o motor Python ([UNIFICACAO-MOTOR.md](UNIFICACAO-MOTOR.md)): `MotorModelo.cs` converte o modelo e lê resultados; opção Motor em
   Análise › Opções (Interno padrão; Python roda no F5 com progresso); `--conferir-motor` (análise confere a 10⁻¹¹ nos guinchos);
   `codigo/motor/empacotar.ps1` + publish põe `motor\` ao lado do exe; motor desligado ao sair.

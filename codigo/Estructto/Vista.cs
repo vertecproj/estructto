@@ -28,6 +28,11 @@ namespace NovoFtool
         readonly List<Point> adquiridos = new List<Point>();   // nos sob o cursor viram pontos de rastreamento
         readonly List<Point> guiasRastreio = new List<Point>();
         public double EscalaDiag = 1, EscalaDef = 1;
+        // animacoes (Anim.cs): diagrama cresce de 0 ao trocar de tipo; selecao aparece com fade
+        public static readonly DependencyProperty CrescProperty = DependencyProperty.Register("Cresc", typeof(double), typeof(Vista), new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsRender));
+        public static readonly DependencyProperty RealceProperty = DependencyProperty.Register("Realce", typeof(double), typeof(Vista), new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsRender));
+        double Cresc => (double)GetValue(CrescProperty);
+        public void Crescer() { Anim.Valor(this, CrescProperty, 0, 1, Anim.Espacial); }
         public string Etiqueta;                            // nome do comando ativo (canto superior esquerdo)
         public Func<Barra, Verif> Verificar;               // usado na vista Verificacao
 
@@ -307,7 +312,7 @@ namespace NovoFtool
             InvalidateVisual();
         }
 
-        void Avisar() { if (SelecaoMudou != null) SelecaoMudou(); InvalidateVisual(); }
+        void Avisar() { if (SelecaoMudou != null) SelecaoMudou(); Anim.Valor(this, RealceProperty, 0, 1, Anim.Rapido); InvalidateVisual(); }
 
         public void Selecionar(IEnumerable<object> objs)
         {
@@ -704,7 +709,7 @@ namespace NovoFtool
                 No a = M.NoPorId(b.N1), c = M.NoPorId(b.N2);
                 Point pa = Tela(a.X, a.Y), pc = Tela(c.X, c.Y);
                 bool calor = MapaCalor && Diag == Diagrama.Verificacao && Resolvido && Verificar != null;
-                if (Sel.Contains(b)) dc.DrawLine(calor ? PSelCalor : PSel, pa, pc);
+                if (Sel.Contains(b)) { dc.PushOpacity((double)GetValue(RealceProperty)); dc.DrawLine(calor ? PSelCalor : PSel, pa, pc); dc.Pop(); }
                 else if (hover == b || membrosAcesos.Contains(b.Membro)) dc.DrawLine(calor ? PHoverCalor : PHover, pa, pc);
                 Pen pb = PBarra;
                 Vector u = pc - pa; if (u.Length > 1e-6) u.Normalize();
@@ -1083,7 +1088,7 @@ namespace NovoFtool
         {
             if (Diag == Diagrama.Deformada)
             {
-                double dmax; double f = EscalaDeformada(out dmax);
+                double dmax; double f = EscalaDeformada(out dmax) * Cresc;
                 if (f <= 0) return;
                 foreach (Barra b in M.Barras)
                 {
@@ -1115,6 +1120,7 @@ namespace NovoFtool
             int tipo = Tipo;
             double vmax, esc = EscalaEsforco(out vmax);
             if (esc <= 0) { Texto(dc, "Esforço nulo em todas as barras.", new Point(ActualWidth / 2, 96), BTexto, 12); return; }
+            esc *= Cresc;
             double sinal = tipo == 2 ? -1 : 1;   // momento do lado tracionado
             foreach (Barra b in M.Barras)
             {

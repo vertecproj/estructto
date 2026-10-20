@@ -197,7 +197,7 @@ namespace NovoFtool
                 StatusMsg.Text = "Calculado — " + NomeResultado() + ".  " + (Vista.Envoltoria != null ? "Envoltória de " + Pl.N(CombinacoesDaEnvoltoria().Count, "combinação", "combinações")
                                  : "ΣRx " + Num.Fmt(rx, 2) + " · ΣRy " + Num.Fmt(ry, 2) + " kN · desl. máx. " + Num.Fmt(dmax * 1000, 3) + " mm") +
                                  (M.PesoProprio ? " (com peso próprio)" : "") + (falham > 0 ? " · ⚠ " + Pl.N(falham, "barra não passa", "barras não passam") : "");
-                if (avisar) Log(StatusMsg.Text);
+                if (avisar) { Log(StatusMsg.Text); Anim.Contar(StatusMsg); }
             }
             AtualizarLegenda();
             if (avisar) Vista.EnquadrarLivre();
@@ -207,7 +207,9 @@ namespace NovoFtool
 
         internal void MostrarDiagrama(Diagrama d, bool calor = false)
         {
+            bool trocou = Vista.Diag != d;
             Vista.Diag = d;
+            if (trocou) Vista.Crescer();
             Vista.MapaCalor = calor && d == Diagrama.Verificacao;
             if (tgCalor != null) tgCalor.IsChecked = Vista.MapaCalor;
             if (d != Diagrama.Nenhum && Vista.Ferr != Ferramenta.Selecionar) UsarFerramenta(Ferramenta.Selecionar);

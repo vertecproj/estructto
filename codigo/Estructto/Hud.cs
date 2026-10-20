@@ -129,7 +129,8 @@ namespace NovoFtool
             foreach (var it in itens)
             {
                 bool on = Ativo(it);
-                it.Caixa.Background = on ? TemaPlant.BSup2 : Brushes.Transparent;
+                if (on && !(it.Caixa.Background is SolidColorBrush sb && sb.Color == ((SolidColorBrush)TemaPlant.BSup2).Color)) Anim.Fundo(it.Caixa, TemaPlant.BSup2);   // segmento novo: realce suave
+                else if (!on) it.Caixa.Background = Brushes.Transparent;
                 it.Caixa.BorderBrush = on ? TemaPlant.BBorda : Brushes.Transparent;
                 it.Texto.Foreground = on ? TemaPlant.BTexto1 : TemaPlant.BTexto2;
                 it.Texto.FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;

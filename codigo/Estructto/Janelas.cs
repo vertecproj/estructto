@@ -29,6 +29,7 @@ namespace NovoFtool
             SourceInitialized += (s, e) => TituloEscuro(this);
             WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false;
             KeyDown += (s, e) => { if (e.Key == Key.Escape) Close(); };
+            Loaded += (s, e) => { if (!(this is JanelaRelatorio)) Anim.Abrir(this); };   // relatorio: documento, sem movimento
         }
 
         public static void TituloEscuro(Window w) { TemaPlant.TituloEscuro(w); }
