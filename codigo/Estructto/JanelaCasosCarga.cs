@@ -145,20 +145,24 @@ namespace NovoFtool
 
         async void Salvar()
         {
-            if (!Ler()) return;
-            bool ok = await Tentar(status, async () =>
+            try
             {
-                var ficam = casos.Where(c => c.Orig != null).Select(c => c.Orig).ToHashSet();
-                foreach (var n in orig.Keys.Where(n => !ficam.Contains(n)))
-                    await Motor.Chamar("DELETE", "/api/modelo/caso/" + Uri.EscapeDataString(n) + "?cascata=true");
-                foreach (var c in casos)
+                if (!Ler()) return;
+                bool ok = await Tentar(status, async () =>
                 {
-                    var d = new JsonObject { ["tipo"] = c.Tipo, ["subtipo"] = c.Sub };
-                    if (c.Orig == null) { d["nome"] = c.Nome; await Motor.Post("/api/modelo/caso", d); }
-                    else if (orig[c.Orig] != (c.Tipo, c.Sub)) await Motor.Chamar("PATCH", "/api/modelo/caso/" + Uri.EscapeDataString(c.Orig), d);
-                }
-            }, "Gravando os casos…");
-            if (ok) DialogResult = true;
+                    var ficam = casos.Where(c => c.Orig != null).Select(c => c.Orig).ToHashSet();
+                    foreach (var n in orig.Keys.Where(n => !ficam.Contains(n)))
+                        await Motor.Chamar("DELETE", "/api/modelo/caso/" + Uri.EscapeDataString(n) + "?cascata=true");
+                    foreach (var c in casos)
+                    {
+                        var d = new JsonObject { ["tipo"] = c.Tipo, ["subtipo"] = c.Sub };
+                        if (c.Orig == null) { d["nome"] = c.Nome; await Motor.Post("/api/modelo/caso", d); }
+                        else if (orig[c.Orig] != (c.Tipo, c.Sub)) await Motor.Chamar("PATCH", "/api/modelo/caso/" + Uri.EscapeDataString(c.Orig), d);
+                    }
+                }, "Gravando os casos…");
+                if (ok) DialogResult = true;
+            }
+            catch (Exception ex) { Caixa.Erro(this, Title, ex.Message); }   // async void: exceção solta derruba o programa
         }
     }
 }

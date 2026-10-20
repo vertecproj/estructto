@@ -213,7 +213,22 @@ namespace NovoFtool
             EsperarIdle();
             w.vista3D.MostrarVista(VistaPadrao.Iso, false);
             CapturarPrincipal(w, "41-espacial-exemplo-galpao");
+            // CYPE: Importar como modelo (JanelaCype.Importado) abre um documento espacial com o modelo devolvido
+            string ed3 = Path.Combine(Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") ?? "", "testes", "dados_cype", "novo.ed3");
+            if (File.Exists(ed3))
+            {
+                Esperar(w.AbrirEspacial(async () =>
+                {
+                    var imp = await Motor.Post("/api/importar_cype", new System.Text.Json.Nodes.JsonObject { ["nome"] = "novo.ed3", ["conteudo_base64"] = Convert.ToBase64String(File.ReadAllBytes(ed3)) });
+                    return await DocumentoEspacial.DoModelo((System.Text.Json.Nodes.JsonObject)imp["modelo"].DeepClone(), "novo (CYPE)", imp["avisos"]);
+                }, "importando"));
+                if (w.EspacialAtivo?.Json["barras"]?.AsObject().Count is not > 0) throw new InvalidOperationException("obra do CYPE não abriu como documento espacial");
+                EsperarIdle();
+                CapturarPrincipal(w, "42-espacial-importado-cype");
+            }
+            string troca = w.EspacialAtivo.Troca;
             w.FecharEspaciaisSemPerguntar();
+            if (File.Exists(troca)) throw new InvalidOperationException("arquivo de troca do documento espacial não foi apagado ao fechar");
             w.MostrarDiagrama(Diagrama.Nenhum);
             EsperarIdle();
         }

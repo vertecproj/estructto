@@ -82,6 +82,11 @@ namespace NovoFtool
         JsonObject esforcos, desl;
         readonly Dictionary<string, RefMotor> refs = new Dictionary<string, RefMotor>();
         static DocumentoEspacial noMotor;
+        readonly string tmp = "_espacial_" + Guid.NewGuid().ToString("N") + ".json";   // por documento: dois Estructto não pisam um no outro
+
+        internal string Troca => Path.Combine(Motor.Pasta, tmp);
+        // Ao fechar a aba: apaga o arquivo de troca da pasta de trabalho.
+        public void Descartar() { try { File.Delete(Troca); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
 
         public bool Calculado => Calculo != null;
         public string Nome => Arquivo != null ? Path.GetFileName(Arquivo) : Titulo ?? "Modelo espacial";
@@ -102,8 +107,8 @@ namespace NovoFtool
         {
             await Motor.Get("/api/versao");
             if (noMotor == this && Motor.Dono == this) return;
-            File.WriteAllText(Path.Combine(Motor.Pasta, "_espacial.json"), Json.ToJsonString());
-            await Motor.Post("/api/modelo/abrir", new JsonObject { ["caminho"] = "_espacial.json" });
+            File.WriteAllText(Path.Combine(Motor.Pasta, tmp), Json.ToJsonString());
+            await Motor.Post("/api/modelo/abrir", new JsonObject { ["caminho"] = tmp });
             noMotor = this; Motor.Dono = this;
             if (TemHistorico) HistoricoPerdido = true;
             TemHistorico = false;
@@ -148,6 +153,17 @@ namespace NovoFtool
             await doc.Garantir();      // o motor valida ao abrir
             await doc.Recarregar();
             return doc;
+        }
+
+        // Modelo devolvido por POST /api/importar_cype (JanelaCype.Importado): vira um documento novo.
+        public static async Task<DocumentoEspacial> DoModelo(JsonObject modelo, string titulo, JsonNode avisos)
+        {
+            var d = new DocumentoEspacial { Titulo = titulo, Json = modelo };
+            foreach (var a in avisos?.AsArray() ?? new JsonArray()) d.Avisos.Add(a is JsonValue ? (string)a : a?.ToJsonString());
+            // ponytail: Garantir + Recarregar sem a trava do Motor; envolver com a trava de operação composta quando ela existir.
+            await d.Garantir();
+            await d.Recarregar();
+            return d;
         }
 
         // Gerador do motor + cargas uniformes G e Q (kN/m, para baixo) em todas as barras com papel "viga".
@@ -296,9 +312,11 @@ namespace NovoFtool
         // ponytail: um diagrama por barra; desenhar max e min juntos quando a Vista3D tiver duas curvas.
         static double[] Vetor(JsonNode n)
         {
-            if (n is JsonArray a) return a.Select(x => (double)x).ToArray();
+            // ponytail: estação nula (null do motor) descarta o vetor da barra (sem diagrama), não inventa valor
+            if (n is JsonArray a) return a.Any(x => x == null) ? null : a.Select(x => (double)x).ToArray();
             if (n is JsonObject o && o["max"] is JsonArray mx && o["min"] is JsonArray mn)
-                return mx.Select((x, i) => { double p = (double)x, q = (double)mn[i]; return Math.Abs(p) >= Math.Abs(q) ? p : q; }).ToArray();
+                return mx.Count != mn.Count || mx.Any(x => x == null) || mn.Any(x => x == null) ? null
+                    : mx.Select((x, i) => { double p = (double)x, q = (double)mn[i]; return Math.Abs(p) >= Math.Abs(q) ? p : q; }).ToArray();
             return null;
         }
     }
@@ -462,7 +480,9 @@ namespace NovoFtool
         async Task Espacial(Func<DocumentoEspacial, Task> f, string msg)
         {
             var d = Esp;
-            if (d == null || espRodando) return;
+            if (d == null) return;
+            // o campo, o CheckBox e a ComboBox já mostram o valor novo: remonta o painel para voltar ao do modelo
+            if (espRodando) { MontarPainelEspacial(); MostrarToast("Aguarde o cálculo terminar.", true); return; }
             espRodando = true;
             try { await f(d); if (Esp == d) DepoisDeMudarEspacial(msg); }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
@@ -925,6 +945,7 @@ namespace NovoFtool
         internal void FecharEspaciaisSemPerguntar()
         {
             GuardarDoc();
+            foreach (var x in docs) x.Esp?.Descartar();
             docs.RemoveAll(x => x.Esp != null);
             if (docs.Count == 0) docs.Add(new Documento());
             CarregarDoc(0);
@@ -941,6 +962,8 @@ namespace NovoFtool
 
         internal async void AbrirExemplosEspaciais()
         {
+          try
+          {
             Bastidor.IsOpen = false;
             JsonNode lista;
             try { lista = await Motor.Get("/api/exemplos"); }
@@ -948,7 +971,7 @@ namespace NovoFtool
             var jan = new JanelaEscura { Title = "Exemplos do motor", Width = 460, SizeToContent = SizeToContent.Height, Owner = this, ResizeMode = ResizeMode.NoResize };
             var sp = new StackPanel { Margin = new Thickness(16) };
             sp.Children.Add(JanelaEscura.T("Modelos espaciais prontos do motor Python (abrem numa aba nova, em 3D).", 12, JanelaEscura.BFraco));
-            foreach (var e in lista.AsArray())
+            foreach (var e in lista?.AsArray() ?? new JsonArray())
             {
                 string nome = (string)e["nome"];
                 var b = Cartao((string)e["descricao"], nome, () => { jan.Close(); _ = AbrirEspacial(() => DocumentoEspacial.Exemplo(nome), "abrindo o exemplo " + nome); }, "3d");
@@ -957,6 +980,8 @@ namespace NovoFtool
             }
             jan.Content = sp;
             jan.ShowDialog();
+          }
+          catch (Exception ex) { MostrarToast("⚠ Exemplos: " + ex.Message, true); }
         }
 
         FrameworkElement LinhaEspacialInicio(bool comp)
@@ -1077,7 +1102,8 @@ namespace NovoFtool
                 if (t == "galpao")
                 {
                     foreach (string k in new[] { "vao", "altura_pilar", "altura_cumeeira", "espacamento" }) d[k] = D(c[k].Text);
-                    d["n_modulos"] = int.Parse(c["n_modulos"].Text.Trim());
+                    if (!int.TryParse(c["n_modulos"].Text.Trim(), out int nm) || nm < 1) { erro.Text = "Módulos: número inteiro de 1 em diante."; return false; }
+                    d["n_modulos"] = nm;
                     if (c["terca"].Text.Trim() != "") sec["terca"] = new JsonObject { ["perfil"] = c["terca"].Text.Trim() };
                     // sem contraventamento o galpão é hipostático na direção longitudinal (igual ao exemplo galpao_aco do motor)
                     sec["contraventamento"] = new JsonObject { ["forma"] = "tubo_circular", ["d"] = 0.2191, ["t"] = 0.00635 };

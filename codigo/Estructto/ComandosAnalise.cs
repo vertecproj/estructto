@@ -83,9 +83,17 @@ namespace NovoFtool
 
         public static void AbrirCype(Window dono)
         {
-            Mostrar(dono, new JanelaCype(
+            var j = new JanelaCype(
                 corpo => Motor.Post("/api/comparar_cype", corpo),
-                corpo => Motor.Post("/api/importar_cype", corpo)));
+                corpo => Motor.Post("/api/importar_cype", corpo));
+            // a importação trocou o modelo do motor: abre um documento espacial novo com ele (F5 no 2D perderia a obra)
+            if (dono is MainWindow w)
+                j.Importado += (nome, imp) =>
+                {
+                    if (imp?["modelo"] is JsonObject m)
+                        _ = w.AbrirEspacial(() => DocumentoEspacial.DoModelo((JsonObject)m.DeepClone(), Path.GetFileNameWithoutExtension(nome) + " (CYPE)", imp["avisos"]), "importando " + nome);
+                };
+            Mostrar(dono, j);
         }
 
         public static async void AbrirCatalogo(Window dono)

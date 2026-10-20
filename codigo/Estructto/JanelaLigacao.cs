@@ -80,16 +80,20 @@ namespace NovoFtool
 
         async void Verificar()
         {
-            if (calculando || verificar == null) return;
-            calculando = true;
             try
             {
-                var corpo = new JsonObject { ["tipo"] = tipo, ["dados"] = dados[tipo].DeepClone(), ["esforcos"] = esforcos[tipo].DeepClone() };
-                resultado = await verificar(corpo); erro = null;
+                if (calculando || verificar == null) return;
+                calculando = true;
+                try
+                {
+                    var corpo = new JsonObject { ["tipo"] = tipo, ["dados"] = dados[tipo].DeepClone(), ["esforcos"] = esforcos[tipo].DeepClone() };
+                    resultado = await verificar(corpo); erro = null;
+                }
+                catch (Exception ex) { resultado = null; erro = ComandosAnalise.MensagemMotor(ex); }
+                finally { calculando = false; }
+                Montar();
             }
-            catch (Exception ex) { resultado = null; erro = ComandosAnalise.MensagemMotor(ex); }
-            finally { calculando = false; }
-            Montar();
+            catch (Exception ex) { Caixa.Erro(this, Title, ex.Message); }   // async void: exceção solta derruba o programa
         }
 
         void Mudou() { resultado = null; erro = null; Montar(); }
