@@ -1,6 +1,6 @@
 # Placa de base v2: método NBR no motor Python
 
-Data: 20/10/2026. Código: `codigo/motor/prossen_estrutural/aco/placa_base.py`. Testes: `testes/test_placa_base.py` e `testes/test_placa_base_verif.py` (classe `MetodoNBR`).
+Data: 20/10/2026. Código: `codigo/motor/prossen_estrutural/aco/placa_base.py`. Testes: `testes/test_placa_base.py`, `testes/test_placa_base_verif.py` (classe `MetodoNBR`) e `testes/test_placa_base_v2_verif.py` (verificação independente; correções na §9).
 
 ## 1. Por que mudou
 
@@ -57,7 +57,9 @@ O balanço da chapa no lado comprimido é medido a partir de 0,95·d e 0,8·bf p
   - Mm = m²(2fmax + fm)/6, com fm = pressão na face do perfil; se o comprimento comprimido x for menor que m, Mm = fmax·x/2·(m − x/3).
   - Mn = fmax·n²/2.
   - Na compressão centrada isso se reduz a fc·ℓ²/2, com ℓ = max(m, n), exatamente como na PBR.
-- No lado tracionado, M = T_fileira·x/b_ef, com x = |y| − d/2 + tf/2 (DG1) e b_ef = min(B, q·(2x + Ø)).
+- No lado tracionado, fileiras fora das mesas (x = |y| − d/2 + tf/2 > 0, DG1): M = T_fileira·x/b_ef. A largura b_ef é a união das faixas [z − x, z + x] de cada chumbador (2x por chumbador, espraiamento a 45°, AISC-DG1.md §1.4 item 5), recortada na placa. Faixas que se sobrepõem não contam duas vezes.
+- Chumbadores tracionados **entre as mesas** (x ≤ 0): faixa biengastada nas linhas médias das mesas (ver §9, V2-01).
+- Casos 3 e 4 do CBCA (e > H/3): a fileira tracionada recebe a envoltória entre a tração do bloco e Td = fc·H·B/4 − Nd do CBCA (ver §9, V2-06).
 
 **Conferência: Pfeil/DG1 plástico.** A espessura é t ≥ √(4·M·γa1/fy). O motor usa o bloco retangular com fp = max(pressão do bloco, 0,85·fck/γc). É a regra do Pfeil 9.10.5, que dimensiona a chapa pela resistência do concreto.
 
@@ -86,7 +88,7 @@ Os mecanismos não se somam. O motor usa o primeiro que se aplica:
 | Tração: 0,75·Ab·fub/γa2 | 6.3.3.1 |
 | Escoamento: Ab·fy/γa1, como no CBCA p. 237 | 5.2.2 a) |
 | Corte: 0,4 (ou 0,5)·Ab·fub/γa2 | 6.3.3.2 |
-| Pressão no furo da chapa, com lf = borda − (Ø + 1,5 mm)/2 | 6.3.3.3 |
+| Pressão no furo da chapa, com lf = borda − dh/2 e furo alargado dh (§9, V2-03) | 6.3.3.3 |
 | Interação: (Ft/FtRd)² + (Fv/FvRd)² ≤ 1 | 6.3.3.4 |
 | Espaçamento mínimo de 4·Ø | ACI 17.9.2 |
 
@@ -116,8 +118,8 @@ fub e fy vêm da classe ISO informada; `fub_chumbador` e `fyb_chumbador` têm pr
   - Vb = min[0,6·(le/da)^0,2·√da; 3,7]·√f'c·ca1^1,5, com le = min(hef, 8·da);
   - AVco = 4,5·ca1²;
   - casos de cálculo: todo o corte na fileira de trás, ou a parcela da fileira da frente.
-- Alavanca (*pryout*, 17.7.3): Vcpg = kcp·Ncpg, com kcp = 1 se hef < 65 mm e 2 nos demais casos.
-- Interação (17.8): se V/φVn ≤ 0,2, verifica só a tração; se N/φNn ≤ 0,2, só o corte; nos demais casos, (N/φNn + V/φVn)/1,2 ≤ 1.
+- Alavanca (*pryout*, 17.7.3): Vcpg = kcp·Ncpg, com kcp = 1 se hef < 65 mm e 2 nos demais casos. Ncpg é o cone do grupo que recebe corte: com furo alargado, o pior conjunto de n_ef = 2 chumbadores (§9, V2-02).
+- Interação (17.8): se V/φVn ≤ 0,2, verifica só a tração; se N/φNn ≤ 0,2, só o corte; nos demais casos, (N/φNn + V/φVn)/1,2 ≤ 1. Só entram os modos de concreto; o aço da haste fica na NBR 6.3.3.4 (limitação, §9, V2-07).
 - Valores adotados quando faltam dados:
   - hef = 12·Ø (CBCA p. 237);
   - Abrg = 1,163·Ø², porca hexagonal pesada com s ≈ 1,5·Ø, que confere com a tabela do DG1 para 3/4";
@@ -193,3 +195,27 @@ Diferenças entre o que a janela mostra e o motor v2:
 - Solda pela NBR 6.2.5.
 - Ligar a janela WPF ao motor Python.
 - Conferir os exemplos do DG1 real (AISC-DG1.md §0).
+- Charneiras (Thornton/DG1) com a alma para chumbadores entre mesas; hoje só a faixa biengastada entre mesas.
+- Modos de aço do ACI (17.6.1, 17.7.1) dentro da interação 17.8.
+- ACI 318-19 17.10 (sismo).
+- Conferir na tabela 14-2 do Manual AISC os furos alargados adotados (V2-03).
+
+## 9. Correções da verificação independente (20/10/2026)
+
+Testes: `testes/test_placa_base_v2_verif.py`. Não há mais `expectedFailure`. Nenhum valor de livro mudou (CBCA PBR/PBE, Pfeil 9.10.5).
+
+| Achado | Correção | Modelo adotado |
+|---|---|---|
+| V2-01 (crítico) | Chumbadores tracionados entre as mesas passam a dimensionar a chapa | Faixa biengastada nas linhas médias das mesas, vão L = d − tf. Para carga P a distâncias a e b das mesas, M = P·a·b·max(a, b)/L² (maior momento de engaste). Largura: união de [w − min(a, b), w + min(a, b)] (45° até a mesa mais próxima), recortada na largura da mesa bf e na placa. A alma é desprezada (conservador). No eixo fraco, chumbador além da linha média da mesa (|z| > L/2) vira balanço DG1 a partir da mesa, com x = |z| − L/2 e largura recortada em bf. Chumbador fora desses modelos (tubo circular, fora da largura da mesa): aviso explícito e chapa reprovada (EspNec = ∞) |
+| V2-02 (crítico) | Pryout pelo grupo que recebe corte | Ncpg = menor cone entre os conjuntos de n_ef chumbadores (combinações). No caso do verificador: 241,0 kN, antes 433,8 kN |
+| V2-03 | Pressão no furo coerente com o furo alargado | dh = Ø + folga da tab. 14-2 do Manual AISC (DG1 tab. 2.3), pela bitola imediatamente maior: ≤ 3/4" +14,3 mm; ≤ 7/8" +17,5; ≤ 1½" +20,6; ≤ 1¾" +25,4; acima +31,8. lf = borda − dh/2; lf ≤ 0 gera aviso. O AISC-DG1.md §1.5 cita d + 5/16" a d + 1/2", menos conservador; os valores da tabela 14-2 foram usados de memória e estão nas pendências |
+| V2-04 | Largura efetiva do lado tracionado | 2x por chumbador (DG1), união das faixas, recortada na placa. Antes: q·(2x + Ø), que conta Ø a mais e soma faixas sobrepostas |
+| V2-06 | Casos H/3 < e ≤ e_crit | A chapa usa a envoltória: na fileira tracionada, T = max(T_bloco, Td_CBCA/n_fileira), com Td_CBCA = fc·H·B/4 − Nd (casos 3 e 4). As forças nos chumbadores (aço e ACI) continuam as do bloco. Campo novo `chapa.Td_cbca` |
+| V2-07 | Limitações documentadas, não implementadas | Modos de aço fora da 17.8 e ACI 17.10. Com `sismo` verdadeiro em `esforcos` (ou em `dados`), o resultado traz aviso. `ligacoes_modelo._verif_placa` liga `sismo` quando o modelo tem `config.sismo` ou caso do tipo "S" |
+
+Testes do verificador ajustados:
+
+- `test_dg1_caso3_a_mao`: b_ef passou de 0,262 m para 0,215 m por causa da V2-04, e EspNecT foi de 29,07 mm para 32,09 mm.
+- `test_tres_bordas_borda_pryout_interacao`: o pryout esperado é o do par efetivo (V2-02), não o do grupo de 4.
+
+Os valores da §4 foram calculados antes destas correções. O lado comprimido não mudou. Onde governa o lado tracionado, a chapa pode sair um pouco mais grossa: na terceira saída de `guincho()` (test_placa_base.py), passou de 2,87 mm para 2,97 mm.

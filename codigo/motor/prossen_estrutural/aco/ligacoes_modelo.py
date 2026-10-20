@@ -385,9 +385,10 @@ def _verif_placa(modelo, membro, e, dados):
     """Placa de base (modelo plano): verifica com My no eixo forte e com Mz no eixo fraco; vale a pior."""
     sec = modelo.secoes[modelo.barras[membro["barra"]].secao]
     V = math.hypot(e["Vy"], e["Vz"])
+    sismo = bool(modelo.config.get("sismo")) or any(getattr(c, "tipo", "") == "S" for c in modelo.casos.values())
     pior = None
     for M, fraco in ((e["My"], False), (e["Mz"], True)):
-        esf = dict(N=e["N"], V=V, M=M, N_barra=e["N"], V_barra=V, M_barra=M)
+        esf = dict(N=e["N"], V=V, M=M, N_barra=e["N"], V_barra=V, M_barra=M, sismo=sismo)
         r = _placa.verificar_placa_base(dict(dados, eixo_fraco=fraco), esf, sec.props)
         r["eixo"] = "fraco (Mz)" if fraco else "forte (My)"
         if pior is None or _taxa(r) > _taxa(pior):
