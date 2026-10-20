@@ -768,7 +768,7 @@ namespace NovoFtool
         {
             Action prep = () =>
             {
-                TemaPlant.AjustarFaixa(w, TemaPlant.Selo());
+                TemaPlant.AjustarFaixa(w, TemaPlant.Selo(24));
                 if (w.M.Nos.Count > 0) w.Vista.ZoomTudo();
                 aposLayout?.Invoke();
                 w.Vista.InvalidateVisual();
@@ -902,9 +902,30 @@ namespace NovoFtool
                     w.Close();
                     Environment.Exit(0);
                 }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "trelicas")   // só as capturas 50) de treliças e contraventamentos
+                {
+                    CapturasTrelicas(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "ligacoes")   // só as capturas 49) do gerenciador de ligações
+                {
+                    CapturasLigacoes(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "desenho3d")   // só as capturas 43) do desenho no 3D
                 {
                     CapturasDesenho3D(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "snap")   // só as capturas 50-53) de snap e medir 3D
+                {
+                    CapturasSnap(w);
                     w.alterado = false;
                     w.Close();
                     Environment.Exit(0);
@@ -1437,6 +1458,12 @@ namespace NovoFtool
                 CapturasDesenho3D(w);
                 // 49) Fluxo completo: vazio, níveis, desenho, cópia, espelho, carga em área, F5, Realista com cargas
                 CapturasFluxo3D(w);
+                // 50) Treliças e contraventamentos
+                CapturasTrelicas(w);
+                // 49) Gerenciador de ligações (grupos, pior do grupo, placa da pior base)
+                CapturasLigacoes(w);
+                // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
+                CapturasSnap(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",

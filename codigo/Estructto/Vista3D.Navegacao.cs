@@ -243,6 +243,7 @@ namespace NovoFtool
         protected override void OnMouseDown(MouseButtonEventArgs e)
         {
             Focus();
+            if (MouseSnap(e)) return;   // Shift/Ctrl + botão direito: menu de snap único (Vista3D.Snap.cs)
             Point p = e.GetPosition(this);
             mouseTela = p; mouseDentro = true;
             if (modo != Modo.Nada) return;   // outro botão já está arrastando

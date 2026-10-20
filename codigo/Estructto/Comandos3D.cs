@@ -29,8 +29,6 @@ namespace NovoFtool
         List<Cmd3D> cmds3D;
         string ultimoCmd;                 // Enter/Espaço com a linha vazia repete
         Func<double, Task> numeroPendente;   // RO: ângulo digitado na linha de comando
-        // Gancho do Medir3D (worktree wt-snap): true = ele assumiu o comando. null/false = medida simples ponto a ponto.
-        public static Func<MainWindow, bool> IniciarMedir3D;
 
         IEnumerable<string> Comandos => Cmds3D.SelectMany(c => new[] { c.Nome }.Concat(c.Alias)).Distinct();
 
@@ -79,9 +77,9 @@ namespace NovoFtool
             C("PERSPECTIVA", "Liga/desliga a perspectiva", w => { if (vista3D != null) { vista3D.Perspectiva = !vista3D.Perspectiva; Log(vista3D.Perspectiva ? "Perspectiva." : "Ortográfica."); } }, "PERSP"),
             C("REALISTA", "Perfis reais (liga/desliga)", w => DefinirRealista(!Config.Realista3D)),
             C("NIVEL", "Plano de trabalho no nível acima (+) ou abaixo (-): NIVEL + | NIVEL -", w => TrocarNivel(w.Length > 1 && w[1].StartsWith("-") ? -1 : 1)),
-            C("ORTO", "ORTO (F8)", w => AlternarStatus(stOrto, v => V3(x => x.Orto = v), "ORTO"), "ORTHO"),
-            C("POLAR", "Polar (F10)", w => AlternarStatus(stPolar, v => V3(x => x.Polar = v), "Polar")),
-            C("OSNAP", "Atração a objetos (F3)", w => AlternarStatus(stObj, v => V3(x => x.AtrairObjetos = v), "Atração a objetos"), "OS"),
+            C("ORTO", "ORTO (F8)", w => AlternarSnap("orto"), "ORTHO"),
+            C("POLAR", "Polar (F10)", w => AlternarSnap("polar")),
+            C("OSNAP", "Snap a objetos (F3)", w => AlternarSnap("osnap"), "OS"),
             C("SELTODAS", "Selecionar tudo (Ctrl+A)", w => vista3D?.Selecionar(EspIds("nos"), EspIds("barras")), "TODOS"),
             C("SELNOS", "Selecionar todos os nós", w => vista3D?.Selecionar(EspIds("nos"), null)),
             C("SELBASE", "Selecionar os nós da cota mais baixa", w => CmdSelBase()),
@@ -109,6 +107,7 @@ namespace NovoFtool
         {
             t = (t ?? "").Trim();
             if (t == "") return;
+            if (Comando3D(t)) return;   // ME/MEDIR e snap único END/MID/INT... (Vista3D.Snap.cs)
             if (numeroPendente != null && Num.Ler(t, out double num)) { var f = numeroPendente; numeroPendente = null; _ = f(num); return; }
             if (vista3D != null && vista3D.Desenhando && PareceCoordenada(t)) { vista3D.EntrarTexto(t); return; }   // x,y,z  @dx,dy,dz  comprimento
             string[] w = t.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -163,15 +162,15 @@ namespace NovoFtool
             {
                 case Key.F1: MostrarAjuda(); return true;
                 case Key.F2: MostrarHistorico(); return true;
-                case Key.F3: AlternarStatus(stObj, v => V3(x => x.AtrairObjetos = v), "Atração a objetos (OSNAP)"); return true;
+                case Key.F3: AlternarSnap("osnap"); return true;
                 case Key.F4: vista3D?.Enquadrar(); return true;   // ponytail: F4 = 3D OSNAP no AutoCAD; aqui enquadrar até haver snap em faces
                 case Key.F5: Calcular(); return true;
                 case Key.F6: Log("F6 (UCS dinâmico) ainda não existe: use PgUp/PgDn ou Modelo › Planos para trocar o plano de trabalho."); return true;
                 case Key.F7: AlternarStatus(stGrade, v => V3(x => x.MostrarGradePlano = v), "Grade do plano"); return true;
-                case Key.F8: AlternarStatus(stOrto, v => V3(x => x.Orto = v), "ORTO"); return true;
-                case Key.F9: AlternarStatus(stAtrair, v => V3(x => x.AtrairGrade = v), "Snap na grade"); return true;
-                case Key.F10: AlternarStatus(stPolar, v => V3(x => x.Polar = v), "Polar"); return true;
-                case Key.F11: AlternarStatus(stRastro, v => V3(x => x.Rastrear = v), "Rastreamento"); return true;
+                case Key.F8: AlternarSnap("orto"); return true;
+                case Key.F9: AlternarStatus(stAtrair, v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; }), "Snap na grade"); return true;
+                case Key.F10: AlternarSnap("polar"); return true;
+                case Key.F11: AlternarSnap("rastreio"); return true;
                 case Key.F12: AlternarStatus(stDin, v => V3(x => x.EntradaDinamica = v), "Entrada dinâmica"); return true;
                 case Key.PageUp when !editando: TrocarNivel(+1); return true;
                 case Key.PageDown when !editando: TrocarNivel(-1); return true;
@@ -188,6 +187,15 @@ namespace NovoFtool
                 case Key.Subtract when !editando && Comando.Text == "" && Vista.Diag != Diagrama.Nenhum: Escala(1 / 1.4); return true;
             }
             return false;
+        }
+
+        // F3/F8/F10/F11 e os comandos OSNAP/ORTO/POLAR: o estado é do Snap3D (Vista3D.Snap.cs); o rodapé espelha (SincronizarStatus3D).
+        void AlternarSnap(string qual)
+        {
+            if (vista3D == null) return;
+            var s = vista3D.Snap;
+            vista3D.AplicarStatus(qual == "osnap" ? !s.Osnap : s.Osnap, qual == "orto" ? !s.Orto : s.Orto, qual == "polar" ? !s.Polar : s.Polar, qual == "rastreio" ? !s.Rastreio : s.Rastreio);
+            Log((qual == "osnap" ? "Snap a objetos" : qual == "orto" ? "ORTO" : qual == "polar" ? "Polar" : "Rastreamento") + ((qual == "osnap" ? s.Osnap : qual == "orto" ? s.Orto : qual == "polar" ? s.Polar : s.Rastreio) ? " ligado." : " desligado."), false);
         }
 
         // ---------- plano de trabalho: PgUp/PgDn ----------
@@ -388,7 +396,7 @@ namespace NovoFtool
         // Medida simples (o Medir3D do wt-snap assume quando ligado em IniciarMedir3D).
         void CmdMedir()
         {
-            if (IniciarMedir3D?.Invoke(this) == true) return;
+            if (Medir3D()) return;   // Medir 3D completo (Vista3D.Snap.cs, Medir3D.cs)
             vista3D.PedirPonto("MEDIR — 1º ponto", null, async a =>
             {
                 vista3D.PedirPonto("MEDIR — 2º ponto", a, async b =>
@@ -489,9 +497,8 @@ namespace NovoFtool
         {
             vista3D.AplicarGrip = AplicarGrip;
             vista3D.CursorMudou += p => Coord.Text = p is Point3D q ? "X " + Num.Fmt(q.X, 3).PadLeft(8) + "   Y " + Num.Fmt(q.Y, 3).PadLeft(8) + "   Z " + Num.Fmt(q.Z, 3).PadLeft(8) + " m" : "";
-            vista3D.Orto = stOrto.IsChecked == true; vista3D.Polar = stPolar.IsChecked == true; vista3D.AtrairObjetos = stObj.IsChecked == true;
-            vista3D.AtrairGrade = stAtrair.IsChecked == true; vista3D.MostrarGradePlano = stGrade.IsChecked == true; vista3D.Rastrear = stRastro.IsChecked == true;
-            vista3D.EntradaDinamica = stDin.IsChecked == true;
+vista3D.MostrarGradePlano = stGrade.IsChecked == true; vista3D.EntradaDinamica = stDin.IsChecked == true;
+            SincronizarStatus3D();
         }
     }
 

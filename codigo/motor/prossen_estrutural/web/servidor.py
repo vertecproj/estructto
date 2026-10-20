@@ -90,6 +90,21 @@ def _mutar(srv, rota, *args):
     return saida
 
 
+def _ligacoes(srv, f):
+    """Grupos de ligações: empilham desfazer (se mudou) mas NÃO descartam o cálculo (não mexem na estrutura)."""
+    antes = projeto.para_dict(_modelo(srv))
+    try:
+        saida = f(_modelo(srv))
+    except Exception:
+        srv.estado["modelo"] = projeto.de_dict(antes)
+        raise
+    if projeto.para_dict(srv.estado["modelo"]) != antes:
+        srv.estado["desfazer"].append(antes)
+        del srv.estado["desfazer"][:-LIMITE_DESFAZER]
+        srv.estado["refazer"].clear()
+    return saida
+
+
 def _trocar(srv, de: str, para: str):
     origem = srv.estado[de]
     if not origem:
@@ -190,6 +205,7 @@ ROTAS = {
     ("POST", r"/api/refazer"): lambda s, a, q, c: _trocar(s, "refazer", "desfazer"),
     ("PATCH", r"/api/config"): lambda s, a, q, c: projeto.configurar(_modelo(s), c or {}),
     ("POST", r"/api/gerar-estrutura"): lambda s, a, q, c: projeto.gerar_estrutura(_modelo(s), c or {}),
+    ("POST", r"/api/gerar-estrutura/previa"): lambda s, a, q, c: projeto.previa_estrutura(projeto.novo_modelo() if _bool(q, "vazio") else _modelo(s), c or {}),
     ("POST", r"/api/acoes/gerar"): lambda s, a, q, c: projeto.gerar_acoes(_modelo(s)),
     ("GET", r"/api/resumo"): lambda s, a, q, c: projeto.resumo(_modelo(s)),
     ("GET", r"/api/validar"): lambda s, a, q, c: projeto.validar(_modelo(s)),
@@ -205,6 +221,10 @@ ROTAS = {
     ("GET", r"/api/estabilidade"): lambda s, a, q, c: projeto.estabilidade(_calculo(s)),
     ("GET", r"/api/ligacoes/tipos"): lambda s, a, q, c: projeto.tipos_ligacao(),
     ("POST", r"/api/ligacoes/verificar"): lambda s, a, q, c: projeto.verificar_ligacao((c or {}).get("tipo"), (c or {}).get("dados", {}), (c or {}).get("esforcos", {})),
+    ("GET", r"/api/ligacoes/grupos"): lambda s, a, q, c: projeto.ligacoes_grupos(_modelo(s), s.estado["calculo"]),
+    ("POST", r"/api/ligacoes/identificar"): lambda s, a, q, c: _ligacoes(s, projeto.ligacoes_identificar),
+    ("POST", r"/api/ligacoes/grupos/editar"): lambda s, a, q, c: _ligacoes(s, lambda m: projeto.ligacoes_editar(m, c or {})),
+    ("POST", r"/api/ligacoes/grupos/(?P<id>[^/]+)/dimensionar"): lambda s, a, q, c: projeto.ligacoes_dimensionar(_modelo(s), _calculo(s), a["id"]),
     ("GET", r"/api/catalogo"): lambda s, a, q, c: projeto.catalogo_perfis(q.get("filtro", ""), q.get("familia")),
     ("GET", r"/api/catalogo/(?P<nome>[^/]+)"): lambda s, a, q, c: projeto.perfil(a["nome"]),
     ("GET", r"/api/materiais"): lambda s, a, q, c: projeto.materiais_disponiveis(),

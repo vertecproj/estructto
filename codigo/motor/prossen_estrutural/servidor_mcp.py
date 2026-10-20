@@ -435,8 +435,18 @@ def estrutura_gerar(dados: Annotated[dict[str, Any], Field(description=(
         "origem [x, y, z] (m). portico_plano: vaos_x [m], alturas [m por pavimento, de baixo para cima]. "
         "edificio: vaos_x, vaos_y, alturas (cria pavimentos com diafragma). galpao: vao, altura_pilar, altura_cumeeira, "
         "n_modulos, espacamento (m), secoes pilar/viga/terca; contraventamento (bool, padrão false; "
-        "true exige secoes.terca), secoes.contraventamento (opcional; padrão = terça)"))]) -> dict[str, Any]:
-    """Gera nós, barras e pavimentos de uma tipologia (pórtico plano, edifício ou galpão) no modelo atual e cria os
+        "true exige secoes.terca), secoes.contraventamento (opcional; padrão = terça). "
+        "trelica_plana: modelo pratt|howe|warren|warren_v|k|fink, banzo paralelo|uma_agua|duas_aguas|arco, vao, altura "
+        "(extremos), altura2 (cumeeira/direita/flecha), paineis, secoes {banzo (ou banzo_superior + banzo_inferior), "
+        "diagonal, montante?}, rotulas diagonais|todas|nenhuma, apoios [esq, dir] rotula|movel|engaste|livre, origem, "
+        "eixo x|y ou entre [nóA, nóB] (liga dois nós existentes), travar_plano, prefixo. trelicas_serie: o mesmo + n, "
+        "espacamento, secoes.terca opcional. contraventamento: modelo x|diagonal|k|v|lambda|mao_francesa, painel "
+        "[n1, n2, n3, n4] ou barras [bA, bB] (dois pilares/tesouras), divisoes, distancia (m, mão-francesa), secoes "
+        "{contraventamento, escora?} (diagonais só axiais; o motor não tem barra só de tração). tercas: barras "
+        "[tesouras em ordem], espacamento (máx., m), tirantes (linhas por vão), secoes {terca, tirante?}. "
+        "Pontos sobre barras existentes dividem a barra (cargas vão junto)"))]) -> dict[str, Any]:
+    """Gera nós, barras e pavimentos de uma tipologia (pórtico plano, edifício, galpão, treliça, treliças em série,
+    contraventamento, terças) no modelo atual e cria os
     casos G1 (peso próprio) e Q1 se não existirem. Cargas não são criadas: use carga_adicionar/lote_adicionar.
     Devolve {nos_criados, barras_criadas, pavimentos_criados, ids, avisos}.
     Exemplo: estrutura_gerar(dados={"tipo": "portico_plano", "material": {"aco": "A-572 GR.50"},
@@ -636,6 +646,52 @@ def ligacao_verificar(
     {nome, solicitante, resistente, unidade, taxa, item}. Consulte ligacao_tipos para os campos.
     Exemplo: ligacao_verificar(tipo="parafuso", dados={...}, esforcos={...})."""
     return projeto.verificar_ligacao(tipo, dados, esforcos)
+
+
+@_ferramenta(muta=False, idem=True)
+def ligacoes_identificar() -> dict[str, Any]:
+    """Identifica as ligações nos nós (base, viga–pilar mesa/alma, viga–viga, emenda, gusset, nó de treliça) e agrupa
+    as iguais (tipo + seções + ângulo + rótula + material) em modelo.ligacoes, guardando as edições anteriores
+    (grupos travados/manuais). Não descarta o cálculo. Devolve {grupos, membros, novos}. Depois: ligacoes_grupos."""
+    return projeto.ligacoes_identificar(_modelo())
+
+
+@_ferramenta(ro=True, idem=True)
+def ligacoes_grupos(limite: Limite = 200, deslocamento: Deslocamento = 0) -> dict[str, Any]:
+    """Grupos de ligações do modelo: id, nome, tipo, assinatura, travado, projeto {tipo_ligacao, dados} e membros
+    {no, barra, ponta}. Com cálculo (projeto_calcular), cada grupo vem dimensionado: taxa por membro, governante
+    (pior membro e combinação) e taxa_max. Rode ligacoes_identificar antes."""
+    return _pagina(projeto.ligacoes_grupos(_modelo(), _estado["calculo"]), limite, deslocamento)
+
+
+@_ferramenta(muta=False)
+def ligacoes_grupo_editar(
+        acao: Annotated[Literal["renomear", "travar", "projeto", "mover", "dividir", "unir"],
+                        Field(description="o que fazer com os grupos")],
+        grupo: Annotated[str | None, Field(description="id do grupo (renomear, travar, projeto, dividir)")] = None,
+        nome: Annotated[str | None, Field(description="novo nome (renomear)")] = None,
+        travado: Annotated[bool | None, Field(description="travar/destravar (travar)")] = None,
+        tipo_ligacao: Annotated[str | None, Field(description="projeto: placa_base ou um tipo de ligacao_tipos; vazio = sem projeto")] = None,
+        dados: Annotated[dict[str, Any] | None, Field(description="projeto: campos do tipo de ligação (m, mm em *_mm)")] = None,
+        membros: Annotated[list[dict[str, str]] | None, Field(description="mover/dividir: [{no, barra, ponta: i|j}]")] = None,
+        destino: Annotated[str | None, Field(description="mover: grupo de destino; vazio = grupo novo")] = None,
+        grupos: Annotated[list[str] | None, Field(description="unir: ids (todos vão para o primeiro)")] = None,
+        ) -> dict[str, Any]:
+    """Edita os grupos de ligações (o usuário manda): renomear, travar, escolher o projeto (tipo_ligacao + dados),
+    mover membros entre grupos, dividir (membros vão para um grupo novo) ou unir grupos. Grupo travado não aceita
+    mover/unir. Edições sobrevivem a ligacoes_identificar. Exemplo: ligacoes_grupo_editar(acao="renomear",
+    grupo="G2", nome="Cobertura")."""
+    return projeto.ligacoes_editar(_modelo(), _dados(acao=acao, grupo=grupo, nome=nome, travado=travado,
+                                                     tipo_ligacao=tipo_ligacao, dados=dados, membros=membros,
+                                                     destino=destino, grupos=grupos))
+
+
+@_ferramenta(ro=True, idem=True)
+def ligacoes_grupo_dimensionar(grupo: Annotated[str, Field(description="id do grupo, ex. 'G1'")]) -> dict[str, Any]:
+    """Dimensiona o grupo pela pior ligação: verifica o projeto do grupo com os esforços de cada membro em todas as
+    combinações ELU (exige projeto_calcular). Devolve membros com taxa e combinação, governante, taxa_max, ok e o
+    resultado completo do governante; o projeto vale para todos os membros. Sem projeto: governante pela demanda."""
+    return projeto.ligacoes_dimensionar(_modelo(), _calculo(), grupo)
 
 
 @_ferramenta(ro=True, idem=True)

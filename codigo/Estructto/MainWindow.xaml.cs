@@ -50,7 +50,7 @@ namespace NovoFtool
             ArqInicio.Click += (s, e) => { MontarTelaInicial(); TelaInicial.Visibility = TelaInicial.Visibility == Visibility.Visible && M.Barras.Count > 0 ? Visibility.Collapsed : Visibility.Visible; };
             ArqNovo.Click += (s, e) => Novo();
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(EsconderAbaDocumento), System.Windows.Threading.DispatcherPriority.Loaded);
-            var selo = TemaPlant.Selo();
+            var selo = TemaPlant.Selo(24);
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => TemaPlant.AjustarFaixa(this, selo)), System.Windows.Threading.DispatcherPriority.Loaded);
             Faixa.SelectedTabChanged += (s, e) => Dispatcher.BeginInvoke(new Action(() => TemaPlant.AjustarFaixa(Faixa, null)), System.Windows.Threading.DispatcherPriority.Loaded);
             TemaPlant.AplicarDock(Docas);
@@ -361,6 +361,7 @@ namespace NovoFtool
             MontarEdicao3D(abaModelo.Groups.First(g => (string)g.Header == "Modificar"));   // só no modelo espacial (EdicaoEspacial.cs)
             abaModelo.ToolTip = "Gerar e desenhar a estrutura, modificar, apoios e rótulas, seções e materiais, barras contínuas.";
             MontarDesenho3D();   // Desenhar 3D (modelo espacial), Vista3D.cs
+            MontarTrelicas();    // Treliças e contraventamentos (Modelo › Gerar + paleta), JanelaTrelicas.cs
 
             // ACOES (antes "Cargas"): casos de carga (inseridos por MontarCasosNaFaixa), cargas no no e na barra, peso proprio
             cFx = Campo("Fx (kN)", "0", "Positivo para a direita."); cFy = Campo("Fy (kN)", "0", "Positivo para cima. Gravidade = negativo."); cMz = Campo("Mz (kN·m)", "0", "Positivo anti-horário.");
@@ -416,6 +417,8 @@ namespace NovoFtool
             var abaLigacoes = Aba("Ligações e bases", "L",
                 Grupo("Bases",
                     BotaoFerramenta("placa", "Placa de base", Ferramenta.Placa, "Placa de base com chumbadores no pé do pilar (nó onde chega uma só barra). Com um nó selecionado, abre a verificação da placa dele.")),
+                Grupo("Grupos",
+                    Botao("unir", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Modelo 3D: identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
                 Grupo("Ligações",
                     Botao("parafuso", "Parafusos", () => AbrirLigacaoTipo("parafuso"), "Ligação parafusada: cisalhamento, pressão de contato e tração nos parafusos (NBR 8800, motor Python)."),
                     Botao("solda", "Filete de solda", () => AbrirLigacaoTipo("solda_filete"), "Solda de filete: resistência do metal de solda e do metal-base (NBR 8800, motor Python)."),
@@ -650,13 +653,13 @@ namespace NovoFtool
         {
             // estados do desenho na Vista3D (docs/v3/PESQUISA-PLANT.md 3.6); a Vista3D lê os mesmos valores (Comandos3D.LigarComandos3D)
             NovoBloco();
-            stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade do plano de trabalho (F9)", v => V3(x => x.AtrairGrade = v)); stAtrair.IsChecked = true;
+            stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade do plano de trabalho (F9)", v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; })); stAtrair.IsChecked = true;
             stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade do plano de trabalho ao desenhar (F7)", v => V3(x => x.MostrarGradePlano = v)); stGrade.IsChecked = true;
             NovoBloco();
-            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => V3(x => x.Orto = v));
-            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => V3(x => x.Polar = v)); stPolar.IsChecked = true;
-            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => V3(x => x.AtrairObjetos = v)); stObj.IsChecked = true;
-            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => V3(x => x.Rastrear = v)); stRastro.IsChecked = true;
+            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => { });
+            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => { }); stPolar.IsChecked = true;
+            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => { }); stObj.IsChecked = true;
+            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => { }); stRastro.IsChecked = true;
             stDin = StatusBtn("M2,6 H18 V14 H2 Z M5,10 H9 M12,8 V12", "Dinâmica — caixas de comprimento e ângulo junto ao cursor (F12)", v => V3(x => x.EntradaDinamica = v)); stDin.IsChecked = true;
             NovoBloco();
             var tela = new Button { Content = IconeStatus("M2,7 V2 H7 M13,2 H18 V7 M18,13 V18 H13 M7,18 H2 V13"), ToolTip = "Enquadrar o modelo (Z + Enter, duplo clique na roda)", Style = EstiloBotaoStatus() };
@@ -755,7 +758,7 @@ namespace NovoFtool
         {
             Bastidor.Background = TemaPlant.B(TemaPlant.Titulo);
             var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            sp.Children.Add(new Image { Source = TemaPlant.Selo(), Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center });
+            sp.Children.Add(new Image { Source = TemaPlant.Selo(24), Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center });
             sp.Children.Add(new TextBlock { Text = " ▾", Foreground = TemaPlant.B(TemaPlant.Texto), FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
             return sp;
         }

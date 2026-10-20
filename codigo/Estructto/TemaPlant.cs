@@ -1,6 +1,7 @@
 // Sistema de tokens visuais e tema escuro moderno do Estructto v2 (PESQUISA 4.1–4.3).
 // Centraliza cores de superficie (0..3), bordas, tipografia, status, cores semanticas do canvas/diagramas
 // e retinta Fluent.Ribbon + AvalonDock VS2013.
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using AvalonDock;
@@ -96,6 +97,13 @@ namespace NovoFtool
             CorMomentoArea     = C("#3322C55E"),
             CorGuiaSnap        = C("#CC22C55E"),
             CorMarcaSnap       = C("#22C55E"),
+            // snap e medir 3D (Snap3D.cs, SnapOverlay.cs, Medir3D.cs): amarelo do AutoSnap, ciano do rastreio, laranja/azul do Medir
+            CorSnapAuto        = C("#FFD400"),
+            CorSnapContorno    = C("#E00A0D12"),
+            CorRastreio        = C("#00C8FF"),
+            CorMedida          = C("#FF9F1C"),
+            CorMedida2         = C("#2F7DF6"),
+            CorMedidaArea      = C("#2ECC71"),
             CorJanelaSel       = C("#38BDF8"),
             CorJanelaSelArea   = C("#2838BDF8"),
             CorCruzSel         = C("#22C55E"),
@@ -212,6 +220,10 @@ namespace NovoFtool
             BMomentoNeg       = B(CorMomentoNeg),
             BGuiaSnap         = B(CorGuiaSnap),
             BMarcaSnap        = B(CorMarcaSnap),
+            BSnapAuto         = B(CorSnapAuto),
+            BRastreio         = B(CorRastreio),
+            BMedida           = B(CorMedida),
+            BMedida2          = B(CorMedida2),
             BJanelaSel        = B(CorJanelaSel),
             BJanelaSelArea    = B(CorJanelaSelArea),
             BCruzSel          = B(CorCruzSel),
@@ -459,7 +471,7 @@ namespace NovoFtool
                 }
                 else if (d is System.Windows.Controls.Image im && im.Name == "PART_Icon" && selo != null)
                 {
-                    im.Source = selo; im.Width = 46; im.Height = 22; im.Margin = new Thickness(6, 0, 4, 0); im.Stretch = Stretch.Uniform;
+                    im.Source = selo; im.Width = 46; im.Height = 24; im.Margin = new Thickness(6, 0, 4, 0); im.Stretch = Stretch.Uniform;
                 }
                 for (int i = 0; i < VisualTreeHelper.GetChildrenCount(d); i++) Ir(VisualTreeHelper.GetChild(d, i));
             }
@@ -467,8 +479,17 @@ namespace NovoFtool
         }
 
         // Logo do Estructto (icone da barra de titulo e botao do aplicativo)
-        public static ImageSource Selo()
+        // px > 0: quadro do estructto.ico com esse tamanho exato (16/24/32/48/64/128/256; os pequenos sao desenhados a mao), sem reescalar.
+        public static ImageSource Selo(int px = 0)
         {
+            if (px > 0)
+            {
+                var dec = new System.Windows.Media.Imaging.IconBitmapDecoder(new System.Uri("pack://application:,,,/estructto.ico"),
+                    System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                var q = dec.Frames.Where(f => f.PixelWidth >= px).OrderBy(f => f.PixelWidth).FirstOrDefault() ?? dec.Frames.OrderBy(f => f.PixelWidth).Last();
+                q.Freeze();
+                return q;
+            }
             var bi = new System.Windows.Media.Imaging.BitmapImage(new System.Uri("pack://application:,,,/estructto.png"));
             bi.Freeze();
             return bi;

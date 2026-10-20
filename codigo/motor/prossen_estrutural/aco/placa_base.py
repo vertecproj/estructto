@@ -1,29 +1,48 @@
-"""Placa de base: compatibilidade com Nucleo.cs e Solda.cs (método legado).
+"""Placa de base: método NBR (v2) e compatibilidade com Nucleo.cs/Solda.cs (legado).
+
+``verificar_placa_base`` usa o método NBR (docs/v3/PLACA-BASE-V2.md): esforços de
+CÁLCULO (ELU), sem coeficiente global; concreto NBR 8800 6.6.5; bloco retangular
+de compressão; chapa CBCA com conferência Pfeil/DG1; corte atrito → barra →
+chumbadores; chumbador pré-concretado por NBR 8800 6.3.3 + ACI 318-19 cap. 17.
+O caminho legado (pivô na borda, n global) segue em ``forcas_fixacoes``,
+``espessura_placa``, ``verificar_parafuso_placa`` e no campo ``legado``.
 
 API: kN, m, kN.m, m², m⁴ e kN/m²; diâmetro nominal em ``diametro_mm``.
-Catálogo conserva mm, MPa, kgf nos campos com sufixos. Contas de solda e
-parafuso convertem internamente para N/mm/MPa e retornam unidades da API.
-Não constitui verificação normativa completa: ver LIMITACOES.
+Catálogo conserva mm, MPa, kgf nos campos com sufixos. Ver LIMITACOES.
 """
 from __future__ import annotations
 
 import copy
 import csv
 import math
+from itertools import combinations
 from pathlib import Path
 
+from .ligacoes import (cisalhamento_parafuso, interacao_tracao_cisalhamento, pressao_contato,
+                       tracao_parafuso)
+from .nbr8800 import GA1, GA2
+
 METODO = 'legado simplificado Nucleo.cs / Solda.cs'
+METODO_NBR = ('NBR 8800:2008 6.6.5 + bloco retangular (DG1) + chapa CBCA + ACI 318-19 cap. 17; '
+              'esforços de cálculo (ELU), sem coeficiente global')
+GC = GN = 1.4   # NBR 8800 6.6.5: γc e γn
+PHI_ACI = .70   # ACI 318-19 17.5.3: concreto, pré-concretado, condição B
 FONTES = ('codigo/portico/src/Nucleo.cs:864–1318', 'codigo/Estructto/Solda.cs:1–159')
 COBERTURA = ('placa rígida', 'parafuso métrico', 'chumbadores de catálogo', 'solda de contorno')
 LIMITACOES = (
-    'Chapa por faixas simplificadas; pressão no concreto e punção não verificadas.',
-    'Geometria, espessura, armadura da laje e borda do concreto não conhecidas.',
-    'Interação 5/3 e correção raiz de fck são hipóteses de projeto; sem extrapolação para cima.',
-    'Solda de contorno idealizado; sem verificação do metal base, 4b/40 mm ou máximo t−1,5 mm.',
+    'Esforços de entrada são de cálculo (ELU); combinações e majoração ficam a cargo do solver.',
+    'Momento só no plano H; sem flexão biaxial, corte em duas direções, enrijecedores nem efeito alavanca.',
+    'Tração só na fileira mais afastada do lado tracionado; fileiras internas desprezadas.',
+    "Chapa: balanços m/n do CBCA, sem λn' (Thornton) nem placa apoiada em três lados.",
+    'A2 homotético dentro do bloco centrado na placa; bloco não informado → A2 = A1 e bordas infinitas.',
+    'ACI 318-19 cap. 17 simplificado: bloco retangular centrado, corte só na direção do plano, sem armadura de ancoragem.',
+    'ACI 318-19 17.8: interação só entre modos de concreto; o aço da haste (17.6.1/17.7.1) é verificado pela NBR 8800 6.3.3.4, fora da 17.8.',
+    'ACI 318-19 17.10 (sismo: 0,75·φ, ductilidade da ancoragem, Ω0) não implementado.',
+    'Chumbador tracionado entre mesas: faixa biengastada entre as mesas, sem a contribuição da alma (charneiras de Thornton não implementadas).',
+    'Barra de cisalhamento: sem cone de corte à frente (ACI 349) e sem solda da barra.',
+    'Catálogo pós-instalado: interação 5/3 e correção √fck são hipóteses de projeto; reduções WQA não calculadas.',
+    'Solda de contorno pelo modelo legado (tensão admissível); sem 4b/40 mm nem máximo t−1,5 mm.',
     'Barra inclinada fora do modelo de chapa e solda.',
-    'Reduções especiais WQA por borda, temperatura e C15 não calculadas.',
-    'Laje ≥ 2 hef e reaperto sob dinâmica são orientações, não verificações.',
-    'O guia diz que comparação não existe e planilha reprova s<s_min; aqui prevalece o C# com ψ e 6d.',
 )
 DIAMETROS_MM = (8, 10, 12, 14, 16, 20, 24, 30, 36)
 AT_MM2 = (36.6, 58, 84.3, 115, 157, 245, 353, 561, 817)
@@ -97,6 +116,22 @@ def esquema_placa_base():
         ('solda', 'm', 'perna; zero dimensiona explicitamente', 0),
         ('eletrodo', '', 'eletrodo; vazio/desconhecido usa E70', 'E70'),
         ('eixo_fraco', '', 'orientação do perfil', False),
+        # ---- método NBR (v2); esforços de cálculo
+        ('fu_chapa', 'kN/m²', 'ruptura da chapa; ≤0 usa A36', 400000),
+        ('bloco_H', 'm', 'bloco de concreto na direção H; 0 = não informado (A2 = A1, sem bordas)', 0),
+        ('bloco_B', 'm', 'bloco de concreto na direção B; 0 = não informado', 0),
+        ('bloco_altura', 'm', 'altura do bloco (ψh,V do ACI); 0 = não informada', 0),
+        ('hef', 'm', 'embutimento efetivo do chumbador pré-concretado; 0 = 12·Ø', 0),
+        ('abrg', 'm²', 'área de apoio da cabeça/porca; 0 = porca pesada 1,163·Ø²', 0),
+        ('fissurado', '', 'concreto fissurado (ACI ψc)', True),
+        ('fub_chumbador', 'kN/m²', 'ruptura do chumbador; ≤0 usa a classe', 0),
+        ('fyb_chumbador', 'kN/m²', 'escoamento do chumbador; ≤0 usa a classe', 0),
+        ('atrito', '', 'coeficiente de cálculo do atrito sobre Nd de compressão (CBCA 0,10)', .10),
+        ('lug_b', 'm', 'barra de cisalhamento: largura; 0 = sem barra', 0),
+        ('lug_t', 'm', 'barra de cisalhamento: espessura', 0),
+        ('lug_h', 'm', 'barra de cisalhamento: altura embutida no concreto', 0),
+        ('graute', 'm', 'espessura do graute', 0),
+        ('arruela_soldada', '', 'arruela soldada: todos os chumbadores trabalham ao corte', False),
     ]
     out = [dict(nome=n, unidade=u, descricao=t, padrao=p) for n, u, t, p in campos]
     for c in out:
@@ -115,9 +150,13 @@ def _dados(dados):
     d = {c['nome']: c['padrao'] for c in esquema_placa_base()}
     d.update(dados or {})
     nomes = ('H', 'B', 'esp', 'borda', 'sobra', 'fileiras', 'por_fileira', 'diametro_mm',
-             'fy_chapa', 'fck', 'seguranca', 'seguranca_modelo', 'coef_chumbador', 'solda')
+             'fy_chapa', 'fck', 'seguranca', 'seguranca_modelo', 'coef_chumbador', 'solda',
+             'fu_chapa', 'bloco_H', 'bloco_B', 'bloco_altura', 'hef', 'abrg', 'fub_chumbador', 'fyb_chumbador',
+             'atrito', 'lug_b', 'lug_t', 'lug_h', 'graute')
     d.update(_numeros({k: d[k] for k in nomes}, positivos=('seguranca_modelo', 'diametro_mm'),
-                     nao_negativos=('esp', 'borda', 'sobra', 'solda'), inteiros=('fileiras', 'por_fileira')))
+                     nao_negativos=('esp', 'borda', 'sobra', 'solda', 'bloco_H', 'bloco_B', 'bloco_altura', 'hef',
+                                    'abrg', 'atrito', 'lug_b', 'lug_t', 'lug_h', 'graute'),
+                     inteiros=('fileiras', 'por_fileira')))
     return d
 
 
@@ -518,15 +557,381 @@ def diagnosticar_solda(secao, dados, esforcos):
     return diag
 
 
-def verificar_placa_base(dados, esforcos, secao):
-    """Esforços resolvidos de placa N/V/M; locais opcionais em ``barra``.
+# ====================================================================== método NBR (v2)
+# Esforços de entrada são de CÁLCULO (ELU, já majorados). Nenhum coeficiente
+# global n é aplicado aqui; n sobrevive só no resultado ``legado``.
 
-    A solda só é aprovada com esforços locais explícitos. Geometria/forças
-    permanecem disponíveis mesmo quando inclinada. Não depende de GUI/solver.
+def resistencia_concreto(fck, H, B, bloco_H=0., bloco_B=0.):
+    """σc,Rd = fck/(γc·γn)·√(A2/A1) ≤ fck, √(A2/A1) ≤ 2.  # NBR 8800 6.6.5 (CBCA p. 204)
+
+    A2 = maior retângulo homotético à placa contido no bloco centrado.
+    Bloco não informado: A2 = A1 (lado seguro).
     """
-    d = _dados(dados)
-    g = geometria_placa(d, secao)
-    e = _numeros({k: esforcos.get(k) for k in ('N', 'V', 'M')}, nao_negativos=('V',))
+    k = min(bloco_H/H, bloco_B/B) if bloco_H > 0 and bloco_B > 0 else 1.
+    raiz = min(max(k, 1.), 2.)
+    sig = min(fck/(GC*GN)*raiz, fck)
+    return dict(sigma_cRd=sig, raiz_A2_A1=raiz, A1=H*B, A2=raiz**2*H*B, item='NBR 8800 6.6.5')
+
+
+def forcas_bloco(N, M, coordenadas, H, B, sigma_cRd):
+    """Bloco retangular de compressão (AISC DG1 3.3/3.4 com σc,Rd da NBR).
+
+    N > 0 tração, M com sinal (M ≥ 0 comprime o lado +y). Ordem:
+    1) N > 0 e distribuição elástica toda tracionada → sem contato;
+    2) compressão sem tração: Y = H − 2e, fp = P/(Y·B) ≤ σc,Rd;
+    3) bloco a σc,Rd + fileira tracionada mais afastada (equilíbrio):
+       Y = (f + H/2) − √[(f + H/2)² − 2(|M| + P·f)/qmax], T = qmax·Y − P.
+    Chumbadores do lado comprimido e fileiras internas não recebem tração.
+    taxa_concreto ≤ 1 ⇔ o equilíbrio tem solução.
+    """
+    a = _numeros(dict(N=N, M=M, H=H, B=B, sigma_cRd=sigma_cRd), positivos=('H', 'B', 'sigma_cRd'))
+    N, M, H, B, sig = (a[k] for k in ('N', 'M', 'H', 'B', 'sigma_cRd'))
+    pts = [tuple(_numeros(dict(y=p[0], z=p[1])).values()) for p in coordenadas]
+    if not pts:
+        raise ValueError('coordenadas: pelo menos uma fixação')
+    s = 1 if M >= 0 else -1
+    Ma, P, q, n = abs(M), -N, sig*B, len(pts)
+    ymin = min(s*y for y, _ in pts)
+    f = -ymin                       # centro da placa → fileira tracionada
+    lado = [i for i, (y, _) in enumerate(pts) if abs(s*y-ymin) < 1e-9]
+    out = dict(N=N, M=M, qmax=q, sigma_cRd=sig, e=Ma/P if P > 0 else None,
+               e_crit=H/2-P/(2*q) if P > 0 else None, f=f, Y=0., C=0., fp=0., T_total=0.)
+    t = [0.]*n
+    if Ma == 0 and P == 0:
+        out.update(modelo='Sem esforço', taxa_concreto=0.)
+    if N > 0:
+        u = [-s*y for y, _ in pts]
+        s2 = sum(x*x for x in u)
+        te = [N/n+(Ma*x/s2 if s2 > 0 else 0) for x in u]
+        if min(te) >= -1e-9:
+            t = [max(0, x) for x in te]
+            out.update(modelo='Todos tracionados', taxa_concreto=0.)
+    if 'modelo' not in out and P > 0 and H-2*Ma/P > 0 and P/(q*(H-2*Ma/P)) <= 1:
+        Y = H-2*Ma/P
+        out.update(modelo='Compressão sem tração', Y=Y, C=P, fp=P/(Y*B), taxa_concreto=P/(q*Y))
+    if 'modelo' not in out:
+        aa = f+H/2
+        disc = aa*aa-2*(Ma+P*f)/q
+        Y = aa-math.sqrt(max(disc, 0))
+        T = q*Y-P
+        if T > 0 or P <= 0:
+            out.update(modelo='Bloco de compressão' if disc >= 0 else 'Bloco sem solução (placa pequena)',
+                       Y=Y, C=q*Y, fp=sig, T_total=T, taxa_concreto=(Ma+P*f)/(q*aa*aa/2))
+            for i in lado:
+                t[i] = T/len(lado)
+        else:   # esmagamento antes de precisar de tração
+            Y = H-2*Ma/P
+            out.update(modelo='Concreto esmagado', Y=max(Y, 0), C=P, fp=P/(Y*B) if Y > 0 else math.inf,
+                       taxa_concreto=P/(q*Y) if Y > 0 else math.inf)
+    paraf = [(y, z, ti) for (y, z), ti in zip(pts, t)]
+    out.update(paraf=paraf, Tmax=max(t), T_total=sum(t), pivo_y=None,
+               y_bloco=s*(H/2-out['Y']) if out['Y'] > 0 else None, lado_comprimido=s)
+    return out
+
+
+def _ks(secao):
+    """Fatores do balanço: I/H 0,95d e 0,8bf; tubo retangular 0,95; circular 0,80 (DG1 3.1)."""
+    t = str(secao.get('tipo', '')).upper()
+    if t in ('TC', 'CIRC', 'TUBO_CIRCULAR', 'CIRCULAR'):
+        return .8, .8
+    if t in ('TR', 'RET', 'TUBO_RETANGULAR', 'TQ'):
+        return .95, .95
+    return .95, .8
+
+
+def _pressao_cbca(P, Ma, H, B, a):
+    """Distribuição elástica do CBCA PBE p. 236 (casos 1–4): fmax, comprimento x e inclinação."""
+    e = Ma/P if P > 0 else math.inf
+    if e <= H/6:
+        fmax, fmin = P/(H*B)*(1+6*e/H), P/(H*B)*(1-6*e/H)
+        return dict(caso=1, fmax=fmax, x=math.inf, incl=(fmax-fmin)/H)
+    if e <= H/3:
+        x = 3*(H/2-e)
+        return dict(caso=2, fmax=2*P/(x*B), x=x, incl=2*P/(x*B)/x)
+    fmax = 4*(Ma+P*a)/(H*B*(H/3+a))
+    return dict(caso=3 if P != 0 else 4, fmax=max(fmax, 0), x=H/2, incl=max(fmax, 0)/(H/2))
+
+
+def espessura_placa_nbr(forcas, H, B, secao, diametro_mm, fy=250000, fck=20000, esp=0, eixo_fraco=False):
+    """Espessura da chapa. Primário: CBCA (cap. 10/11, p. 204/237), t ≥ √[6·Mmax/(1,25·fy/γa1)].
+
+    Lado comprimido, por unidade de largura, balanços m = (H − k·d)/2 e n = (B − k'·bf)/2:
+      CBCA: pressão elástica (casos 1–4) → Mm = m²(2fmax + fm)/6 (ou fmax·x/2·(m − x/3) se x < m);
+            Mn = fmax·n²/2. Compressão centrada: Mmax = fc·ℓ²/2, ℓ = max(m, n).
+      Conferência Pfeil/DG1 (Z = t²/4, t ≥ √(4·M·γa1/fy)): bloco retangular com
+            fp = max(pressão do bloco, 0,85·fck/γc) (Pfeil 9.10.5, p. 260).
+    Lado tracionado (fileiras fora das mesas, x = |y| − d/2 + tf/2 > 0): balanço DG1, M = T_fileira·x/b_ef,
+      b_ef = união das faixas [z − x, z + x] (2x por chumbador, 45°, AISC-DG1.md §1.4.5) recortada na placa.
+    Chumbadores tracionados entre as mesas (x ≤ 0): faixa biengastada nas linhas médias das mesas,
+      vão L = d − tf, carga P a distâncias a e b das mesas: M = P·a·b·max(a, b)/L² (momento de engaste);
+      b_ef = união de [w − min(a, b), w + min(a, b)] recortada na largura da mesa. Sem a alma (conservador).
+    Casos 3/4 do CBCA (e > H/3): a fileira tracionada recebe a envoltória entre a tração do bloco e
+      Td = fc·H·B/4 − Nd (CBCA p. 236).
+    """
+    s = _secao(secao)
+    ri, ro = (s['b'], s['h']) if eixo_fraco else (s['h'], s['b'])
+    kd, kb = _ks(s)
+    ki, ko = (kb, kd) if eixo_fraco else (kd, kb)
+    m, n = max((H-ki*ri)/2, 0), max((B-ko*ro)/2, 0)
+    tf = 0. if eixo_fraco else s['tf']   # DG1: até o centro da mesa; eixo fraco: borda da mesa
+    P, Ma = -forcas['N'], abs(forcas['M'])
+    comp = forcas['modelo'] != 'Todos tracionados' and (forcas['C'] > 0 or P > 0)
+    Mc = Mp = 0.
+    pc = None
+    if comp:
+        pc = _pressao_cbca(P, Ma, H, B, forcas['f'])
+        fm = pc['fmax']-pc['incl']*m
+        Mm = m*m*(2*pc['fmax']+fm)/6 if m <= pc['x'] else pc['fmax']*pc['x']/2*(m-pc['x']/3)
+        Mc = max(Mm, pc['fmax']*n*n/2)
+        fp = max(forcas['fp'] if math.isfinite(forcas['fp']) else 0, .85*fck/1.4)
+        Y = forcas['Y'] or H
+        Mp = max(fp*m*m/2 if Y >= m else fp*Y*(m-Y/2), fp*n*n/2)
+    paraf = list(forcas['paraf'])
+    td = max(pc['fmax']*H*B/4-P, 0.) if pc and pc['caso'] >= 3 else 0.   # CBCA p. 236, casos 3/4
+    if td > 0:
+        sl = forcas.get('lado_comprimido', 1)
+        ymin = min(sl*y for y, _, _ in paraf)
+        fila = [i for i, (y, _, _) in enumerate(paraf) if abs(sl*y-ymin) < 1e-9]
+        for i in fila:
+            y, z, t = paraf[i]
+            paraf[i] = (y, z, max(t, td/len(fila)))
+    fora, dentro = {}, {}
+    L, bf = s['h']-s['tf'], s['b']
+    for y, z, t in paraf:
+        if t <= 1e-9:
+            continue
+        u, w = (z, y) if eixo_fraco else (y, z)
+        if abs(y)-ri/2+tf/2 > 0:
+            fora.setdefault((abs(y)-ri/2+tf/2, round(y*1000, 3)), []).append((z, t, B/2))
+        elif eixo_fraco and abs(z) > L/2 and not _ks(s) == (.8, .8):   # eixo fraco: além da mesa, balanço em z
+            fora.setdefault((abs(z)-L/2, round(z*1000, 3)), []).append((y, t, min(H, bf)/2))
+        else:   # entre as mesas: vão ao longo de y (eixo forte) ou de z (eixo fraco)
+            dentro.setdefault(round(u*1000, 3), []).append((w, t))
+    Mt, xt, bt, mod_t, avisos = 0., 0., 0., '', []
+    for (x, _), g in fora.items():
+        b = _largura([z for z, _, _ in g], x, g[0][2])
+        M = sum(t for _, t, _ in g)*x/b
+        if M > Mt:
+            Mt, xt, bt, mod_t = M, x, b, 'balanço (DG1)'
+    circ = _ks(s) == (.8, .8)
+    for umm, g in dentro.items():
+        a, b = L/2+umm/1000, L/2-umm/1000
+        lim = min(H if eixo_fraco else B, bf)/2
+        lw = _largura([w for w, _ in g], min(a, b), lim) if min(a, b) > 0 and not circ else 0.
+        if lw <= 1e-9:
+            avisos.append('Chumbador tracionado entre as mesas fora do modelo de faixa biengastada: chapa NÃO verificada à tração.')
+            Mt, mod_t = math.inf, 'fora do modelo'
+            continue
+        M = sum(t for _, t in g)*a*b*max(a, b)/(L*L)/lw
+        if M > Mt:
+            Mt, xt, bt, mod_t = M, min(a, b), lw, 'faixa biengastada entre mesas'
+    cb = lambda M: math.sqrt(6*M*GA1/(1.25*fy)) if M > 0 else 0.   # math.inf passa como inf
+    pl = lambda M: math.sqrt(4*M*GA1/fy) if M > 0 else 0.
+    tc, tt_ = cb(Mc), cb(Mt)
+    nec = max(tc, tt_)
+    pf = max(pl(Mp), pl(Mt))
+    item = 'CBCA Manual de Ligações cap. 10/11 (p. 204, 237); NBR 8800 6.6.5'
+    v = dict(_v('chapa: espessura', nec, esp, 'm', item), criterio_resistente=True)
+    r = _resultado([v], avisos)
+    r.update(metodo='CBCA (1,25·W)', modelo_tracao=mod_t, Td_cbca=td, EspNec=nec, EspNecC=tc, EspNecT=tt_, t_cbca=nec, t_pfeil=pf,
+             governa='Pfeil/DG1 (conferência)' if pf > nec*(1+1e-9) else 'CBCA',
+             m=m, n=n, Mmax_c=Mc, Mmax_t=Mt, Mmax_pfeil=Mp, braco=xt, largura_ef=bt, fy_chapa=fy,
+             pressao_cbca=pc, esp_comercial=next((x for x in CHAPAS if x >= nec), None))
+    if r['esp_comercial'] is None:
+        r['avisos'].append('Nenhuma espessura comercial da tabela atende.')
+    r['ok'] = esp > 0 and nec <= esp
+    return r
+
+
+def _largura(ws, c, lim):
+    """Comprimento da união dos intervalos [w − c, w + c] recortados em [−lim, lim]."""
+    iv = sorted((max(w-c, -lim), min(w+c, lim)) for w in ws)
+    tot, (a, b) = 0., iv[0]
+    for x, y in iv[1:]:
+        if x > b:
+            tot, a, b = tot+max(b-a, 0), x, y
+        else:
+            b = max(b, y)
+    return tot+max(b-a, 0)
+
+
+def cisalhamento_base(V, N, n_fix, dados, sigma_lug):
+    """Ordem: atrito → barra de cisalhamento → chumbadores (sem somar mecanismos).
+
+    Atrito: Fat,Rd = μd·Nc, μd = 0,10 por padrão (CBCA cap. 10/11: 10% de Nd; Pfeil eq. 9.17).
+    Barra: pressão no concreto à frente σc,Rd(A2 = A1)·b·h e flexão M = V·(G + h/2) ≤ 1,25·b·t²/6·fy/γa1.
+    Chumbadores: furo alargado conta só 2 (DG1); arruela soldada → todos.
+    """
+    d = dados
+    fat = d['atrito']*max(0., -N)
+    out = dict(V=V, Fat_Rd=fat, verificacoes=[], avisos=[], Fv=0., n_ef=0)
+    if V <= fat+1e-12:
+        out.update(mecanismo='atrito')
+        out['verificacoes'].append(_v('corte: atrito chapa–concreto', V, fat, 'kN', 'CBCA cap. 10 (10% de Nd); Pfeil eq. 9.17'))
+        return out
+    if min(d['lug_b'], d['lug_t'], d['lug_h']) > 0:
+        b, t, h = d['lug_b'], d['lug_t'], d['lug_h']
+        M = V*(d['graute']+h/2)
+        out.update(mecanismo='barra de cisalhamento', M_barra=M)
+        out['verificacoes'] += [
+            _v('corte: barra — pressão no concreto', V, sigma_lug*b*h, 'kN', 'NBR 8800 6.6.5 (A2 = A1); DG1 3.5'),
+            _v('corte: barra — flexão', M, 1.25*b*t*t/6*d['fy_chapa']/GA1, 'kN·m', 'NBR 8800 5.4.2.2 (1,25·W, como CBCA)')]
+        out['avisos'].append('Barra de cisalhamento: cone de corte à frente (ACI 349) e solda barra–placa não verificados.')
+        return out
+    ne = n_fix if d['arruela_soldada'] else min(n_fix, 2)
+    out.update(mecanismo='chumbadores', n_ef=ne, Fv=V/ne)
+    if not d['arruela_soldada'] and n_fix > 2:
+        out['avisos'].append('Corte nos chumbadores: furo alargado → só 2 efetivos (DG1); use arruela soldada para contar todos.')
+    return out
+
+
+def _lado(lo, hi, h, L):
+    a, b = lo-h, hi+h
+    if L:
+        a, b = max(a, -L/2), min(b, L/2)
+    return b-a
+
+
+def concreto_chumbador_aci(paraf, V, n_ef, hef, da, abrg, fck, fissurado=True, bloco=None):
+    """ACI 318-19 cap. 17, chumbador pré-concretado com cabeça/porca, SI (N, mm, MPa). φ = 0,70.
+
+    Tração: cone Ncbg = ANc/ANco·ψec·ψed·ψc·Nb, Nb = 10·√f'c·hef^1,5 (17.6.2), hef' com 3+ bordas
+    (17.6.2.1.2); arrancamento Npn = ψc,P·8·Abrg·f'c (17.6.3); fendilhamento lateral
+    Nsb = 13·ca1·√Abrg·√f'c se hef > 2,5·ca1 (17.6.4). Corte (direção ±y): borda
+    Vcbg = AVc/AVco·ψed·ψc·ψh·Vb, Vb = min(0,6(le/da)^0,2·√da, 3,7)·√f'c·ca1^1,5 (17.7.2);
+    pryout Vcpg = kcp·Ncpg (17.7.3). Interação trilinear 17.8 (≤ 1,2).
+    Entradas em m/kN/kN·m²; bloco = (H, B, altura) centrado na placa, ou None (sem bordas).
+    f'c = fck (limitado a 69 MPa, 17.3.1).
+    """
+    fc = min(fck/1000, 69.)
+    sq = math.sqrt(fc)
+    h0, da, ab = hef*1000, da*1000, abrg*1e6
+    Hb, Bb, ha = ((bloco[0]*1000, bloco[1]*1000, (bloco[2] or 0)*1000) if bloco else (None, None, 0))
+    pts = [(y*1000, z*1000, T*1000) for y, z, T in paraf]
+    tr = [p for p in pts if p[2] > 1e-6]
+    psc = 1. if fissurado else 1.25
+    v, av = [], []
+    inf = math.inf
+
+    def bordas(y, z):
+        return (Hb/2-y, Hb/2+y, Bb/2-z, Bb/2+z) if Hb else (inf,)*4
+
+    def ncb(g, ecc=(0., 0.)):
+        ys, zs = [p[0] for p in g], [p[1] for p in g]
+        h = h0
+        if Hb:
+            cs = [c for c in (Hb/2-max(ys), Hb/2+min(ys), Bb/2-max(zs), Bb/2+min(zs)) if c < 1.5*h0]
+            if len(cs) >= 3:
+                smax = max((math.dist(p[:2], q[:2]) for p in g for q in g), default=0)
+                h = min(h0, max(max(cs)/1.5, smax/3))
+        anc = _lado(min(ys), max(ys), 1.5*h, Hb)*_lado(min(zs), max(zs), 1.5*h, Bb)
+        cmin = min(min(bordas(p[0], p[1])) for p in g)
+        ped = 1. if cmin >= 1.5*h else .7+.3*cmin/(1.5*h)
+        pec = math.prod(1/(1+e/(1.5*h)) for e in ecc)
+        nb = 10*sq*h**1.5
+        return dict(Ncbg=anc/(9*h*h)*pec*ped*psc*nb, ANc=anc, ANco=9*h*h, hef_ef=h, psi_ed=ped,
+                    psi_ec=pec, psi_c=psc, Nb=nb, ca_min=cmin)
+
+    out = dict(norma='ACI 318-19 cap. 17', phi=PHI_ACI, fc_MPa=fc)
+    rn = rv = 0.
+    if tr:
+        T = sum(p[2] for p in tr)
+        ecc = tuple(abs(sum(p[i]*p[2] for p in tr)/T-sum(p[i] for p in tr)/len(tr)) for i in (0, 1))
+        cone = ncb(tr, ecc)
+        Tmax = max(p[2] for p in tr)
+        np_ = (1. if fissurado else 1.4)*8*ab*fc
+        v += [_v('concreto: cone de tração', T/1000, PHI_ACI*cone['Ncbg']/1000, 'kN', 'ACI 318-19 17.6.2'),
+              _v('concreto: arrancamento da cabeça', Tmax/1000, PHI_ACI*np_/1000, 'kN', 'ACI 318-19 17.6.3')]
+        out.update(cone_tracao=cone, Npn=np_/1000)
+        rn = max(T/(PHI_ACI*cone['Ncbg']), Tmax/(PHI_ACI*np_))
+        lat = [(p, min(bordas(p[0], p[1]))) for p in tr]
+        lat = [(p, c) for p, c in lat if h0 > 2.5*c]
+        if lat:
+            c1 = min(c for _, c in lat)
+            p0 = next(p for p, c in lat if c == c1)
+            b4 = sorted(bordas(p0[0], p0[1]))
+            c2 = b4[2] if b4[1] == c1 else b4[1]   # menor distância à borda perpendicular
+            ca = min(max(c2/c1, 1), 3)
+            nsb = 13*c1*math.sqrt(ab)*sq*((1+ca)/4 if c2 < 3*c1 else 1)
+            s = max((math.dist(p[:2], q[:2]) for p, _ in lat for q, _ in lat), default=0)
+            if len(lat) > 1 and s < 6*c1:
+                sol, res = sum(p[2] for p, _ in lat), (1+s/(6*c1))*nsb
+            else:
+                sol, res = max(p[2] for p, _ in lat), nsb
+            v.append(_v('concreto: fendilhamento lateral', sol/1000, PHI_ACI*res/1000, 'kN', 'ACI 318-19 17.6.4'))
+            out['Nsb'] = res/1000
+            rn = max(rn, sol/(PHI_ACI*res))
+    if V > 1e-9:
+        Vn = V*1000
+        if Hb:
+            le = min(h0, 8*da)
+            piores = []
+            for sd in (1, -1):
+                linhas = sorted({round(sd*p[0], 6) for p in pts})
+                for yv, frac in ((linhas[-1], None), (linhas[0], 1.)):
+                    fila = [p for p in pts if abs(sd*p[0]-yv) < 1e-6]
+                    c1 = Hb/2-yv
+                    if c1 <= 0:
+                        continue
+                    vb = min(.6*(le/da)**.2*math.sqrt(da), 3.7)*sq*c1**1.5
+                    hv = min(1.5*c1, ha) if ha > 0 else 1.5*c1
+                    zs = [p[1] for p in fila]
+                    avc = min(_lado(min(zs), max(zs), 1.5*c1, Bb)*hv, len(fila)*4.5*c1*c1)
+                    c2 = min(min(Bb/2-p[1], Bb/2+p[1]) for p in fila)
+                    ped = 1. if c2 >= 1.5*c1 else .7+.3*c2/(1.5*c1)
+                    ph = max(1., math.sqrt(1.5*c1/ha)) if ha > 0 else 1.
+                    vc = avc/(4.5*c1*c1)*ped*(1. if fissurado else 1.4)*ph*vb
+                    f = frac if frac is not None else min(len(fila), n_ef)/n_ef
+                    piores.append((Vn*f/(PHI_ACI*vc), Vn*f, vc))
+            r0 = max(piores)
+            v.append(_v('concreto: ruptura da borda ao corte', r0[1]/1000, PHI_ACI*r0[2]/1000, 'kN', 'ACI 318-19 17.7.2'))
+            rv = r0[0]
+            if ha <= 0:
+                av.append('Altura do bloco não informada: ψh,V = 1 (bloco ≥ 1,5·ca1).')
+        else:
+            av.append('Bloco não informado: ruptura da borda do concreto ao corte (ACI 17.7.2) NÃO verificada.')
+        # 17.7.3: alavanca só no grupo que recebe corte (furo alargado → n_ef); o pior grupo de n_ef
+        ne = min(max(int(n_ef), 1), len(pts))
+        cp = min((ncb(list(g)) for g in combinations(pts, ne)), key=lambda c: c['Ncbg'])
+        out['pryout'] = dict(cp, n=ne)
+        kcp = 1. if h0 < 65 else 2.
+        v.append(_v('concreto: arrancamento por alavanca (pryout)', V, PHI_ACI*kcp*cp['Ncbg']/1000, 'kN', 'ACI 318-19 17.7.3'))
+        rv = max(rv, Vn/(PHI_ACI*kcp*cp['Ncbg']))
+    if rn > 0 and rv > 0:
+        it = rn if rv <= .2 else rv if rn <= .2 else (rn+rv)/1.2
+        v.append(_v('concreto: interação tração–corte', it, 1., '', 'ACI 318-19 17.8'))
+    if not Hb:
+        av.append('Bloco não informado: distâncias às bordas tomadas como infinitas no cone (ψed = 1).')
+    out.update(verificacoes=v, avisos=av, razao_N=rn, razao_V=rv)
+    return out
+
+
+def _fu_fy(classe, fub=0, fyb=0):
+    """Classe ISO 898-1 'a.b': fub = a·100 MPa, fyb = 0,a·b·fub; valores > 0 prevalecem (kN/m²)."""
+    a, b = (int(x) for x in classe.split('.'))
+    fu = fub if fub > 0 else a*100000
+    return fu, fyb if fyb > 0 else (b/10*a*100000 if fub <= 0 else 0)
+
+
+def aco_chumbador_nbr(T, Fv, d, fub, fyb=0, rosca_no_corte=True, esp=0, lf=0, fu_chapa=400000):
+    """Haste: NBR 8800 6.3.3.1 (0,75·Ab·fub/γa2), 5.2.2 a) escoamento Ab·fy/γa1 (CBCA p. 237),
+    6.3.3.2 corte 0,4/0,5·Ab·fub/γa2, 6.3.3.3 pressão no furo da chapa, 6.3.3.4 interação."""
+    ab = math.pi*d*d/4
+    ft, fv = tracao_parafuso(d, fub), cisalhamento_parafuso(d, fub, rosca_no_corte, True)
+    v = [_v('chumbador: tração na haste', T, ft, 'kN', 'NBR 8800 6.3.3.1')]
+    if fyb > 0:
+        v.append(_v('chumbador: escoamento da haste', T, ab*fyb/GA1, 'kN', 'NBR 8800 5.2.2 a)'))
+    if Fv > 0:
+        v.append(_v('chumbador: corte na haste', Fv, fv, 'kN', 'NBR 8800 6.3.3.2'))
+        if esp > 0 and lf > 0:
+            v.append(_v('chapa: pressão de contato no furo', Fv, pressao_contato(lf, esp, d, fu_chapa), 'kN', 'NBR 8800 6.3.3.3'))
+        if T > 0:
+            v.append(_v('chumbador: interação tração–corte', interacao_tracao_cisalhamento(T, ft, Fv, fv), 1., '', 'NBR 8800 6.3.3.4'))
+    return dict(Ab=ab, Ft_Rd=ft, Fv_Rd=fv, verificacoes=v, Ag_nec_corte=None)
+
+
+def _legado(d, e, g, secao):
+    """Caminho Nucleo.cs inalterado (pivô na borda, n global). Só alimenta ``passa_legado``."""
     f = forcas_fixacoes(**e, coordenadas=g['coordenadas'], H=g['H'], ref_in=g['ref_in'], pivo_na_mesa=d['pivo_na_mesa'])
     co = coeficientes_chumbador(d)
     if not d['chumbador']:
@@ -539,12 +944,94 @@ def verificar_placa_base(dados, esforcos, secao):
         fix = verificar_parafuso_placa(f['Tmax'], f['Fv'], d['diametro_mm'], d['classe'], d['rosca_no_corte'], co['NSeg'])
         dia = d['diametro_mm']
     chapa = espessura_placa(f['paraf'], g['H'], g['B'], g['ref_in'], dia, f['pivo_y'], e['N'], d['fy_chapa'], co['NSeg'], d['esp'])
+    return dict(metodo=METODO, forcas=f, fixacao=fix, chapa=chapa, coeficientes=co, passa=fix['ChOk'])
+
+
+def verificar_placa_base(dados, esforcos, secao):
+    """Placa de base pelo método NBR (v2). Esforços N/V/M de CÁLCULO (ELU).
+
+    Concreto: NBR 8800 6.6.5; forças nos chumbadores: bloco retangular (``forcas_bloco``);
+    chapa: CBCA (+ conferência Pfeil/DG1); corte: atrito → barra → chumbadores;
+    chumbador pré-concretado (``chumbador`` vazio): aço NBR 8800 6.3.3 + concreto ACI 318-19
+    cap. 17; chumbador de catálogo (pós-instalado): caminho de catálogo legado + aço NBR na
+    haste química. ``legado``/``passa_legado`` mantêm o Nucleo.cs (n global) intacto.
+    Solda: modelo legado de contorno (tensão admissível). Não depende de GUI/solver.
+    """
+    d = _dados(dados)
+    g = geometria_placa(d, secao)
+    e = _numeros({k: esforcos.get(k) for k in ('N', 'V', 'M')}, nao_negativos=('V',))
+    avisos = list(esforcos.get('avisos', []))
+    try:
+        leg = _legado(d, e, g, secao)
+    except ValueError as exc:
+        leg = None
+        avisos.append(f'Método legado não calculado: {exc}')
+    co = leg['coeficientes'] if leg else coeficientes_chumbador(d)
+    fck = d['fck'] if d['fck'] > 0 else 20000
+    fy = d['fy_chapa'] if d['fy_chapa'] > 0 else 250000
+    H, B = g['H'], g['B']
+    conc = resistencia_concreto(fck, H, B, d['bloco_H'], d['bloco_B'])
+    f = forcas_bloco(e['N'], e['M'], g['coordenadas'], H, B, conc['sigma_cRd'])
+    f['V'] = e['V']
+    P = -e['N']
+    v = [_v('concreto: pressão de contato', f['taxa_concreto'], 1., '', conc['item'])]
+    conc.update(taxa=f['taxa_concreto'], fp=f['fp'], A1_nec=P/conc['sigma_cRd'] if P > 0 else 0.)
+    cis = cisalhamento_base(e['V'], e['N'], len(g['coordenadas']), d, fck/(GC*GN))
+    f['Fv'] = cis['Fv']
+    v += cis['verificacoes']
+    avisos += cis['avisos']
+    s = _secao(secao)
+    bloco = (d['bloco_H'], d['bloco_B'], d['bloco_altura']) if d['bloco_H'] > 0 and d['bloco_B'] > 0 else None
+    if d['chumbador']:
+        c = achar_chumbador(d['chumbador'])
+        if c is None:
+            raise ValueError('chumbador: item desconhecido')
+        fix = avaliar_chumbador(c, d, dict(f, espac_min=g['espac_min'], NExig=co['NExig'], NSeg=1))
+        dia = c['rosca_mm']
+        if c['quimico']:
+            fu, fyb = _fu_fy(d['classe_barra'] if d['classe_barra'] in CLASSES else '4.6')
+            nbr = aco_chumbador_nbr(f['Tmax'], f['Fv'], dia/1000, fu, fyb, True)
+            fix['verificacoes'] += nbr['verificacoes']
+            fix['aco_nbr'] = nbr
+            fix['ChOk'] = fix['ChOk'] and all(x['taxa'] <= 1 for x in nbr['verificacoes'])
+        fix['avisos'].append('Catálogo pós-instalado: coeficiente de ruptura do fabricante aplicado sobre esforços de cálculo (conservador).')
+        fix['tipo'] = 'pós-instalado (catálogo)'
+    else:
+        dia = d['diametro_mm']
+        dm = dia/1000
+        if d['classe'] not in CLASSES:
+            raise ValueError('classe: fora da tabela métrica')
+        fu, fyb = _fu_fy(d['classe'], d['fub_chumbador'], d['fyb_chumbador'])
+        # furo alargado da placa de base (AISC Manual tab. 14-2 / DG1 tab. 2.3), coerente com n_ef = 2 no corte
+        dh = dm+(.0143 if dm <= .01905 else .0175 if dm <= .0223 else .0206 if dm <= .0381 else .0254 if dm <= .0445 else .0318)
+        lf = d['borda']-dh/2
+        if lf <= 0 and f['Fv'] > 0:
+            avisos.append('Furo alargado alcança a borda (lf ≤ 0): pressão de contato no furo NÃO verificada.')
+        nbr = aco_chumbador_nbr(f['Tmax'], f['Fv'], dm, fu, fyb, d['rosca_no_corte'], d['esp'], lf,
+                                d['fu_chapa'] if d['fu_chapa'] > 0 else 400000)
+        hef = d['hef'] if d['hef'] > 0 else 12*dm
+        abrg = d['abrg'] if d['abrg'] > 0 else 1.163*dm*dm
+        aci = concreto_chumbador_aci(f['paraf'], f['Fv']*cis['n_ef'], max(cis['n_ef'], 1), hef, dm, abrg, fck,
+                                     d['fissurado'], bloco)
+        fix = _resultado(nbr['verificacoes']+aci['verificacoes'], aci['avisos'])
+        if d['hef'] <= 0:
+            fix['avisos'].append(f'hef não informado: adotado 12·Ø = {hef*1000:.0f} mm (CBCA p. 237).')
+        if d['abrg'] <= 0:
+            fix['avisos'].append('Abrg não informado: porca hexagonal pesada, Abrg ≈ 1,163·Ø².')
+        fix.update(tipo='pré-concretado (ACI 318-19 cap. 17)', aco=nbr, concreto=aci, hef=hef, abrg=abrg, furo=dh, lf=lf,
+                   fub=fu, fyb=fyb, Tmax=f['Tmax'], Fv=f['Fv'],
+                   Ag_nec_corte=e['V']*GA2/(max(cis['n_ef'], 1)*.4*fu) if cis['mecanismo'] == 'chumbadores' else 0.)
+        fix['ChOk'] = fix['ok']
+        espac = 4*dm   # ACI 318-19 17.9.2: pré-concretado 4·da
+        if g['espac_min'] > 0:
+            fix['verificacoes'].append(_v('chumbador: espaçamento mínimo 4·Ø', espac, g['espac_min'], 'm', 'ACI 318-19 17.9.2'))
+    chapa = espessura_placa_nbr(f, H, B, secao, dia, fy, fck, d['esp'], d['eixo_fraco'])
     inclinada = bool(esforcos.get('inclinada', False))
     barra = esforcos.get('barra')
     if barra is None and all(esforcos.get(k) is not None for k in ('N_barra', 'V_barra', 'M_barra')):
         barra = dict(N=esforcos['N_barra'], V=esforcos['V_barra'], M=esforcos['M_barra'])
     solda = None
-    avisos = list(esforcos.get('avisos', []))+fix['avisos']+chapa['avisos']
+    avisos += fix['avisos']+chapa['avisos']
     if inclinada:
         avisos.append('Barra inclinada: chapa e solda não verificadas.')
     elif barra is not None:
@@ -556,18 +1043,28 @@ def verificar_placa_base(dados, esforcos, secao):
             avisos.append('Nenhuma perna comercial atende à tensão da solda.')
     else:
         avisos.append('Solda não verificada: forneça esforços locais da barra.')
-    v = fix['verificacoes']+chapa['verificacoes']+(solda['verificacoes'] if solda else [])
+    if esforcos.get('sismo') or d.get('sismo'):
+        avisos.append('Sismo: ACI 318-19 17.10 (0,75·φ no concreto, ancoragem dúctil ou Ω0) NÃO aplicado; '
+                      'modos de aço da haste fora da interação 17.8 (verificados pela NBR 8800 6.3.3.4).')
+    if f['modelo'] in ('Bloco sem solução (placa pequena)', 'Concreto esmagado'):
+        avisos.append(f"{f['modelo']}: aumente a placa ou o bloco.")
+    v += fix['verificacoes']+chapa['verificacoes']+(solda['verificacoes'] if solda else [])
     r = _resultado(v, avisos)
-    r.update(geometria=g, esforcos=copy.deepcopy(esforcos), forcas=f, fixacao=fix, chapa=chapa, solda=solda,
-             passa_legado=fix['ChOk'] and not inclinada, tem_esforcos=True,
-             intermediarios=dict(geometria=g, distribuicao=f['intermediarios'], coeficientes=co),
+    r.update(metodo=METODO_NBR, geometria=g, esforcos=copy.deepcopy(esforcos), forcas=f, concreto=conc,
+             cisalhamento=cis, fixacao=fix, chapa=chapa, solda=solda, legado=leg,
+             passa_legado=bool(leg and leg['passa']) and not inclinada, tem_esforcos=True,
+             intermediarios=dict(geometria=g, distribuicao=dict(modelo=f['modelo'], Y=f['Y'], f=f['f'],
+                                 e=f['e'], e_crit=f['e_crit'], qmax=f['qmax']), coeficientes=co),
              limitacoes=list(LIMITACOES))
-    r['ok'] = fix['ChOk'] and chapa['ok'] and solda is not None and solda['ok'] and not inclinada
+    r['ok'] = all(x['taxa'] <= 1 for x in v) and fix['ChOk'] and chapa['ok'] and solda is not None and solda['ok'] and not inclinada
     return r
 
 
-def dimensionar_chumbador(dados, esforcos, secao, linha=None):
-    """Heurística estável por arranjo/rosca/hef; não estima preços nem muta dados."""
+def dimensionar_chumbador(dados, esforcos, secao, linha=None, metodo='nbr'):
+    """Heurística estável por arranjo/rosca/hef; não estima preços nem muta dados.
+
+    metodo='legado' reproduz o C# (aceita pela fixação do Nucleo.cs); 'nbr' exige a fixação v2.
+    """
     d = _dados(dados)
     itens = [c for c in carregar_chumbadores() if not linha or c['linha'] == linha]
     itens.sort(key=lambda c: (c['rosca_mm'], c['hef_mm']))
@@ -581,7 +1078,8 @@ def dimensionar_chumbador(dados, esforcos, secao, linha=None):
                 r = verificar_placa_base(candidato, esforcos, secao)
             except ValueError:
                 continue
-            if r['tem_esforcos'] and r['fixacao']['ChOk']:
+            fix = r['legado']['fixacao'] if metodo == 'legado' and r['legado'] else r['fixacao']
+            if r['tem_esforcos'] and fix['ChOk']:
                 n = len(r['forcas']['paraf'])
                 return dict(descricao=f"{n} × {c['nome']} ({c['fabricante']})", dados=candidato, resultado=r)
     return dict(descricao='', dados=None, resultado=None)

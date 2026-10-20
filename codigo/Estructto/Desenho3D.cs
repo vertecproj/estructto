@@ -107,6 +107,7 @@ namespace NovoFtool
                 btnFerr3D[f] = b; grpDesenho3D.Items.Add(b);
             }
             MontarSecaoDesenho3D();
+            MontarMedir3D();   // Vista3D.Snap.cs
             int i = grpDesenho2D != null ? abaModelo.Groups.IndexOf(grpDesenho2D) + 1 : 1;
             abaModelo.Groups.Insert(Math.Min(i, abaModelo.Groups.Count), grpDesenho3D);
             var gerar = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Gerar");

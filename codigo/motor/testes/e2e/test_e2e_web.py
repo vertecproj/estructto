@@ -186,7 +186,7 @@ class TestApiWeb(unittest.TestCase):
         normas = self.ok("GET", "/api/normas")
         self.assertTrue(any(n["norma"] == "NBR 8800" and n["edicao"] for n in normas))
         tipos = self.ok("GET", "/api/ligacoes/tipos")
-        self.assertEqual({t["tipo"] for t in tipos}, {"parafuso", "solda_filete", "chapa_simples", "ligacao_tracao"})
+        self.assertLessEqual({"parafuso", "solda_filete", "chapa_simples", "ligacao_tracao"}, {t["tipo"] for t in tipos})
 
     def test_ligacao_f4_chapa_simples(self):
         corpo = {"tipo": "chapa_simples", "esforcos": {"V": 120},

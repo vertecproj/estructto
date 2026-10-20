@@ -97,7 +97,9 @@ class Compatibilidade(unittest.TestCase):
     def test_9_1_balanco(self):
         e = dict(N=0,V=10,M=30,barra=dict(N=0,V=10,M=30))
         r = p.verificar_placa_base(D,e,W)
-        f, b, ch = r['forcas'], r['fixacao'], r['chapa']
+        # Números do C# (Testes.cs): agora no resultado ``legado`` (pivô na borda, n global).
+        L = r['legado']
+        f, b, ch = L['forcas'], L['fixacao'], L['chapa']
         self.conf(abs(f['M']),30)
         self.conf(f['Tmax'],42)
         self.conf(sum(t*max(0,-y+.2) for y,z,t in f['paraf']),30)
@@ -130,7 +132,8 @@ class Compatibilidade(unittest.TestCase):
         self.assertLess(e['V_barra'],.1)
         d = dict(D,chumbador='Parabolt PB 1/4" hef 35 mm',pelo_perfil=True,rotativa=True,seguranca_modelo=1.5)
         r = p.verificar_placa_base(d,e,TR)
-        f = r['forcas']
+        # Corte igual em todas as fixações é regra do legado; o método NBR usa atrito/2 efetivos.
+        f = r['legado']['forcas']
         self.conf(f['Fv']*len(f['paraf']),abs(e['Rx']))
         if f['modelo'].startswith('Todos'):
             self.conf(sum(x[2] for x in f['paraf']),e['N'])
@@ -355,7 +358,7 @@ class Bordas(unittest.TestCase):
         self.assertFalse(fino['ok'])
         self.assertGreater(fino['taxa_max'],1)
         self.assertEqual(fino['criterio'],'chapa: espessura')
-        self.assertEqual(fino['passa_legado'],fino['fixacao']['ChOk'])
+        self.assertEqual(fino['passa_legado'],fino['legado']['fixacao']['ChOk'])
         inc = p.verificar_placa_base(d,dict(e,inclinada=True),TC)
         self.assertFalse(inc['ok'])
         self.assertFalse(inc['passa_legado'])

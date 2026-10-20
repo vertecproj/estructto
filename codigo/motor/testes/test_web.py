@@ -277,6 +277,18 @@ class TestModeloAPI(BaseWeb):
         self.assertTrue(cfg["pdelta"])
         self.assertEqual(self.api("PATCH", "/api/config", {"chave_maluca": 1}, status=422)["erro"], "entrada_invalida")
 
+    def test_trelica_previa_e_um_desfazer(self):
+        self.api("POST", "/api/modelo/novo", {})
+        t = {"tipo": "trelica_plana", "material": {"aco": "A-572 GR.50"}, "secoes": {"banzo": "W150x13", "diagonal": "W150x13"},
+             "vao": 12, "altura": 1.5, "paineis": 6}
+        p = self.api("POST", "/api/gerar-estrutura/previa?vazio=1", t)
+        self.assertEqual(len(p["barras"]), 25)
+        self.assertEqual(self.api("GET", "/api/modelo")["nos"], {})  # prévia não muda o modelo
+        self.api("POST", "/api/gerar-estrutura", t)
+        self.assertEqual(len(self.api("GET", "/api/modelo")["barras"]), 25)
+        self.api("POST", "/api/desfazer")
+        self.assertEqual(self.api("GET", "/api/modelo")["barras"], {})
+
     def test_gerar_acoes_igual_ao_projeto(self):
         self.api("POST", "/api/exemplos/edificio_concreto")
         r = self.api("POST", "/api/acoes/gerar")
@@ -341,6 +353,27 @@ class TestModeloAPI(BaseWeb):
 
 class TestCalculoAPI(BaseWeb):
     """Cálculo, resultados, verificação, estabilidade e relatório (ops 17–24, 29)."""
+
+    def test_grupos_de_ligacoes(self):
+        """Identificar/editar grupos empilham desfazer mas não descartam o cálculo; dimensionar exige cálculo."""
+        self.api("POST", "/api/exemplos/portico_aco")
+        self.api("POST", "/api/calcular", {})
+        r = self.api("POST", "/api/ligacoes/identificar")
+        self.assertGreater(r["grupos"], 0)
+        self.assertIsNotNone(self.api("GET", "/api/calculo"))
+        gr = self.api("GET", "/api/ligacoes/grupos")
+        base = next(g for g in gr if g["tipo"] == "base")
+        self.assertIsNotNone(base["taxa_max"])
+        self.api("POST", "/api/ligacoes/grupos/editar", {"acao": "renomear", "grupo": base["id"], "nome": "Bases"})
+        self.assertEqual(self.api("GET", "/api/modelo")["ligacoes"]["grupos"][base["id"]]["nome"], "Bases")
+        d = self.api("POST", f"/api/ligacoes/grupos/{base['id']}/dimensionar")
+        self.assertEqual(d["taxa_max"], max(x["taxa"] for x in d["membros"]))
+        self.assertEqual(self.api("POST", "/api/ligacoes/grupos/editar", {"acao": "renomear", "grupo": "X9", "nome": "a"},
+                                  status=404)["erro"], "nao_encontrado")
+        self.api("POST", "/api/desfazer")  # desfaz o renomear
+        self.assertNotEqual(self.api("GET", "/api/modelo")["ligacoes"]["grupos"][base["id"]]["nome"], "Bases")
+        self.assertEqual(self.api("POST", f"/api/ligacoes/grupos/{base['id']}/dimensionar", status=409)["erro"],
+                         "sem_calculo")
 
     def test_sem_calculo(self):
         self.api("POST", "/api/exemplos/viga_biapoiada")

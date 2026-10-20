@@ -163,7 +163,7 @@ namespace NovoFtool
     }
 
     // Ferramentas de entrada da Vista3D (docs/MODELO-ESPACIAL.md, "Desenhar no 3D"). Navegar = clique escolhe, arrastar orbita.
-    public enum Ferramenta3D { Navegar, Selecionar, Barra, Pilar }
+    public enum Ferramenta3D { Navegar, Selecionar, Barra, Pilar, Medir }
 
     // Plano de trabalho: horizontal (Normal 'Z', z = Valor) ou vertical (Normal 'X' ou 'Y'). U e W são os eixos do plano
     // (ortogonal e ângulo da entrada dinâmica: ângulo medido de U para W).
@@ -251,6 +251,7 @@ namespace NovoFtool
                 timerArestas.Stop();
                 if (Realista && Math.Abs(Math.Log(LarguraAresta() / largArestas)) > 0.3) Reconstruir();
             };
+            IniciarSnap();
         }
 
         void AgendarArestas() { if (Realista) { timerArestas.Stop(); timerArestas.Start(); } }
@@ -887,11 +888,8 @@ namespace NovoFtool
         public Func<double, double> AlturaAndar;                         // z clicado -> altura do pilar (null = 3 m; < 0 = para baixo)
         public double PassoGrade = 1;                                    // m
         public bool Orto;                                                // F8; Shift força na hora
-        // Estados da barra de status (F3, F9, F10, F7, F12). O Snap3D (wt-snap) também deve respeitá-los.
-        public bool AtrairObjetos = true, AtrairGrade = true, Polar = true, MostrarGradePlano = true, EntradaDinamica = true, Rastrear = true;
-        // Gancho do Snap3D (worktree wt-snap): ponto atraído sob o pixel; null = atração interna (Atrair).
-        // ponytail: adaptador mínimo; o Snap3D lê PlanoAtual, InicioCorrente, Tela, Raio e os estados acima.
-        public Func<Vista3D, Point, (Point3D? P, string Tipo)?> Snap;
+        // Grade do plano ao desenhar (F7) e caixas da entrada dinâmica (F12). OSNAP/ORTO/Polar/Rastreio ficam no Snap3D (Vista3D.Snap.cs).
+        public bool MostrarGradePlano = true, EntradaDinamica = true;
         // Eixos da grade estrutural (GR / Modelo › Grade): posições em X e Y (m) e nomes. Desenhados em todo nível; cruzamentos atraem.
         public double[] EixosX = new double[0], EixosY = new double[0];
         public string[] NomesX = new string[0], NomesY = new string[0];
@@ -917,12 +915,12 @@ namespace NovoFtool
                 FerramentaMudou?.Invoke();
             }
         }
-        public bool Desenhando => ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar || gripQuente != null || pedePonto != null;
+        public bool Desenhando => ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar || gripQuente != null || pedePonto != null || ferr == Ferramenta3D.Medir;   // Medir: cursor com snap (Vista3D.Snap.cs)
         public Point3D? InicioCorrente => inicio;   // 1º ponto da barra em andamento (null = nenhuma)
         public Point3D? PontoCursor => cursor3;    // ponto atraído sob o cursor (null = fora do plano)
-        public string TipoAtracao => tipoSnap;      // "Nó", "Meio", "Grade", "Ortogonal", "Polar", "Plano"
+        public string TipoAtracao => tipoSnap;      // Snap3D.Nome: "Extremidade", "Ponto médio", "Polar", "Ortogonal", "Grade", "Plano"...
 
-        Point3D? inicio, cursor3; string tipoSnap, tipoMarcado;
+        Point3D? inicio, cursor3; string tipoSnap; TipoSnap? tipoMarcado;
         Point mouseTela; bool mouseDentro;
         Point? caixaIni;
         readonly string[] din = { "", "" }; int dinCampo; string coord = "";
@@ -943,47 +941,6 @@ namespace NovoFtool
             return o + d * t;
         }
 
-        // Ponto atraído sob o pixel: nó (10 px) > meio de barra > ortogonal/polar a partir do 1º ponto > grade do plano > plano.
-        (Point3D? P, string Tipo) Atrair(Point tela)
-        {
-            double dm = 10; Point3D? r = null; string t = null;
-            if (AtrairObjetos) foreach (No3D n in mod.Nos) { double dd = (Tela(P(n)) - tela).Length; if (dd < dm) { dm = dd; r = P(n); t = "Nó"; } }
-            if (r == null && AtrairObjetos && plano.Normal == 'Z')   // cruzamentos da grade estrutural no nível do plano
-                foreach (double gx in EixosX) foreach (double gy in EixosY)
-                {
-                    var q0 = new Point3D(gx, gy, plano.Valor); double dd = (Tela(q0) - tela).Length;
-                    if (dd < dm) { dm = dd; r = q0; t = "Eixo"; }
-                }
-            if (r == null && AtrairObjetos)
-                foreach (Barra3D b in mod.Barras)
-                {
-                    No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); if (a == null || c == null) continue;
-                    Point3D m = P(a) + (P(c) - P(a)) / 2; double dd = (Tela(m) - tela).Length;
-                    if (dd < dm) { dm = dd; r = m; t = "Meio"; }
-                }
-            if (r != null) return (r, t);
-            Point3D? q = NoPlano(tela);
-            if (q == null) return (null, null);
-            Vector3D U = plano.U, W = plano.W;
-            double Grade(double x) => Math.Round(x / PassoGrade) * PassoGrade;
-            if (inicio != null)
-            {
-                Point3D b = plano.Projetar(inicio.Value); Vector3D dv = q.Value - b;
-                double du = Vector3D.DotProduct(dv, U), dw = Vector3D.DotProduct(dv, W);
-                double ang = Math.Abs(Math.Atan2(dw, du) * 180 / Math.PI) % 90, desvio = Math.Min(ang, 90 - ang);
-                bool forcar = Orto || Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
-                if (forcar || (Polar && desvio < 3.5))
-                {
-                    bool emU = Math.Abs(du) >= Math.Abs(dw); double v = emU ? du : dw;
-                    Point3D p = b + (emU ? U : W) * v, pg = b + (emU ? U : W) * Grade(v);
-                    return AtrairGrade && (Tela(pg) - tela).Length < 10 ? (pg, forcar ? "Ortogonal" : "Polar") : (p, forcar ? "Ortogonal" : "Polar");
-                }
-            }
-            Vector3D rv = (Vector3D)q.Value;
-            Point3D g = plano.Ponto(Grade(Vector3D.DotProduct(rv, U)), Grade(Vector3D.DotProduct(rv, W)));
-            return AtrairGrade && (Tela(g) - tela).Length < 10 ? (g, "Grade") : (q, "Plano");
-        }
-
         static bool Ler(string t, out double v) => double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out v) && double.IsFinite(v);
         bool DinTravado => inicio != null && (din[0] != "" || din[1] != "");
         void DinLimpar() { din[0] = din[1] = ""; dinCampo = 0; }
@@ -1000,26 +957,18 @@ namespace NovoFtool
             return a + plano.U * len * Math.Cos(ang) + plano.W * len * Math.Sin(ang);
         }
 
-        // "x,y,z" absoluto, "@dx,dy,dz" relativo ao 1º ponto; com 2 valores, coordenadas (u, w) no plano.
-        Point3D? PontoDigitado()
-        {
-            string s = coord.Trim(); bool rel = s.StartsWith("@"); if (rel) s = s.Substring(1);
-            var v = s.Split(new[] { ',', ';' }).Select(x => Ler(x.Trim(), out double d) ? d : double.NaN).ToArray();
-            if (v.Any(double.IsNaN) || (v.Length != 2 && v.Length != 3)) return null;
-            Vector3D d3 = v.Length == 3 ? new Vector3D(v[0], v[1], v[2]) : plano.U * v[0] + plano.W * v[1];
-            if (rel) return (inicio ?? (v.Length == 3 ? new Point3D() : plano.Ponto(0, 0))) + d3;
-            return v.Length == 3 ? (Point3D)d3 : plano.Ponto(v[0], v[1]);
-        }
+        // Coordenada digitada (AutoCAD): com 1º ponto, "x,y,z" é relativo; "@" relativo, "#" absoluto, "L<a" polar no plano. Snap3D.LerCoordenada.
+        Point3D? PontoDigitado() => Snap3D.LerCoordenada(coord, BaseSnap, plano);
 
         void AtualizarCursor()
         {
             if (!Desenhando || !mouseDentro) { cursor3 = null; tipoSnap = null; }
-            else (cursor3, tipoSnap) = Snap?.Invoke(this, mouseTela) ?? Atrair(mouseTela);
+            else (cursor3, tipoSnap) = AtrairSnap(mouseTela);
             Point3D? pf = PontoFinal();
             if (pf != null && tipoSnap != null)
             {
                 Point s = Tela(pf.Value);
-                marca.Tipo = DinTravado ? "Plano" : tipoSnap;
+                marca.Tipo = DinTravado ? TipoSnap.Plano : snapRes?.Tipo ?? TipoSnap.Plano;
                 posMarca.X = s.X; posMarca.Y = s.Y;
                 marca.Visibility = Visibility.Visible;
                 if (marca.Tipo != tipoMarcado) { tipoMarcado = marca.Tipo; marca.InvalidateVisual(); Anim.Entrar(marca, 0, Anim.Rapido); }   // aparece a cada troca de atração
@@ -1038,6 +987,7 @@ namespace NovoFtool
             mouseTela = tela; mouseDentro = true;
             if (gripQuente == null && pedePonto == null && (ferr == Ferramenta3D.Selecionar || ferr == Ferramenta3D.Navegar)) { SelecionarClique(tela, mods); return; }
             AtualizarCursor();
+            if (ferr == Ferramenta3D.Medir) { MedirClique(tela); return; }
             await Ponto(PontoFinal());
         }
 
@@ -1049,6 +999,7 @@ namespace NovoFtool
             DinLimpar(); coord = "";
             if (gripQuente != null) { await SoltarGrip(p.Value); return; }       // Vista3D.Grips.cs
             if (pedePonto != null) { await PontoPedido(p.Value); return; }
+            if (PontoSnap(p.Value)) { AtualizarCursor(); return; }   // gasta o snap único; Medir trata o ponto
             var segs = new List<(Point3D, Point3D)>();
             if (ferr == Ferramenta3D.Pilar)
             {
@@ -1073,6 +1024,7 @@ namespace NovoFtool
         // Teclas da ferramenta. Devolve true se consumiu. A janela chama antes dos atalhos dela quando o documento é espacial.
         public bool Tecla(Key k)
         {
+            if (TeclaSnap(k)) return true;   // F3, F8, F10, F11 e o Medir
             switch (k)
             {
                 case Key.Escape:   // cascata: digitado > travado > grip quente > comando pedindo > barra em andamento > ferramenta > seleção
@@ -1104,8 +1056,6 @@ namespace NovoFtool
                     else if (Desenhando && din[dinCampo] != "") din[dinCampo] = din[dinCampo].Substring(0, din[dinCampo].Length - 1);
                     else return false;
                     AtualizarCursor(); return true;
-                case Key.F8:
-                    Orto = !Orto; Aviso = "Ortogonal " + (Orto ? "ligado" : "desligado") + " (F8)."; AtualizarCursor(); return true;
             }
             return false;
         }
@@ -1113,6 +1063,7 @@ namespace NovoFtool
         // Dígitos: comprimento/ângulo da entrada dinâmica; vírgula, ';' ou '@' passam a coordenada.
         public bool Digitar(string texto)
         {
+            if (DigitarSnap(texto)) return true;   // letras: linha de comando (END, MID, ME...)
             if (!Desenhando || string.IsNullOrEmpty(texto)) return false;
             char c = texto[0];
             if (!(char.IsDigit(c) || c == '.' || c == '-' || c == ',' || c == ';' || c == '@')) return false;
@@ -1198,7 +1149,7 @@ namespace NovoFtool
         void DesenharEntrada(DrawingContext dc, FrameworkElement alvoTxt)
         {
             FormattedText Ft(string s, Brush b, double tam) => new FormattedText(s, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, TfEntrada, tam, b, 1.0);
-            if (Desenhando && MostrarGradePlano) DesenharGrade(dc);
+            if (Desenhando && ferr != Ferramenta3D.Medir && MostrarGradePlano) DesenharGrade(dc);
             DesenharEixos(dc);
 
             if (caixaIni != null && moveu)
@@ -1227,12 +1178,8 @@ namespace NovoFtool
                     dc.DrawRoundedRectangle(TemaPlant.BCaixaHud, null, new Rect(t.X + 10, t.Y - 4, ft.Width + 10, ft.Height + 4), 4, 4);
                     dc.DrawText(ft, new Point(t.X + 15, t.Y - 2));
                 }
-                if (tipoSnap != null && !DinTravado)
-                {
-                    var ft = Ft(tipoSnap + "  " + Coords(pf.Value), TemaPlant.BMarcaSnap, 10);
-                    dc.DrawText(ft, new Point(s.X + 10, s.Y - 22));
-                }
             }
+            DesenharSnap(dc);   // caminhos de rastreio, pontos adquiridos, tooltip e medidas (Vista3D.Snap.cs)
             if (coord != "")
             {
                 Point s = mouseDentro ? mouseTela : new Point(ActualWidth / 2, ActualHeight / 2);
@@ -1244,11 +1191,12 @@ namespace NovoFtool
 
             // etiqueta da ferramenta (topo, centro)
             DesenharGrips(dc);
-            string et = Aviso ?? (Prompt != null ? Prompt + (Desenhando && tipoSnap != null ? " · plano " + plano.Nome + (Orto ? " · ORTO" : "") : "") : null);
-            if (et == null && Desenhando)
+            string et = Aviso ?? (Prompt != null ? Prompt + (Desenhando && tipoSnap != null ? " · plano " + plano.Nome + EstadoSnap() : "") : null);
+            if (et == null && ferr == Ferramenta3D.Medir) et = EtiquetaMedir();
+            else if (et == null && Desenhando)
                 et = (ferr == Ferramenta3D.Barra ? (inicio == null ? "BARRA — clique o 1º ponto" : "BARRA — próximo ponto (Esc ou botão direito termina)")
                                                  : "PILAR — clique o ponto (até o nível de baixo; na base, até o de cima)")
-                     + " · plano " + plano.Nome + (Orto ? " · ORTO" : "") + " · digite x,y,z ou @dx,dy,dz";
+                     + " · plano " + plano.Nome + EstadoSnap() + " · digite x,y,z ou @dx,dy,dz";
             else if (et == null && ferr == Ferramenta3D.Selecionar)
                 et = Selecao.Count > 0 ? "SELECIONAR — " + Pl.N(Selecao.Nos.Count, "nó", "nós") + " · " + Pl.N(Selecao.Barras.Count, "barra", "barras") + " · Shift soma, Ctrl tira, Esc limpa"
                                        : "SELECIONAR — arraste: esq.→dir. janela, dir.→esq. cruzamento · Shift soma, Ctrl tira";
@@ -1260,8 +1208,6 @@ namespace NovoFtool
                 dc.DrawText(ft, new Point(r.X + 10, r.Y + 4));
             }
         }
-
-        static string Coords(Point3D p) => "(" + Num.Fmt(p.X, 2) + "; " + Num.Fmt(p.Y, 2) + "; " + Num.Fmt(p.Z, 2) + ")";
 
         void CaixasDinamicas(DrawingContext dc, Point3D a, Point3D f, Point pc, Func<string, Brush, double, FormattedText> Ft)
         {
@@ -1306,25 +1252,11 @@ namespace NovoFtool
             for (double w = w0; w <= w1 + 1e-9; w += passo) dc.DrawLine(Math.Abs(w) < 1e-9 ? PEixoPlano : PGrade, Tela(plano.Ponto(u0, w)), Tela(plano.Ponto(u1, w)));
         }
 
-        // Marcador de atração (quadrado = nó, triângulo = meio, cruz = grade, x = plano/ortogonal), com fade ao trocar.
+        // Marcador do AutoSnap (SnapOverlay.Marca: □ △ ○ ⊗ × ⊠ ⊥ ⧖ … //), com fade ao trocar.
         sealed class MarcaSnap : FrameworkElement
         {
-            public string Tipo;
-            static readonly Pen Pm = Caneta(TemaPlant.BMarcaSnap, 2);
-            protected override void OnRender(DrawingContext dc)
-            {
-                const double r = 6;
-                switch (Tipo)
-                {
-                    case "Nó": dc.DrawRectangle(null, Pm, new Rect(-r, -r, 2 * r, 2 * r)); break;
-                    case "Meio":
-                        var g = new StreamGeometry();
-                        using (var c = g.Open()) { c.BeginFigure(new Point(0, -r), false, true); c.LineTo(new Point(r, r * 0.8), true, false); c.LineTo(new Point(-r, r * 0.8), true, false); }
-                        dc.DrawGeometry(null, Pm, g); break;
-                    case "Grade": dc.DrawLine(Pm, new Point(-r, 0), new Point(r, 0)); dc.DrawLine(Pm, new Point(0, -r), new Point(0, r)); break;
-                    default: dc.DrawLine(Pm, new Point(-4, -4), new Point(4, 4)); dc.DrawLine(Pm, new Point(-4, 4), new Point(4, -4)); break;
-                }
-            }
+            public TipoSnap Tipo;
+            protected override void OnRender(DrawingContext dc) => SnapOverlay.Marca(dc, Tipo, new Point(0, 0));
         }
 
         // ================= sobreposição 2D: gizmo dos eixos e legenda do aproveitamento =================

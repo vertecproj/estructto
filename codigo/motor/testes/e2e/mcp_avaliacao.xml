@@ -5,7 +5,7 @@
 <evaluation>
   <qa_pair id="1">
     <question>Quantas ferramentas o servidor MCP estructto expõe em list_tools?</question>
-    <answer>42</answer>
+    <answer>46</answer>
   </qa_pair>
   <qa_pair id="2">
     <question>Abra o exemplo viga_biapoiada (vão de 6 m) e analise o caso Q1 (10 kN/m). Qual é a reação vertical, em kN, em cada apoio?</question>

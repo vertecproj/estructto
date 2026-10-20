@@ -239,6 +239,22 @@ def tipos_ligacao():
             campos.append(c)
         out.append(dict(tipo=tipo, descricao=t["descricao"], campos=campos,
                         esforcos=[dict(nome=n, unidade=u) for n, u, _ in t["esforcos"]]))
+    for tipo, t in tipos_contrato().items():   # docs/v3/LIGACOES-CONTRATO.md (entradas em mm)
+        out.append(dict(tipo=tipo, nome=t["nome"], familia=t["familia"], liga=t["liga"], descricao=t["descricao"],
+                        campos=[dict(nome=k, descricao=c["rotulo"], **c) for k, c in t["entradas"].items()],
+                        esforcos=[dict(nome=n, unidade="kN") for n in t.get("esforcos", ("N", "V"))]))
+    return out
+
+
+# Módulos de família do contrato (docs/v3/LIGACOES-CONTRATO.md §Registro): cada um expõe TIPOS.
+_MODULOS_CONTRATO = ("ligacoes_flexiveis", "ligacoes_rigidas", "ligacoes_contraventamento")
+
+
+def tipos_contrato():
+    import importlib
+    out = {}
+    for m in _MODULOS_CONTRATO:
+        out.update(importlib.import_module(f"{__package__}.{m}").TIPOS)
     return out
 
 
@@ -536,7 +552,10 @@ _FUNCOES = {"parafuso": _ligacao_parafuso, "solda_filete": _ligacao_solda,
 def verificar_ligacao(tipo, dados, esforcos):
     """ESPEC §7.4 → {taxa_max, criterio, item, ok, verificacoes, avisos}. Campos inválidos → ValueError com todos.
     ESPEC §7.2: taxa_max/criterio = pior verificação de resistência; disposições construtivas (unidade "m":
-    dimensões mínimas/máximas, bordas, espaçamentos) só reprovam (ok = False) e ficam em verificacoes."""
+    dimensões mínimas/máximas, bordas, espaçamentos) só reprovam (ok = False) e ficam em verificacoes.
+    Tipos do contrato (tipos_contrato) devolvem o resultado do contrato (ok, taxa, verificacoes, geometria)."""
+    if tipo not in _TIPOS and tipo in (tc := tipos_contrato()):
+        return tc[tipo]["verificar"](dados, esforcos)
     d, e = _validar(tipo, dados, esforcos)
     v, avisos = _FUNCOES[tipo](d, e)
     if not v:
