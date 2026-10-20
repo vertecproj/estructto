@@ -1,0 +1,66 @@
+{
+ "versao_formato": 1,
+ "nome": "Borda: somente nos (sem barras)",
+ "nos": {
+  "n1": {
+   "id": "n1",
+   "x": 0.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "n2": {
+   "id": "n2",
+   "x": 3.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "n3": {
+   "id": "n3",
+   "x": 6.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  }
+ },
+ "materiais": {},
+ "secoes": {},
+ "barras": {},
+ "casos": {},
+ "cargas_nodais": [],
+ "cargas_distribuidas": [],
+ "cargas_pontuais": [],
+ "pavimentos": {},
+ "peso_proprio": null,
+ "config": {
+  "tipo_uso": "comercial",
+  "variabilidade": "grandes",
+  "pdelta": false,
+  "armadura": "CA-50",
+  "cobrimento_m": null,
+  "caa": "II",
+  "tipo_edificacao": null
+ }
+}

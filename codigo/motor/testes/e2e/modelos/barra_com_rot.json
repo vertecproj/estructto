@@ -1,0 +1,185 @@
+{
+ "versao_formato": 1,
+ "nome": "Borda: barra com rot (balancos de 2 m, rot 0 e pi/2 rad)",
+ "nos": {
+  "a1": {
+   "id": "a1",
+   "x": 0.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "p1": {
+   "id": "p1",
+   "x": 2.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "a2": {
+   "id": "a2",
+   "x": 0.0,
+   "y": 3.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "p2": {
+   "id": "p2",
+   "x": 2.0,
+   "y": 3.0,
+   "z": 0.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  }
+ },
+ "materiais": {
+  "A-572 GR.50": {
+   "nome": "A-572 GR.50",
+   "E": 200000000.0,
+   "G": 77000000.0,
+   "peso": 77.0,
+   "fy": 345000.0,
+   "fu": 450000.0,
+   "fck": null
+  }
+ },
+ "secoes": {
+  "W360x51": {
+   "nome": "W360x51",
+   "A": 0.006479770657883069,
+   "Iy": 0.0001422111025550106,
+   "Iz": 9.68227055851444e-06,
+   "J": 2.2066659839999998e-07,
+   "props": {
+    "tipo": "I",
+    "A": 0.006479770657883069,
+    "Ix": 0.0001422111025550106,
+    "Iy": 9.68227055851444e-06,
+    "J": 2.2066659839999998e-07,
+    "Wx": 0.0008011893101690738,
+    "Wy": 0.00011324293050894081,
+    "Zx": 0.0008995081522482043,
+    "Zy": 0.0001746742542629759,
+    "Cw": 2.84993962904394e-07,
+    "rx": 0.1481449781607017,
+    "ry": 0.03865527699527286,
+    "x0": 0.0,
+    "y0": 0.0,
+    "h": 0.355,
+    "b": 0.171,
+    "tw": 0.0072,
+    "tf": 0.0116,
+    "r": 0.012,
+    "hw": 0.30779999999999996,
+    "soldado": false,
+    "bt_mesa": 7.370689655172415,
+    "ht_alma": 42.74999999999999,
+    "r0": 0.1531050782757256,
+    "massa": 51.0,
+    "A_catalogo": 0.00648
+   }
+  }
+ },
+ "barras": {
+  "b1": {
+   "id": "b1",
+   "ni": "a1",
+   "nj": "p1",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {}
+  },
+  "b2": {
+   "id": "b2",
+   "ni": "a2",
+   "nj": "p2",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 1.5707963267948966,
+   "tipo": "aco",
+   "params": {}
+  }
+ },
+ "casos": {
+  "G1": {
+   "nome": "G1",
+   "tipo": "G",
+   "subtipo": ""
+  },
+  "Q1": {
+   "nome": "Q1",
+   "tipo": "Q",
+   "subtipo": ""
+  }
+ },
+ "cargas_nodais": [
+  {
+   "caso": "Q1",
+   "no": "p1",
+   "F": [
+    0.0,
+    0.0,
+    -10.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "id": "cn1"
+  },
+  {
+   "caso": "Q1",
+   "no": "p2",
+   "F": [
+    0.0,
+    0.0,
+    -10.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "id": "cn2"
+  }
+ ],
+ "cargas_distribuidas": [],
+ "cargas_pontuais": [],
+ "pavimentos": {},
+ "peso_proprio": null,
+ "config": {
+  "tipo_uso": "comercial",
+  "variabilidade": "grandes",
+  "pdelta": false,
+  "armadura": "CA-50",
+  "cobrimento_m": null,
+  "caa": "II",
+  "tipo_edificacao": null
+ }
+}

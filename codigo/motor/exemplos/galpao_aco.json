@@ -1,0 +1,1360 @@
+{
+ "versao_formato": 1,
+ "nome": "Galpão de aço, 20 m de vão, 5 módulos de 6 m",
+ "nos": {
+  "N0-0-0": {
+   "id": "N0-0-0",
+   "x": 0.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N0-2-0": {
+   "id": "N0-2-0",
+   "x": 20.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N1-0-0": {
+   "id": "N1-0-0",
+   "x": 0.0,
+   "y": 0.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N1-2-0": {
+   "id": "N1-2-0",
+   "x": 20.0,
+   "y": 0.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N2-1-0": {
+   "id": "N2-1-0",
+   "x": 10.0,
+   "y": 0.0,
+   "z": 8.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N0-0-1": {
+   "id": "N0-0-1",
+   "x": 0.0,
+   "y": 6.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N0-2-1": {
+   "id": "N0-2-1",
+   "x": 20.0,
+   "y": 6.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N1-0-1": {
+   "id": "N1-0-1",
+   "x": 0.0,
+   "y": 6.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N1-2-1": {
+   "id": "N1-2-1",
+   "x": 20.0,
+   "y": 6.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N2-1-1": {
+   "id": "N2-1-1",
+   "x": 10.0,
+   "y": 6.0,
+   "z": 8.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N0-0-2": {
+   "id": "N0-0-2",
+   "x": 0.0,
+   "y": 12.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N0-2-2": {
+   "id": "N0-2-2",
+   "x": 20.0,
+   "y": 12.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N1-0-2": {
+   "id": "N1-0-2",
+   "x": 0.0,
+   "y": 12.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N1-2-2": {
+   "id": "N1-2-2",
+   "x": 20.0,
+   "y": 12.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N2-1-2": {
+   "id": "N2-1-2",
+   "x": 10.0,
+   "y": 12.0,
+   "z": 8.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N0-0-3": {
+   "id": "N0-0-3",
+   "x": 0.0,
+   "y": 18.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N0-2-3": {
+   "id": "N0-2-3",
+   "x": 20.0,
+   "y": 18.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N1-0-3": {
+   "id": "N1-0-3",
+   "x": 0.0,
+   "y": 18.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N1-2-3": {
+   "id": "N1-2-3",
+   "x": 20.0,
+   "y": 18.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N2-1-3": {
+   "id": "N2-1-3",
+   "x": 10.0,
+   "y": 18.0,
+   "z": 8.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N0-0-4": {
+   "id": "N0-0-4",
+   "x": 0.0,
+   "y": 24.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N0-2-4": {
+   "id": "N0-2-4",
+   "x": 20.0,
+   "y": 24.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N1-0-4": {
+   "id": "N1-0-4",
+   "x": 0.0,
+   "y": 24.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N1-2-4": {
+   "id": "N1-2-4",
+   "x": 20.0,
+   "y": 24.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N2-1-4": {
+   "id": "N2-1-4",
+   "x": 10.0,
+   "y": 24.0,
+   "z": 8.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N0-0-5": {
+   "id": "N0-0-5",
+   "x": 0.0,
+   "y": 30.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N0-2-5": {
+   "id": "N0-2-5",
+   "x": 20.0,
+   "y": 30.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N1-0-5": {
+   "id": "N1-0-5",
+   "x": 0.0,
+   "y": 30.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N1-2-5": {
+   "id": "N1-2-5",
+   "x": 20.0,
+   "y": 30.0,
+   "z": 6.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "N2-1-5": {
+   "id": "N2-1-5",
+   "x": 10.0,
+   "y": 30.0,
+   "z": 8.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  }
+ },
+ "materiais": {
+  "A-572 GR.50": {
+   "nome": "A-572 GR.50",
+   "E": 200000000.0,
+   "G": 77000000.0,
+   "peso": 77.0,
+   "fy": 345000.0,
+   "fu": 450000.0,
+   "fck": null
+  }
+ },
+ "secoes": {
+  "W360x51": {
+   "nome": "W360x51",
+   "A": 0.006479770657883069,
+   "Iy": 0.0001422111025550106,
+   "Iz": 9.68227055851444e-06,
+   "J": 2.2066659839999998e-07,
+   "props": {
+    "tipo": "I",
+    "A": 0.006479770657883069,
+    "Ix": 0.0001422111025550106,
+    "Iy": 9.68227055851444e-06,
+    "J": 2.2066659839999998e-07,
+    "Wx": 0.0008011893101690738,
+    "Wy": 0.00011324293050894081,
+    "Zx": 0.0008995081522482043,
+    "Zy": 0.0001746742542629759,
+    "Cw": 2.84993962904394e-07,
+    "rx": 0.1481449781607017,
+    "ry": 0.03865527699527286,
+    "x0": 0.0,
+    "y0": 0.0,
+    "h": 0.355,
+    "b": 0.171,
+    "tw": 0.0072,
+    "tf": 0.0116,
+    "r": 0.012,
+    "hw": 0.30779999999999996,
+    "soldado": false,
+    "bt_mesa": 7.370689655172415,
+    "ht_alma": 42.74999999999999,
+    "Ay": 0.0033060000000000003,
+    "Az": 0.0025559999999999997,
+    "r0": 0.1531050782757256,
+    "massa": 51.0,
+    "A_catalogo": 0.00648
+   }
+  },
+  "HP250x62": {
+   "nome": "HP250x62",
+   "A": 0.007960310657883071,
+   "Iy": 8.728076213920827e-05,
+   "Iz": 2.994880947258168e-05,
+   "J": 2.9987039283333334e-07,
+   "props": {
+    "tipo": "I",
+    "A": 0.007960310657883071,
+    "Ix": 8.728076213920827e-05,
+    "Iy": 2.994880947258168e-05,
+    "J": 2.9987039283333334e-07,
+    "Wx": 0.0007095996921886852,
+    "Wy": 0.00023397507400454436,
+    "Zx": 0.0007905024539856719,
+    "Zy": 0.0003577884213484829,
+    "Cw": 4.141296127399254e-07,
+    "rx": 0.10471147000890514,
+    "ry": 0.0613373166918175,
+    "x0": 0.0,
+    "y0": 0.0,
+    "h": 0.246,
+    "b": 0.256,
+    "tw": 0.0105,
+    "tf": 0.0107,
+    "r": 0.012,
+    "hw": 0.2006,
+    "soldado": false,
+    "bt_mesa": 11.962616822429908,
+    "ht_alma": 19.104761904761904,
+    "Ay": 0.004565333333333334,
+    "Az": 0.0025830000000000002,
+    "r0": 0.12135385601775558,
+    "massa": 62.0,
+    "A_catalogo": 0.00796
+   }
+  },
+  "Ue 250x85x25x3,00": {
+   "nome": "Ue 250x85x25x3,00",
+   "A": 0.0013507889412377782,
+   "Iy": 1.2680439143360877e-05,
+   "Iz": 1.269906457419916e-06,
+   "J": 4.052366823713335e-09,
+   "props": {
+    "tipo": "Ue",
+    "A": 0.0013507889412377782,
+    "Ix": 1.2680439143360877e-05,
+    "Iy": 1.269906457419916e-06,
+    "J": 4.052366823713335e-09,
+    "Wx": 0.00010144351314688701,
+    "Wy": 2.091703874017453e-05,
+    "Zx": 0.00011939159130315329,
+    "Zy": 3.078234659074891e-05,
+    "Cw": 1.5744266033341517e-08,
+    "rx": 0.09688876023659734,
+    "ry": 0.03066140965052819,
+    "x0": -0.05958439700841028,
+    "y0": 5.5079823602224585e-17,
+    "xg": 0.022788420641452617,
+    "t": 0.003,
+    "h": 0.25,
+    "b": 0.085,
+    "D": 0.025,
+    "ri": 0.003,
+    "bt_mesa": 24.333333333333336,
+    "ht_alma": 79.33333333333333,
+    "bt_enr": 6.333333333333334,
+    "Ay": 0.0004250000000000001,
+    "Az": 0.00075,
+    "r0": 0.11780430496717088
+   }
+  },
+  "TC 219,1x6,35": {
+   "nome": "TC 219,1x6,35",
+   "A": 0.004244173865275297,
+   "Iy": 2.4034165067321534e-05,
+   "Iz": 2.4034165067321534e-05,
+   "J": 4.806833013464307e-05,
+   "props": {
+    "tipo": "tubo_circular",
+    "A": 0.004244173865275297,
+    "Ix": 2.4034165067321534e-05,
+    "Iy": 2.4034165067321534e-05,
+    "J": 4.806833013464307e-05,
+    "Wx": 0.0002193899138961345,
+    "Wy": 0.0002193899138961345,
+    "Zx": 0.00028750262116666636,
+    "Zy": 0.00028750262116666636,
+    "Cw": 0.0,
+    "rx": 0.07525198087093787,
+    "ry": 0.07525198087093787,
+    "x0": 0.0,
+    "y0": 0.0,
+    "h": 0.2191,
+    "b": 0.2191,
+    "t": 0.00635,
+    "D_t": 34.503937007874015,
+    "Ay": 0.0021220869326376486,
+    "Az": 0.0021220869326376486,
+    "r0": 0.10642237194312106
+   }
+  }
+ },
+ "barras": {
+  "P1-0-0": {
+   "id": "P1-0-0",
+   "ni": "N0-0-0",
+   "nj": "N1-0-0",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "P1-2-0": {
+   "id": "P1-2-0",
+   "ni": "N0-2-0",
+   "nj": "N1-2-0",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "VX2-0-0": {
+   "id": "VX2-0-0",
+   "ni": "N1-0-0",
+   "nj": "N2-1-0",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "VX2-1-0": {
+   "id": "VX2-1-0",
+   "ni": "N2-1-0",
+   "nj": "N1-2-0",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "P1-0-1": {
+   "id": "P1-0-1",
+   "ni": "N0-0-1",
+   "nj": "N1-0-1",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "P1-2-1": {
+   "id": "P1-2-1",
+   "ni": "N0-2-1",
+   "nj": "N1-2-1",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "VX2-0-1": {
+   "id": "VX2-0-1",
+   "ni": "N1-0-1",
+   "nj": "N2-1-1",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "VX2-1-1": {
+   "id": "VX2-1-1",
+   "ni": "N2-1-1",
+   "nj": "N1-2-1",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "P1-0-2": {
+   "id": "P1-0-2",
+   "ni": "N0-0-2",
+   "nj": "N1-0-2",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "P1-2-2": {
+   "id": "P1-2-2",
+   "ni": "N0-2-2",
+   "nj": "N1-2-2",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "VX2-0-2": {
+   "id": "VX2-0-2",
+   "ni": "N1-0-2",
+   "nj": "N2-1-2",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "VX2-1-2": {
+   "id": "VX2-1-2",
+   "ni": "N2-1-2",
+   "nj": "N1-2-2",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "P1-0-3": {
+   "id": "P1-0-3",
+   "ni": "N0-0-3",
+   "nj": "N1-0-3",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "P1-2-3": {
+   "id": "P1-2-3",
+   "ni": "N0-2-3",
+   "nj": "N1-2-3",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "VX2-0-3": {
+   "id": "VX2-0-3",
+   "ni": "N1-0-3",
+   "nj": "N2-1-3",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "VX2-1-3": {
+   "id": "VX2-1-3",
+   "ni": "N2-1-3",
+   "nj": "N1-2-3",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "P1-0-4": {
+   "id": "P1-0-4",
+   "ni": "N0-0-4",
+   "nj": "N1-0-4",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "P1-2-4": {
+   "id": "P1-2-4",
+   "ni": "N0-2-4",
+   "nj": "N1-2-4",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "VX2-0-4": {
+   "id": "VX2-0-4",
+   "ni": "N1-0-4",
+   "nj": "N2-1-4",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "VX2-1-4": {
+   "id": "VX2-1-4",
+   "ni": "N2-1-4",
+   "nj": "N1-2-4",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "P1-0-5": {
+   "id": "P1-0-5",
+   "ni": "N0-0-5",
+   "nj": "N1-0-5",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "P1-2-5": {
+   "id": "P1-2-5",
+   "ni": "N0-2-5",
+   "nj": "N1-2-5",
+   "secao": "W360x51",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  },
+  "VX2-0-5": {
+   "id": "VX2-0-5",
+   "ni": "N1-0-5",
+   "nj": "N2-1-5",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "VX2-1-5": {
+   "id": "VX2-1-5",
+   "ni": "N2-1-5",
+   "nj": "N1-2-5",
+   "secao": "HP250x62",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T1": {
+   "id": "T1",
+   "ni": "N1-0-0",
+   "nj": "N1-0-1",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": -0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T2": {
+   "id": "T2",
+   "ni": "N1-0-1",
+   "nj": "N1-0-2",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": -0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T3": {
+   "id": "T3",
+   "ni": "N1-0-2",
+   "nj": "N1-0-3",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": -0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T4": {
+   "id": "T4",
+   "ni": "N1-0-3",
+   "nj": "N1-0-4",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": -0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T5": {
+   "id": "T5",
+   "ni": "N1-0-4",
+   "nj": "N1-0-5",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": -0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T6": {
+   "id": "T6",
+   "ni": "N2-1-0",
+   "nj": "N2-1-1",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T7": {
+   "id": "T7",
+   "ni": "N2-1-1",
+   "nj": "N2-1-2",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T8": {
+   "id": "T8",
+   "ni": "N2-1-2",
+   "nj": "N2-1-3",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T9": {
+   "id": "T9",
+   "ni": "N2-1-3",
+   "nj": "N2-1-4",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T10": {
+   "id": "T10",
+   "ni": "N2-1-4",
+   "nj": "N2-1-5",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T11": {
+   "id": "T11",
+   "ni": "N1-2-0",
+   "nj": "N1-2-1",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T12": {
+   "id": "T12",
+   "ni": "N1-2-1",
+   "nj": "N1-2-2",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T13": {
+   "id": "T13",
+   "ni": "N1-2-2",
+   "nj": "N1-2-3",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T14": {
+   "id": "T14",
+   "ni": "N1-2-3",
+   "nj": "N1-2-4",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "T15": {
+   "id": "T15",
+   "ni": "N1-2-4",
+   "nj": "N1-2-5",
+   "secao": "Ue 250x85x25x3,00",
+   "material": "A-572 GR.50",
+   "rot": 0.19739555984988044,
+   "tipo": "pff",
+   "params": {
+    "papel": "viga",
+    "rotula_i": true,
+    "rotula_j": true,
+    "elemento_desloc": "viga_cobertura"
+   }
+  },
+  "DC1": {
+   "id": "DC1",
+   "ni": "N1-0-0",
+   "nj": "N2-1-1",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  },
+  "DC2": {
+   "id": "DC2",
+   "ni": "N1-2-0",
+   "nj": "N2-1-1",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  },
+  "DP1": {
+   "id": "DP1",
+   "ni": "N0-0-0",
+   "nj": "N1-0-1",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  },
+  "DP2": {
+   "id": "DP2",
+   "ni": "N0-2-0",
+   "nj": "N1-2-1",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  },
+  "DC3": {
+   "id": "DC3",
+   "ni": "N1-0-5",
+   "nj": "N2-1-4",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  },
+  "DC4": {
+   "id": "DC4",
+   "ni": "N1-2-5",
+   "nj": "N2-1-4",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  },
+  "DP3": {
+   "id": "DP3",
+   "ni": "N0-0-5",
+   "nj": "N1-0-4",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  },
+  "DP4": {
+   "id": "DP4",
+   "ni": "N0-2-5",
+   "nj": "N1-2-4",
+   "secao": "TC 219,1x6,35",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "viga",
+    "trelica": true,
+    "elemento_desloc": "viga_piso"
+   }
+  }
+ },
+ "casos": {
+  "G1": {
+   "nome": "G1",
+   "tipo": "G",
+   "subtipo": ""
+  },
+  "Q1": {
+   "nome": "Q1",
+   "tipo": "Q",
+   "subtipo": ""
+  }
+ },
+ "cargas_nodais": [],
+ "cargas_distribuidas": [
+  {
+   "caso": "Q1",
+   "barra": "VX2-0-0",
+   "q": [
+    0,
+    0,
+    -0.7354355067681901
+   ],
+   "id": "cd1"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-1-0",
+   "q": [
+    0,
+    0,
+    -0.7354355067681901
+   ],
+   "id": "cd2"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-0-1",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd3"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-1-1",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd4"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-0-2",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd5"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-1-2",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd6"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-0-3",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd7"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-1-3",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd8"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-0-4",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd9"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-1-4",
+   "q": [
+    0,
+    0,
+    -1.4708710135363803
+   ],
+   "id": "cd10"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-0-5",
+   "q": [
+    0,
+    0,
+    -0.7354355067681901
+   ],
+   "id": "cd11"
+  },
+  {
+   "caso": "Q1",
+   "barra": "VX2-1-5",
+   "q": [
+    0,
+    0,
+    -0.7354355067681901
+   ],
+   "id": "cd12"
+  }
+ ],
+ "cargas_pontuais": [],
+ "pavimentos": {},
+ "peso_proprio": "G1",
+ "config": {
+  "tipo_uso": "comercial",
+  "variabilidade": "grandes",
+  "pdelta": false
+ }
+}

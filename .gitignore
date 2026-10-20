@@ -10,3 +10,8 @@ obj/
 # Google Drive / Windows
 desktop.ini
 Thumbs.db
+
+# Python e referências baixadas
+__pycache__/
+*.pyc
+docs/v2/refs/

@@ -1,0 +1,135 @@
+/* PROSSEN Estrutural — relatório impresso (memória de cálculo), A4 retrato.
+   Dono: designer-identidade. Arquivo AUTÔNOMO: não depende de tokens.css em tempo de execução
+   (valores copiados do tema Vegetal de tokens.css; sempre claro, porque vai para papel e para a ART).
+   relatorio.py pode embutir este arquivo num <style>. As fontes são opcionais: se fontes/ não estiver
+   ao lado, a pilha cai para fontes do sistema com algarismos tabulares.
+   Estrutura HTML esperada: ver software/design/IDENTIDADE.md, seção "Relatório". */
+
+@font-face { font-family: "Barlow"; src: url("fontes/Barlow-Regular.ttf") format("truetype"); font-weight: 400; }
+@font-face { font-family: "Barlow"; src: url("fontes/Barlow-SemiBold.ttf") format("truetype"); font-weight: 600; }
+@font-face { font-family: "Barlow Semi Condensed"; src: url("fontes/BarlowSemiCondensed-Regular.ttf") format("truetype"); font-weight: 400; }
+@font-face { font-family: "Barlow Semi Condensed"; src: url("fontes/BarlowSemiCondensed-SemiBold.ttf") format("truetype"); font-weight: 600; }
+@font-face { font-family: "Source Serif 4"; src: url("fontes/SourceSerif4-Regular.ttf.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Source Serif 4"; src: url("fontes/SourceSerif4-It.ttf.woff2") format("woff2"); font-style: italic; }
+@font-face { font-family: "Source Serif 4"; src: url("fontes/SourceSerif4-Semibold.ttf.woff2") format("woff2"); font-weight: 600; }
+
+.relatorio {
+  --r-tinta: #161b1e; --r-tinta-2: #3e474d; --r-tinta-3: #5a646b;
+  --r-filete: #c9d0cd; --r-filete-forte: #7a8486; --r-fundo: #ffffff; --r-fundo-2: #eef1ef; --r-mesa: #e4e8e6;
+  --r-ok: #1d7a1d; --r-atencao: #8a5a00; --r-atencao-marca: #e8a317; --r-falha: #b3261e; --r-falha-marca: #d03b3b; --r-falha-fundo: #fbe3df;
+  --r-taxa-1: #86b6ef; --r-taxa-2: #3987e5; --r-taxa-3: #1c5cab; --r-taxa-4: #0d366b;
+  --r-ui: "Barlow", "Source Serif 4", "Segoe UI", Arial, sans-serif;
+  --r-tab: "Barlow Semi Condensed", "Barlow", "Arial Narrow", Arial, sans-serif;
+  --r-mat: "Source Serif 4", "Cambria Math", Georgia, serif;
+  color-scheme: light;
+  font-family: var(--r-mat); font-size: 10pt; line-height: 1.5; color: var(--r-tinta);
+  font-variant-numeric: tabular-nums lining-nums;
+  background: var(--r-mesa); margin: 0;
+}
+.relatorio *, .relatorio *::before, .relatorio *::after { box-sizing: border-box; }
+
+/* folha na tela: largura A4, margens iguais às de impressão */
+.relatorio .folha { width: 210mm; min-height: 297mm; margin: 12mm auto; padding: 18mm 15mm 40mm 20mm; background: var(--r-fundo); box-shadow: 0 0 0 1px var(--r-filete-forte); position: relative; }
+
+/* cabeçalho da memória */
+.relatorio .cab { display: grid; grid-template-columns: auto 1fr auto; gap: 6mm; align-items: end; padding-bottom: 3mm; border-bottom: 0.7mm solid var(--r-tinta); font-family: var(--r-ui); }
+.relatorio .cab svg { height: 11mm; width: auto; color: var(--r-tinta); }
+.relatorio .cab h1 { margin: 0; font-size: 17pt; font-weight: 600; line-height: 1.1; }
+.relatorio .cab .proj { color: var(--r-tinta-2); font-size: 10pt; }
+.relatorio .cab .meta { text-align: right; font-family: var(--r-tab); font-size: 8.5pt; color: var(--r-tinta-2); line-height: 1.35; }
+
+/* aviso de responsabilidade técnica: sempre visível, sem cor de estado */
+.relatorio .aviso-art { margin: 4mm 0 5mm; padding: 2.5mm 3.5mm; border: 0.35mm solid var(--r-tinta); border-left-width: 1.4mm; font-family: var(--r-ui); font-size: 9pt; }
+.relatorio .aviso-art b { font-weight: 600; }
+
+/* títulos numerados (sequência real de seções) */
+.relatorio h2 { font-family: var(--r-ui); font-size: 12.5pt; font-weight: 600; margin: 7mm 0 2mm; padding-bottom: 1mm; border-bottom: 0.25mm solid var(--r-tinta); break-after: avoid; }
+.relatorio h2 .n { display: inline-block; min-width: 8mm; color: var(--r-tinta-3); font-weight: 400; }
+.relatorio h3 { font-family: var(--r-ui); font-size: 10.5pt; font-weight: 600; margin: 5mm 0 1.5mm; break-after: avoid; }
+.relatorio h3 .item { font-family: var(--r-tab); font-weight: 400; color: var(--r-tinta-3); margin-left: 2mm; }
+.relatorio p { margin: 0 0 2mm; max-width: 165mm; }
+.relatorio i, .relatorio .var { font-family: var(--r-mat); font-style: italic; }
+.relatorio sub, .relatorio sup { font-size: 0.72em; font-style: normal; }
+
+/* lista de dados (rótulo : valor) */
+.relatorio dl.dados { display: grid; grid-template-columns: 45mm 1fr; margin: 0; font-family: var(--r-tab); font-size: 9.5pt; }
+.relatorio dl.dados dt { color: var(--r-tinta-2); padding: 0.8mm 0; border-bottom: 0.2mm solid var(--r-filete); }
+.relatorio dl.dados dd { margin: 0; padding: 0.8mm 0; border-bottom: 0.2mm solid var(--r-filete); }
+
+/* tabelas: cabeçalho repetido em cada página, linhas não se partem */
+.relatorio table { width: 100%; border-collapse: collapse; font-family: var(--r-tab); font-size: 9pt; margin: 1mm 0 3mm; }
+.relatorio thead { display: table-header-group; }
+.relatorio tr { break-inside: avoid; }
+.relatorio th { text-align: left; font-weight: 600; color: var(--r-tinta-2); padding: 1mm 1.5mm 0.8mm; border-bottom: 0.5mm solid var(--r-tinta); vertical-align: bottom; }
+.relatorio th .un { display: block; font-weight: 400; font-size: 7.5pt; color: var(--r-tinta-3); }
+.relatorio td { padding: 0.7mm 1.5mm; border-bottom: 0.2mm solid var(--r-filete); }
+.relatorio .num { text-align: right; white-space: nowrap; }
+.relatorio table:not(.paginas) > tbody > tr > :first-child { white-space: nowrap; } /* identificador (barra, norma, seção) não quebra: "NBR 8681" */
+.relatorio td.mudo { color: var(--r-tinta-3); }
+.relatorio tr.grupo td { background: var(--r-fundo-2); font-weight: 600; color: var(--r-tinta-2); }
+
+/* estado: forma + texto (impressão em cinza continua legível) */
+.relatorio .estado { white-space: nowrap; font-weight: 600; }
+.relatorio .estado::before { display: inline-block; width: 3mm; margin-right: 1mm; text-align: center; font-family: var(--r-ui); }
+.relatorio .estado.ok { color: var(--r-ok); font-weight: 400; } .relatorio .estado.ok::before { content: "○"; }
+.relatorio .estado.atencao { color: var(--r-atencao); } .relatorio .estado.atencao::before { content: "△"; }
+.relatorio .estado.nao_verificada { color: var(--tinta-2, var(--r-tinta-2)); }
+.relatorio .estado.nao_verificada::before { content: "△"; }
+.relatorio .estado.reprovada { color: var(--r-falha); } .relatorio .estado.reprovada::before { content: "×"; }
+.relatorio tr.reprovada td { background: var(--r-falha-fundo); }
+.relatorio tr.reprovada td.taxa { color: var(--r-falha); font-weight: 600; }
+
+/* medidor da taxa (escala 0–1,20, traço em 1,00); reprovada com hachura para cinza */
+.relatorio .medidor { display: inline-block; position: relative; width: 22mm; height: 2.4mm; border: 0.2mm solid var(--r-filete-forte); vertical-align: middle; background: var(--r-fundo); }
+.relatorio .medidor i { position: absolute; left: 0; top: 0; bottom: 0; }
+.relatorio .medidor::after { content: ""; position: absolute; left: 83.33%; top: -0.8mm; bottom: -0.8mm; border-left: 0.5mm solid var(--r-tinta); }
+.relatorio .medidor .t1 { background: var(--r-taxa-1); } .relatorio .medidor .t2 { background: var(--r-taxa-2); }
+.relatorio .medidor .t3 { background: var(--r-taxa-3); } .relatorio .medidor .t4 { background: var(--r-taxa-4); }
+.relatorio .medidor .t5 { background: repeating-linear-gradient(135deg, var(--r-falha-marca) 0 0.7mm, var(--r-fundo) 0.7mm 1.2mm); }
+
+/* memória passo a passo: item | expressão e substituição | resultado */
+.relatorio .passo { display: grid; grid-template-columns: 17mm 1fr 30mm; gap: 0 3mm; padding: 1.2mm 0; border-bottom: 0.2mm solid var(--r-filete); break-inside: avoid; }
+.relatorio .passo .item { font-family: var(--r-tab); color: var(--r-tinta-3); font-size: 8.5pt; padding-top: 0.6mm; }
+.relatorio .passo .expr { font-size: 10.5pt; }
+.relatorio .passo .subst { display: block; color: var(--r-tinta-2); font-size: 9.5pt; }
+.relatorio .passo .res { text-align: right; font-family: var(--r-ui); font-weight: 600; white-space: nowrap; align-self: center; }
+.relatorio .passo .res .un { font-weight: 400; color: var(--r-tinta-3); font-size: 8.5pt; margin-left: 1mm; }
+.relatorio .passo.decisivo { border: 0.35mm solid var(--r-falha); background: var(--r-falha-fundo); padding: 1.5mm; }
+.relatorio .passo.decisivo .res { color: var(--r-falha); }
+
+/* legenda/carimbo (NBR 10582): canto inferior direito, 178 × 32 mm, repetido em cada folha impressa */
+.relatorio .carimbo { position: absolute; right: 15mm; bottom: 8mm; width: 178mm; display: grid; grid-template-columns: 26mm 62mm 45mm 1fr; grid-template-rows: repeat(3, auto); border: 0.7mm solid var(--r-tinta); font-family: var(--r-tab); font-size: 8pt; background: var(--r-fundo); }
+.relatorio .carimbo > div { border-right: 0.25mm solid var(--r-tinta); border-bottom: 0.25mm solid var(--r-tinta); padding: 0.6mm 1.5mm 0.8mm; min-height: 9mm; }
+.relatorio .carimbo .leg { display: block; font-size: 6.5pt; color: var(--r-tinta-3); line-height: 1.2; }
+.relatorio .carimbo b { font-weight: 600; font-size: 9pt; }
+.relatorio .carimbo .marca { grid-row: span 3; display: grid; place-items: center; }
+.relatorio .carimbo .marca svg { width: 15mm; height: auto; color: var(--r-tinta); }
+.relatorio .carimbo .sem-d { border-right: 0; }
+.relatorio .carimbo .sem-b { border-bottom: 0; }
+.relatorio .carimbo .assinatura { min-height: 9mm; }
+
+/* paginação: o corpo vai numa tabela de uma célula (table.paginas, role="presentation") cujo <tfoot>
+   se repete em cada página impressa e reserva, com .reserva, a altura do carimbo. Assim o carimbo fica em
+   bottom: 0 dentro da área útil, sem depender de posição negativa (bottom: -38mm não funciona no Chrome).
+   <article class="folha"><table class="paginas" role="presentation"><tbody><tr><td> … corpo …
+     </td></tr></tbody><tfoot><tr><td><div class="reserva"></div></td></tr></tfoot></table>
+     <footer class="carimbo">…</footer></article> */
+.relatorio, .relatorio * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } /* fundos de reprovada e medidor saem na impressão */
+.relatorio table.paginas { font: inherit; margin: 0; }
+.relatorio table.paginas > tbody > tr, .relatorio table.paginas > tfoot > tr { break-inside: auto; }
+.relatorio table.paginas > tbody > tr > td, .relatorio table.paginas > tfoot > tr > td { padding: 0; border: 0; font: inherit; }
+.relatorio .paginas .reserva { height: 38mm; display: none; } /* carimbo (~33 mm) + 5 mm de folga */
+
+/* impressão: margem de baixo só para a numeração; o carimbo ocupa a reserva da área útil */
+@page { size: A4 portrait; margin: 15mm 15mm 15mm 20mm;
+  @bottom-left { content: "PROSSEN Estrutural, memória de cálculo"; font: 7.5pt "Barlow Semi Condensed", Arial, sans-serif; color: #5a646b; }
+  @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 7.5pt "Barlow Semi Condensed", Arial, sans-serif; color: #5a646b; }
+}
+@media print {
+  .relatorio { background: none; font-size: 9.5pt; }
+  .relatorio .folha { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+  .relatorio .paginas .reserva { display: block; }
+  .relatorio .carimbo { position: fixed; left: 0; right: auto; bottom: 0; width: 175mm; } /* 210 − 20 − 15 mm */
+  .relatorio .quebra { break-before: page; }
+  .relatorio a { color: inherit; text-decoration: none; }
+}

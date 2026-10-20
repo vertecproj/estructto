@@ -1,0 +1,174 @@
+{
+ "versao_formato": 1,
+ "nome": "Borda: trelica pura (triangulo, P = 100 kN no apice)",
+ "nos": {
+  "n1": {
+   "id": "n1",
+   "x": 0.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    false,
+    false,
+    false
+   ]
+  },
+  "n2": {
+   "id": "n2",
+   "x": 6.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    false,
+    true,
+    true,
+    false,
+    false,
+    false
+   ]
+  },
+  "n3": {
+   "id": "n3",
+   "x": 3.0,
+   "y": 0.0,
+   "z": 4.0,
+   "apoio": [
+    false,
+    true,
+    false,
+    false,
+    false,
+    false
+   ]
+  }
+ },
+ "materiais": {
+  "A-572 GR.50": {
+   "nome": "A-572 GR.50",
+   "E": 200000000.0,
+   "G": 77000000.0,
+   "peso": 77.0,
+   "fy": 345000.0,
+   "fu": 450000.0,
+   "fck": null
+  }
+ },
+ "secoes": {
+  "W200x35.9": {
+   "nome": "W200x35.9",
+   "A": 0.0045715607346410204,
+   "Iy": 3.437287332797179e-05,
+   "Iz": 7.642641345278774e-06,
+   "J": 1.3189054079999999e-07,
+   "props": {
+    "tipo": "I",
+    "A": 0.0045715607346410204,
+    "Ix": 3.437287332797179e-05,
+    "Iy": 7.642641345278774e-06,
+    "J": 1.3189054079999999e-07,
+    "Wx": 0.0003420186400793213,
+    "Wy": 9.263807691246998e-05,
+    "Zx": 0.0003792314356583406,
+    "Zy": 0.00014104091295713073,
+    "Cw": 6.950203222050002e-08,
+    "rx": 0.08671129491188126,
+    "ry": 0.040887399794566154,
+    "x0": 0.0,
+    "y0": 0.0,
+    "h": 0.201,
+    "b": 0.165,
+    "tw": 0.0062,
+    "tf": 0.010199999999999999,
+    "r": 0.01,
+    "hw": 0.16060000000000002,
+    "soldado": false,
+    "bt_mesa": 8.088235294117649,
+    "ht_alma": 25.903225806451616,
+    "r0": 0.09586776375432951,
+    "massa": 35.9,
+    "A_catalogo": 0.00457
+   }
+  }
+ },
+ "barras": {
+  "b1": {
+   "id": "b1",
+   "ni": "n1",
+   "nj": "n2",
+   "secao": "W200x35.9",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "trelica": true
+   }
+  },
+  "b2": {
+   "id": "b2",
+   "ni": "n1",
+   "nj": "n3",
+   "secao": "W200x35.9",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "trelica": true
+   }
+  },
+  "b3": {
+   "id": "b3",
+   "ni": "n2",
+   "nj": "n3",
+   "secao": "W200x35.9",
+   "material": "A-572 GR.50",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "trelica": true
+   }
+  }
+ },
+ "casos": {
+  "G1": {
+   "nome": "G1",
+   "tipo": "G",
+   "subtipo": ""
+  },
+  "Q1": {
+   "nome": "Q1",
+   "tipo": "Q",
+   "subtipo": ""
+  }
+ },
+ "cargas_nodais": [
+  {
+   "caso": "Q1",
+   "no": "n3",
+   "F": [
+    0.0,
+    0.0,
+    -100.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "id": "cn1"
+  }
+ ],
+ "cargas_distribuidas": [],
+ "cargas_pontuais": [],
+ "pavimentos": {},
+ "peso_proprio": null,
+ "config": {
+  "tipo_uso": "comercial",
+  "variabilidade": "grandes",
+  "pdelta": false,
+  "armadura": "CA-50",
+  "cobrimento_m": null,
+  "caa": "II",
+  "tipo_edificacao": null
+ }
+}

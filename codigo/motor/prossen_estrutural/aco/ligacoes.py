@@ -1,0 +1,552 @@
+"""Ligações metálicas — NBR 8800:2008, cap. 6 (componentes + duas tipologias flexíveis).
+Unidades: kN, m, kN/m² (dados em m; diâmetro de parafuso em mm na entrada, `d_mm`).
+
+Edição: a NBR 8800:2024 revisou o cap. 6 (efeito de alavanca em 6.3.5, retirada do fator
+0,67 da resistência à tração) segundo B. I. R. de Oliveira, "Análise do projeto de revisão
+da ABNT NBR 8800: efeito de alavanca...", monografia UFMG, 2024 — mas a fonte descreve o
+projeto em consulta nacional, não o texto publicado. Nada da 2024 foi implementado: o
+módulo é da 2008 e o efeito de alavanca fica como limitação (o usuário inclui no Ft).
+Fontes de conferência dos valores (acesso 2026-10-20):
+  [CBCA] Instituto Aço Brasil/CBCA, "Ligações em estruturas metálicas", vol. 2, 4ª ed., 2011.
+  [NBR]  ABNT NBR 8800:2008, tab. A.3 (fub), 6.2.6 tab. 10, 6.3.8, 6.3.10, 6.3.11 tab. 14, 6.5.3 — conferidos
+         pelo verificador (verificacao/2026-10-20-ligacoes.md).
+"""
+from __future__ import annotations
+
+import logging
+import math
+
+from .. import materiais
+from ..modelo import MPa
+from .nbr8800 import GA1, GA2
+
+log = logging.getLogger(__name__)
+
+EDICAO = "NBR 8800:2008"
+GW2 = 1.35  # NBR 8800 tabela 8 (metal da solda, filete)
+MM = 1e-3
+
+# fub, fyb (MPa) — NBR 8800 tabela A.3; alta = parafuso de alta resistência (6.3.3.2)
+#   A307: fub 415 (curso calculistadeaco, 41,5 kN/cm²); fyb não usado (sem barra rosqueada) → None.
+#   A325: fub 825 para db ≤ 24 mm ou 1" (tab. A.3); 725 para 24 < db ≤ 36 mm (ver _parafuso).
+#   A490: fub 1035 (tab. A.3).
+#   ISO 898-1 classes: fub pela designação; ISO 4.6: fyb 235 (tab. A.3); fyb não é usado no cálculo.
+PARAFUSOS = {
+    "A307": dict(fub=415, fyb=None, alta=False),
+    "A325": dict(fub=825, fyb=635, alta=True),
+    "A490": dict(fub=1035, fyb=None, alta=True),
+    "ISO 4.6": dict(fub=400, fyb=235, alta=False),
+    "ISO 8.8": dict(fub=800, fyb=640, alta=True),
+    "ISO 10.9": dict(fub=1000, fyb=900, alta=True),
+}
+DIAMETROS_USUAIS_MM = (12.5, 16, 19, 20, 22, 24, 25, 27, 30, 12.7, 15.875, 19.05, 22.225, 25.4, 28.575, 31.75)
+ELETRODOS = {"E60": 415, "E70": 485}  # fw (MPa) — CBCA vol. 2 p. 16 e p. 57 (NBR 8800 tabela A.4)
+FURO_FOLGA = 1.5 * MM    # NBR 8800 6.3.6 tabela 12: furo-padrão = db + 1,5 mm (CBCA p. 11)
+FURO_DANO = 2.0 * MM     # NBR 8800 5.2.4.1: +2 mm no cálculo de áreas líquidas (CBCA p. 11)
+
+# Distância mínima furo-padrão → borda: NBR 8800:2008 6.3.11.1, tabela 14 (mm, linhas em polegadas e em
+# mm). Acima de 36 mm (1 1/4"): 1,75db (serra/tesoura) e 1,25db (laminada/maçarico).
+_BORDA = [  # (db mm, cortada com serra/tesoura, laminada/maçarico)
+    (12.7, 22, 19), (15.875, 29, 22), (16, 29, 22), (19.05, 32, 26), (20, 35, 27), (22, 38, 29),
+    (22.225, 38, 29), (24, 42, 31), (25.4, 44, 32), (27, 50, 38), (28.575, 50, 38), (30, 53, 39),
+    (31.75, 57, 42), (36, 64, 46)]
+COMPRIMENTO_LONGA = 1.270  # NBR 8800 6.3.8: ligação por contato mais longa → Fv,Sd e Fc,Sd × 1,25
+
+_LIM = "NBR 8800:2024 não confirmada em fonte pública (texto final): mantida a 2008"
+COBERTURA = [
+    dict(norma="NBR 8800", edicao="2008", item="6.3.3.1", verificacao="parafuso: tração Ft,Rd = 0,75·Ab·fub/γa2",
+         limitacao="efeito de alavanca (6.3.5) não implementado — incluir no Ft,Sd; a 2024 revisou 6.3.5: " + _LIM),
+    dict(norma="NBR 8800", edicao="2008", item="6.3.3.2", verificacao="parafuso: cisalhamento 0,4 / 0,5·Ab·fub/γa2 por plano",
+         limitacao="ligação por contato; deslizamento (atrito, 6.3.4.3) não implementado"),
+    dict(norma="NBR 8800", edicao="2008", item="6.3.3.3", verificacao="pressão de contato e rasgamento (furo-padrão)",
+         limitacao="padrão: deformação limitada (1,2/2,4); ligação de tração: soma por furo (extremidade e "
+                   "internos) e grupo Σ min(Fv,Rd; Fc,Rd); chapa simples: lf = menor entre furo-furo e furo-borda; "
+                   "furos alargados/alongados não tratados"),
+    dict(norma="NBR 8800", edicao="2008", item="6.3.3.4", verificacao="parafuso: tração + cisalhamento (interação quadrática)",
+         limitacao=""),
+    dict(norma="NBR 8800", edicao="2008", item="6.3.8", verificacao="ligação por contato com comprimento > 1270 mm",
+         limitacao="Fv,Sd e Fc,Sd × 1,25 (ligação de tração e chapa simples)"),
+    dict(norma="NBR 8800", edicao="2008", item="6.3.9 / 6.3.10 / 6.3.11.1 (tabela 14) / 6.3.12",
+         verificacao="espaçamento mínimo e máximo, borda mínima e máxima (disposições construtivas: só reprovam)",
+         limitacao="espaçamento mínimo 2,7db (6.3.9; aviso abaixo do preferível 3db); espaçamento máximo 6.3.10: "
+                   "24t ≤ 300 mm ou, com sujeito_corrosao (aço resistente à corrosão sem pintura), 14t ≤ 180 mm; "
+                   "notas b) e c) da tabela 14 não usadas (a favor)"),
+    dict(norma="NBR 8800", edicao="2008", item="6.3.7 / 6.5.7.2",
+         verificacao="pega longa (Fv,Rd − 1 % a cada 1,5 mm além de 5db) e chapas de enchimento (Fv,Rd e Fc,Rd × "
+                     "[1 − 0,0154(ts − 6)], ts em mm)",
+         limitacao="campos opcionais pega e t_enchimento (0 = não considerados); pega aplicada também a parafusos de "
+                   "alta resistência (protensão inicial não informada, a favor) e cada fração de 1,5 mm conta; "
+                   "ts > 19 mm exige 6.5.7.2 b)/c) (não verificadas → reprova)"),
+    dict(norma="NBR 8800", edicao="2008", item="6.2.5 tabela 8 / 6.2.6 tabela 10",
+         verificacao="solda de filete: metal da solda, metal base, garganta 0,707b, dimensão mínima e máxima",
+         limitacao="aumento de resistência com o ângulo θ não usado (a favor da segurança); metal base só da chapa "
+                   "informada; comprimento mínimo do filete (6.2.6.2.3: ≥ 4b e ≥ 40 mm) verificado; comprimento efetivo "
+                   "= comprimento total (6.2.2.2 c)"),
+    dict(norma="NBR 8800", edicao="2008", item="6.5.3 → 5.2", verificacao="elemento de ligação tracionado: escoamento e ruptura",
+         limitacao="An ≤ 0,85·Ag (6.5.3, chapas de emenda parafusadas); furação alternada não tratada"),
+    dict(norma="NBR 8800", edicao="2008", item="6.5.5", verificacao="elemento de ligação: escoamento e ruptura por cisalhamento",
+         limitacao=""),
+    dict(norma="NBR 8800", edicao="2008", item="6.5.6", verificacao="colapso por rasgamento (block shear)",
+         limitacao="Cts = 1; uma linha de parafusos: um plano de cisalhamento + tração até a borda (CBCA 5.1.7)"),
+    dict(norma="NBR 8800", edicao="2008", item="6.1 / 6.3 / 6.5", verificacao="chapa simples (viga–apoio flexível)",
+         limitacao="parafusos com V e V·e (método elástico); flexão da chapa elástica sem FLT, sem interação V+M e "
+                   "sem ruptura por flexão na seção líquida; limites de ductilidade da chapa (t ≤ db/2 + 2 mm) não "
+                   "verificados; alma sem recorte (sem rasgamento na viga); apoio (mesa/alma do pilar) não verificado"),
+    dict(norma="NBR 8800", edicao="2008", item="6", verificacao="ligações rígidas, chapa de topo, placas de base",
+         limitacao="não implementadas"),
+]
+
+
+# ---------------------------------------------------------------- componentes (funções puras)
+
+def area_parafuso(d):
+    return math.pi * d ** 2 / 4  # NBR 8800 6.3.2.2 (área bruta Ab)
+
+
+def tracao_parafuso(d, fub):
+    return 0.75 * area_parafuso(d) * fub / GA2  # NBR 8800 6.3.3.1 (Abe = 0,75·Ab)
+
+
+def cisalhamento_parafuso(d, fub, rosca_no_plano=True, alta_resistencia=True):
+    """Por plano de corte. NBR 8800 6.3.3.2: 0,5 só para alta resistência com rosca fora do plano."""
+    c = 0.5 if (alta_resistencia and not rosca_no_plano) else 0.4
+    return c * area_parafuso(d) * fub / GA2
+
+
+def pressao_contato(lf, t, d, fu, deformacao_limitada=True):
+    """NBR 8800 6.3.3.3 (furo-padrão): 1,2·lf·t·fu ≤ 2,4·db·t·fu (deformação limitada) ou 1,5 / 3,0."""
+    a, b = (1.2, 2.4) if deformacao_limitada else (1.5, 3.0)
+    return min(a * lf * t * fu, b * d * t * fu) / GA2
+
+
+def interacao_tracao_cisalhamento(Ft, FtRd, Fv, FvRd):
+    return (Ft / FtRd) ** 2 + (Fv / FvRd) ** 2  # NBR 8800 6.3.3.4 (≤ 1,0)
+
+
+def resistencia_filete(b, fw, fy, fu):
+    """kN por metro de filete de perna b. NBR 8800 6.2.5 tabela 8: metal da solda 0,6·Aw·fw/γw2
+    (Aw = 0,707·b, 6.2.2.1); metal base pela 6.5.5 na face de fusão (AMB = b): escoamento e ruptura."""
+    solda = 0.6 * 0.707 * b * fw / GW2
+    base = min(0.6 * b * fy / GA1, 0.6 * b * fu / GA2)
+    return dict(metal_solda=solda, metal_base=base, FwRd=min(solda, base))
+
+
+def filete_minimo(t):
+    """NBR 8800 6.2.6.2.1 tabela 10 pela chapa mais fina: até 6,35 → 3; até 12,5 → 5; até 19 → 6; acima → 8 mm."""
+    tm = t / MM
+    return MM * (3 if tm <= 6.35 else 5 if tm <= 12.5 else 6 if tm <= 19 else 8)
+
+
+def filete_maximo(t):
+    """NBR 8800 6.2.6.2.2, ao longo de bordas: t se t < 6,35 mm; senão t − 1,5 mm (CBCA p. 39, 60)."""
+    return t if t < 6.35 * MM else t - 1.5 * MM
+
+
+def distancia_min_borda(d, laminada=False):
+    """NBR 8800 6.3.11.1 tabela 14 (ver _BORDA): linha do diâmetro (± 0,05 mm); diâmetro fora da tabela usa
+    a linha seguinte (a favor da segurança); acima de 36 mm, 1,75db / 1,25db."""
+    dm = d / MM
+    for dt, serra, lam in _BORDA:
+        if dm <= dt + 0.05:
+            return MM * (lam if laminada else serra)
+    return (1.25 if laminada else 1.75) * d
+
+
+def tracao_chapa(Ag, An, fy, fu, Ct=1.0):
+    """NBR 8800 6.5.3 → 5.2.2: escoamento Ag·fy/γa1; ruptura Ae·fu/γa2, Ae = Ct·An ≤ 0,85·Ag (6.5.3)."""
+    Ae = min(Ct * An, 0.85 * Ag)
+    return dict(escoamento=Ag * fy / GA1, ruptura=Ae * fu / GA2, Ae=Ae)
+
+
+def cisalhamento_chapa(Ag, Anv, fy, fu):
+    return dict(escoamento=0.6 * fy * Ag / GA1, ruptura=0.6 * fu * Anv / GA2)  # NBR 8800 6.5.5
+
+
+def colapso_rasgamento(Agv, Anv, Ant, fy, fu, Cts=1.0):
+    # NBR 8800 6.5.6: (0,6·fu·Anv + Cts·fu·Ant)/γa2 ≤ (0,6·fy·Agv + Cts·fu·Ant)/γa2
+    return min(0.6 * fu * Anv + Cts * fu * Ant, 0.6 * fy * Agv + Cts * fu * Ant) / GA2
+
+
+# ---------------------------------------------------------------- esquema
+
+_PAR = [("d_mm", "mm", "diâmetro nominal do parafuso (12,5–30 e M16–M30 usuais)", None, (10.0, 40.0)),
+        ("tipo_parafuso", "", "especificação do parafuso", "A325", list(PARAFUSOS)),
+        ("rosca_no_plano", "", "rosca no plano de corte (a favor da segurança: sim)", True, bool),
+        ("pega", "m", "comprimento de pega (soma das espessuras ligadas; 6.3.7); 0 = não considerar", 0.0, (0.0, 0.3)),
+        ("t_enchimento", "m", "soma das espessuras das chapas de enchimento (6.5.7.2); 0 = sem enchimento", 0.0,
+         (0.0, 0.05))]
+_CHAPA = [("t", "m", "espessura da chapa", None, (0.002, 0.1)),
+          ("aco_chapa", "", "aço da chapa", "A-36", list(materiais.ACOS))]
+_DEF = [("deformacao_limitada", "", "deformação no furo é limitação de projeto (1,2/2,4)", True, bool),
+        ("borda_laminada", "", "bordas laminadas ou a maçarico (senão: serra/tesoura)", False, bool),
+        ("sujeito_corrosao", "", "peça sujeita à corrosão atmosférica, aço resistente à corrosão sem pintura "
+         "(espaçamento máximo 14t ≤ 180 mm, 6.3.10)", False, bool)]
+
+_TIPOS = {
+    "parafuso": dict(
+        descricao="Um parafuso: tração, cisalhamento, tração + cisalhamento e pressão de contato na chapa (NBR 8800 6.3.3)",
+        campos=_PAR + [("planos_corte", "", "planos de corte", 1, (1, 4))] + _CHAPA + [
+            ("lf", "m", "distância livre, na direção da força, até a borda do furo adjacente ou da chapa", None,
+             (0.001, 1.0)), _DEF[0]],
+        esforcos=[("Ft", "kN", 0.0), ("Fv", "kN", 0.0)]),
+    "solda_filete": dict(
+        descricao="Filete de solda: metal da solda, metal base e dimensões mínima/máxima (NBR 8800 6.2)",
+        campos=[("b", "m", "perna do filete", None, (0.002, 0.03)),
+                ("L", "m", "comprimento total efetivo dos filetes", None, (0.01, 10.0)),
+                ("eletrodo", "", "eletrodo", "E70", list(ELETRODOS)),
+                ("aco_base", "", "aço do metal base", "A-36", list(materiais.ACOS)),
+                ("t_base", "m", "espessura da chapa mais fina da junta", None, (0.002, 0.1))],
+        esforcos=[("F", "kN", None)]),
+    "chapa_simples": dict(
+        descricao="Viga–apoio flexível: chapa soldada ao apoio (filete duplo) e parafusada à alma da viga, "
+                  "n parafusos numa linha vertical centrada na chapa",
+        campos=[("h", "m", "altura da chapa", None, (0.05, 2.0))] + _CHAPA + _PAR + [
+            ("n", "", "número de parafusos na linha vertical", None, (2, 20)),
+            ("s", "m", "espaçamento vertical entre parafusos", None, (0.02, 0.5)),
+            ("eh", "m", "distância horizontal do eixo dos parafusos à borda livre da chapa", 0.04, (0.01, 0.5)),
+            ("b_solda", "m", "perna do filete chapa–apoio (dois lados)", 0.006, (0.002, 0.03)),
+            ("eletrodo", "", "eletrodo", "E70", list(ELETRODOS)),
+            ("tw", "m", "espessura da alma da viga", None, (0.002, 0.1)),
+            ("aco_alma", "", "aço da viga", "A-36", list(materiais.ACOS)),
+            ("e_alma", "m", "distância do eixo dos parafusos à extremidade da viga", 0.04, (0.01, 0.5)),
+            ("e", "m", "excentricidade: eixo dos parafusos à face do apoio", None, (0.0, 0.5))] + _DEF,
+        esforcos=[("V", "kN", None)]),
+    "ligacao_tracao": dict(
+        descricao="Chapa de ligação de tirante/diagonal parafusada: n_linhas paralelas à força com "
+                  "n_por_linha parafusos, grupo centrado na largura",
+        campos=[("b", "m", "largura da chapa", None, (0.02, 2.0))] + _CHAPA + _PAR + [
+            ("n_linhas", "", "linhas de furação paralelas à força", None, (1, 10)),
+            ("n_por_linha", "", "parafusos em cada linha", None, (1, 20)),
+            ("s", "m", "espaçamento na direção da força (se n_por_linha > 1)", 0.07, (0.02, 0.5)),
+            ("g", "m", "gabarito entre linhas (se n_linhas > 1)", 0.07, (0.02, 0.5)),
+            ("e1", "m", "distância do último furo à extremidade da chapa (direção da força)", None, (0.01, 0.5)),
+            ("planos_corte", "", "planos de corte por parafuso", 1, (1, 4)),
+            ("Ct", "", "coeficiente de redução da área líquida (5.2.5)", 1.0, (0.1, 1.0))] + _DEF,
+        esforcos=[("N", "kN", None)]),
+}
+_INTEIROS = {"n", "n_linhas", "n_por_linha", "planos_corte"}
+
+
+def tipos_ligacao():
+    """Esquema dos formulários (ESPEC §7.4). Campos de escolha trazem também `opcoes`."""
+    out = []
+    for tipo, t in _TIPOS.items():
+        campos = []
+        for nome, un, desc, pad, regra in t["campos"]:
+            c = dict(nome=nome, unidade=un, descricao=desc, padrao=pad)
+            if isinstance(regra, list):
+                c["opcoes"] = list(regra)
+            campos.append(c)
+        out.append(dict(tipo=tipo, descricao=t["descricao"], campos=campos,
+                        esforcos=[dict(nome=n, unidade=u) for n, u, _ in t["esforcos"]]))
+    return out
+
+
+def _validar(tipo, dados, esforcos):
+    if tipo not in _TIPOS:
+        raise ValueError(f"tipo de ligação '{tipo}' desconhecido; válidos: {', '.join(_TIPOS)}")
+    dados, esforcos = dict(dados or {}), dict(esforcos or {})
+    erros, d, e = [], {}, {}
+    for nome, _un, _desc, pad, regra in _TIPOS[tipo]["campos"]:
+        v = dados.get(nome, pad)
+        if v is None:
+            erros.append(f"{nome}: obrigatório")
+        elif regra is bool:
+            d[nome] = bool(v)
+        elif isinstance(regra, list):
+            if str(v).upper() not in [o.upper() for o in regra]:
+                erros.append(f"{nome}: '{v}' inválido ({', '.join(regra)})")
+            else:
+                d[nome] = next(o for o in regra if o.upper() == str(v).upper())
+        else:
+            try:
+                x = float(v)
+            except (TypeError, ValueError):
+                erros.append(f"{nome}: número esperado, recebido {v!r}")
+                continue
+            if not math.isfinite(x):
+                erros.append(f"{nome}: número finito esperado, recebido {v!r}")
+            elif nome in _INTEIROS and x != int(x):
+                erros.append(f"{nome}: inteiro esperado")
+            elif not regra[0] <= x <= regra[1]:
+                erros.append(f"{nome}: {x:g} fora da faixa [{regra[0]:g}, {regra[1]:g}]")
+            else:
+                d[nome] = int(x) if nome in _INTEIROS else x
+    for nome, _un, pad in _TIPOS[tipo]["esforcos"]:
+        v = esforcos.get(nome, pad)
+        try:
+            x = float(v) if v is not None else None
+        except (TypeError, ValueError):
+            x = -1.0
+        if x is None:
+            erros.append(f"{nome}: esforço obrigatório")
+        elif x < 0 or not math.isfinite(x):
+            erros.append(f"{nome}: esforço deve ser ≥ 0 (valor de cálculo, em módulo)")
+        else:
+            e[nome] = x
+    if erros:
+        raise ValueError(f"ligação '{tipo}': " + "; ".join(erros))
+    return d, e
+
+
+# ---------------------------------------------------------------- tipologias
+
+def _taxa(nome, num, den):
+    # denominador ≤ 0 não ocorre após _geometria; se ocorrer, é entrada inválida (nunca taxa infinita)
+    if not (math.isfinite(den) and den > 0):
+        raise ValueError(f"{nome}: denominador {den:g} ≤ 0 — geometria ou dados inválidos")
+    return float(num / den)
+
+
+def _v(nome, sd, rd, unidade, item):
+    return dict(nome=nome, solicitante=float(sd), resistente=float(rd), unidade=unidade,
+                taxa=_taxa(nome, sd, rd), item=item)
+
+
+# Disposições construtivas (dimensões, bordas, espaçamentos): unidade "m" — só reprovam (ESPEC §7.2).
+def _minimo(nome, minimo, real, item):  # taxa = mínimo / real
+    return dict(nome=nome, solicitante=float(minimo), resistente=float(real), unidade="m",
+                taxa=_taxa(nome, minimo, real), item=item)
+
+
+def _geometria(tipo, dn, regras):
+    """Geometria impossível → ValueError com os campos. dn = furo-padrão + 2 mm (6.3.6 tab. 12 + 5.2.4.1):
+    espaçamento ≤ dn sobrepõe os furos na seção líquida; borda ≤ dn/2 rompe a borda (áreas líquidas ≤ 0).
+    regras: (campo, valor, limite, descrição)."""
+    erros = [f"{campo}: {desc} = {v * 1e3:g} mm, deve ser > {'dn' if lim == dn else 'dn/2'} = {lim * 1e3:g} mm"
+             for campo, v, lim, desc in regras if v <= lim + 1e-12]
+    if erros:
+        raise ValueError(f"ligação '{tipo}': geometria impossível (dn = {dn * 1e3:g} mm, furo + 2 mm) — "
+                         + "; ".join(erros))
+
+
+def _maximo(nome, real, maximo, item):  # taxa = real / máximo
+    return _v(nome, real, maximo, "m", item)
+
+
+def _parafuso(d):
+    p = PARAFUSOS[d["tipo_parafuso"]]
+    db = d["d_mm"] * MM
+    fub = p["fub"]
+    avisos = []
+    if d["tipo_parafuso"] == "A325" and d["d_mm"] > 24 + 1e-9 and abs(d["d_mm"] - 25.4) > 0.05:
+        fub = 725  # tab. A.3: 24 < db ≤ 36 mm (e > 1"); d = 25,4 mm é 1" → 825
+        if d["d_mm"] < 25.4:
+            avisos.append(f"A325 com d = {d['d_mm']:g} mm (métrico > 24 mm): fub = 725 MPa (tab. A.3); "
+                          "para 1\" informe d = 25,4 mm")
+    if not any(abs(d["d_mm"] - x) < 0.05 for x in DIAMETROS_USUAIS_MM):
+        avisos.append(f"d = {d['d_mm']:g} mm não é diâmetro usual")
+    return db, fub * MPa, p["alta"], db + FURO_FOLGA, avisos
+
+
+def _aco(nome):
+    m = materiais.aco(nome)
+    return m.fy, m.fu
+
+
+def _bordas(v, db, t, borda, item_t="6.3.11.1 / tabela 14", laminada=False, nome=""):
+    emin = distancia_min_borda(db, laminada)
+    v.append(_minimo(f"borda mínima{nome}", emin, borda, item_t))
+    v.append(_maximo(f"borda máxima{nome}", borda, min(12 * t, 0.150), "6.3.12"))
+
+
+def fator_pega_longa(pega, db):
+    """NBR 8800 6.3.7: pega > 5db → Fv,Rd reduzida em 1 % para cada 1,5 mm adicionais (cada fração conta, a favor)."""
+    excesso = pega - 5 * db
+    return 1.0 if excesso <= 1e-9 else 1 - 0.01 * math.ceil(excesso / (1.5 * MM) - 1e-9)
+
+
+def fator_enchimento(ts):
+    """NBR 8800 6.5.7.2 a): ts ≤ 6 mm → 1; senão 1 − 0,0154(ts − 6), ts em mm (válido até 19 mm)."""
+    return 1.0 if ts <= 6 * MM + 1e-12 else 1 - 0.0154 * (ts / MM - 6)
+
+
+def _fatores(d, db, v, avisos):
+    """(fator de Fv,Rd, fator de Fc,Rd) por 6.3.7 e 6.5.7.2; acrescenta o limite ts ≤ 19 mm (só reprova)."""
+    kp, ke = fator_pega_longa(d["pega"], db), fator_enchimento(d["t_enchimento"])
+    if kp < 1:
+        avisos.append(f"pega longa ({d['pega'] * 1e3:.0f} mm > 5db = {5 * db * 1e3:.0f} mm): Fv,Rd × {kp:.2f} (6.3.7)")
+    if d["t_enchimento"] > 0:
+        v.append(_maximo("chapas de enchimento: ts ≤ 19 mm (6.5.7.2 a; b e c não verificadas)",
+                         d["t_enchimento"], 0.019, "6.5.7.2"))
+        if ke < 1:
+            avisos.append(f"chapas de enchimento ts = {d['t_enchimento'] * 1e3:.1f} mm > 6 mm: Fv,Rd e Fc,Rd × "
+                          f"{ke:.4f} (6.5.7.2 a)")
+    return kp * ke, ke
+
+
+def _ligacao_parafuso(d, e):
+    db, fub, alta, dh, avisos = _parafuso(d)
+    fy, fu = _aco(d["aco_chapa"])
+    v = []
+    kv, kc = _fatores(d, db, v, avisos)
+    FtRd = tracao_parafuso(db, fub)
+    FvRd = kv * cisalhamento_parafuso(db, fub, d["rosca_no_plano"], alta) * d["planos_corte"]
+    if e["Ft"] > 0:
+        v.append(_v("tração no parafuso", e["Ft"], FtRd, "kN", "6.3.3.1"))
+        avisos.append("efeito de alavanca não incluído: some-o a Ft (NBR 8800 6.3.5)")
+    if e["Fv"] > 0:
+        v.append(_v("cisalhamento no parafuso", e["Fv"], FvRd, "kN", "6.3.3.2"))
+        v.append(_v("pressão de contato / rasgamento", e["Fv"],
+                    kc * pressao_contato(d["lf"], d["t"], db, fu, d["deformacao_limitada"]), "kN", "6.3.3.3"))
+    if e["Ft"] > 0 and e["Fv"] > 0:
+        v.append(_v("tração + cisalhamento", interacao_tracao_cisalhamento(e["Ft"], FtRd, e["Fv"], FvRd), 1.0, "",
+                    "6.3.3.4"))
+    if not any(x["unidade"] != "m" for x in v):
+        avisos.append("sem esforços: nada a verificar")
+    return v, avisos
+
+
+def _ligacao_solda(d, e):
+    fy, fu = _aco(d["aco_base"])
+    r = resistencia_filete(d["b"], ELETRODOS[d["eletrodo"]] * MPa, fy, fu)
+    v = [_v("solda: resistência (metal da solda e metal base)", e["F"] / d["L"], r["FwRd"], "kN/m",
+            "6.2.5 / tabela 8" + (" (metal base)" if r["metal_base"] < r["metal_solda"] else "")),
+         _minimo("solda: dimensão mínima", filete_minimo(d["t_base"]), d["b"], "6.2.6.2.1 / tabela 10"),
+         _maximo("solda: dimensão máxima (ao longo de borda)", d["b"], filete_maximo(d["t_base"]), "6.2.6.2.2"),
+         _minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * d["b"], 0.040), d["L"], "6.2.6.2.3")]
+    return v, ["resistência do filete sem o acréscimo pelo ângulo θ da força (a favor da segurança)"]
+
+
+def _ligacao_chapa_simples(d, e):
+    db, fub, alta, dh, avisos = _parafuso(d)
+    dn = dh + FURO_DANO
+    fy, fu = _aco(d["aco_chapa"])
+    fyw, fuw = _aco(d["aco_alma"])
+    n, s, h, t, V = d["n"], d["s"], d["h"], d["t"], e["V"]
+    ev = (h - (n - 1) * s) / 2
+    _geometria("chapa_simples", dn, [
+        ("s", s, dn, "espaçamento s"),
+        ("h", ev, dn / 2, f"borda vertical (h − (n − 1)·s)/2 com n = {n}"),
+        ("eh", d["eh"], dn / 2, "borda horizontal eh"),
+        ("e_alma", d["e_alma"], dn / 2, "borda da alma e_alma")])
+    lim = d["deformacao_limitada"]
+    M = V * d["e"]
+    # parafusos: V centrado + V·e pelo método elástico (CBCA vol. 2, 5.2.1); linha única: Σr² = Σy²
+    ys = [(i - (n - 1) / 2) * s for i in range(n)]
+    R = math.hypot(V / n, M * max(map(abs, ys)) / sum(y * y for y in ys))
+    R *= _fator_longa((n - 1) * s, avisos)
+    fat = []
+    kv, kc = _fatores(d, db, fat, avisos)
+    FvRd = kv * cisalhamento_parafuso(db, fub, d["rosca_no_plano"], alta)
+    lf_ch = min(s - dh, ev - dh / 2, d["eh"] - dh / 2)   # direção da resultante varia: menor lf
+    lf_al = min(s - dh, d["e_alma"] - dh / 2)
+    v = [_v("parafusos: cisalhamento (V e V·e)", R, FvRd, "kN", "6.3.3.2"),
+         _v("pressão de contato na chapa", R, kc * pressao_contato(lf_ch, t, db, fu, lim), "kN", "6.3.3.3"),
+         _v("pressão de contato na alma", R, kc * pressao_contato(lf_al, d["tw"], db, fuw, lim), "kN", "6.3.3.3")] + fat
+    c = cisalhamento_chapa(h * t, (h - n * dn) * t, fy, fu)
+    v += [_v("chapa: escoamento por cisalhamento", V, c["escoamento"], "kN", "6.5.5"),
+          _v("chapa: ruptura por cisalhamento", V, c["ruptura"], "kN", "6.5.5")]
+    Lv = ev + (n - 1) * s
+    v.append(_v("chapa: colapso por rasgamento", V,
+                colapso_rasgamento(Lv * t, (Lv - (n - 0.5) * dn) * t, (d["eh"] - 0.5 * dn) * t, fy, fu), "kN", "6.5.6"))
+    v.append(_v("chapa: flexão (V·e, elástica)", M, t * h ** 2 / 6 * fy / GA1, "kN·m", "5.4 / 6.5"))
+    # solda: dois filetes de comprimento h, linha elástica: v = V/2L; f = 6M/(2L²)
+    b = d["b_solda"]
+    Lw = h   # 6.2.2.2 c): comprimento efetivo = comprimento total do filete
+    r = resistencia_filete(b, ELETRODOS[d["eletrodo"]] * MPa, fy, fu)
+    v.append(_v("solda: resistência (V e V·e)", math.hypot(V / (2 * Lw), 6 * M / (2 * Lw ** 2)), r["FwRd"], "kN/m",
+                "6.2.5 / tabela 8"))
+    v += [_minimo("solda: dimensão mínima", filete_minimo(t), b, "6.2.6.2.1 / tabela 10"),
+          _maximo("solda: dimensão máxima", b, filete_maximo(t), "6.2.6.2.2"),
+          _espacamento_minimo(s, db, avisos),
+          _espacamento_maximo(s, min(t, d["tw"]), d["sujeito_corrosao"])]
+    lam = d["borda_laminada"]
+    _bordas(v, db, t, ev, laminada=lam, nome=" (chapa, vertical)")
+    _bordas(v, db, t, d["eh"], laminada=lam, nome=" (chapa, horizontal)")
+    _bordas(v, db, d["tw"], d["e_alma"], laminada=lam, nome=" (alma)")
+    avisos += ["apoio (alma/mesa do pilar ou viga suporte) não verificado; metal base da solda só pela chapa",
+               "alma da viga sem recorte: rasgamento da alma não verificado"]
+    return v, avisos
+
+
+def _ligacao_tracao(d, e):
+    db, fub, alta, dh, avisos = _parafuso(d)
+    dn = dh + FURO_DANO
+    fy, fu = _aco(d["aco_chapa"])
+    nl, np_, s, g, t, b, e1, N = d["n_linhas"], d["n_por_linha"], d["s"], d["g"], d["t"], d["b"], d["e1"], e["N"]
+    e2 = (b - (nl - 1) * g) / 2
+    _geometria("ligacao_tracao", dn, [("e1", e1, dn / 2, "borda de extremidade e1")]
+               + ([("s", s, dn, "espaçamento s")] if np_ > 1 else [])
+               + ([("g", g, dn, "gabarito g")] if nl > 1 else [])
+               + [("b", e2, dn / 2, f"borda lateral (b − (n_linhas − 1)·g)/2 com n_linhas = {nl}")])
+    n = nl * np_
+    lim = d["deformacao_limitada"]
+    k = _fator_longa((np_ - 1) * s, avisos)   # 6.3.8
+    fat = []
+    kv, kc = _fatores(d, db, fat, avisos)
+    FvRd = kv * cisalhamento_parafuso(db, fub, d["rosca_no_plano"], alta) * d["planos_corte"]
+    # 6.3.3.3: resistência total ao contato = soma por furo: extremidade (lf = e1 − dh/2) e internos (s − dh)
+    Fc = [kc * pressao_contato(e1 - dh / 2, t, db, fu, lim)] + [kc * pressao_contato(s - dh, t, db, fu, lim)] * (np_ - 1)
+    v = [_v("parafusos: cisalhamento (por parafuso)", k * N / n, FvRd, "kN", "6.3.3.2"),
+         _v("pressão de contato / rasgamento na chapa (soma por furo)", k * N, nl * sum(Fc), "kN", "6.3.3.3"),
+         _v("grupo de parafusos: Σ min(Fv,Rd; Fc,Rd) por parafuso", k * N, nl * sum(min(FvRd, f) for f in Fc),
+            "kN", "6.3.3.2 / 6.3.3.3")] + fat
+    tr = tracao_chapa(b * t, (b - nl * dn) * t, fy, fu, d["Ct"])
+    v += [_v("chapa: escoamento da seção bruta", N, tr["escoamento"], "kN", "6.5.3 → 5.2.2 a)"),
+          _v("chapa: ruptura da seção líquida", N, tr["ruptura"], "kN", "6.5.3 → 5.2.2 b) / 5.2.3")]
+    Lv = e1 + (np_ - 1) * s
+    Agv1, Anv1 = Lv * t, (Lv - (np_ - 0.5) * dn) * t
+    if nl == 1:   # um plano de cisalhamento + tração até a borda (CBCA vol. 2, 5.1.7)
+        Fr = colapso_rasgamento(Agv1, Anv1, (e2 - 0.5 * dn) * t, fy, fu)
+    else:         # bloco central (entre linhas externas) e blocos laterais (até as bordas)
+        Fr = min(colapso_rasgamento(2 * Agv1, 2 * Anv1, (nl - 1) * (g - dn) * t, fy, fu),
+                 colapso_rasgamento(2 * Agv1, 2 * Anv1, 2 * (e2 - 0.5 * dn) * t, fy, fu))
+    v.append(_v("chapa: colapso por rasgamento", N, Fr, "kN", "6.5.6"))
+    if np_ > 1:
+        v += [_espacamento_minimo(s, db, avisos, " (direção da força)"),
+              _espacamento_maximo(s, t, d["sujeito_corrosao"])]
+    if nl > 1:
+        v += [_espacamento_minimo(g, db, avisos, " (entre linhas)"),
+              _espacamento_maximo(g, t, d["sujeito_corrosao"])]
+    lam = d["borda_laminada"]
+    _bordas(v, db, t, e1, laminada=lam, nome=" (extremidade)")
+    _bordas(v, db, t, e2, laminada=lam, nome=" (lateral)")
+    return v, avisos
+
+
+def _fator_longa(comprimento, avisos):
+    """6.3.8: ligação por contato com comprimento (na direção da força) > 1270 mm → esforços × 1,25."""
+    if comprimento > COMPRIMENTO_LONGA + 1e-9:
+        avisos.append(f"ligação longa ({comprimento * 1e3:.0f} mm > 1270 mm): Fv,Sd e Fc,Sd × 1,25 (6.3.8)")
+        return 1.25
+    return 1.0
+
+
+def _espacamento_minimo(s, db, avisos, nome=""):
+    # 6.3.9: distância entre centros de furos ≥ 2,7db, de preferência 3db
+    if 2.7 * db <= s < 3 * db:
+        avisos.append(f"espaçamento {s * 1e3:.1f} mm{nome} < 3db = {3 * db * 1e3:.1f} mm (preferível pela 6.3.9)")
+    return _minimo(f"espaçamento mínimo entre furos (2,7db){nome}", 2.7 * db, s, "6.3.9")
+
+
+def _espacamento_maximo(s, t, corrosao=False):
+    # 6.3.10: 24t da parte ligada mais fina ≤ 300 mm; sujeita à corrosão atmosférica (aço resistente à
+    # corrosão sem pintura): 14t ≤ 180 mm
+    if corrosao:
+        return _maximo("espaçamento máximo entre parafusos (14t ≤ 180 mm, sujeito à corrosão)", s,
+                       min(14 * t, 0.180), "6.3.10")
+    return _maximo("espaçamento máximo entre parafusos (24t ≤ 300 mm)", s, min(24 * t, 0.300), "6.3.10")
+
+
+_FUNCOES = {"parafuso": _ligacao_parafuso, "solda_filete": _ligacao_solda,
+            "chapa_simples": _ligacao_chapa_simples, "ligacao_tracao": _ligacao_tracao}
+
+
+def verificar_ligacao(tipo, dados, esforcos):
+    """ESPEC §7.4 → {taxa_max, criterio, item, ok, verificacoes, avisos}. Campos inválidos → ValueError com todos.
+    ESPEC §7.2: taxa_max/criterio = pior verificação de resistência; disposições construtivas (unidade "m":
+    dimensões mínimas/máximas, bordas, espaçamentos) só reprovam (ok = False) e ficam em verificacoes."""
+    d, e = _validar(tipo, dados, esforcos)
+    v, avisos = _FUNCOES[tipo](d, e)
+    if not v:
+        return dict(taxa_max=0.0, criterio="", item="", ok=True, verificacoes=[], avisos=avisos)
+    res = [x for x in v if x["unidade"] != "m"]
+    pior = max(res, key=lambda x: x["taxa"]) if res else dict(v[0], taxa=0.0)
+    falhas = [x["nome"] for x in v if x["unidade"] == "m" and x["taxa"] > 1.0 + 1e-9]
+    if falhas:
+        avisos.append("disposições construtivas não atendidas: " + "; ".join(falhas))
+    if any("tabela 14" in x["item"] for x in v):
+        avisos.append("borda mínima (tabela 14): bordas cortadas com serra/tesoura salvo indicação")
+    return dict(taxa_max=pior["taxa"], criterio=pior["nome"], item=f"NBR 8800:2008 {pior['item']}",
+                ok=pior["taxa"] <= 1.0 + 1e-9 and not falhas, verificacoes=v, avisos=avisos)

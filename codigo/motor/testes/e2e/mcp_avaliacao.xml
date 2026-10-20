@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 10 perguntas de avaliação do servidor MCP prossen-estrutural (padrão mcp-builder). Cada resposta é um número
+     verificável por solução fechada ou contagem (não depende de regra de norma que muda); o teste
+     test_e2e_mcp.TestAvaliacao confere cada uma chamando as ferramentas. Unidades: kN, m, kN·m. -->
+<evaluation>
+  <qa_pair id="1">
+    <question>Quantas ferramentas o servidor MCP prossen-estrutural expõe em list_tools?</question>
+    <answer>42</answer>
+  </qa_pair>
+  <qa_pair id="2">
+    <question>Abra o exemplo viga_biapoiada (vão de 6 m) e analise o caso Q1 (10 kN/m). Qual é a reação vertical, em kN, em cada apoio?</question>
+    <answer>30</answer>
+  </qa_pair>
+  <qa_pair id="3">
+    <question>Na mesma viga e caso Q1, qual é o maior momento fletor My em módulo, em kN·m (arredonde para inteiro)?</question>
+    <answer>45</answer>
+  </qa_pair>
+  <qa_pair id="4">
+    <question>Gere com estrutura_gerar um edifício de 3 vãos em x e 2 em y (5 m cada), 4 pavimentos de 3 m, concreto C30, pilares 25x50 cm e vigas 20x50 cm. Quantas barras são criadas?</question>
+    <answer>116</answer>
+  </qa_pair>
+  <qa_pair id="5">
+    <question>No edifício da pergunta 4, com peso próprio no caso G1, qual é a soma das reações verticais Rz do caso G1, em kN (peso do concreto a 25 kN/m³)?</question>
+    <answer>1300</answer>
+  </qa_pair>
+  <qa_pair id="6">
+    <question>Abra o exemplo galpao_aco. Qual é a soma das reações verticais do caso Q1 (0,25 kN/m² sobre 20 m x 30 m), em kN?</question>
+    <answer>150</answer>
+  </qa_pair>
+  <qa_pair id="7">
+    <question>Abra o exemplo portico_aco. Qual é a soma das reações horizontais Rx do caso V1 (10 kN em +X), em kN, com o sinal do eixo global?</question>
+    <answer>-10</answer>
+  </qa_pair>
+  <qa_pair id="8">
+    <question>Em ligacao_verificar, tipo chapa_simples, 3 parafusos M20 A325 (rosca no plano de corte), V = 120 kN: qual é a resistência de cálculo ao cisalhamento de um parafuso (NBR 8800 6.3.3.2), em kN com 1 casa decimal?</question>
+    <answer>76.8</answer>
+  </qa_pair>
+  <qa_pair id="9">
+    <question>Considere um balanço vertical de 3 m engastado na base, com 5 kN horizontal em +X e 50 kN para baixo no topo. Qual é o módulo do momento de reação My na base, em kN·m?</question>
+    <answer>15</answer>
+  </qa_pair>
+  <qa_pair id="10">
+    <question>Numa treliça triangular de base 6 m e altura 4 m com 100 kN para baixo no vértice (apoios nas pontas da base), qual é o módulo da força axial em cada barra inclinada, em kN?</question>
+    <answer>62.5</answer>
+  </qa_pair>
+</evaluation>
