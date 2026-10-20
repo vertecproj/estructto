@@ -68,7 +68,7 @@ namespace NovoFtool
         [System.ComponentModel.Browsable(false)] public System.Windows.Media.Brush SitBd { get; set; } = TemaPlant.BBordaSutil;
     }
 
-    public class DocumentoEspacial
+    public partial class DocumentoEspacial
     {
         public JsonObject Json;              // modelo do motor (cópia do último GET /api/modelo)
         public string Arquivo, Titulo;       // Arquivo: .json do motor (null = ainda não salvo)
@@ -677,6 +677,7 @@ namespace NovoFtool
                     if (nid != null) selEsp = dd.Ref("no", nid);
                 }, "Nó novo em (" + string.Join("; ", v.Select(x => Num.Fmt(x, 2))) + ") m."));
                 sp.Children.Add(leitura("Barras: escolha um nó e use \"Barra até outro nó\" ou \"Nó + barra\"."));
+                PainelCargaArea(sp, d, casoCargas);   // CargasEspacial.cs: casos e carga em área
                 secao("Cálculo");
                 sp.Children.Add(leitura(d.Calculado ? d.Resumo() : "Sem cálculo: F5 calcula pelo motor (NBR 8681, 8800, 14762, 6118)."));
                 sp.Children.Add(new TextBlock { Text = "O motor guarda um modelo só: o desfazer (Ctrl+Z) vale para o documento ativo e recomeça ao voltar de outra aba.", FontSize = 11, Foreground = TemaPlant.BTexto2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) });
@@ -756,12 +757,7 @@ namespace NovoFtool
                 }
                 else if (d.Calculado) { secao("Verificação"); sp.Children.Add(leitura("Barra não verificada pelo motor.")); }
                 botoes(("Apagar barra", () => _ = Espacial(dd => dd.Remover("barra", id), "Barra " + id + " apagada (com as cargas dela).")));
-                secao("Carga distribuída (global, kN/m)");
-                cargas("cargas_distribuidas", "carga_distribuida", "barra", id);
-                casoCargas();
-                if (d.CasoAtivo != null)
-                    vetor(new[] { "qx", "qy", "qz" }, new double[] { 0, 0, -5 }, "Adicionar", v => _ = Espacial(dd => dd.Adicionar("carga_distribuida", new JsonObject
-                    { ["caso"] = dd.CasoAtivo, ["barra"] = id, ["q"] = new JsonArray(v[0], v[1], v[2]) }), "Carga distribuída na barra " + id + " (" + d.CasoAtivo + ")."));
+                PainelCargasBarra(sp, d, id, casoCargas);   // CargasEspacial.cs: distribuídas (trapezoidais) e pontuais
             }
             painelEsp.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = TemaPlant.BSup1 };
             if (selEsp != selAnimada) { selAnimada = selEsp; Anim.Entrar(sp, 6, Anim.Rapido); }   // só quando a escolha muda

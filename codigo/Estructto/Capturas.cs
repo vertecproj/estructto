@@ -17,7 +17,7 @@ using F = Fluent;
 
 namespace NovoFtool
 {
-    public static class Capturas
+    public static partial class Capturas
     {
         public static bool Ativo { get; private set; }
         static string pastaSaida;
@@ -383,6 +383,8 @@ namespace NovoFtool
             w.EscolherEspacial("no", nNovo);
             EsperarIdle();
             CapturarPrincipal(w, "41-espacial-no-novo");
+            CapturasCargas(w, bNova);   // CargasEspacial.cs: pontual, trapezoidal, área, casos, vento/sismo/pavimentos
+            d = w.EspacialAtivo;
             Esperar(w.OperarEspacial(dd => dd.Remover("no", nNovo), "teste: apagar nó"));
             if (d.Json["barras"].AsObject().Count != nb0 || d.Json["nos"][nNovo] != null) throw new InvalidOperationException("apagar nó (cascata) falhou: " + w.StatusMsg.Text);
 

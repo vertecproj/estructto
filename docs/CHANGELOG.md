@@ -8,6 +8,10 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   **Níveis** (criar, renomear, cota, apagar, detectar), **Copiar pavimento para cima** (um lote: um Ctrl+Z) e **Gerar pilares entre níveis**.
   Paleta Ctrl+K e F1. Código `PlanosTrabalho.cs`; detalhe em [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#níveis-e-planos-de-trabalho). Capturas `43-*`.
 - Pendente: ligar o adaptador `PlanoNaVista` ao `Vista3D.PlanoAtual` depois do merge (comentário `ponytail:`).
+## 20/10/2026 — Cargas e casos no modelo espacial (branch wt-cargas3d)
+
+- Cargas pontuais e distribuídas trapezoidais (q, q2) no painel da barra; carga em área por nível (lote); Casos, Vento, Sismo,
+  Pavimentos e Combinações editam o modelo espacial: [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md) ("Cargas e casos"). Capturas `48-espacial-*`.
 
 ## 20/10/2026 — Vista 3D Realista (branch wt-vista3d)
 
