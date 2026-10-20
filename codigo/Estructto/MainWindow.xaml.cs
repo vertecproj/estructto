@@ -50,7 +50,7 @@ namespace NovoFtool
             ArqInicio.Click += (s, e) => { MontarTelaInicial(); TelaInicial.Visibility = TelaInicial.Visibility == Visibility.Visible && M.Barras.Count > 0 ? Visibility.Collapsed : Visibility.Visible; };
             ArqNovo.Click += (s, e) => Novo();
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(EsconderAbaDocumento), System.Windows.Threading.DispatcherPriority.Loaded);
-            var selo = TemaPlant.Selo();
+            var selo = TemaPlant.Selo(24);
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => TemaPlant.AjustarFaixa(this, selo)), System.Windows.Threading.DispatcherPriority.Loaded);
             Faixa.SelectedTabChanged += (s, e) => Dispatcher.BeginInvoke(new Action(() => TemaPlant.AjustarFaixa(Faixa, null)), System.Windows.Threading.DispatcherPriority.Loaded);
             TemaPlant.AplicarDock(Docas);
@@ -770,7 +770,7 @@ namespace NovoFtool
         {
             Bastidor.Background = TemaPlant.B(TemaPlant.Titulo);
             var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            sp.Children.Add(new Image { Source = TemaPlant.Selo(), Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center });
+            sp.Children.Add(new Image { Source = TemaPlant.Selo(24), Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center });
             sp.Children.Add(new TextBlock { Text = " ▾", Foreground = TemaPlant.B(TemaPlant.Texto), FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
             return sp;
         }

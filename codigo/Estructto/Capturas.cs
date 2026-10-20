@@ -768,7 +768,7 @@ namespace NovoFtool
         {
             Action prep = () =>
             {
-                TemaPlant.AjustarFaixa(w, TemaPlant.Selo());
+                TemaPlant.AjustarFaixa(w, TemaPlant.Selo(24));
                 if (w.M.Nos.Count > 0) w.Vista.ZoomTudo();
                 aposLayout?.Invoke();
                 w.Vista.InvalidateVisual();
