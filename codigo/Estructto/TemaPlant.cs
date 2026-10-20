@@ -113,7 +113,15 @@ namespace NovoFtool
             CorLuzAmb3D        = C("#5C6068"),   // luz ambiente
             CorChao3D          = C("#2A313C"),   // centro do chão (some no fundo do canvas)
             CorSombra3D        = C("#000000"),   // sombra no chão (alfa no pincel)
-            CorAresta3D        = C("#0A0D12");   // contorno das peças
+            CorAresta3D        = C("#0A0D12"),   // contorno das peças
+            // ViewCube e grips da Vista3D (ViewCube.cs, Vista3D.Grips.cs; docs/v3/PESQUISA-PLANT.md 2.2 e 3.7)
+            CorCuboFace        = C("#D92D3646"),   // face do cubo (Surface2 a 85%)
+            CorCuboHover       = C("#CC0EA5E9"),   // região sob o mouse (acento)
+            CorCuboAresta      = C("#7C8B9E"),
+            CorPivo            = C("#1B202B"),     // esfera do pivô da órbita (contorno branco)
+            CorGripFrio        = C("#2F7DF6"),
+            CorGripHover       = C("#FF6E6E"),
+            CorGripQuente      = C("#E0201B");
 
         // ---------- Aliases de compatibilidade (nomes ja usados no codigo) ----------
         public static readonly Color
