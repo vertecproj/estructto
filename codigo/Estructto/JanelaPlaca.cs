@@ -679,6 +679,22 @@ namespace NovoFtool
             return Passo(1, "Fixação", r.ApFix, FixOk(r), r.TemEsforcos, maisFix, () => { maisFix = !maisFix; Recalcular(); }, corpo, () => MaisFixacao(r, chAt));
         }
 
+        // Coeficiente de seguranca da solda. O admissivel 0,30.FEXX (AWS / AISC, metodo das tensoes admissiveis) ja traz a
+        // seguranca embutida: comparado com a resistencia ao corte do metal de solda por von Mises (0,577.FEXX), equivale a
+        // n = 0,577 / 0,30 = 1,92. Por isso "passa" e "n >= 1,92" sao a mesma condicao (nao e um criterio novo).
+        const string DicaCsSolda = "n = 0,577·FEXX / τ (resistência ao corte do metal de solda por von Mises, dividida pela tensão). " +
+                                   "A norma não pede um n separado: o limite τ ≤ 0,30·FEXX já embute n ≈ 1,92, que é o mínimo mostrado.";
+
+        UIElement TextoCsSolda(ResSolda sd)
+        {
+            double nMin = 0.577 / 0.30;
+            bool ok = sd.NEquiv >= nMin - 1e-9;
+            var tb = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11.5, Foreground = TemaPlant.BTexto2 };
+            tb.Inlines.Add(new System.Windows.Documents.Run("n = " + FmtN(sd.NEquiv) + (ok ? " ≥ " : " < ") + Num.Fmt(nMin, 2)) { Foreground = ok ? TemaPlant.BSucesso : TemaPlant.BErro, FontWeight = FontWeights.SemiBold });
+            tb.Inlines.Add(new System.Windows.Documents.Run(" · mínimo que a norma já embute no 0,30·FEXX"));
+            return tb;
+        }
+
         UIElement TextoCoefChumbador(ResPlaca r)
         {
             var sp = new StackPanel();
@@ -914,9 +930,11 @@ namespace NovoFtool
                 tb.Inlines.Add(new System.Windows.Documents.Run("τ = " + Num.Fmt(sd.Tau, 0) + " ≤ " + Num.Fmt(sd.TauAdm, 0) + " MPa") { Foreground = TemaPlant.BSucesso, FontWeight = FontWeights.SemiBold });
                 tb.Inlines.Add(new System.Windows.Documents.Run(" · filete contínuo · perna mínima de norma " + (sd.HMinNorma > 0 ? Num.Fmt(sd.HMinNorma, 0) + " mm" : "—")));
                 corpo.Children.Add(Linha("Tensão", tb, 6));
+                corpo.Children.Add(Linha("Segurança", TextoCsSolda(sd), 4, DicaCsSolda));
             }
             else
             {
+                corpo.Children.Add(Linha("Segurança", TextoCsSolda(sd), 6, DicaCsSolda));
                 var dg = Solda.Diagnosticar(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, sd.H, edit.Eletrodo, edit.Esp);
                 var box = new StackPanel();
                 var t1 = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11.5, Foreground = TemaPlant.BTexto1 };

@@ -12,7 +12,10 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   em uso abre, as outras ficam fechadas mostrando quantos passam e o menor que passa. No cartão, linha **Diâmetro** com − / + (troca o
   diâmetro na mesma família, mantendo o hef mais próximo) e − / + do hef. Texto do coeficiente explica a origem ("recomendado pela
   Walsywa para carga dinâmica com alto risco") e avisa quando o n digitado fica abaixo, com link "usar o recomendado". Só interface
-  (`JanelaPlaca.cs`); cálculo inalterado. Build, capturas e 200 testes ok (SDK .NET 8 instalado no PC do Bruno).
+  (`JanelaPlaca.cs`); cálculo inalterado.
+- Placa → Solda (pedido do Bruno): linha **Segurança** "n = 0,577·FEXX / τ ≥ 1,92". Critério: a norma (AWS/AISC, tensões admissíveis)
+  não pede n separado; o limite τ ≤ 0,30·FEXX já embute n = 0,577/0,30 ≈ 1,92, então "passa" e "n ≥ 1,92" são a mesma condição.
+  É o mesmo `NEquiv` que o memorial já mostrava. Só interface. Build, capturas e 200 testes ok (SDK .NET 8 instalado no PC do Bruno).
 
 ## 19/10/2026 — Bruno
 
