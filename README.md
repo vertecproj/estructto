@@ -25,6 +25,8 @@ Gabriel e Bruno trabalham em máquinas diferentes; a memória do Claude não é 
 - [docs/FIXACOES-GUIA.md](docs/FIXACOES-GUIA.md) — guia de escolha de fixações (mecânico, químico): uso recomendado e limitações.
 - [docs/TAREFA-COMPARAR-FIXACOES.md](docs/TAREFA-COMPARAR-FIXACOES.md) — a fazer: função "Comparar fixações" no Estructto.
 - [docs/PADRAO-MEMORIAL.md](docs/PADRAO-MEMORIAL.md) — como o memorial de cálculo é escrito (Estructto e planilha).
+- [CLAUDE.md](CLAUDE.md) — **como trabalhamos**: ciclo de cada mudança, capturas de tela, git/GitHub/Releases, agy e subagentes, design.
+- [docs/v2/](docs/v2/) — modernização da interface (relatório, guia de design, pesquisa, decisões).
 - [docs/DELEGAR-AGY.md](docs/DELEGAR-AGY.md) — fluxo Claude + Antigravity (agy) para poupar tokens.
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) — o que mudou, quando e o que está pendente.
 - `docs/historico/` — auditorias, diffs e prompts já executados (só consulta).
