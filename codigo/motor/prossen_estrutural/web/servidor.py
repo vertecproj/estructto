@@ -190,6 +190,7 @@ ROTAS = {
     ("POST", r"/api/refazer"): lambda s, a, q, c: _trocar(s, "refazer", "desfazer"),
     ("PATCH", r"/api/config"): lambda s, a, q, c: projeto.configurar(_modelo(s), c or {}),
     ("POST", r"/api/gerar-estrutura"): lambda s, a, q, c: projeto.gerar_estrutura(_modelo(s), c or {}),
+    ("POST", r"/api/gerar-estrutura/previa"): lambda s, a, q, c: projeto.previa_estrutura(projeto.novo_modelo() if _bool(q, "vazio") else _modelo(s), c or {}),
     ("POST", r"/api/acoes/gerar"): lambda s, a, q, c: projeto.gerar_acoes(_modelo(s)),
     ("GET", r"/api/resumo"): lambda s, a, q, c: projeto.resumo(_modelo(s)),
     ("GET", r"/api/validar"): lambda s, a, q, c: projeto.validar(_modelo(s)),

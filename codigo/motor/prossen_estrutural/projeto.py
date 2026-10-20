@@ -1129,6 +1129,20 @@ def gerar_estrutura(modelo, dados):
         raise ErroEntrada(e.erros) from e
 
 
+def previa_estrutura(modelo, dados):
+    """Gera numa cópia do modelo (o modelo não muda) e devolve só o que o gerador cria, para desenhar a prévia:
+    {nos: {id: [x, y, z]} (pontas das barras novas), barras: [{id, ni, nj, trelica}], removidas: [ids divididos],
+    nos_criados, barras_criadas, avisos}."""
+    m = copy.deepcopy(modelo)
+    r = gerar_estrutura(m, dados)
+    barras = [m.barras[b] for b in r["ids"]["barras"]]
+    nos = {n for b in barras for n in (b.ni, b.nj)} | set(r["ids"]["nos"])
+    return {"nos": {n: [m.nos[n].x, m.nos[n].y, m.nos[n].z] for n in nos},
+            "barras": [{"id": b.id, "ni": b.ni, "nj": b.nj, "trelica": bool(b.params.get("trelica"))} for b in barras],
+            "removidas": r["ids"].get("barras_removidas", []), "nos_criados": r["nos_criados"],
+            "barras_criadas": r["barras_criadas"], "avisos": r["avisos"]}
+
+
 # ================================================================ 15: ações automáticas
 
 def _nos_no_nivel(m, z):

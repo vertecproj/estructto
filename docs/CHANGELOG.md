@@ -16,6 +16,14 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 - Vista3D desenha as cargas do caso ativo (setas nodais/pontuais, pente q→q2), analítico e Realista, Vista › Mostrar › Cargas.
 - Desenhar 3D › Seção ▾ (modelo + Do catálogo…) e Apoio na base. Captura de ponta a ponta `49-fluxo3d-*`.
   Detalhe em [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#fluxo-de-modelagem-3d-captura-de-ponta-a-ponta).
+## 20/10/2026 — Treliças, contraventamentos e terças (branch wt-trelicas)
+
+- Motor: tipos `trelica_plana` (Pratt, Howe, Warren, Warren-V, K, Fink; banzos paralelos, uma água, duas águas, arco), `trelicas_serie`,
+  `contraventamento` (X, diagonal, K, V, Λ, mão-francesa; entre 2 barras ou 4 nós, divide barras) e `tercas` (com tirantes) no mesmo
+  `gerar_estrutura` (API, MCP). Rota nova `POST /api/gerar-estrutura/previa` (cópia do modelo, não muda nada).
+- WPF: galeria **Treliças e contraventamentos** (Modelo › Gerar, Ctrl+K) com miniaturas, prévia ao vivo e Inserir (um Ctrl+Z).
+  Detalhe em [v3/TRELICAS.md](v3/TRELICAS.md). Capturas `50-*`.
+- Pendente: barra só de tração no motor; treliça espacial multiplanar; mísulas no galpão.
 
 ## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
 

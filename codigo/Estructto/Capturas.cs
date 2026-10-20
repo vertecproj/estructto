@@ -902,6 +902,13 @@ namespace NovoFtool
                     w.Close();
                     Environment.Exit(0);
                 }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "trelicas")   // só as capturas 50) de treliças e contraventamentos
+                {
+                    CapturasTrelicas(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "desenho3d")   // só as capturas 43) do desenho no 3D
                 {
                     CapturasDesenho3D(w);
@@ -1437,6 +1444,8 @@ namespace NovoFtool
                 CapturasDesenho3D(w);
                 // 49) Fluxo completo: vazio, níveis, desenho, cópia, espelho, carga em área, F5, Realista com cargas
                 CapturasFluxo3D(w);
+                // 50) Treliças e contraventamentos
+                CapturasTrelicas(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
