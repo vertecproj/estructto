@@ -2,6 +2,13 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Vista 3D Realista (branch wt-vista3d)
+
+- Botão **Realista** em Vista › Navegar (lembra a escolha): perfis reais extrudados (I, U, L, tubos, caixão, maciços) com as
+  dimensões do catálogo ou do JSON do motor, aço metálico/concreto quente, três luzes, contorno de ~1 px, sombra suave no chão e
+  chão em degradê; aproveitamento tinge o material e a deformada usa as peças reais. ~2.400 barras em ~150 ms (malhas juntadas).
+  HelixToolkit.SharpDX avaliado e não adotado. Detalhe: [VISTA3D.md](VISTA3D.md#modo-realista). Capturas `42-*`.
+
 ## 20/10/2026 — Gabriel (início da unificação com o motor Python)
 
 - Ponte 2D ↔ motor: vento, sismo, pavimentos e casos do motor agora ficam no documento (`Modelo.MotorExtra`, JSON opaco no `.estructto`), entram no desfazer/modificado e voltam ao motor em cada `MotorModelo.Enviar`. `--teste-motor` não trava mais (diálogo modal de recuperação), motor sem órfãos (Job Object + `--pai`), partida única do motor, `Motor.Exclusivo`, corpo `{}` em vez de `null`. Detalhe: `docs/UNIFICACAO-MOTOR.md` › "Dados só do motor" e "Processo do motor".
