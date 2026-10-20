@@ -1095,7 +1095,8 @@ def geometria(modelo):
         cargas.setdefault(c.caso, []).append({"tipo": "carga_nodal", "id": c.id, "alvo": c.no, "valores": list(c.F)})
     for c in m.cargas_distribuidas:
         cargas.setdefault(c.caso, []).append({"tipo": "carga_distribuida", "id": c.id, "alvo": c.barra,
-                                              "valores": list(c.q)})
+                                              "valores": list(c.q),
+                                              **({"valores2": list(c.q2)} if c.q2 is not None else {})})
     for c in m.cargas_pontuais:
         cargas.setdefault(c.caso, []).append({"tipo": "carga_pontual", "id": c.id, "alvo": c.barra,
                                               "valores": [c.a, *c.F]})

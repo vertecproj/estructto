@@ -254,6 +254,12 @@ class TestModelo(unittest.TestCase):
                          "peso_proprio"} <= campos)
         self.assertNotIn("vento", m.config)  # erro não altera a config
 
+    def test_geometria_inclui_q2_da_carga_linear(self):
+        m = portico()
+        P.adicionar(m, "carga_distribuida", {"caso": "G1", "barra": "b2", "q": [0, 0, -2], "q2": [0, 0, -8]})
+        cl = [c for c in P.geometria(m)["cargas"]["G1"] if c.get("valores2")]
+        self.assertEqual(cl[0]["valores2"], [0, 0, -8])
+
     def test_resumo_e_geometria(self):
         m = portico()
         r = P.resumo(m)

@@ -234,6 +234,11 @@ class TestRelatorio(unittest.TestCase):
             self.assertGreaterEqual(txt.count("não aplicável"), 4)
             self.assertIn("b3", txt)
 
+    def test_carga_linear_mostra_q_e_q2(self):
+        mod = dict(MODELO, cargas_distribuidas=[{"id": "cl1", "caso": "G1", "barra": "b3", "q": [0, 0, -5],
+                                                 "q2": [0, 0, -12]}])
+        self.assertIn("qz = -5,00 → -12,00 kN/m", relatorio.markdown(mod, CALCULO).replace(".", ","))
+
     def test_entradas_vazias_nao_quebram(self):
         for txt in (relatorio.html({}, {}), relatorio.markdown({}, {}), relatorio.html(None, None)):
             self.assertIn("Ferramenta de apoio.", txt)

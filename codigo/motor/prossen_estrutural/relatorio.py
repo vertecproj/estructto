@@ -260,7 +260,10 @@ def _montar(modelo_d, calculo_d):
             if str(c.get("id", "")).startswith("auto_"):
                 n_auto += 1
                 continue
-            val = [f"{r} = {_f(x, 2)} {u}" for r, x, u in zip(rot, c.get(vet) or [], un) if _num(x) and x != 0]
+            q2 = (c.get("q2") or []) if vet == "q" else []
+            val = [f"{r} = {_f(x, 2)}" + (f" → {_f(q2[k], 2)}" if q2 else "") + f" {u}"
+                   for k, (r, x, u) in enumerate(zip(rot, c.get(vet) or [], un))
+                   if _num(x) and (x != 0 or (q2 and q2[k] != 0))]
             if tipo == "pontual":
                 val.insert(0, f"a = {_f(c.get('a'), 3)} m")
             cargas.append(([str(c.get("id", "")), str(c.get("caso", "")), tipo, str(c.get("no") or c.get("barra") or "—"),
