@@ -18,7 +18,8 @@ Convenções:
 - `analisar(modelo, caso)`: caso = nome (str) ou dict {caso: fator}; com dict, cargas e peso
   próprio (se `modelo.peso_proprio` estiver no dict) são somados ponderados e a combinação é
   analisada como um caso (P-Δ de combinação: sempre assim, nunca por `combinar`).
-- Cargas: nodais (globais), distribuídas uniformes q (globais, kN/m) e pontuais em barra
+- Cargas: nodais (globais), distribuídas q (globais, kN/m; uniformes, ou lineares de q em ni a q2 em
+  nj = uniforme + triangular, engastamento em _engaste_linear; com trecho rígido -> ValueError) e pontuais em barra
   F (globais, kN) a `a` m de ni. Ambas são projetadas nos eixos locais (componente axial incluída)
   e viram forças de engastamento perfeito. Com carga pontual, a saída da barra ganha dois pontos
   em x = a (a⁻ e a⁺, mostrando o salto de V); a grade depende de todas as cargas pontuais do
@@ -166,6 +167,32 @@ def _engaste(q, L):
                      -qx * L / 2, -qy * L / 2, -qz * L / 2, 0, -qz * L * L / 12, qy * L * L / 12])
 
 
+def _engaste_linear(dq, L, phy=0.0, phz=0.0):
+    """Reações de engastamento perfeito (sobre a barra) p/ carga triangular local, 0 em ni e dq em nj.
+    Giros da biapoiada (EI·θi = 7wL³/360, EI·θj = 8wL³/360) travados pela rigidez de _flexao:
+    M_i = wL²(12 + 15Φ)/(360(1+Φ)), M_j = wL²(18 + 15Φ)/(360(1+Φ)) (Φ = 0: wL²/30 e wL²/20);
+    R_i = wL/6 + (M_i - M_j)/L (Φ = 0: 3wL/20), R_j = wL/2 - R_i. Axial N_i = wL/6, N_j = wL/3."""
+    dx, dy, dz = dq
+
+    def plano(ph):
+        mi, mj = L * L * (12 + 15 * ph) / (360 * (1 + ph)), L * L * (18 + 15 * ph) / (360 * (1 + ph))
+        ri = L / 6 + (mi - mj) / L
+        return ri, L / 2 - ri, mi, mj
+    ryi, ryj, myi, myj = plano(phy)
+    rzi, rzj, mzi, mzj = plano(phz)
+    return np.array([-dx * L / 6, -dy * ryi, -dz * rzi, 0, dz * mzi, -dy * myi,
+                     -dx * L / 3, -dy * ryj, -dz * rzj, 0, -dz * mzj, dy * myj])
+
+
+def _flecha_linear(x, L, ph=0.0):
+    """EI·v(x) da viga biengastada com carga triangular 0 → 1 (em nj), como _flecha_pontual: biapoiada
+    x(7L⁴ - 10L²x² + 3x⁴)/(360L) + M_bi·ΦL²/12 menos os giros da biapoiada travados (Φ = 0:
+    x²(L-x)²(x + 2L)/(120L))."""
+    _, n2, _, n4 = _forma(x / L, L, ph)
+    return (x * (7 * L**4 - 10 * L * L * x * x + 3 * x**4) / (360 * L) + x * (L * L - x * x) / (6 * L) * ph * L * L / 12
+            - 7 * L**3 / 360 * n2 + 8 * L**3 / 360 * n4)
+
+
 def _engaste_pontual(a, P, L, phy=0.0, phz=0.0):
     """Reações de engastamento perfeito (sobre a barra) p/ carga concentrada local P em x = a.
     Timoshenko (giros da biapoiada travados pela rigidez de _flexao): M_i = P·a·b(b + ΦL/2)/(L²(1+Φ)),
@@ -266,6 +293,7 @@ class _Elem:
             [4, 5] * bool(b.params.get("rotula_i")) + [10, 11] * bool(b.params.get("rotula_j")))
         self.cortes = []        # abscissas internas de cargas pontuais (todos os casos)
         self.q = np.zeros(3)    # carga uniforme local do caso
+        self.dq = np.zeros(3)   # parcela triangular local do caso (0 em ni, dq em nj): q(x) = q + dq·x/L
         self.p = []             # [(a, P local)] cargas pontuais do caso
         self.fe = np.zeros(12)  # engastamento perfeito completo (antes da condensação)
 
@@ -331,7 +359,7 @@ def _cargas(modelo, fatores, elems, idx, ndof):
     """Vetor das cargas nodais ponderadas; grava em cada elemento q, p e fe locais ponderados."""
     F = np.zeros(ndof)
     for e in elems.values():
-        e.q, e.p, e.fr = np.zeros(3), [], np.zeros(12)
+        e.q, e.dq, e.p, e.fr = np.zeros(3), np.zeros(3), [], np.zeros(12)
     for c in modelo.cargas_nodais:
         g = fatores.get(c.caso, 0.0)
         if g:
@@ -342,7 +370,12 @@ def _cargas(modelo, fatores, elems, idx, ndof):
         if g:
             e = elems[c.barra]
             e.q = e.q + e.R @ (g * np.asarray(c.q, float))
-    g = fatores.get(modelo.peso_proprio, 0.0) if modelo.peso_proprio else 0.0
+            if c.q2 is not None:
+                if e.ti or e.tj:
+                    raise ValueError(f"carga distribuída {c.id}: carga variável (q2) em barra com trecho rígido "
+                                     f"({c.barra}) não é suportada")
+                e.dq = e.dq + e.R @ (g * (np.asarray(c.q2, float) - np.asarray(c.q, float)))
+    g =fatores.get(modelo.peso_proprio, 0.0) if modelo.peso_proprio else 0.0
     if g:
         for e in elems.values():
             e.q = e.q + e.R @ np.array([0.0, 0.0, -g * e.sec.A * e.mat.peso])
@@ -358,12 +391,12 @@ def _cargas(modelo, fatores, elems, idx, ndof):
             _rigido(e, e.Lt - e.tj / 2, e.q * e.tj)
         if e.trelica:  # biapoiada: só reações de força (estática), sem momento nos nós
             L = e.L
-            e.fe = np.r_[-e.q * L / 2, 0, 0, 0, -e.q * L / 2, 0, 0, 0]
+            e.fe = np.r_[-e.q * L / 2 - e.dq * L / 6, 0, 0, 0, -e.q * L / 2 - e.dq * L / 3, 0, 0, 0]
             for a, P in e.p:
                 e.fe[:3] -= P * (L - a) / L
                 e.fe[6:9] -= P * a / L
         else:
-            e.fe = _engaste(e.q, e.L) + sum((_engaste_pontual(a, P, e.L, e.phy, e.phz) for a, P in e.p),
+            e.fe = _engaste(e.q, e.L) + _engaste_linear(e.dq, e.L, e.phy, e.phz) + sum((_engaste_pontual(a, P, e.L, e.phy, e.phz) for a, P in e.p),
                                             np.zeros(12))
     return F
 
@@ -499,7 +532,7 @@ def _secoes(e, f, ul, n, pdelta=False):
     """Esforços e deslocamentos locais em n pontos (+ a⁻/a⁺ das cargas pontuais) a partir das
     forças de extremidade f (sobre a barra, locais) e deslocamentos locais ul, por equilíbrio
     do trecho [0, x]; com pdelta, na posição deformada (braço v, w da força axial de ni)."""
-    L, (qx, qy, qz) = e.L, e.q
+    L, (qx, qy, qz), (dx, dy, dz) = e.L, e.q, e.dq
     E = e.mat.E
     pts = [(x, True) for x in np.linspace(0.0, L, n) if all(abs(x - c) > TOL_X for c in e.cortes)]
     pts = sorted(pts + [(c, lado) for c in e.cortes for lado in (False, True)])
@@ -514,10 +547,12 @@ def _secoes(e, f, ul, n, pdelta=False):
                 my += P[2] * (x - a)
                 mz += P[1] * (x - a)
         s = x / L
-        ux = ul[0] * (1 - s) + ul[6] * s + qx * x * (L - x) / (2 * E * e.sec.A)
+        ux = (ul[0] * (1 - s) + ul[6] * s + qx * x * (L - x) / (2 * E * e.sec.A)
+              + dx * x * (L * L - x * x) / (6 * L * E * e.sec.A))
         if e.trelica:  # biapoiada: reta entre os nós (giro nodal não entra) + solução particular
-            uy = ul[1] * (1 - s) + ul[7] * s + qy * x * (L**3 - 2 * L * x * x + x**3) / (24 * E * e.Iz)
-            uz = ul[2] * (1 - s) + ul[8] * s + qz * x * (L**3 - 2 * L * x * x + x**3) / (24 * E * e.Iy)
+            tri = x * (7 * L**4 - 10 * L * L * x * x + 3 * x**4) / (360 * L)  # EI·v biapoiada, triangular 0 → 1
+            uy = ul[1] * (1 - s) + ul[7] * s + (qy * x * (L**3 - 2 * L * x * x + x**3) / 24 + dy * tri) / (E * e.Iz)
+            uz = ul[2] * (1 - s) + ul[8] * s + (qz * x * (L**3 - 2 * L * x * x + x**3) / 24 + dz * tri) / (E * e.Iy)
             for _, a, P in cargas:
                 g = _flecha_pontual_bi(x, min(max(a, 0.0), L), L)
                 uy += P[1] * g / (E * e.Iz)
@@ -532,6 +567,9 @@ def _secoes(e, f, ul, n, pdelta=False):
         if not e.trelica:  # solução particular das cargas de vão (biengastada; cortante: + q·x(L-x)/(2G·As))
             uy += qy * x * (L - x) * (x * (L - x) + e.phy * L * L) / (24 * E * e.Iz)
             uz += qz * x * (L - x) * (x * (L - x) + e.phz * L * L) / (24 * E * e.Iy)
+            if dy or dz:
+                uy += dy * _flecha_linear(x, L, e.phy) / (E * e.Iz)
+                uz += dz * _flecha_linear(x, L, e.phz) / (E * e.Iy)
             for _, a, P in cargas:
                 a = min(max(a, 0.0), L)
                 uy += P[1] * _flecha_pontual(x, a, L, e.phy) / (E * e.Iz)
@@ -541,12 +579,13 @@ def _secoes(e, f, ul, n, pdelta=False):
             # ponytail: braço só da axial de ni; qx e cargas pontuais na deformada desprezadas
             my += f[0] * (ul[2] - uz)
             mz += f[0] * (ul[1] - uy)
-        N = -(f[0] + qx * x + Pe[0])
-        Vy = -(f[1] + qy * x + Pe[1])
-        Vz = -(f[2] + qz * x + Pe[2])
+        r2, r3 = x * x / (2 * L), x**3 / (6 * L)  # resultante e momento em x da parcela triangular em [0, x]
+        N = -(f[0] + qx * x + dx * r2 + Pe[0])
+        Vy = -(f[1] + qy * x + dy * r2 + Pe[1])
+        Vz = -(f[2] + qz * x + dz * r2 + Pe[2])
         T = -f[3]
-        My = -(f[4] + x * f[2] + qz * x * x / 2 + my)
-        Mz = -(f[5] - x * f[1] - qy * x * x / 2 - mz)
+        My = -(f[4] + x * f[2] + qz * x * x / 2 + dz * r3 + my)
+        Mz = -(f[5] - x * f[1] - qy * x * x / 2 - dy * r3 - mz)
         esf.append((x + e.ti, N, Vy, Vz, T, My, Mz))
     return esf, fle
 

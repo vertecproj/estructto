@@ -275,6 +275,7 @@ namespace NovoFtool
                 l.Situacao = v.Passa ? "passa" : "NÃO PASSA"; l.SitTxt = v.Passa ? "Passa" : "Não passa"; l.Ap = Num.Fmt(v.Ap * 100, 0) + "%"; l.Critico = v.Critico;
                 l.ApNum = v.Ap * 100; l.Pass = v.Passa; l.CorAp = UiPlaca.CorAp(v.Ap, v.Passa); l.BarraVis = Visibility.Visible;
                 var cs = UiPlaca.Cores(v.Passa ? (v.Ap > 0.9 ? UiPlaca.Nivel.Alerta : UiPlaca.Nivel.Ok) : UiPlaca.Nivel.Erro); l.SitFg = cs.fg; l.SitBg = cs.bg; l.SitBd = cs.bd;
+                if (v is VerifMotor) { l.Tensao = l.Corte = l.Flecha = l.Flamb = l.LamPl = l.LamFo = l.Esb = "—"; return l; }   // motor Python: so taxa e criterio
                 l.Tensao = Num.Fmt(v.ApTensao * 100, 0) + "%"; l.Corte = Num.Fmt(v.ApCorte * 100, 0) + "%"; l.Flecha = Num.Fmt(v.ApFlecha * 100, 0) + "%";
                 l.Flamb = v.Nc > 1e-6 ? Num.Fmt(v.ApFlamb * 100, 0) + "%" : "—";
                 Func<Flamb, string> lam = f => f == null ? "—" : f.Instavel ? "∞ (sem travamento)" : Num.Fmt(f.Lambda, 0) + "  (K " + Num.Fmt(f.K, 2) + ")";

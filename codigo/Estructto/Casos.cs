@@ -13,7 +13,8 @@ namespace NovoFtool
     public partial class MainWindow
     {
         ResultadosCasos resCasos;
-        string resSel = "ativo";     // ativo | caso:i | comb:i | env:ELU | env:ELS
+        string resSel = "ativo";     // ativo | caso:i | comb:i | env:ELU | env:ELS | py:<combinacao> | pyenv:ELU | pyenv:ELS
+        string motorXml;             // modelo (XML) enviado ao motor Python no ultimo calculo
         bool listasOcupadas;
         F.ComboBox cbCaso, cbResultado;
 
@@ -31,6 +32,8 @@ namespace NovoFtool
             if (resSel.StartsWith("caso:") && int.TryParse(resSel.Substring(5), out i) && i < M.Casos.Count) return "caso " + M.Casos[i].Nome;
             if (resSel.StartsWith("comb:") && int.TryParse(resSel.Substring(5), out i) && i < M.Combinacoes.Count) return "combinação " + M.Combinacoes[i].Nome;
             if (resSel.StartsWith("env:")) return "envoltória " + resSel.Substring(4);
+            if (resSel.StartsWith("py:")) return "motor Python, combinação " + resSel.Substring(3);
+            if (resSel.StartsWith("pyenv:")) return "motor Python, envoltória " + resSel.Substring(6);
             return "caso " + (M.Casos.Count > 0 ? M.Casos[M.CasoAtivo].Nome : "");
         }
 
@@ -49,6 +52,7 @@ namespace NovoFtool
         void AplicarResultado()
         {
             if (resCasos == null) return;
+            if (resSel.StartsWith("py") && AplicarMotor()) return;
             if (resSel.StartsWith("env:") && CombinacoesDaEnvoltoria().Count == 0)
             {
                 Log("Não há combinações " + resSel.Substring(4) + ": crie em Ações › Casos e combinações. Mostrando o caso ativo.");
@@ -79,6 +83,45 @@ namespace NovoFtool
                 foreach (Barra b in M.Barras) b.Res = Analise.Combinar(PorCaso(b), f);
                 foreach (No n in M.Nos) n.Res = Analise.CombinarNo(PorCaso(n), f);
             }
+        }
+
+        // ---------- resultado do motor Python (docs/UNIFICACAO-MOTOR.md) ----------
+        // "py:<combinacao>" ou "pyenv:ELU|ELS": b.Res / n.Res e a envoltoria vem do MotorResultado (nao do Nucleo.cs).
+        // Falso se nao ha resultado do motor valido para o modelo da tela (volta para o caso ativo).
+        bool AplicarMotor()
+        {
+            List<string> nomes = null;
+            if (MotorValido())
+            {
+                if (resSel.StartsWith("py:")) nomes = ResMotor.Combinacoes.Where(c => c == resSel.Substring(3)).ToList();
+                else { string est = resSel.Substring(6); nomes = ResMotor.Combinacoes.Where(c => (ResMotor.EstadoDe.TryGetValue(c, out var e) ? e : "").StartsWith(est)).ToList(); }
+            }
+            if (nomes == null || nomes.Count == 0) { resSel = "ativo"; return false; }
+            var env = M.Barras.ToDictionary(b => b, b => nomes.Select(c => MotorModelo.ParaResBarra(M, b, PorCaso(b)[0], ResMotor.PorCombinacao[c])).ToList());
+            var envNos = M.Nos.ToDictionary(n => n, n => nomes.Select(c => (double[])ResMotor.PorCombinacao[c].Nos[n.Id].Clone()).ToList());
+            if (nomes.Count == 1) { Vista.Envoltoria = null; Vista.EnvNos = null; Vista.NomesEnv = null; }
+            else { Vista.Envoltoria = env; Vista.EnvNos = envNos; Vista.NomesEnv = nomes; }
+            foreach (Barra b in M.Barras) b.Res = env[b][0];
+            foreach (No n in M.Nos) n.Res = envNos[n][0];
+            return true;
+        }
+
+        // o resultado do motor so vale para o modelo que foi enviado (qualquer edicao o descarta)
+        bool MotorValido()
+        {
+            if (ResMotor != null && motorXml != M.ParaXml()) { ResMotor = null; Log("Modelo alterado: o resultado do motor Python foi descartado. Calcule de novo (F5)."); }
+            return ResMotor != null;
+        }
+
+        // Verificacao NBR 8800 do motor Python (pior linha da barra), quando a tela mostra o resultado do motor
+        Verif VerificarMotor(Barra b)
+        {
+            if (!resSel.StartsWith("py") || ResMotor == null) return null;
+            var vs = ResMotor.Verificacao.Where(x => x.Barra == b.Id).ToList();
+            if (vs.Count == 0) return null;
+            var p = vs.OrderByDescending(x => x.Taxa ?? double.MaxValue).First();
+            if (!p.Taxa.HasValue) return new VerifMotor { Aplicavel = false, Motivo = "não verificada pelo motor (" + p.Criterio + ")" };
+            return new VerifMotor { Aplicavel = true, Ap = p.Taxa.Value, Critico = p.Criterio + " · " + p.Norma + " " + p.Item + " · " + p.Combinacao };
         }
 
         IEnumerable<ResBarra> ResultadosDe(Barra b)
@@ -190,6 +233,13 @@ namespace NovoFtool
             for (int i = 0; i < M.Combinacoes.Count; i++) Add(M.Combinacoes[i].Tipo + ": " + M.Combinacoes[i].Nome, "comb:" + i, "Exibe os resultados da combinação \"" + M.Combinacoes[i].Nome + "\" (" + M.Combinacoes[i].Tipo + ").");
             if (M.Combinacoes.Any(c => c.Tipo == "ELU")) Add("Envoltória ELU (mín./máx.)", "env:ELU", "Exibe a envoltória de valores mínimos e máximos entre todas as combinações de Estado Limite Último (ELU).");
             if (M.Combinacoes.Any(c => c.Tipo == "ELS")) Add("Envoltória ELS (mín./máx.)", "env:ELS", "Exibe a envoltória de valores mínimos e máximos entre todas as combinações de Estado Limite de Serviço (ELS).");
+            if (MotorValido())
+            {
+                string Est(string c) { return ResMotor.EstadoDe.TryGetValue(c, out var e) ? e : ""; }
+                if (ResMotor.Combinacoes.Any(c => Est(c).StartsWith("ELU"))) Add("Python: envoltória ELU (NBR 8681/8800)", "pyenv:ELU", "Resultados do motor Python: envoltória das combinações ELU da NBR 8681 e verificação das barras pela NBR 8800.");
+                if (ResMotor.Combinacoes.Any(c => Est(c).StartsWith("ELS"))) Add("Python: envoltória ELS", "pyenv:ELS", "Resultados do motor Python: envoltória das combinações de serviço da NBR 8681.");
+                foreach (string c in ResMotor.Combinacoes) Add("Python " + Est(c) + ": " + c, "py:" + c, "Resultados do motor Python na combinação \"" + c + "\"; a verificação NBR 8800 mostra a combinação crítica de cada barra.");
+            }
             var sel = cbResultado.Items.Cast<ComboBoxItem>().FirstOrDefault(x => (string)x.Tag == resSel);
             if (sel == null) { resSel = "ativo"; sel = (ComboBoxItem)cbResultado.Items[0]; }
             cbResultado.SelectedItem = sel;
@@ -207,7 +257,7 @@ namespace NovoFtool
             SelecaoMudou();
         }
 
-        void EscolherResultado(string tag)
+        internal void EscolherResultado(string tag)
         {
             resSel = tag;
             Atualizar();

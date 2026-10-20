@@ -126,6 +126,7 @@ namespace NovoFtool
                 {
                     Verif v = Vista.Verificar(b);
                     if (!v.Aplicavel) return new[] { b.Id.ToString(), b.Secao, v.Motivo, "", "", "", "", "", "" };
+                    if (v is VerifMotor) return new[] { b.Id.ToString(), b.Secao, v.Passa ? "passa" : "NÃO PASSA", Num.Fmt(v.Ap * 100, 0) + "%", v.Critico, "—", "—", "—", "—" };
                     return new[] { b.Id.ToString(), b.Secao, v.Passa ? "passa" : "NÃO PASSA", Num.Fmt(v.Ap * 100, 0) + "%", v.Critico,
                         Num.Fmt(v.ApTensao * 100, 0) + "%", Num.Fmt(v.ApCorte * 100, 0) + "%", Num.Fmt(v.ApFlecha * 100, 0) + "%", v.Nc > 1e-6 ? Num.Fmt(v.ApFlamb * 100, 0) + "%" : "—" };
                 })));

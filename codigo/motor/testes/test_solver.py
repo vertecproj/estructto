@@ -970,5 +970,105 @@ class TestCortante(unittest.TestCase):
             analisar(m, "G")
 
 
+class TestCargaLinear(unittest.TestCase):
+    """Carga distribuída linear (CargaDistribuida.q2 = valor em nj). Valores à mão: Gere & Timoshenko,
+    apêndice G (viga simples, carga triangular e trapezoidal) e tabelas de engastamento perfeito (AISC
+    tab. 3-23)."""
+    L, w = 6.0, 12.0
+
+    def viga(self, apoio_i, apoio_j, q, q2, nos=(0.0, 6.0), params=None):
+        m = base()
+        for k, x in enumerate(nos):
+            m.add(No(f"n{k}", x, 0, 0, apoio=apoio_i if k == 0 else apoio_j if k == len(nos) - 1 else (False,) * 6))
+        L = nos[-1]
+        for k in range(len(nos) - 1):
+            m.add(Barra(f"b{k}", f"n{k}", f"n{k+1}", "s", "aco", params=dict(params or {})))
+            ta, tb = nos[k] / L, nos[k + 1] / L  # q linear ao longo da viga inteira
+            m.add(CargaDistribuida("G", f"b{k}", tuple(q[i] + (q2[i] - q[i]) * ta for i in range(3)),
+                                   q2=tuple(q[i] + (q2[i] - q[i]) * tb for i in range(3))))
+        return m
+
+    def test_biengastada_triangular(self):
+        """0 em ni, w em nj (para baixo): R_i = 3wL/20 = 10,8; R_j = 7wL/20 = 25,2 kN; M_i = wL²/30 = 14,4;
+        M_j = wL²/20 = 21,6 kN·m; flecha no meio wL⁴/(768EI)."""
+        L, w = self.L, self.w
+        m = self.viga(ENG, ENG, (0, 0, 0), (0, 0, -w))
+        r = analisar(m, "G")
+        self.assertAlmostEqual(r.reacoes["n0"][2], 10.8, delta=1e-9)
+        self.assertAlmostEqual(r.reacoes["n1"][2], 25.2, delta=1e-9)
+        self.assertAlmostEqual(abs(r.reacoes["n0"][4]), 14.4, delta=1e-9)
+        self.assertAlmostEqual(abs(r.reacoes["n1"][4]), 21.6, delta=1e-9)
+        self.assertAlmostEqual(r.esforcos["b0"][0][5], 14.4, delta=1e-9)   # My > 0 nos engastes
+        self.assertAlmostEqual(r.esforcos["b0"][-1][5], 21.6, delta=1e-9)
+        _, fle = ponto(r, "b0", L / 2)
+        self.assertAlmostEqual(fle[0][3] / (-w * L**4 / (768 * E * I)), 1.0, delta=1e-9)
+
+    def test_biapoiada_trapezio(self):
+        """q de 4 (ni) a 10 kN/m (nj), L = 6: R_i = L(2q1+q2)/6 = 18, R_j = L(q1+2q2)/6 = 24 kN;
+        M(x) = R_i·x - q1·x²/2 - (q2-q1)·x³/(6L): M(3) = 54 - 18 - 4,5 = 31,5 kN·m; V(3) = 18 - 12 - 4,5 = 1,5;
+        flecha no meio 5q1L⁴/(384EI) + 5(q2-q1)L⁴/(768EI)."""
+        L = self.L
+        apoio_i, apoio_j = (True, True, True, True, False, False), (False, True, True, False, False, False)
+        m = self.viga(apoio_i, apoio_j, (0, 0, -4.0), (0, 0, -10.0))
+        r = analisar(m, "G")
+        self.assertAlmostEqual(r.reacoes["n0"][2], 18.0, delta=1e-9)
+        self.assertAlmostEqual(r.reacoes["n1"][2], 24.0, delta=1e-9)
+        esf, fle = ponto(r, "b0", 3.0)
+        self.assertAlmostEqual(esf[0][5], -31.5, delta=1e-9)   # My < 0 no vão (convenção do solver)
+        self.assertAlmostEqual(abs(esf[0][3]), 1.5, delta=1e-9)
+        f = 5 * 4 * L**4 / 384 + 5 * 6 * L**4 / 768
+        self.assertAlmostEqual(fle[0][3] / (-f / (E * I)), 1.0, delta=1e-9)
+        self.assertAlmostEqual(r.esforcos["b0"][-1][5], 0.0, delta=1e-9)
+
+    def test_axial_e_inclinada(self):
+        """Carga linear axial (0 → 6 kN/m ao longo de x) em barra engastada em ni e apoiada em x em nj:
+        biengastada axial, R_i = wL/6 = 6, R_j = wL/3 = 12 kN; N(x) = R_i - w·x²/(2L)."""
+        L = self.L
+        apoio_j = (True, True, True, True, False, False)
+        m = self.viga(ENG, apoio_j, (0, 0, 0), (6.0, 0, 0))
+        r = analisar(m, "G")
+        self.assertAlmostEqual(r.reacoes["n0"][0], -6.0, delta=1e-9)
+        self.assertAlmostEqual(r.reacoes["n1"][0], -12.0, delta=1e-9)
+        for x, N, *_ in r.esforcos["b0"]:
+            self.assertAlmostEqual(N, 6.0 - 6.0 * x * x / (2 * L), delta=1e-9)
+
+    def test_elemento_exato(self):
+        """Uma barra x duas barras (nó no meio) com a mesma carga linear: a flecha interna da barra única no
+        meio = deslocamento do nó do meio, e os esforços coincidem. Euler e Timoshenko, dois planos."""
+        for params, props in (({}, {}), ({"cortante": True}, {"Ay": 2e-4, "Az": 6e-4})):
+            ms = []
+            for nos in ((0.0, 6.0), (0.0, 3.0, 6.0)):
+                m = self.viga(ENG, (True, True, True, True, False, False), (0, 2.0, -3.0), (0, -5.0, -15.0),
+                              nos, params)
+                m.secoes["s"].props = props
+                ms.append(analisar(m, "G"))
+            r1, r2 = ms
+            _, fle = ponto(r1, "b0", 3.0)
+            np.testing.assert_allclose(fle[0][1:], r2.deslocamentos["n1"][:3], rtol=1e-9, atol=1e-15)
+            for n in ("n0",):
+                np.testing.assert_allclose(r1.reacoes[n], r2.reacoes[n], rtol=1e-9, atol=1e-9)
+            esf, _ = ponto(r1, "b0", 3.0)
+            np.testing.assert_allclose(esf[0][1:], r2.esforcos["b1"][0][1:], rtol=1e-9, atol=1e-9)
+
+    def test_trelica_e_trecho_rigido(self):
+        """Treliça: reações da biapoiada (wL/6 e wL/3). Trecho rígido com q2: ValueError claro."""
+        m = self.viga((True,) * 3 + (True, True, True), (True,) * 3 + (False,) * 3, (0, 0, 0), (0, 0, -self.w),
+                      params={"trelica": True})
+        r = analisar(m, "G")
+        self.assertAlmostEqual(r.reacoes["n0"][2], self.w * self.L / 6, delta=1e-9)
+        self.assertAlmostEqual(r.reacoes["n1"][2], self.w * self.L / 3, delta=1e-9)
+        m = self.viga(ENG, ENG, (0, 0, 0), (0, 0, -self.w), params={"trecho_rigido_i": 0.2})
+        with self.assertRaisesRegex(ValueError, "trecho rígido"):
+            analisar(m, "G")
+
+    def test_json_ida_e_volta(self):
+        m = self.viga(ENG, ENG, (0, 0, -1.0), (0, 0, -2.0))
+        m.add(CargaDistribuida("G", "b0", (0, 0, -3.0)))
+        d = m.to_dict()
+        self.assertEqual(d["cargas_distribuidas"][0]["q2"], [0, 0, -2.0])
+        self.assertNotIn("q2", d["cargas_distribuidas"][1])   # uniforme: formato de arquivo inalterado
+        self.assertEqual(Modelo.from_dict(d).cargas_distribuidas[0].q2, (0, 0, -2.0))
+
+
 if __name__ == "__main__":
     unittest.main()
