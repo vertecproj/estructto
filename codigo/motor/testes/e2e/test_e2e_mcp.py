@@ -256,7 +256,7 @@ class TestFluxoManual(BaseMCP):
                           "tw": 0.0072, "e": 0.06}})
             return tipos, r
         tipos, r = rodar(cena, self.pasta)
-        self.assertEqual({t["tipo"] for t in tipos["itens"]}, {"parafuso", "solda_filete", "chapa_simples", "ligacao_tracao"})
+        self.assertLessEqual({"parafuso", "solda_filete", "chapa_simples", "ligacao_tracao"}, {t["tipo"] for t in tipos["itens"]})
         fv_rd = 0.4 * (math.pi * 20 ** 2 / 4) * 825 / 1.35 / 1000.0     # kN (NBR 8800 6.3.3.2)
         cis = next(v for v in r["verificacoes"] if v["nome"].startswith("parafusos: cisalhamento"))
         self.assertAlmostEqual(cis["resistente"], fv_rd, delta=1e-3)

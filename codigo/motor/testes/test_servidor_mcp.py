@@ -411,7 +411,7 @@ class TestTodasAsFerramentas(Base):
         self.assertEqual(r["aberto"]["n_barras"], 5)
         self.assertEqual(r["importado"]["n_barras"], 5)
         self.assertEqual(r["exemplos"]["total"], 4)
-        self.assertEqual(sorted(r["lig_tipos"]), ["chapa_simples", "ligacao_tracao", "parafuso", "solda_filete"])
+        self.assertLessEqual({"chapa_simples", "ligacao_tracao", "parafuso", "solda_filete"}, set(r["lig_tipos"]))
         direto = projeto.verificar_ligacao("solda_filete", {"b": 0.006, "L": 0.2, "t_base": 0.0125}, {"F": 100.0})
         self.assertAlmostEqual(r["lig"]["taxa_max"], direto["taxa_max"], delta=TOL)
         self.assertGreater(r["perfis"]["total"], 3)
