@@ -202,6 +202,15 @@ namespace NovoFtool
             await Recarregar();
         });
 
+        // Operação composta no motor (PlanosTrabalho.cs: níveis, lote): fila exclusiva, conta no desfazer, recarrega.
+        public Task Executar(Func<Task> op) => Motor.Exclusivo(async () =>
+        {
+            await Garantir();
+            await op();
+            TemHistorico = true;
+            await Recarregar();
+        });
+
         // POST /api/modelo/{tipo}; devolve o id (ou nome) criado.
         public Task<string> Adicionar(string tipo, JsonObject dados) => Motor.Exclusivo(async () =>
         {
@@ -379,6 +388,7 @@ namespace NovoFtool
             {
                 if (!modoEsp) return;
                 modoEsp = false;
+                LimparPlano();
                 Vista.ResumoExterno = null;
                 PainelProp.Content = Insp;
                 MostrarVista3D(false);
@@ -471,7 +481,7 @@ namespace NovoFtool
             vista3D.MostrarAproveitamento = c && dg == Diagrama.Verificacao;
             vista3D.EscalaDeformada = Vista.EscalaDef; vista3D.EscalaDiagrama = Vista.EscalaDiag;
             vista3D.Selecionado = selEsp;
-            vista3D.Carregar(d.ParaVista(), enquadrar);
+            vista3D.Carregar(FiltrarPlano(d.ParaVista()), enquadrar);   // plano/nível isolado (PlanosTrabalho.cs)
             Vista.Resolvido = c;   // o HUD (seletor de diagrama, escala) segue o cálculo do motor; o Modelo 2D do documento é vazio
             AtualizarLegenda();
             if (selEsp != null && vista3D.Selecionado == null) selEsp = null;

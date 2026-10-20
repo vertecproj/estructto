@@ -61,6 +61,29 @@ Ao ativar a aba, o documento se recoloca no motor na hora. Se ele tinha históri
 Resultados › Mostrar: **Envoltória ELU (motor)** (padrão) ou qualquer combinação do cálculo. Na envoltória, cada ponto do diagrama é o
 valor de maior módulo entre max e min (com sinal); a deformada usa a envoltória ELS (padrão de `projeto.resultados`).
 
+## Níveis e planos de trabalho
+
+Código: `codigo/Estructto/PlanosTrabalho.cs` (regras puras em `Niveis`, faixa e adaptador em `MainWindow`, painel `JanelaNiveis`).
+Ganchos: `DocumentoEspacial.Executar` (operação composta na fila do motor, conta no desfazer), `FiltrarPlano` no
+`AtualizarEspacial3D`, `LimparPlano` ao sair do modo espacial, grupo inserido na aba Modelo, linhas na ajuda F1.
+Capturas `43-*` (`Capturas.CapturasPlanos`; só elas: `ESTRUCTTO_CAPTURAS=planos`), que também conferem as contagens.
+
+| Comando | O que faz |
+|---|---|
+| Modelo › Planos › **Nível ▾** | lista os pavimentos do motor + "Térreo z=0" (se nenhum estiver na cota 0). Ativar = plano de trabalho na cota, só as barras do andar (os dois nós entre o nível de baixo e ele, sem as deitadas na cota de baixo), as outras em fantasma (linhas claras com fade), câmera em planta (transição de 300 ms da Vista3D) |
+| **Elevação X ▾ / Y ▾** | cotas distintas dos nós; só as barras do plano vertical, vista Lado (YZ) / Frente (XZ) |
+| **3D completo** | tira o filtro, volta à isométrica |
+| **Níveis** (painel) | nome, cota, altura até o próximo; criar (+3 m), renomear (= DELETE + POST: o motor não muda o nome), mudar z (PATCH), apagar, **Detectar pela geometria** (um nível por cota de nós sem nível). Tudo em `/api/modelo/pavimento` dentro do `Motor.Exclusivo` |
+| **Copiar pavimento para cima** | barras do andar do nível escolhido, nós novos (reaproveita nó que já está na posição) e cargas (nodais dos nós de cima do andar; distribuídas e pontuais das barras) para N andares de altura h. A cota de cada nó é mapeada em escala: o pé vai para o topo da cópia anterior. Cria pavimento em cada cota nova. **Um** `POST /api/modelo/lote`: um Ctrl+Z desfaz tudo |
+| **Gerar pilares entre níveis** | um pilar sob cada nó do nível escolhido até o nível de baixo (nó novo embaixo se faltar; pula se já houver barra ligando os dois). Seção e material do primeiro pilar do modelo |
+
+Plano de trabalho = interface `IPlanoAlvo { DefinirPlano(eixo, valor); Isolar(zMin, zMax); }`. Nesta branch o adaptador
+`PlanoNaVista` (comentário `ponytail:`) filtra o `Modelo3D` antes do `Vista3D.Carregar` e desenha os fantasmas num `ModelVisual3D`
+próprio (a Vista3D ignora no picking os modelos que não são dela). Depois do merge com o `Vista3D.PlanoAtual`, ligar o adaptador nele.
+
+Limites: em planta os fantasmas ficam embaixo das barras isoladas (aparecem na isométrica); renomear nível = dois passos no desfazer;
+apoios não são copiados (as cópias ficam sobre o andar de baixo).
+
 ## Falta
 
 - Cargas pontuais e casos novos pelo painel (o motor aceita; não há tela).
