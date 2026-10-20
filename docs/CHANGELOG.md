@@ -8,6 +8,14 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   uma POLYFACE MESH por barra na camada da seção (`ACO_`/`CONCRETO_`) + linhas na camada `ANALITICO`. STEP AP214 escrito à mão:
   um PRODUCT por barra (FACETED_BREP de faces planas) numa montagem. Perfis = os do modo Realista (cópia em `GeometriaPerfis.cs`).
 - Testes `Estructto.exe --testes-exportar <pasta>` (38 asserções, guincho + edifício). Detalhe: [docs/v3/EXPORTAR.md](v3/EXPORTAR.md).
+## 20/10/2026 — Modelagem 3D ligada: seleção, planos, cargas e seção (branch wt-ligar3d)
+
+- Edição em lote usa a seleção múltipla da Vista3D (janela, cruzamento, Shift/Ctrl, árvore); nada escolhido = modelo inteiro.
+- Ativar nível/elevação troca o plano de desenho (`Vista3D.PlanoAtual`); fantasmas desenhados pela Vista3D, fora do picking e da
+  atração; Pilar pela altura dos níveis (desce ao nível de baixo).
+- Vista3D desenha as cargas do caso ativo (setas nodais/pontuais, pente q→q2), analítico e Realista, Vista › Mostrar › Cargas.
+- Desenhar 3D › Seção ▾ (modelo + Do catálogo…) e Apoio na base. Captura de ponta a ponta `49-fluxo3d-*`.
+  Detalhe em [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#fluxo-de-modelagem-3d-captura-de-ponta-a-ponta).
 
 ## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
 

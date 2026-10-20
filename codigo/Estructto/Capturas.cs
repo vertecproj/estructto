@@ -415,6 +415,139 @@ namespace NovoFtool
             EsperarIdle();
         }
 
+        // 49) Fluxo completo de modelagem 3D (docs/MODELO-ESPACIAL.md, "Fluxo de modelagem"): modelo vazio, 2 níveis, grade 2×1
+        // vãos desenhada com Barra no nível ativo + pilares (descem ao Térreo, apoio na base, seção do catálogo), andar copiado 2×
+        // para cima, um pórtico escolhido por janela e espelhado, carga em área, F5 e aproveitamento no Realista com as setas
+        // das cargas. Confere as contagens em cada passo. Só elas: ESTRUCTTO_CAPTURAS=fluxo3d.
+        static void CapturasFluxo3D(MainWindow w)
+        {
+            void Falha(string s) => throw new InvalidOperationException("Fluxo 3D: " + s + " | " + w.StatusMsg.Text);
+            var log = new StringBuilder();
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Vazio("Fluxo 3D"), "modelo vazio"));
+            DocumentoEspacial D() => w.EspacialAtivo ?? throw new InvalidOperationException("Fluxo 3D: documento espacial sumiu");
+            var J = new Func<System.Text.Json.Nodes.JsonObject>(() => D().Json);
+            int Nos() => J()["nos"].AsObject().Count;
+            int Barras() => J()["barras"].AsObject().Count;
+            int Apoios() => J()["nos"].AsObject().Count(kv => kv.Value["apoio"] is System.Text.Json.Nodes.JsonArray a && a.Any(x => (bool)x));
+            void Conta(string passo, int nos, int barras, int apoios = -1)
+            {
+                if (Nos() != nos || Barras() != barras || (apoios >= 0 && Apoios() != apoios))
+                    Falha(passo + ": " + Nos() + " nós, " + Barras() + " barras, " + Apoios() + " apoios (esperado " + nos + ", " + barras + (apoios >= 0 ? ", " + apoios : "") + ")");
+                log.AppendLine("ok " + passo + ": " + nos + " nós, " + barras + " barras" + (apoios >= 0 ? ", " + apoios + " apoios" : ""));
+            }
+            double Z(string no) => (double)J()["nos"][no]["z"];
+            w.Faixa.SelectedTabItem = w.abaModelo;
+            var v = w.vista3D;
+            Conta("modelo vazio", 0, 0);
+            CapturarPrincipal(w, "49-fluxo3d-1-vazio");
+
+            // 2 níveis: Térreo (z = 0) + P1 (z = 3); um caso G para as cargas
+            Esperar(w.OperarNiveis(() => Motor.Post("/api/modelo/pavimento", new System.Text.Json.Nodes.JsonObject { ["nome"] = "P1", ["z"] = 3.0, ["diafragma"] = true }), "teste: nível P1"));
+            Esperar(w.OperarEspacial(dd => dd.ComJanela(() => Motor.Post("/api/modelo/caso", new System.Text.Json.Nodes.JsonObject { ["nome"] = "G", ["tipo"] = "G" })), "teste: caso G"));
+            if (Niveis.Lista(J()).Count != 2 || D().CasoAtivo != "G") Falha("níveis " + Niveis.Lista(J()).Count + " / caso " + D().CasoAtivo);
+            log.AppendLine("ok 2 níveis (Térreo, P1), caso G ativo");
+
+            // P1 ativo = plano de desenho; vigas da grade 2×1 (vãos de 6 m em X, 5 m em Y) com a ferramenta Barra
+            w.AtivarNivel(3);
+            if (v.PlanoAtual.Normal != 'Z' || Math.Abs(v.PlanoAtual.Valor - 3) > 1e-9) Falha("ativar P1 não trocou o plano de desenho: " + v.PlanoAtual.Nome);
+            v.MostrarVista(VistaPadrao.Topo, false);
+            v.ZoomFator(0.45);
+            EsperarIdle();
+            Point T(double x, double y, double z) => v.Tela(new System.Windows.Media.Media3D.Point3D(x, y, z));
+            void Clicar(double x, double y, double z) { Esperar(v.ClicarTela(T(x, y, z))); EsperarIdle(); }
+            void Corrente(params (double x, double y)[] pts) { foreach (var (x, y) in pts) Clicar(x, y, 3); v.Tecla(System.Windows.Input.Key.Escape); }
+            w.UsarFerramenta3D(Ferramenta3D.Barra);
+            Corrente((0, 0), (6, 0), (12, 0));
+            Corrente((0, 5), (6, 5), (12, 5));
+            Corrente((0, 0), (0, 5)); Corrente((6, 0), (6, 5)); Corrente((12, 0), (12, 5));
+            Conta("grade 2×1 desenhada no P1", 6, 7);
+            if (J()["barras"].AsObject().Any(kv => Math.Abs(Z((string)kv.Value["ni"]) - 3) > 1e-6 || Math.Abs(Z((string)kv.Value["nj"]) - 3) > 1e-6)) Falha("viga fora do plano z = 3");
+            v.MoverTela(T(9, 2.5, 3));
+            CapturarPrincipal(w, "49-fluxo3d-2-vigas-p1");
+
+            // pilares: seção do catálogo (entra no modelo pelo motor), Apoio na base, clique nos nós do P1 desce até o Térreo
+            string perfil = Esperar(Motor.Get("/api/catalogo?filtro=W250")).AsArray().Select(x => (string)x["nome"]).First(x => J()["secoes"][x] == null);
+            Esperar(w.UsarSecao3D(perfil));
+            if (J()["secoes"][perfil] == null) Falha("seção do catálogo não entrou no modelo: " + perfil);
+            w.ApoioBase3D = true;
+            w.UsarFerramenta3D(Ferramenta3D.Pilar);
+            v.MoverTela(T(12, 5, 3));
+            CapturarPrincipal(w, "49-fluxo3d-3-pilar-cursor");
+            foreach (var (x, y) in new[] { (0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (0.0, 5.0), (6.0, 5.0), (12.0, 5.0) }) Clicar(x, y, 3);
+            Conta("pilares P1 → Térreo com apoio na base", 12, 13, 6);
+            var pilares = J()["barras"].AsObject().Where(kv => (string)kv.Value["secao"] == perfil).ToList();
+            if (pilares.Count != 6 || pilares.Any(kv => Math.Abs(Z((string)kv.Value["ni"])) > 1e-6 || Math.Abs(Z((string)kv.Value["nj"]) - 3) > 1e-6))
+                Falha("pilares: " + pilares.Count + " com " + perfil + " (esperado 6, de z = 0 a z = 3)");
+            if (J()["barras"].AsObject().Count(kv => (string)kv.Value["secao"] == "W310x38.7") != 7) Falha("vigas sem a seção padrão W310x38.7");
+            w.ApoioBase3D = false;
+            v.Tecla(System.Windows.Input.Key.Escape);
+            CapturarPrincipal(w, "49-fluxo3d-3-pilares", () => v.MostrarVista(VistaPadrao.Iso, false));
+
+            // copiar o andar 2× para cima (h = 3 m): um lote só
+            w.Completo3D();
+            Esperar(w.Lote(Niveis.CopiarParaCima(J(), 0, 3, 2, 3.0), "teste: copiar andar 2×"));
+            Conta("andar copiado 2× para cima", 24, 39, 6);
+            if (Niveis.Lista(J()).Count != 4) Falha("níveis depois da cópia: " + Niveis.Lista(J()).Count);
+            CapturarPrincipal(w, "49-fluxo3d-4-copiado", () => v.MostrarVista(VistaPadrao.Iso, false));
+
+            // elevação y = 0: só esse pórtico na vista; janela (esq. → dir.) pega ele inteiro; espelhar em Y = -2,5 (cópia em y = -5)
+            w.Elevacao('y', 0);
+            v.MostrarVista(VistaPadrao.Frente, false);
+            EsperarIdle();
+            if (v.PlanoAtual.Normal != 'Y') Falha("elevação não trocou o plano de desenho: " + v.PlanoAtual.Nome);
+            v.Ferramenta = Ferramenta3D.Selecionar;
+            v.SelecionarCaixa(T(-1, 0, -1), T(13, 0, 10));
+            if (v.Selecao.Nos.Count != 12 || v.Selecao.Barras.Count != 15) Falha("janela no pórtico y = 0: " + v.Selecao.Nos.Count + " nós, " + v.Selecao.Barras.Count + " barras (esperado 12, 15)");
+            CapturarPrincipal(w, "49-fluxo3d-5-janela-portico", () => v.MostrarVista(VistaPadrao.Frente, false));
+            w.AbrirEdicaoEsp("espelhar");
+            var pe = w.PainelEdicaoAberto;
+            if (pe == null) Falha("painel Espelhar não abriu");
+            ((ComboBox)pe.Campos["plano"]).SelectedItem = "Y"; ((TextBox)pe.Campos["valor"]).Text = "-2,5";
+            EsperarIdle();
+            CapturarDialogo(pe, "49-fluxo3d-5-painel-espelhar.png");
+            Esperar(pe.Executar());
+            pe.Close();
+            Conta("pórtico espelhado", 36, 54, 9);
+            v.LimparSelecao();
+            w.Completo3D();
+            v.Ferramenta = Ferramenta3D.Navegar;
+            CapturarPrincipal(w, "49-fluxo3d-6-espelhado", () => v.MostrarVista(VistaPadrao.Iso, false));
+
+            // carga em área no último nível (vigas em X): Σ q·L = p · área; + uma nodal e uma pontual para ver as três setas
+            double zt = 9, p = 4;
+            var r = DocumentoEspacial.CargaArea(J(), zt, p, true).Where(x => x.q > 1e-9).ToList();
+            if (r.Count != 6 || Math.Abs(r.Sum(x => x.q * x.L) - p * 12 * 10) > 1e-6) Falha("carga em área: " + r.Count + " vigas, Σ q·L = " + r.Sum(x => x.q * x.L));
+            Esperar(w.DistribuirArea(zt, p, true));
+            if (J()["cargas_distribuidas"].AsArray().Count != 6) Falha("carga em área: " + J()["cargas_distribuidas"].AsArray().Count + " distribuídas (esperado 6)");
+            bool Em(System.Text.Json.Nodes.JsonNode n, double x, double y, double z) => Math.Abs((double)n["x"] - x) < 1e-6 && Math.Abs((double)n["y"] - y) < 1e-6 && Math.Abs((double)n["z"] - z) < 1e-6;
+            string noTopo = J()["nos"].AsObject().First(kv => Em(kv.Value, 0, -5, zt)).Key;
+            string vigaY = J()["barras"].AsObject().First(kv => Em(J()["nos"][(string)kv.Value["ni"]], 6, 0, zt) && Em(J()["nos"][(string)kv.Value["nj"]], 6, 5, zt)).Key;
+            Esperar(w.OperarEspacial(async dd =>
+            {
+                await dd.Adicionar("carga_nodal", new System.Text.Json.Nodes.JsonObject { ["caso"] = dd.CasoAtivo, ["no"] = noTopo, ["F"] = new System.Text.Json.Nodes.JsonArray(20.0, 0.0, 0.0, 0.0, 0.0, 0.0) });
+                await dd.Adicionar("carga_pontual", new System.Text.Json.Nodes.JsonObject { ["caso"] = dd.CasoAtivo, ["barra"] = vigaY, ["a"] = 2.5, ["F"] = new System.Text.Json.Nodes.JsonArray(0.0, 0.0, -15.0) });
+            }, "teste: nodal e pontual"));
+            int cargas = D().ParaVista().Cargas.Count;
+            if (cargas != 8) Falha("setas na vista: " + cargas + " (esperado 8: 6 distribuídas, 1 nodal, 1 pontual)");
+            log.AppendLine("ok carga em área: 6 vigas, Σ q·L = " + Num.Fmt(p * 120, 0) + " kN; 8 cargas do caso G na vista");
+            CapturarPrincipal(w, "49-fluxo3d-7-cargas", () => v.MostrarVista(VistaPadrao.Iso, false));
+
+            // F5 e aproveitamento: analítico e Realista, com as setas
+            Esperar(w.CalcularEspacial());
+            if (!D().Calculado || D().PiorPorBarra.Count != 54) Falha("F5: calculado " + D().Calculado + ", verificação de " + D().PiorPorBarra.Count + " barras (esperado 54)");
+            w.MostrarDiagrama(Diagrama.Verificacao);
+            log.AppendLine("ok F5: 54 barras verificadas; " + D().Resumo());
+            bool real = Config.Realista3D;
+            w.DefinirRealista(false);
+            CapturarPrincipal(w, "49-fluxo3d-8-aproveitamento", () => v.MostrarVista(VistaPadrao.Iso, false));
+            w.DefinirRealista(true);
+            CapturarPrincipal(w, "49-fluxo3d-9-aproveitamento-realista", () => v.MostrarVista(VistaPadrao.Iso, false));
+            w.DefinirRealista(real);
+            File.WriteAllText(Path.Combine(pastaSaida, "49-fluxo3d.txt"), log.ToString(), new UTF8Encoding(false));
+            w.FecharEspaciaisSemPerguntar();
+            EsperarIdle();
+        }
+
         static void EsperarAte(Func<bool> cond)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -772,6 +905,13 @@ namespace NovoFtool
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "desenho3d")   // só as capturas 43) do desenho no 3D
                 {
                     CapturasDesenho3D(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "fluxo3d")   // só as capturas 49) do fluxo de modelagem 3D
+                {
+                    CapturasFluxo3D(w);
                     w.alterado = false;
                     w.Close();
                     Environment.Exit(0);
@@ -1295,6 +1435,8 @@ namespace NovoFtool
                 CapturasEdicao(w);
                 // 43) Desenhar no 3D com o mouse
                 CapturasDesenho3D(w);
+                // 49) Fluxo completo: vazio, níveis, desenho, cópia, espelho, carga em área, F5, Realista com cargas
+                CapturasFluxo3D(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",

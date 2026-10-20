@@ -341,14 +341,13 @@ namespace NovoFtool
         });
     }
 
-    // ponytail: adaptador provisório. Usa a escolha única do documento espacial (selEsp); nada escolhido = modelo inteiro.
-    // Quando a Vista3D tiver Selecao (ids de nós e barras) + SelecaoMudou, trocar Nos/Barras/Mudou por elas aqui.
+    // Seleção múltipla da Vista3D (clique, janela, cruzamento, árvore e tabelas): ids do motor. Nada escolhido = modelo inteiro.
     sealed class FonteSelecaoEsp : IFonteSelecao
     {
-        readonly MainWindow w;
-        public FonteSelecaoEsp(MainWindow w) { this.w = w; w.vista3D.Escolheu += _ => w.Dispatcher.BeginInvoke(new Action(() => Mudou?.Invoke())); }
-        public IReadOnlyList<string> Nos => w.SelEspAtual?.Tipo == "no" ? new[] { w.SelEspAtual.Id } : new string[0];
-        public IReadOnlyList<string> Barras => w.SelEspAtual?.Tipo == "barra" ? new[] { w.SelEspAtual.Id } : new string[0];
+        readonly Vista3D v;
+        public FonteSelecaoEsp(MainWindow w) { v = w.vista3D; v.SelecaoMudou += () => Mudou?.Invoke(); }
+        public IReadOnlyList<string> Nos => v.Selecao.Nos.ToList();
+        public IReadOnlyList<string> Barras => v.Selecao.Barras.ToList();
         public event Action Mudou;
     }
 
@@ -432,7 +431,6 @@ namespace NovoFtool
     // ================= janela principal: comandos de edição do modelo espacial =================
     public partial class MainWindow
     {
-        internal RefMotor SelEspAtual => selEsp;
         IFonteSelecao fonteEsp;
         PainelEdicao painelEdicao;
         readonly List<UIElement> botoesSo3D = new List<UIElement>();

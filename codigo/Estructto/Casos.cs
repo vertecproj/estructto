@@ -198,7 +198,7 @@ namespace NovoFtool
             cbCaso.SelectionChanged += (s, e) =>
             {
                 if (listasOcupadas || cbCaso.SelectedIndex < 0) return;
-                if (Esp != null) { if (cbCaso.SelectedItem is ComboBoxItem ci) { Esp.CasoAtivo = (string)ci.Tag; MontarPainelEspacial(); } return; }
+                if (Esp != null) { if (cbCaso.SelectedItem is ComboBoxItem ci && Esp.CasoAtivo != (string)ci.Tag) { Esp.CasoAtivo = (string)ci.Tag; AtualizarEspacial3D(false); } return; }   // setas das cargas do caso novo
                 if (cbCaso.SelectedIndex == M.CasoAtivo) return;
                 M.AtivarCaso(cbCaso.SelectedIndex);
                 Confirmar("Caso ativo: " + M.Casos[M.CasoAtivo].Nome + ". As cargas lançadas agora vão para este caso.");
