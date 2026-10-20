@@ -28,8 +28,11 @@ em pé M = −My e V = −Vz; deitado M = Mz e V = −Vy).
 Molas e recalques (20/10/2026): `molas` = [MolaX, 0, MolaY, 0, MolaGiro, 0] (kN/m, kN·m/rad; giro em ry) e `recalques` =
 [RecalqueX, 0, RecalqueY, 0, 0, 0]/1000 (mm → m; só onde o GL está travado, como o Nucleo.cs). No motor (`No.molas`, `No.recalques`,
 globais) a mola entra na diagonal de K (estática, P-Δ, modal; reação = −k·u) e o recalque é deslocamento prescrito, ação permanente
-do 1º caso tipo G (o Nucleo.cs aplica em todos os casos; com mais de um caso o motor não soma o recalque várias vezes). Recalque em GL
-livre → ValueError. Conferência com o Nucleo.cs (balanço em mola de giro, viga em 2 molas, biengastada e contínua com recalque):
+indireta (NBR 8681:2003 tab. 3, "recalques de apoio") que vive só num caso G de `subtipo="recalque"` (o Nucleo.cs aplica em todos
+os casos; o motor não). Esse caso tem γε próprio, não o γg: normal e especial/construção 1,2 desfavorável, 0 favorável; excepcional 0/0;
+ELS 1,0 (valores iguais à NBR 6118 tab. 11.1; texto da 8681 não conferido literalmente). Modelo com recalques e sem esse caso: o
+motor cria "REC" sozinho (`combinacoes`, `analisar_caso`, `calcular`), sem mudança no C# (MotorModelo.cs só envia `recalques`);
+o solver puro levanta ValueError se faltar o caso. Recalque em GL livre → ValueError. Conferência com o Nucleo.cs (balanço em mola de giro, viga em 2 molas, biengastada e contínua com recalque):
 diferença relativa máxima 1,4e-15. Ignorado: carga giratória (só a posição lançada vai ao motor) e o ψ informativo.
 
 ## Carga distribuída linear no motor

@@ -1115,10 +1115,11 @@ class TestMolasRecalques(unittest.TestCase):
         # recalque Δ em nj: M = 6EIΔ/L², V = 12EIΔ/L³
         L, D = 4.0, -0.01
         m = base()
+        m.add(CasoCarga("REC", "G", "recalque"))
         m.add(No("n0", 0, 0, 0, apoio=ENG))
         m.add(No("n1", L, 0, 0, apoio=ENG, recalques=(0, 0, D, 0, 0, 0)))
         m.add(Barra("b", "n0", "n1", "s", "aco"))
-        r = analisar(m, "G")
+        r = analisar(m, "REC")
         self.assertAlmostEqual(r.deslocamentos["n1"][2], D)
         self.assertAlmostEqual(abs(r.reacoes["n0"][4]), 6 * self.EI * abs(D) / L**2, places=8)
         self.assertAlmostEqual(r.reacoes["n1"][2], 12 * self.EI * D / L**3, places=8)
@@ -1133,17 +1134,23 @@ class TestMolasRecalques(unittest.TestCase):
              [(True, True, True, True, False, True), (False, True, True, True, False, True),
               (False, True, True, True, False, True)])
         m.nos["n1"] = No("n1", L, 0, 0, apoio=(False, True, True, True, False, True), recalques=(0, 0, D, 0, 0, 0))
-        r = analisar(m, "G")
+        m.add(CasoCarga("REC", "G", "recalque"))
+        r = analisar(m, "REC")
         R = 6 * self.EI * D / L**3
         self.assertAlmostEqual(r.reacoes["n1"][2], R, places=8)
         self.assertAlmostEqual(r.reacoes["n0"][2], -R / 2, places=8)
         self.assertAlmostEqual(r.reacoes["n2"][2], -R / 2, places=8)
         self.assertAlmostEqual(abs(r.esforcos["bn0"][-1][5]), 3 * self.EI * abs(D) / L**2, places=8)
-        # recalque é ação permanente do 1º caso G: Q não o vê; combinar pondera por γ
+        # recalque só no caso REC (G subtipo recalque): G e Q não o veem; combinar pondera por γε = 1,2
         self.assertAlmostEqual(analisar(m, "Q").reacoes["n1"][2], 0.0)
-        c = combinar({"G": r, "Q": analisar(m, "Q")}, {"G": 1.4, "Q": 1.5})
-        self.assertAlmostEqual(c.reacoes["n1"][2], 1.4 * R, places=8)
-        self.assertAlmostEqual(analisar(m, {"G": 1.4, "Q": 1.5}).reacoes["n1"][2], 1.4 * R, places=8)
+        self.assertAlmostEqual(analisar(m, "G").reacoes["n1"][2], 0.0)
+        c = combinar({"REC": r, "Q": analisar(m, "Q")}, {"REC": 1.2, "Q": 1.5})
+        self.assertAlmostEqual(c.reacoes["n1"][2], 1.2 * R, places=8)
+        self.assertAlmostEqual(analisar(m, {"REC": 1.2, "Q": 1.5}).reacoes["n1"][2], 1.2 * R, places=8)
+        # sem caso de recalque: erro, nunca descarta em silêncio
+        del m.casos["REC"]
+        with self.assertRaisesRegex(ValueError, "recalque"):
+            analisar(m, "G")
 
     def test_recalque_em_gl_livre_erro(self):
         with self.assertRaisesRegex(ValueError, r"nó n9.*recalque.*uz.*não está travado"):

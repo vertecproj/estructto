@@ -613,11 +613,11 @@ def analisar(modelo, caso, pdelta=False, n_pontos=N_PONTOS, tol=1e-6, max_iter=3
     restr = np.array([r for n in ids for r in modelo.nos[n].apoio], bool)
     Tr, restr_r, rotulos, pavs, mestres = _diafragmas(modelo, ids, idx, restr)
     Fn = _cargas(modelo, fatores, elems, idx, ndof)
-    # recalques: ação permanente indireta do 1º caso G (ponderada pelo seu fator; combinar soma uma vez só)
-    cg = next((c for c, cc in modelo.casos.items() if cc.tipo == "G"), None)
+    # recalques: ação permanente indireta (NBR 8681 tab. 3), só no caso G de subtipo "recalque" (ponderado pelo seu γε)
+    cg = next((c for c, cc in modelo.casos.items() if cc.tipo == "G" and cc.subtipo == "recalque"), None)
     u0 = fatores.get(cg, 0.0) * np.array([d for n in ids for d in modelo.nos[n].recalques], float)
     if cg is None and any(any(modelo.nos[n].recalques) for n in ids):
-        raise ValueError("recalques exigem um caso permanente (tipo G) no modelo: entram no 1º caso G")
+        raise ValueError('recalques exigem um caso G com subtipo "recalque" no modelo (o projeto cria "REC")')
 
     def resolver(N=None):
         K, Fb = _montar(modelo, elems, idx, ndof, N)

@@ -599,6 +599,22 @@ class TestSismoTab6Drift(unittest.TestCase):
         self.assertEqual(sismo.torcao_acidental([], {"lx": 20.0, "ly": 12.0}), [])
 
 
+
+class TestRecalque(unittest.TestCase):
+    """NBR 8681:2003 tab. 3, ações permanentes indiretas (recalques): normal 1,2/0, excepcional 0/0, ELS 1,0."""
+
+    def test_gama_epsilon(self):
+        casos = {"G": CasoCarga("G", "G"), "R": CasoCarga("R", "G", "recalque"), "SX": CasoCarga("SX", "S")}
+        d = {n: f for n, f, e in gerar_combinacoes(casos)}
+        self.assertEqual(d["ELU G"], {"G": 1.4, "R": 1.2})
+        self.assertEqual(d["ELU G fav"], {"G": 1.0})
+        self.assertEqual(d["ELS QP"], {"G": 1.0, "R": 1.0})
+        exc = [f for n, f, e in gerar_combinacoes(casos) if e == "ELU_EXC"]
+        self.assertTrue(exc and all("R" not in f for f in exc))  # 0/0
+        # só recalque: combinação própria
+        self.assertEqual(dict((n, f) for n, f, e in gerar_combinacoes({"R": casos["R"]}))["ELU G"], {"R": 1.2})
+
+
 if __name__ == "__main__":
     unittest.main()
 

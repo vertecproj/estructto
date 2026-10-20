@@ -1023,17 +1023,18 @@ def validar(modelo):
     sep = cfg["tipo_edificacao"] == "separadas"
     for c in m.casos.values():
         auto = (_RE_AUTO_V.fullmatch(c.nome) and cfg.get("vento")) or (_RE_AUTO_S.fullmatch(c.nome) and cfg.get("sismo"))
-        if c.nome not in com_carga and c.nome != m.peso_proprio and not auto:
+        rec = c.tipo == "G" and c.subtipo == _comb.SUBTIPO_RECALQUE
+        if c.nome not in com_carga and c.nome != m.peso_proprio and not auto and not rec:
             add("aviso", "caso_sem_carga", f"caso {c.nome} não tem cargas", {"tipo": "caso", "id": c.nome})
         ref = {"tipo": "caso", "id": c.nome}
         if c.tipo == "Q" and c.subtipo and c.subtipo not in _comb.USOS_Q:
             add("erro", "caso_invalido", f"caso {c.nome}: subtipo '{c.subtipo}' inválido para Q; use um de "
                 f"{', '.join(_comb.USOS_Q)} (vazio = config.tipo_uso)", ref)
-        if sep and c.tipo == "G" and c.subtipo and c.subtipo not in _comb.GAMA_G_8800:
+        if sep and c.tipo == "G" and c.subtipo and c.subtipo not in _comb.GAMA_G_8800 and c.subtipo != _comb.SUBTIPO_RECALQUE:
             add("erro", "caso_invalido", f"caso {c.nome}: origem da permanente '{c.subtipo}' inválida para ações "
                 f"separadas (NBR 8800:2008 tab. 1); use um de {', '.join(_comb.GAMA_G_8800)}", ref)
     if sep:
-        gerais = [c.nome for c in m.casos.values() if c.tipo == "G" and not c.subtipo]
+        gerais = [c.nome for c in m.casos.values() if c.tipo == "G" and not c.subtipo]  # recalque tem subtipo
         if gerais and any(b.tipo in ("aco", "pff") for b in m.barras.values()):
             add("aviso", "separadas_origem_g", f"ações separadas (NBR 8800:2008 tab. 1): {', '.join(gerais)} sem origem "
                 "usa γg = 1,50 (permanentes em geral); defina o subtipo 'metalica' (1,25) no caso do peso próprio da "
@@ -1164,6 +1165,19 @@ def _fracao_q(m, c, cfg):
         return 0.0
     _comb.psi(c, cfg["tipo_uso"])
     return _sismo.fracao_Q_sismo(c.subtipo or cfg["tipo_uso"])
+
+
+def _garantir_recalque(m):
+    """Recalques de apoio (No.recalques) exigem um caso G de subtipo "recalque" (NBR 8681 tab. 3): cria "REC" se
+    faltar; remove o "REC" automático (sem cargas) se não há mais recalques. Nunca descarta recalques em silêncio."""
+    tem = any(any(n.recalques) for n in m.nos.values())
+    cr = next((c for c in m.casos.values() if c.tipo == "G" and c.subtipo == _comb.SUBTIPO_RECALQUE), None)
+    if tem and cr is None:
+        if "REC" in m.casos:
+            raise ErroEntrada('caso "REC" já existe e não é G de subtipo "recalque"; renomeie-o ou ajuste o subtipo', "casos")
+        m.casos["REC"] = CasoCarga("REC", "G", _comb.SUBTIPO_RECALQUE)
+    elif not tem and cr is not None and cr.nome == "REC" and not any(c.caso == "REC" for t in _LISTAS for c in _colecao(m, t)):
+        del m.casos["REC"]
 
 
 def _limpar_auto(m):
@@ -1383,6 +1397,7 @@ def _detalhe_fatores(casos, cfg, estado, fatores):
 def combinacoes(modelo):
     """#16 Combinações NBR 8681: [{nome, estado, fatores}] (estado ∈ ELU, ELU_EXC, ELS_QP, ELS_FREQ, ELS_RARA)."""
     cfg = _cfg(modelo)
+    _garantir_recalque(modelo)
     try:
         lista = _comb.gerar_combinacoes(modelo.casos, cfg["tipo_uso"], cfg["variabilidade"], cfg["tipo_edificacao"])
     except ValueError as e:  # subtipo de Q/origem de G inválidos, mais de 12 casos Q: erro de entrada, não bug
@@ -1430,6 +1445,7 @@ def _resultado_dict(nome, r, pdelta):
 def analisar_caso(modelo, caso, pdelta=False, n_pontos=N_PONTOS):
     """#17 Análise de um caso → ResultadoDict."""
     _exigir(modelo, _ESTRUTURAIS)
+    _garantir_recalque(modelo)
     if caso not in modelo.casos:
         raise ErroNaoEncontrado("caso", caso, modelo.casos)
     return _resultado_dict(caso, _sol.analisar(modelo, caso, bool(pdelta), n_pontos), pdelta)

@@ -1804,5 +1804,66 @@ class TestCorrecoesRevisao(unittest.TestCase):
                          (3.0, 2, 0.5))
 
 
+class TestRecalqueNBR8681(unittest.TestCase):
+    """Recalque de apoio = ação permanente indireta, caso G subtipo "recalque" com γε próprio (NBR 8681:2003
+    tab. 3: 1,2 desfavorável, 0 favorável; excepcional 0/0; ELS 1,0). Viga biengastada L = 4 m, q = 10 kN/m,
+    apoio n2 recalca D = −0,01 m: R(n2) = qL/2 + 12·EI·D/L³ (resistência dos materiais; EI do próprio modelo)."""
+    L, q, D = 4.0, 10.0, -0.01
+
+    def _modelo(self, com_rec=False):
+        m = P.novo_modelo("Viga recalque")
+        P.adicionar_lote(m, [
+            {"tipo": "material", "dados": {"aco": "A-572 GR.50"}},
+            {"tipo": "secao", "dados": {"perfil": "W310x38.7"}},
+            {"tipo": "no", "dados": {"id": "n1", "x": 0, "y": 0, "z": 0, "apoio": "engaste"}},
+            {"tipo": "no", "dados": {"id": "n2", "x": self.L, "y": 0, "z": 0, "apoio": "engaste",
+                                     "recalques": [0, 0, self.D, 0, 0, 0]}},
+            {"tipo": "barra", "dados": {"id": "b1", "ni": "n1", "nj": "n2", "secao": "W310x38.7",
+                                        "material": "A-572 GR.50"}},
+            {"tipo": "caso", "dados": {"nome": "G1", "tipo": "G"}},
+            {"tipo": "carga_distribuida", "dados": {"caso": "G1", "barra": "b1", "q": [0, 0, -self.q]}}])
+        if com_rec:
+            P.adicionar(m, "caso", {"nome": "R1", "tipo": "G", "subtipo": "recalque"})
+        s = m.secoes["W310x38.7"]
+        self.EI = next(iter(m.materiais.values())).E * max(s.Iy, s.Iz)
+        return m
+
+    def _rn2(self, m, nome):
+        return P.analisar_combinacao(m, nome, pdelta=False)["reacoes"]["n2"][2]
+
+    def test_rec_criado_sozinho(self):
+        m = self._modelo()
+        self.assertNotIn("REC", m.casos)
+        comb = P.combinacoes(m)
+        self.assertEqual((m.casos["REC"].tipo, m.casos["REC"].subtipo), ("G", "recalque"))
+        f = {c["nome"]: c["fatores"] for c in comb}
+        self.assertEqual(f["ELU G"], {"G1": 1.4, "REC": 1.2})  # tab. 3, normal desfavorável
+        self.assertEqual(f["ELU G fav"], {"G1": 1.0})  # favorável = 0: não entra
+        self.assertEqual(f["ELS QP"], {"G1": 1.0, "REC": 1.0})  # ELS: γ = 1
+        self.assertTrue(all("REC" not in c["fatores"] for c in comb if c["estado"] == "ELU_EXC"))
+
+    def test_reacao_a_mao(self):
+        m = self._modelo()
+        P.combinacoes(m)
+        Rg, Rr = self.q * self.L / 2, 12 * self.EI * self.D / self.L ** 3
+        self.assertAlmostEqual(self._rn2(m, "ELU G"), 1.4 * Rg + 1.2 * Rr, places=6)
+        self.assertAlmostEqual(self._rn2(m, "ELU G fav"), 1.0 * Rg, places=6)  # recalque não conta
+        self.assertAlmostEqual(self._rn2(m, "ELS QP"), Rg + Rr, places=6)
+        # recalque só no caso REC: G sozinho não o vê
+        self.assertAlmostEqual(P.analisar_caso(m, "G1")["reacoes"]["n2"][2], Rg, places=6)
+
+    def test_caso_do_usuario_nao_duplica(self):
+        m = self._modelo(com_rec=True)
+        comb = P.combinacoes(m)
+        self.assertNotIn("REC", m.casos)
+        self.assertEqual({c["nome"]: c["fatores"] for c in comb}["ELU G"], {"G1": 1.4, "R1": 1.2})
+
+    def test_so_G_inalterado(self):
+        m = portico()
+        antes = [(c["nome"], c["fatores"]) for c in P.combinacoes(m)]
+        self.assertNotIn("REC", m.casos)
+        self.assertEqual(dict(antes)["ELU G"], {"G1": 1.4})
+
+
 if __name__ == "__main__":
     unittest.main()

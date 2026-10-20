@@ -7,6 +7,8 @@ Convenções:
   Subtipo desconhecido levanta ValueError (nunca vira "comercial" em silêncio).
 - V: `subtipo` = GRUPO. Casos de vento do mesmo grupo (ex.: +X, -X, +Y, -Y no grupo
   "vento") são mutuamente exclusivos: nunca entram juntos na mesma combinação.
+- G com `subtipo="recalque"`: ação permanente indireta (recalques de apoio), γε da NBR 8681:2003 tab. 3
+  (1,2 desfavorável, 0 favorável; excepcional 0/0; ELS 1,0). Não entra no γg nem na origem das ações separadas.
 - S e E: cada caso é exclusivo dos demais S/E; entram só em combinações excepcionais.
 - S com nome "<caso>_TOR" (ex.: "SX_TOR"): momentos da torção acidental do sismo <caso>
   (sismo.torcao_acidental). Nunca entram sozinhos: cada ação sísmica cuja direção principal (100%)
@@ -42,8 +44,8 @@ COBERTURA = [
      "verificacao": "Combinações últimas normais (γg, γq, ψ0); vento e Q em grupos de exclusão; "
                     "γ por tipo de edificação (tipo 1: 1,35/1,5; tipo 2: 1,40/1,4)",
      "limitacao": "G favorável (γ = 1,0) e desfavorável em toda combinação, mas todos os G juntos "
-                  "(não separa partes favoráveis e desfavoráveis do mesmo carregamento). Sem ações "
-                  "indiretas (tab. 3). Sem combinações especiais/de construção. Sem tipo_edificacao: 1,4/1,4. "
+                  "(não separa partes favoráveis e desfavoráveis do mesmo carregamento). Ações "
+                  "indiretas só recalques de apoio (subtipo recalque, tab. 3: 1,2/0; excepcional 0). Sem combinações especiais/de construção. Sem tipo_edificacao: 1,4/1,4. "
                   "A NBR 8681 tem edição 09/2025, mas sem texto público confirmado: mantida a 2003."},
     {"norma": "NBR 8800", "edicao": "2008", "item": "4.7.6.1 tabela 1 (ações separadas) e tabela 2 (ψ)",
      "verificacao": "tipo_edificacao='separadas': γg por origem (metálica 1,25; pré-moldada 1,30; moldada no "
@@ -94,6 +96,11 @@ GAMA_G_8800 = {
 }
 # NBR 8800:2008 tabela 1, ações variáveis separadas (normais): uso e ocupação, vento, temperatura
 GAMA_Q_8800 = {"uso": 1.5, "vento": 1.4, "temperatura": 1.2}
+# NBR 8681:2003 tabela 3 (ações permanentes indiretas: recalques de apoio, retração): γε
+# (desfavorável, favorável) por combinação: normal 1,2/0, especial ou de construção 1,2/0, excepcional 0/0.
+# ponytail: conferido com a NBR 6118 tab. 11.1 (mesmos valores); sem o texto da NBR 8681 à mão.
+GAMA_RECALQUE = {"normal": (1.2, 0.0), "especial": (1.2, 0.0), "excepcional": (0.0, 0.0)}
+SUBTIPO_RECALQUE = "recalque"  # caso G com este subtipo = recalques de apoio (No.recalques), γε em vez de γg
 TIPOS_EDIFICACAO = (None, "tipo1", "tipo2", "separadas")
 TORCAO = "_TOR"  # sufixo dos casos de torção acidental do sismo
 
@@ -182,7 +189,8 @@ def gerar_combinacoes(casos, tipo_uso=None, variabilidade="grandes", tipo_edific
     for c in casos.values():
         if c.tipo == "Q":
             psi(c, tipo_uso)  # recusa subtipo desconhecido já na entrada
-    G = [c.nome for c in casos.values() if c.tipo == "G"]
+    G = [c.nome for c in casos.values() if c.tipo == "G" and c.subtipo != SUBTIPO_RECALQUE]
+    REC = [c.nome for c in casos.values() if c.tipo == "G" and c.subtipo == SUBTIPO_RECALQUE]
     gn = gama_g("normal")
     grupos = _grupos_variaveis(casos)
     sel_all = list(_selecoes(grupos))
@@ -195,17 +203,19 @@ def gerar_combinacoes(casos, tipo_uso=None, variabilidade="grandes", tipo_edific
             vistos.add(chave)
             out.append((nome, f, est))
 
-    def permanentes(gm, fav):
-        return {g: gm[g][1 if fav else 0] for g in G}
+    def permanentes(gm, fav, comb="normal"):
+        f = {g: gm[g][1 if fav else 0] for g in G}
+        f.update({r: GAMA_RECALQUE[comb][1 if fav else 0] for r in REC})  # NBR 8681:2003 tab. 3
+        return f
 
     def nome(prefixo, p, f, sufixo=""):
-        sec = [k for k in f if k != p.nome and k not in G]
+        sec = [k for k in f if k != p.nome and k not in G and k not in REC]
         return f"{prefixo} {p.nome} princ." + "".join(f" + {k}" for k in sec) + sufixo
 
     # ELU normal: Fd = Σγg·Gk + γq·Q1k + Σγq·ψ0j·Qjk  — NBR 8681 5.1.3.1; cada combinação com os G
     # desfavoráveis e com os G favoráveis (γg = 1,0, tab. 2)
     for fav in (False, True):
-        if G:
+        if G or REC:
             add("ELU G" + (" fav" if fav else ""), permanentes(gn, fav), "ELU")
         for sel in sel_all:
             for p in sel:
@@ -239,7 +249,7 @@ def gerar_combinacoes(casos, tipo_uso=None, variabilidade="grandes", tipo_edific
     for rotulo, fe in com_tor:
         for fav in (False, True):
             for pres in product((True, False), repeat=len(qs)):  # cada Q com ψ2 ou ausente (5.1.3.3)
-                f = permanentes(gexc, fav)
+                f = permanentes(gexc, fav, "excepcional")
                 f.update(fe)
                 f.update({q.nome: ps(q)[2] for q, on in zip(qs, pres) if on})
                 aus = [q.nome for q, on in zip(qs, pres) if not on]
@@ -247,13 +257,13 @@ def gerar_combinacoes(casos, tipo_uso=None, variabilidade="grandes", tipo_edific
                     f, "ELU_EXC")
 
     # ELS — NBR 8681 5.1.5 / NBR 6118 11.8.3
-    f = {g: 1.0 for g in G}
+    f = {g: 1.0 for g in G + REC}  # ELS: γε = 1,0
     for grp in grupos:
         f[grp[0].nome] = ps(grp[0])[2]  # vento tem ψ2 = 0 -> some
     add("ELS QP", f, "ELS_QP")
     for sel in sel_all:
         for p in sel:
-            ff = {g: 1.0 for g in G}
+            ff = {g: 1.0 for g in G + REC}
             fr = dict(ff)
             for c in sel:
                 ff[c.nome] = ps(c)[1] if c is p else ps(c)[2]
