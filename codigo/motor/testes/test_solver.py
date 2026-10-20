@@ -1,4 +1,5 @@
 """Testes do solver contra soluções analíticas clássicas (resistência dos materiais)."""
+import math
 import os
 import sys
 import unittest
@@ -1072,3 +1073,92 @@ class TestCargaLinear(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMolasRecalques(unittest.TestCase):
+    """Molas nodais (globais) e recalques prescritos; valores à mão (resistência dos materiais)."""
+    EI = E * I
+
+    def test_balanco_mola_de_giro(self):
+        # balanço com giro da base elástico: θ = PL/kθ, w = PL³/3EI + PL²/kθ
+        L, P, kt = 3.0, 5.0, 1e4
+        m = base()
+        m.add(No("n0", 0, 0, 0, apoio=(True, True, True, True, False, True), molas=(0, 0, 0, 0, kt, 0)))
+        m.add(No("n1", L, 0, 0))
+        m.add(Barra("b", "n0", "n1", "s", "aco"))
+        m.add(CargaNodal("G", "n1", (0, 0, -P, 0, 0, 0)))
+        for pd in (False, True):  # sem axial, P-Δ = linear
+            r = analisar(m, "G", pdelta=pd)
+            w = P * L**3 / (3 * self.EI) + P * L * L / kt
+            self.assertAlmostEqual(r.deslocamentos["n1"][2], -w, delta=1e-12)
+            self.assertAlmostEqual(abs(r.deslocamentos["n0"][4]), P * L / kt, delta=1e-12)
+            self.assertAlmostEqual(abs(r.reacoes["n0"][4]), P * L, places=8)
+            self.assertAlmostEqual(r.reacoes["n0"][2], P, places=8)
+
+    def test_viga_sobre_duas_molas(self):
+        # biapoiada em molas k: w(L/2) = P/2k + PL³/48EI; cada mola reage P/2
+        L, P, k = 4.0, 10.0, 2e3
+        m = base()
+        ap = (True, True, False, True, False, True)
+        mola = (0, 0, k, 0, 0, 0)
+        m.add(No("a", 0, 0, 0, apoio=ap, molas=mola))
+        m.add(No("c", L / 2, 0, 0))
+        m.add(No("b", L, 0, 0, apoio=(False, True, False, True, False, True), molas=mola))
+        m.add(Barra("b1", "a", "c", "s", "aco")); m.add(Barra("b2", "c", "b", "s", "aco"))
+        m.add(CargaNodal("G", "c", (0, 0, -P, 0, 0, 0)))
+        r = analisar(m, "G")
+        self.assertAlmostEqual(r.deslocamentos["c"][2], -(P / (2 * k) + P * L**3 / (48 * self.EI)), delta=1e-12)
+        self.assertAlmostEqual(r.reacoes["a"][2], P / 2, places=8)
+        self.assertAlmostEqual(r.reacoes["b"][2], P / 2, places=8)
+
+    def test_biengastada_recalque(self):
+        # recalque Δ em nj: M = 6EIΔ/L², V = 12EIΔ/L³
+        L, D = 4.0, -0.01
+        m = base()
+        m.add(No("n0", 0, 0, 0, apoio=ENG))
+        m.add(No("n1", L, 0, 0, apoio=ENG, recalques=(0, 0, D, 0, 0, 0)))
+        m.add(Barra("b", "n0", "n1", "s", "aco"))
+        r = analisar(m, "G")
+        self.assertAlmostEqual(r.deslocamentos["n1"][2], D)
+        self.assertAlmostEqual(abs(r.reacoes["n0"][4]), 6 * self.EI * abs(D) / L**2, places=8)
+        self.assertAlmostEqual(r.reacoes["n1"][2], 12 * self.EI * D / L**3, places=8)
+        self.assertAlmostEqual(r.reacoes["n0"][2], -12 * self.EI * D / L**3, places=8)
+        self.assertAlmostEqual(max(abs(p[5]) for p in r.esforcos["b"]), 6 * self.EI * abs(D) / L**2, places=8)
+
+    def test_continua_apoio_central_recalca(self):
+        # 2 vãos L, apoio central desce Δ: R = 6EIΔ/L³ (biapoiada 2L), M central = 3EIΔ/L²
+        L, D = 5.0, -0.02
+        m = base()
+        viga(m, [(0, 0, 0), (L, 0, 0), (2 * L, 0, 0)],
+             [(True, True, True, True, False, True), (False, True, True, True, False, True),
+              (False, True, True, True, False, True)])
+        m.nos["n1"] = No("n1", L, 0, 0, apoio=(False, True, True, True, False, True), recalques=(0, 0, D, 0, 0, 0))
+        r = analisar(m, "G")
+        R = 6 * self.EI * D / L**3
+        self.assertAlmostEqual(r.reacoes["n1"][2], R, places=8)
+        self.assertAlmostEqual(r.reacoes["n0"][2], -R / 2, places=8)
+        self.assertAlmostEqual(r.reacoes["n2"][2], -R / 2, places=8)
+        self.assertAlmostEqual(abs(r.esforcos["bn0"][-1][5]), 3 * self.EI * abs(D) / L**2, places=8)
+        # recalque é ação permanente do 1º caso G: Q não o vê; combinar pondera por γ
+        self.assertAlmostEqual(analisar(m, "Q").reacoes["n1"][2], 0.0)
+        c = combinar({"G": r, "Q": analisar(m, "Q")}, {"G": 1.4, "Q": 1.5})
+        self.assertAlmostEqual(c.reacoes["n1"][2], 1.4 * R, places=8)
+        self.assertAlmostEqual(analisar(m, {"G": 1.4, "Q": 1.5}).reacoes["n1"][2], 1.4 * R, places=8)
+
+    def test_recalque_em_gl_livre_erro(self):
+        with self.assertRaisesRegex(ValueError, r"nó n9.*recalque.*uz.*não está travado"):
+            No("n9", 0, 0, 0, apoio=(True, True, False, True, True, True), recalques=(0, 0, -0.01, 0, 0, 0))
+        with self.assertRaisesRegex(ValueError, "mola"):
+            No("n9", 0, 0, 0, molas=(0, 0, -1, 0, 0, 0))
+
+    def test_modal_com_mola(self):
+        # massa na ponta de barra axial + mola: ω² = (EA/L + k)/m
+        L, P, k = 2.0, 50.0, 3e5
+        m = base()
+        m.add(No("n0", 0, 0, 0, apoio=ENG))
+        m.add(No("n1", 0, 0, L, apoio=(True, True, False, True, True, True), molas=(0, 0, k, 0, 0, 0)))
+        m.add(Barra("b", "n0", "n1", "s", "aco"))
+        m.add(CargaNodal("G", "n1", (0, 0, -P, 0, 0, 0)))
+        f, _, _ = modal(m, 1)
+        w2 = (E * A / L + k) / (P / 9.80665)
+        self.assertAlmostEqual(f[0], math.sqrt(w2) / (2 * math.pi), places=6)
