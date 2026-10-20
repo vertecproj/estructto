@@ -1,0 +1,9 @@
+ETAPA E7 — COMMAND PALETTE (Ctrl+K) + ENTRADA DINÂMICA NO CURSOR
+Pasta: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto. Leia docs\v2\GUIA-DESIGN.md e PESQUISA.md (P2.1, P2.4).
+1. Ctrl+K (e F1? não: F1 é ajuda) abre uma paleta flutuante centralizada: busca difusa em TODOS os comandos da ribbon/menus (nome, sinônimos, atalho
+   mostrado à direita, ícone), perfis da biblioteca ("W 200", "tubo 100") e objetos do modelo ("nó 3", "barra 2" → seleciona e enquadra).
+   Setas + Enter executam; Esc fecha; últimos comandos no topo. Sem dependências novas. Registre os comandos num lugar só (reaproveitar o que a ribbon já usa).
+2. Entrada dinâmica ao desenhar barra (ferramenta Barra) e ao medir: caixinhas junto ao cursor com Comprimento e Ângulo (Tab alterna, digitar trava o valor,
+   Enter confirma), como no AutoCAD; respeita snap/ortho.
+3. Capturas: 38-palette.png (com texto digitado e resultados), 39-entrada-dinamica.png.
+PROVA: build 0 erros; portico\compilar.ps1 -Testes; capturas revisadas.

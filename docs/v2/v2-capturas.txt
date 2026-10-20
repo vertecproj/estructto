@@ -1,0 +1,29 @@
+PROJETO: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto (C# WPF .NET 8). Motor em ..\portico\src\Nucleo.cs.
+Edite SÓ esta pasta estructto-v2 (NUNCA a pasta ftool).
+
+TAREFA: criar um modo de CAPTURAS AUTOMÁTICAS de tela para QA visual sem ninguém clicar.
+
+Linha de comando:  Estructto.exe --capturas <pasta_saida> [arquivo.estructto]
+- Abre o modelo (padrão: ..\..\exemplos\guincho-com-placa.estructto relativo à pasta do código; aceite caminho absoluto),
+  calcula (F5) e gera PNGs na pasta de saída, cada um com nome fixo, depois fecha o programa sozinho (código de saída 0;
+  se der exceção, escreva <pasta>\erros.txt com a pilha e saia com código 1).
+- Janela principal em 1600×900 (e uma segunda em 1280×720) em cada estado:
+  01-inicio.png (tela inicial/backstage), 02-modelo.png (modelo aberto), 03-deformada.png, 04-normal.png, 05-cortante.png, 06-momento.png,
+  07-verificacao-barras.png (diagrama de verificação/aproveitamento se existir), 08-medir.png (ferramenta medir com uma medida feita entre 2 nós),
+  09-ribbon-<cada aba>.png (uma por aba da ribbon), 10-menu-contexto.png se possível.
+- Cada janela/diálogo em tamanho padrão: 20-placa-no<id>.png para cada nó com placa e para o nó 4 (pilar inclinado) com cada aba
+  (Medidas, Forças nos furos, Ficha, Cálculo) e com o painel "Trocar chumbador" aberto; 21-placa-parafuso.png (modo parafuso);
+  22-comparar.png (JanelaComparar com 3 fixações); 23-verificacao-barra<id>.png (JanelaVerificacao); 24-casos.png (JanelaCasos);
+  25-relatorio.png; 26-assistente-<tipo>.png (cada tipo); 27-caixa-mensagem.png; 28-ajuda.png se existir.
+- Técnica: crie as janelas de verdade, mostre fora da tela (Left = -10000, ShowActivated=false, ShowInTaskbar=false) ou sem mostrar,
+  force Measure/Arrange/UpdateLayout, espere o Dispatcher (DispatcherPriority.ApplicationIdle) e use RenderTargetBitmap (96 dpi) + PngBitmapEncoder.
+  Diálogos modais: NÃO chame ShowDialog (trava); use Show() fora da tela e Close() depois. Se uma janela precisar de interação para mudar de estado
+  (aba, overlay), exponha um método interno/público mínimo para isso (ex.: JanelaPlaca.MostrarAba(int), AbrirTrocar()) — não mude comportamento.
+  O WindowsFormsHost/PropertyGrid pode sair preto no RenderTargetBitmap: aceite, mas anote no relatório.
+- Coloque o código num arquivo novo Capturas.cs (classe estática) e um gancho mínimo em App.xaml.cs/MainWindow (leia os argumentos).
+- Também um script capturar.ps1 na pasta do Estructto: compila (dotnet build -c Release) e roda o exe com --capturas
+  "C:\dev\build\EstructtoV2\capturas" ; mostra quantos PNG saíram.
+
+PROVA: rode capturar.ps1; confira que os PNGs existem e não estão vazios (tamanho > 5 KB) e que mostram conteúdo (abra alguns).
+cd ..\portico ; .\compilar.ps1 -Testes  (todos passam).
+NÃO deixe processo aberto nem fique esperando janela. Resumo final curto: arquivos alterados, lista dos PNG gerados, problemas.

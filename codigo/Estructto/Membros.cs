@@ -33,17 +33,17 @@ namespace NovoFtool
             if (mms.Count == 0) { Log("Selecione um trecho de barra contínua para separar."); return; }
             foreach (Barra b in M.Barras) if (mms.Contains(b.Membro)) b.Membro = 0;
             M.ArrumarMembros();
-            Confirmar(mms.Count + " barra(s) contínua(s) separada(s) em trechos independentes.");
+            Confirmar(Pl.N(mms.Count, "barra contínua separada", "barras contínuas separadas") + " em trechos independentes.");
         }
 
         // tira trechos selecionados da barra continua (o resto continua unido)
         void TirarTrecho()
         {
             var bs = Vista.Sel.OfType<Barra>().Where(b => b.Membro != 0).ToList();
-            if (bs.Count == 0) { Log("Selecione o(s) trecho(s) a tirar da barra contínua."); return; }
+            if (bs.Count == 0) { Log("Selecione os trechos a tirar da barra contínua."); return; }
             foreach (Barra b in bs) b.Membro = 0;
             M.ArrumarMembros();
-            Confirmar(bs.Count + " trecho(s) tirado(s) da barra contínua.");
+            Confirmar(Pl.N(bs.Count, "trecho tirado", "trechos tirados") + " da barra contínua.");
         }
 
         void SelecionarMembro()

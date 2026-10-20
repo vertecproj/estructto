@@ -1,138 +1,275 @@
-// Icones proprios (desenho original, sala limpa) seguindo o VOCABULARIO grafico da faixa do AutoCAD 2027 escuro,
-// levantado nas capturas ampliadas (C:\dev\ux-teste\b-*.png):
-//  1. objeto original em CINZA-CLARO, resultado/alvo da acao em AZUL-CLARO (ex.: copiar = cinza -> azul);
-//  2. modificador pequeno no canto inferior direito: brilho amarelo = criar; X vermelho = remover; seta azul = executar;
-//  3. "objeto" grande = chapado cinza-escuro (#5B6475) com contorno claro de 2 px; papel = cinza-claro com dobra;
-//  4. linhas finas de 1 px nitidas, alcas quadradas azuis nas pontas; sem contorno escuro, sem volume.
-// Camada = (preenchimento, traco, espessura, geometria). Espessura negativa = pixels de tela. "~" = tracejado.
+// Icones do Estructto v2 - vocabulario unico, desenhado no quadro de 32x32 (ver docs/v2/GUIA-DESIGN.md, item F).
+//  * Traco de 2 unidades (= 2 px a 32 px, 1 px a 16 px), pontas e juncoes ARREDONDADAS, sem contorno escuro.
+//  * Duotone: o corpo do objeto leva a cor do acento com ~18% de opacidade; o traco leva a cor cheia.
+//  * Cores = tokens do TemaPlant e as MESMAS do canvas: estrutura cinza-claro, apoio/selecao azul, carga ambar,
+//    reacao verde, deformada turquesa, N azul/vermelho, V roxo, M verde. Remocao = vermelho.
+//  * Os apoios, cargas, esforcos, ligacoes e ferramentas CAD sao desenho proprio; os glifos de UI geral
+//    (busca, fechar, filtro, olho, config, setas, aviso...) vem do Tabler Icons (MIT) em IconesTabler.cs.
+//  * Pixel-snapping: as coordenadas sao convertidas para pixels de tela (considerando o DPI) e encaixadas na grade
+//    (tracos de largura impar caem em n+0,5, pares em n) - por isso o icone de 16 px nao borra.
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
 namespace NovoFtool
 {
-    public static class Icones
+    public static partial class Icones
     {
-        const string L = "#D9DCE1",    // cinza-claro (linhas, papel, objeto original)
-                     L2 = "#A3ABB7",   // cinza medio (dobra, secundario)
-                     E = "#5B6475",    // cinza-escuro (corpo de objeto)
-                     W = "#F4F6F8",    // branco (ferramentas do acesso rapido, cursor)
-                     A = "#5FB6EF",    // azul-claro (resultado)
-                     Af = "#555FB6EF", // azul translucido (area)
-                     Y = "#F6C453",    // amarelo
-                     R = "#E8565A",    // vermelho
-                     K = "#1E232B",    // contorno do cursor
-                     N = null;
+        sealed class Cam { public Color? F; public Color? S; public double W; public string D; public bool Tracejado; public double Q = 32; }
+
+        // ---- cores (tokens) ----
+        static readonly Color L = TemaPlant.CorBarra,       // estrutura / objeto
+                              L2 = TemaPlant.Texto2,        // secundario, hachuras
+                              A = TemaPlant.Realce,         // azul: apoio, selecao, resultado
+                              Y = TemaPlant.CorCarga,       // ambar: cargas
+                              R = TemaPlant.Erro,           // vermelho: remover, compressao
+                              G = TemaPlant.CorReacao,      // verde: reacoes / ok
+                              Mo = TemaPlant.CorMomento,    // verde: momento fletor
+                              Vc = TemaPlant.CorCortante,   // roxo: cortante
+                              Np = TemaPlant.CorNormalPos,  // azul: normal de tracao
+                              Df = TemaPlant.CorDeformada;  // turquesa: deformada
+        const byte AlfaDuo = 0x2E;   // ~18%
 
         static string F(string fmt, params object[] a) { return string.Format(CultureInfo.InvariantCulture, fmt, a); }
-        static string Q(double x, double y) { return F("M{0},{1} h4 v4 h-4 Z", x - 2, y - 2); }   // alca 4x4
+        static Color Alfa(Color c, byte a) { return Color.FromArgb(a, c.R, c.G, c.B); }
 
-        // ---- modificadores (canto inferior direito) ----
-        static (string, string, double, string)[] Brilho(double x, double y) =>
-            new[] { (Y, (string)N, 0.0, F("M{0},{1} L{2},{3} L{4},{1} L{2},{5} Z", x - 6, y, x, y - 1.6, x + 6, y + 1.6)),
-                    (Y, N, 0.0, F("M{0},{1} L{2},{3} L{4},{1} L{2},{5} Z", x - 1.6, y, x, y - 6, x + 1.6, y + 6)) };
-        static (string, string, double, string)[] Xis(double x, double y) =>
-            new[] { (R, (string)N, 0.0, F("M{0},{1} l2,-2 l3,3 l3,-3 l2,2 l-3,3 l3,3 l-2,2 l-3,-3 l-3,3 l-2,-2 l3,-3 Z", x - 5, y - 3)) };
-        static (string, string, double, string)[] Seta(double x, double y) =>
-            new[] { (A, (string)N, 0.0, F("M{0},{1} L{2},{3} L{0},{4} Z", x - 4, y - 6, x + 5, y, y + 6)) };
+        // ---- camadas ----
+        static Cam[] S(Color c, string d, double w = 2) { return new[] { new Cam { S = c, W = w, D = d } }; }
+        static Cam[] Sd(Color c, string d, double w = 2) { return new[] { new Cam { S = c, W = w, D = d, Tracejado = true } }; }
+        static Cam[] Du(Color c, string d, double w = 2) { return new[] { new Cam { F = Alfa(c, AlfaDuo), S = c, W = w, D = d } }; }
+        static Cam[] Fa(Color c, string d, byte a = AlfaDuo) { return new[] { new Cam { F = Alfa(c, a), D = d } }; }
+        static Cam[] Fb(Color c, string d) { return new[] { new Cam { F = c, D = d } }; }
+        static Cam[] Pt(Color c, double x, double y, double r = 2) { return Fb(c, F("M{0},{1} a{2},{2} 0 1 0 {3},0 a{2},{2} 0 1 0 {4},0 Z", x - r, y, r, 2 * r, -2 * r)); }
+        static Cam[] Hd(double x, double y) { return Fb(A, F("M{0},{1} h5 v5 h-5 Z", x - 2.5, y - 2.5)); }   // alca quadrada azul 5x5
+        static Cam[] Cx(double x, double y, double r = 5) { return Du(Y, F("M{0},{1} a{2},{2} 0 1 0 {3},0 a{2},{2} 0 1 0 {4},0 Z", x - r, y, r, 2 * r, -2 * r)); }
+        static Cam[] Xr(double x, double y) { return S(R, F("M{0},{1} l6,6 M{2},{1} l-6,6", x, y, x + 6)); }   // X vermelho 6x6 (remover)
+        static Cam[] C(params Cam[][] p) { return p.SelectMany(x => x).ToArray(); }
 
-        static (string f, string s, double w, string d)[] C(params (string, string, double, string)[][] partes) { return partes.SelectMany(p => p).ToArray(); }
-        static (string, string, double, string)[] P(params (string, string, double, string)[] c) { return c; }
-
-        static readonly Dictionary<string, (string f, string s, double w, string d)[]> D = new Dictionary<string, (string, string, double, string)[]>
+        // glifo do Tabler (grade 24): paths a partir de 'acentoDe' recebem a cor 'ac'
+        static Cam[] TB(string chave, Color c, Color? ac = null, int acentoDe = 99, int acentoAte = 99)
         {
-            // ---- acesso rapido / arquivo (brancos, como os do AutoCAD) ----
-            ["novo"] = P((W, N, 0, "M7,3 H19 L26,10 V29 H7 Z"), (L2, N, 0, "M19,3 V10 H26 Z")),
-            ["abrir"] = P((N, W, -2, "M4,8 H12 L14,10 H26 V14 M4,8 V26 H24 L28,15 H9 L4,26")),
-            ["salvar"] = P((W, N, 0, "M4,4 H24 L28,8 V28 H4 Z"), (E, N, 0, "M9,4 H22 V12 H9 Z M8,17 H24 V28 H8 Z"), (W, N, 0, "M17,5.5 H20 V10.5 H17 Z")),
-            ["desfazer"] = P((W, N, 0, "M11,6 L3,13 L11,20 V15.5 H19 A5.5,5.5 0 0 1 19,26.5 H13 V29.5 H19 A8.5,8.5 0 0 0 19,12.5 H11 Z")),
-            ["refazer"] = P((W, N, 0, "M21,6 L29,13 L21,20 V15.5 H13 A5.5,5.5 0 0 0 13,26.5 H19 V29.5 H13 A8.5,8.5 0 0 1 13,12.5 H21 Z")),
-            ["importar"] = P((L, N, 0, "M6,3 H18 L24,9 V29 H6 Z"), (L2, N, 0, "M18,3 V9 H24 Z"), (A, N, 0, "M13.5,11 H16.5 V18 H20 L15,24 L10,18 H13.5 Z")),
-            ["exportar"] = P((L, N, 0, "M6,3 H18 L24,9 V29 H6 Z"), (L2, N, 0, "M18,3 V9 H24 Z"), (A, N, 0, "M13.5,25 H16.5 V18 H20 L15,12 L10,18 H13.5 Z")),
-            ["relatorio"] = C(P((L, N, 0, "M5,3 H19 L25,9 V29 H5 Z"), (L2, N, 0, "M19,3 V9 H25 Z"), (E, N, 0, "M9,13 H21 V14.5 H9 Z M9,17 H21 V18.5 H9 Z M9,21 H16 V22.5 H9 Z")), Seta(26, 25)),
-            ["tabela"] = P((N, L, -1, "M3.5,5.5 H28.5 V26.5 H3.5 Z M3.5,12.5 H28.5 M3.5,19.5 H28.5 M11.5,5.5 V26.5 M20.5,5.5 V26.5")),
+            var r = new List<Cam>();
+            string[] ds = TBD[chave];
+            for (int i = 0; i < ds.Length; i++)
+                r.Add(new Cam { S = (ac != null && i >= acentoDe && i < acentoAte) ? ac.Value : c, W = 1.5, D = ds[i], Q = 24 });
+            return r.ToArray();
+        }
 
-            // ---- desenhar / modificar ----
-            ["sel"] = P((W, K, -1, "M10.5,3.5 V25.5 L15.5,20.5 L19,28.5 L22.5,27 L19,19.5 H26 Z")),
-            ["barra"] = P((N, L, -1, "M6.5,25.5 L25.5,6.5"), (A, N, 0, Q(6, 26) + " " + Q(26, 6))),
-            ["no"] = C(P((N, L, -1, "M2.5,13.5 H25.5"), (A, N, 0, "M10,10.5 h7 v7 h-7 Z")), Brilho(25, 24)),
-            ["medir"] = P((E, L, -1, "M3.5,19.5 H28.5 V27.5 H3.5 Z"), (N, L, -1, "M8.5,19.5 V23.5 M13.5,19.5 V25.5 M18.5,19.5 V23.5 M23.5,19.5 V25.5 M4.5,6.5 V15.5 M27.5,6.5 V15.5"), (N, Y, -1.6, "~M5.5,10.5 H26.5"), (Y, N, 0, "M4.5,10.5 L9,7.5 V13.5 Z M27.5,10.5 L23,7.5 V13.5 Z")),
-            ["apagar"] = P((Y, N, 0, "M13,23 L26,10 L30,14 L17,27 Z"), (R, N, 0, "M13,23 L17,27 L14,30 L10,26 Z"), (N, A, -1, "M17.5,29.5 H30.5"), (N, L, -1, "M2.5,29.5 H9.5")),
-            ["dividir"] = P((N, L, -1, "M3.5,16.5 H28.5"), (A, N, 0, Q(4, 16.5) + " " + Q(12.3, 16.5) + " " + Q(20.6, 16.5) + " " + Q(28, 16.5))),
-            ["mover"] = P((W, N, 0, "M16,2 L21,7 H17.5 V14.5 H25 V11 L30,16 L25,21 V17.5 H17.5 V25 H21 L16,30 L11,25 H14.5 V17.5 H7 V21 L2,16 L7,11 V14.5 H14.5 V7 H11 Z")),
-            ["copiar"] = P((N, L, -2, "M8,5 A4,4 0 1 0 8,13 A4,4 0 1 0 8,5"), (N, W, -2, "M15,7 H22 V12"), (W, N, 0, "M19,11 L22,15 L25,11 Z"), (N, A, -2, "M11,19 A4.5,4.5 0 1 0 11,28 A4.5,4.5 0 1 0 11,19 M21,19 A4.5,4.5 0 1 0 21,28 A4.5,4.5 0 1 0 21,19")),
-            ["espelhar"] = P((N, L, -2, "M13,27 H4 L13,6 Z"), (N, A, -2, "M19,27 H28 L19,6 Z"), (N, L2, -1, "~M16.5,3 V30")),
-            ["assist"] = C(P((N, L, -2, "M4,28 L19,13"), (L, N, 0, "M18,11 L21,14 L19,16 L16,13 Z")), Brilho(24, 8), P((A, N, 0, Q(26, 20)))),
+        static Dictionary<string, Cam[]> dic;
+        static Dictionary<string, Cam[]> D { get { return dic ?? (dic = Montar()); } }   // preguicoso: TBD (outro arquivo parcial) precisa estar pronto
 
-            // ---- apoios: simbolo de engenharia em traco cinza, no (alvo) em azul ----
-            ["engaste"] = P((N, L, -1, "M16.5,8 V20.5 M4.5,20.5 H28.5 M7,21 L4,26 M12,21 L9,26 M17,21 L14,26 M22,21 L19,26 M27,21 L24,26"), (A, N, 0, Q(16.5, 6.5))),
-            ["rotula"] = P((N, L, -1, "M16.5,8.5 L24.5,20.5 H8.5 Z M4.5,23.5 H28.5 M7,24 L4,29 M12,24 L9,29 M17,24 L14,29 M22,24 L19,29 M27,24 L24,29"), (A, N, 0, Q(16.5, 7))),
-            ["rolo"] = P((N, L, -1, "M16.5,8.5 L23.5,18.5 H9.5 Z M10,21.5 A2,2 0 1 0 14,21.5 A2,2 0 1 0 10,21.5 M19,21.5 A2,2 0 1 0 23,21.5 A2,2 0 1 0 19,21.5 M4.5,25.5 H28.5"), (A, N, 0, Q(16.5, 7))),
-            ["roloh"] = P((N, L, -1, "M25.5,16.5 L15.5,9.5 V23.5 Z M12,10 A2,2 0 1 0 12,14 A2,2 0 1 0 12,10 M12,19 A2,2 0 1 0 12,23 A2,2 0 1 0 12,19 M7.5,4.5 V28.5"), (A, N, 0, Q(27, 16.5))),
-            ["livre"] = C(P((N, L2, -1, "~M14.5,6.5 L22.5,19.5 H6.5 Z M3.5,22.5 H25.5")), Xis(25, 25)),
-            ["rotulab"] = P((N, L, -1, "M1.5,16.5 H10.5 M22.5,16.5 H30.5"), (N, A, -2, "M11,16.5 A5.5,5.5 0 1 0 22,16.5 A5.5,5.5 0 1 0 11,16.5")),
-            ["placa"] = P((E, L, -2, "M11,3 H22 V19 H11 Z"), (A, N, 0, "M3,19 H30 V24 H3 Z"), (L, N, 0, "M6,24 H9 V30 H6 Z M24,24 H27 V30 H24 Z")),
-            ["eixo"] = P((E, L, -1, "M7.5,4.5 H25.5 V8.5 H18.5 V24.5 H25.5 V28.5 H7.5 V24.5 H14.5 V8.5 H7.5 Z"), (N, A, -1, "~M1.5,16.5 H31.5")),
-            ["pincel"] = P((N, L, -1, "M2.5,26.5 L18.5,10.5"), (A, N, 0, Q(2.5, 26.5) + " " + Q(18.5, 10.5)), (Y, N, 0, "M21,4 L28,11 L24,15 L17,8 Z"), (L, N, 0, "M24,15 L26,17 L22,25 L16,19 L24,15 Z")),
+        static Dictionary<string, Cam[]> Montar()
+        {
+            return new Dictionary<string, Cam[]>
+            {
+                // ---------------- arquivo / acesso rapido (Tabler) ----------------
+                ["novo"] = TB("novo", L, A, 1, 2),
+                ["abrir"] = TB("abrir", L),
+                ["salvar"] = TB("salvar", L),
+                ["desfazer"] = TB("desfazer", L),
+                ["refazer"] = TB("refazer", L),
+                ["importar"] = C(TB("importar", L), S(A, "M10,22 H21 M16,17 L21,22 L16,27", 2)),
+                ["exportar"] = TB("exportar", L, A, 1, 99),
+                ["relatorio"] = TB("relatorio", L, A, 2, 99),
+                ["tabela"] = C(Fa(A, "M3.5,3.5 H28.5 V11.5 H3.5 Z"), TB("tabela", L)),
 
-            // ---- cargas ----
-            ["cargano"] = P((A, N, 0, "M15,3 H18 V16 H22 L16.5,23 L11,16 H15 Z"), (N, L, -1, "M3.5,26.5 H29.5"), (L, N, 0, Q(16.5, 26.5))),
-            ["cargadist"] = P((N, A, -1, "M3.5,4.5 H29.5 M6.5,4.5 V13 M16.5,4.5 V13 M26.5,4.5 V13"), (A, N, 0, "M3,12 H10 L6.5,17 Z M13,12 H20 L16.5,17 Z M23,12 H30 L26.5,17 Z"), (N, L, -1, "M2.5,21.5 H30.5"), (L, N, 0, Q(3, 21.5) + " " + Q(30, 21.5))),
-            ["peso"] = P((E, L, -2, "M9,12 H23 L27,29 H5 Z"), (N, L, -2, "M12.5,12 A3.5,3.5 0 1 1 19.5,12")),
-            ["limpar"] = C(P((N, L, -1, "M3.5,4.5 H22.5 M6.5,4.5 V12 M13,4.5 V12 M19.5,4.5 V12 M2.5,17.5 H22.5"), (L, N, 0, "M4,11 H9 L6.5,15 Z M10.5,11 H15.5 L13,15 Z M17,11 H22 L19.5,15 Z")), Xis(25, 25)),
+                // ---------------- desenhar / modificar ----------------
+                ["sel"] = Du(L, "M9,5 V24 L13.5,19.5 L17,27 L20.5,25.5 L17,18.5 H23.5 Z"),
+                ["barra"] = C(S(L, "M7,25 L25,7"), Hd(7, 25), Hd(25, 7)),
+                ["no"] = C(S(L2, "M3,16 H11 M21,16 H29"), Du(A, "M11,16 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0 Z")),
+                ["medir"] = TB("medir", L, A, 6, 99),
+                ["apagar"] = TB("apagar", L),
+                ["dividir"] = C(S(L, "M4,16 H28"), S(A, "M10,11 V21 M16,11 V21 M22,11 V21")),
+                ["mover"] = TB("mover", L),
+                ["copiar"] = TB("copiar", A, L2, 1, 2),
+                ["espelhar"] = C(TB("espelhar", L2, A, 1, 2)),
+                ["assist"] = C(S(L, "M5,27 L17,15"), Du(A, "M22,3 Q22,9 28,9 Q22,9 22,15 Q22,9 16,9 Q22,9 22,3 Z", 1.5), Du(L2, "M10,6 Q10,8.5 12.5,8.5 Q10,8.5 10,11 Q10,8.5 7.5,8.5 Q10,8.5 10,6 Z", 1.5)),
+                ["dimens"] = C(Du(L, "M6,5 H20 V8.5 H14.5 V21.5 H20 V25 H6 V21.5 H11.5 V8.5 H6 Z"), Du(A, "M25,13 Q25,18 30,18 Q25,18 25,23 Q25,18 20,18 Q25,18 25,13 Z", 1.5)),
 
-            // ---- analise / resultados ----
-            ["calc"] = P((N, L, -2, "M5,27 V9 H21 V27 M2,27 H24"), (A, N, 0, "M19,14 L30,21.5 L19,29 Z")),
-            ["def"] = P((N, L, -1, "~M3.5,8.5 H28.5"), (N, A, -2, "M3.5,8.5 C10,26 22,26 28.5,8.5"), (L, N, 0, Q(3.5, 8.5) + " " + Q(28.5, 8.5))),
-            ["normal"] = P((Af, A, -1, "M3.5,9.5 H28.5 V19.5 H3.5 Z"), (N, L, -1, "M2.5,19.5 H29.5")),
-            ["cortante"] = P((Af, A, -1, "M3.5,7.5 H16.5 V16.5 H3.5 Z M16.5,16.5 H28.5 V25.5 H16.5 Z"), (N, L, -1, "M2.5,16.5 H29.5")),
-            ["momento"] = P((Af, A, -1, "M3.5,7.5 Q16,40 28.5,7.5 Z"), (N, L, -1, "M2.5,7.5 H29.5")),
-            ["verif"] = P((N, L, -1, "M3.5,8.5 H25.5 M3.5,8.5 V22.5 M25.5,8.5 V22.5"), (L, N, 0, Q(3.5, 8.5) + " " + Q(25.5, 8.5)), (A, N, 0, "M14,22 L17,19 L20,22 L27,15 L30,18 L20,28 Z")),
-            ["comparar"] = P((L, N, 0, "M4,15 H9 V28 H4 Z M18,19 H23 V28 H18 Z"), (A, N, 0, "M11,7 H16 V28 H11 Z"), (N, L2, -1, "M1.5,28.5 H30.5")),
-            ["reac"] = P((N, L, -1, "M16.5,4.5 L23.5,15.5 H9.5 Z M4.5,18.5 H28.5"), (A, N, 0, "M15,31 V25 H11.5 L16.5,19.5 L21.5,25 H18 V31 Z")),
-            ["valores"] = P((Af, A, -1, "M3.5,6.5 Q16,34 28.5,6.5 Z"), (N, L, -1, "M2.5,6.5 H29.5"), (W, N, 0, "M10,24 H22 V30 H10 Z"), (E, N, 0, "M12,26 H20 V28 H12 Z")),
-            ["nomes"] = P((L, N, 0, "M5,27 L13,5 H17 L25,27 H21 L19,21 H11 L9,27 Z M12.2,17.5 H17.8 L15,9.5 Z"), (N, A, -1, "M23.5,28.5 H30.5")),
-            ["mais"] = P((Af, A, -1, "M3.5,8.5 Q13,30 22.5,8.5 Z"), (N, L, -1, "M2.5,8.5 H23.5"), (A, N, 0, "M24,17 H27 V22 H32 V25 H27 V30 H24 V25 H19 V22 H24 Z")),
-            ["menos"] = P((Af, A, -1, "M3.5,8.5 Q13,30 22.5,8.5 Z"), (N, L, -1, "M2.5,8.5 H23.5"), (A, N, 0, "M19,22 H32 V25 H19 Z")),
+                ["unir"] = C(S(L, "M3,21 H14 M18,21 H29"), S(A, "M10,15 V10 H22 V15")),
+                ["tirar"] = C(S(L, "M3,22 H11 M21,22 H29"), S(A, "M11,12 H21"), S(A, "M16,19 V8 M12.5,11.5 L16,8 L19.5,11.5")),
+                ["separar"] = C(S(L, "M3,16 H10 M13,16 H19 M22,16 H29"), S(A, "M11.5,10 V22 M20.5,10 V22")),
+                ["selmembro"] = C(S(A, "M6,16 H26"), Hd(5, 16), Hd(16, 16), Hd(27, 16)),
 
-            // ---- vista ----
-            ["zoomtudo"] = P((N, L, -1, "M10.5,10.5 H21.5 V21.5 H10.5 Z"), (A, N, 0, "M3,3 H10 V5 H5 V10 H3 Z M22,3 H29 V10 H27 V5 H22 Z M29,22 V29 H22 V27 H27 V22 Z M3,22 H5 V27 H10 V29 H3 Z")),
-            ["zoommais"] = P((N, L, -2, "M13,4 A9,9 0 1 0 13,22 A9,9 0 1 0 13,4"), (L, N, 0, "M19.5,18 L29,27.5 L27.5,29 L18,19.5 Z"), (A, N, 0, "M8,12 H18 V14 H8 Z M12,8 H14 V18 H12 Z")),
-            ["zoommenos"] = P((N, L, -2, "M13,4 A9,9 0 1 0 13,22 A9,9 0 1 0 13,4"), (L, N, 0, "M19.5,18 L29,27.5 L27.5,29 L18,19.5 Z"), (A, N, 0, "M8,12 H18 V14 H8 Z")),
-            ["painel"] = P((N, L, -1, "M3.5,4.5 H28.5 V27.5 H3.5 Z M3.5,9.5 H28.5"), (L2, N, 0, "M7,13 H25 V14 H7 Z M7,17 H25 V18 H7 Z M7,21 H18 V22 H7 Z")),
-            ["aplicar"] = P((A, N, 0, "M4,16 L8,12 L13,17 L24,6 L28,10 L13,25 Z")),
-            ["ajuda"] = P((N, L, -2, "M16,4 A12,12 0 1 0 16,28 A12,12 0 1 0 16,4"), (L, N, 0, "M12,12 A4,4 0 1 1 18,15.5 C16.5,16.3 17,17.5 17,19 H14.5 C14.5,16.5 14.3,15 16.5,13.6 A1.8,1.8 0 1 0 14,12 Z M14.5,21.5 H17 V24 H14.5 Z")),
-        };
+                // ---------------- apoios (estrutura cinza, apoio em azul) ----------------
+                ["engaste"] = C(S(L, "M16,4 V20"), S(A, "M6,20 H26", 3), S(L2, "M10,23 L7,27 M16,23 L13,27 M22,23 L19,27 M28,23 L25,27", 1.5)),
+                ["rotula"] = C(S(L, "M16,3 V9"), Du(A, "M16,9 L24,21 H8 Z"), S(A, "M5,21 H27"), S(L2, "M10,24 L7,28 M16,24 L13,28 M22,24 L19,28 M28,24 L25,28", 1.5)),
+                ["rolo"] = C(S(L, "M16,3 V7"), Du(A, "M16,7 L23,17 H9 Z"), Pt(L2, 12, 20, 2.2), Pt(L2, 20, 20, 2.2), S(A, "M5,24 H27"), S(L2, "M9,27 L8,28 M15,27 L14,28 M21,27 L20,28", 1.5)),
+                ["roloh"] = C(S(L, "M3,16 H7"), Du(A, "M7,16 L17,9 V23 Z"), Pt(L2, 20, 12, 2.2), Pt(L2, 20, 20, 2.2), S(A, "M24,5 V27")),
+                ["livre"] = C(Sd(L2, "M16,7 L24,20 H8 Z"), Sd(L2, "M5,23 H27"), Xr(21, 21)),
+                ["rotulab"] = C(S(L, "M2,16 H11 M21,16 H30"), Du(A, "M11,16 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0 Z")),
+                ["placa"] = C(S(L, "M12,3 V18 M20,3 V18"), Du(A, "M5,18 H27 V22 H5 Z"), S(L2, "M9,22 V29 M23,22 V29")),
+                ["parafuso"] = C(Du(L, "M9,4 H23 V9 H9 Z"), S(L, "M13,9 V28 M19,9 V28"), S(L2, "M13,14 H19 M13,19 H19 M13,24 H19", 1.5)),
+                ["solda"] = C(Du(L2, "M3,22 H29 V27 H3 Z"), Du(L, "M11,3 H15 V22 H11 Z"), Du(Y, "M15,22 V15 L22,22 Z")),
+                ["eixo"] = C(Du(L, "M7,5 H25 V9 H18 V23 H25 V27 H7 V23 H14 V9 H7 Z"), Sd(A, "M2,16 H30", 1.5)),
+                ["pincel"] = TB("pincel", L, A, 1, 99),
+
+                // ---------------- cargas (ambar, como no canvas) ----------------
+                ["cargano"] = C(S(Y, "M16,4 V20"), S(Y, "M10,15 L16,21 L22,15"), S(L, "M4,27 H28"), Pt(L, 16, 27, 2.5)),
+                ["cargadist"] = C(Fa(Y, "M4,6 H28 V17 H4 Z"), S(Y, "M4,6 H28"), S(Y, "M7,6 V19 M16,6 V19 M25,6 V19"), S(Y, "M4,15 L7,19 L10,15 M13,15 L16,19 L19,15 M22,15 L25,19 L28,15"), S(L, "M3,26 H29")),
+                ["cargamom"] = C(S(Y, "M9.6,22.4 A9,9 0 1 1 22.4,22.4"), Fb(Y, "M19.6,25.2 L25.9,24.5 L20.3,18.9 Z"), Pt(L, 16, 16, 2.5)),
+                ["peso"] = C(Du(Y, "M9,13 H23 L27,27 H5 Z"), S(Y, "M12.5,13 A3.5,3.5 0 1 1 19.5,13")),
+                ["limpar"] = C(S(Y, "M4,6 H22 M7,6 V16 M13,6 V16 M19,6 V16"), S(Y, "M4,14 L7,17 L10,14 M10,14 L13,17 L16,14 M16,14 L19,17 L22,14", 1.5), S(L, "M3,25 H20"), Xr(21, 18)),
+
+                // ---------------- analise / resultados ----------------
+                ["calc"] = Du(A, "M9,5.5 L26,16 L9,26.5 Z"),
+                ["def"] = C(Sd(L2, "M4,9 H28", 1.5), S(Df, "M4,9 C10,29 22,29 28,9"), Pt(L2, 4, 9, 2.2), Pt(L2, 28, 9, 2.2)),
+                ["normal"] = C(Fa(Np, "M5,8 H27 V16 H5 Z"), S(Np, "M5,16 V8 H27 V16"), S(L2, "M3,16 H29", 1.5)),
+                ["cortante"] = C(Fa(Vc, "M5,16 V8 H16 V24 H27 V16 Z"), S(Vc, "M5,16 V8 H16 V24 H27 V16"), S(L2, "M3,16 H29", 1.5)),
+                ["momento"] = C(Fa(Mo, "M5,8 Q16,32 27,8 Z"), S(Mo, "M5,8 Q16,32 27,8"), S(L2, "M3,8 H29", 1.5)),
+                ["verif"] = C(Fa(L2, "M4,5 H28 V10 H4 Z", 0x26), Fb(G, "M4,5 H17 V10 H4 Z"), Fa(L2, "M4,13 H28 V18 H4 Z", 0x26), Fb(Y, "M4,13 H23 V18 H4 Z"), Fa(L2, "M4,21 H28 V26 H4 Z", 0x26), Fb(R, "M4,21 H28 V26 H4 Z")),
+                ["comparar"] = C(Du(L2, "M5,15 H10 V27 H5 Z"), Du(A, "M13.5,6 H18.5 V27 H13.5 Z"), Du(L2, "M22,19 H27 V27 H22 Z"), S(L2, "M3,27 H29")),
+                ["reac"] = C(Du(L, "M16,4 L23,15 H9 Z"), S(L2, "M5,18 H27"), S(G, "M16,29 V21"), S(G, "M12,24 L16,20 L20,24")),
+                ["valores"] = C(Fa(Mo, "M4,5 Q16,25 28,5 Z"), S(Mo, "M4,5 Q16,25 28,5"), Du(L2, "M8,19 H24 V28 H8 Z", 1.5), S(L, "M11,22.5 H21 M11,25.5 H17", 1.5)),
+                ["nomes"] = C(S(L, "M6,26 L16,5 L26,26 M9.5,19 H22.5")),
+                ["mais"] = C(Fa(Mo, "M3,6 Q12,26 21,6 Z"), S(Mo, "M3,6 Q12,26 21,6"), S(L2, "M2,6 H22", 1.5), S(A, "M24,19 V29 M19,24 H29")),
+                ["menos"] = C(Fa(Mo, "M3,6 Q12,26 21,6 Z"), S(Mo, "M3,6 Q12,26 21,6"), S(L2, "M2,6 H22", 1.5), S(A, "M19,24 H29")),
+
+                // ---------------- vista ----------------
+                ["zoomtudo"] = C(Du(A, "M11,11 H21 V21 H11 Z"), TB("zoomtudo", L)),
+                ["zoommais"] = TB("zoommais", L, A, 1, 3),
+                ["zoommenos"] = TB("zoommenos", L, A, 1, 2),
+                ["painel"] = TB("painel", L),
+                ["aplicar"] = TB("check", A),
+                ["ajuda"] = TB("ajuda", L),
+
+                // ---------------- barra de status ----------------
+                ["grade"] = TB("grade", L2),
+                ["snap"] = TB("ima", L2),
+                ["ortho"] = C(S(L2, "M7,5 V25 H27"), S(A, "M7,25 H13", 2)),
+                ["polar"] = TB("angulo", L2),
+                ["objsnap"] = C(Du(A, "M10,10 H22 V22 H10 Z"), S(L2, "M16,3 V10 M16,22 V29 M3,16 H10 M22,16 H29")),
+                ["rastro"] = C(Sd(L2, "M16,3 V29 M3,16 H29", 1.5), Du(A, "M11,16 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0 Z")),
+
+                // ---------------- UI geral (Tabler) ----------------
+                ["busca"] = TB("busca", L2),
+                ["fechar"] = TB("fechar", L2),
+                ["filtro"] = TB("filtro", L2),
+                ["olho"] = TB("olho", L2),
+                ["olhooff"] = TB("olhooff", L2),
+                ["config"] = TB("config", L2),
+                ["setad"] = TB("setad", L2),
+                ["setae"] = TB("setae", L2),
+                ["setac"] = TB("setac", L2),
+                ["setab"] = TB("setab", L2),
+                ["maismais"] = TB("maismais", L2),
+                ["menosmenos"] = TB("menosmenos", L2),
+                ["chevb"] = TB("chevb", L2),
+                ["chevd"] = TB("chevd", L2),
+                ["aviso"] = TB("aviso", Y),
+                ["info"] = TB("info", A),
+                ["ok"] = TB("ok", G),
+                ["erro"] = TB("erro", R),
+            };
+        }
+
+        // ordem das folhas de icones (00-icones.png)
+        public static readonly string[] Nomes = {
+            "novo","abrir","salvar","desfazer","refazer","importar","exportar","relatorio","tabela",
+            "sel","barra","no","medir","apagar","dividir","mover","copiar","espelhar","assist","dimens",
+            "engaste","rotula","rolo","roloh","livre","rotulab","placa","parafuso","solda","eixo","pincel",
+            "cargano","cargadist","cargamom","peso","limpar",
+            "calc","def","normal","cortante","momento","verif","comparar","reac","valores","unir","tirar","separar","selmembro","nomes","mais","menos",
+            "zoomtudo","zoommais","zoommenos","painel","aplicar","ajuda",
+            "grade","snap","ortho","polar","objsnap","rastro",
+            "busca","fechar","filtro","olho","olhooff","config","setad","setae","setac","setab","maismais","menosmenos","chevb","chevd","aviso","info","ok","erro" };
+
+        // ---------------- motor ----------------
+        static double DpiAtual()
+        {
+            try { var w = Application.Current?.MainWindow; if (w != null && w.IsLoaded) return VisualTreeHelper.GetDpi(w).DpiScaleX; } catch { }
+            return 1.0;
+        }
+
+        static readonly Regex Tok = new Regex(@"[MmLlHhVvCcSsQqAaZz]|-?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?", RegexOptions.Compiled);
+
+        // converte o "d" (origem em unidades do quadro q) para pixels de tela, tudo absoluto, com os pontos encaixados na grade
+        static string Mapear(string d, double s, bool traco, int wpx, double q = 32, double ampl = 1)
+        {
+            Func<double, double> sn = v => !traco ? Math.Round(v) : (wpx % 2 == 1 ? Math.Floor(v + 0.0001) + 0.5 : Math.Round(v));
+            // ponto de partida do encaixe: traco impar -> centro do pixel; como floor(v)+0.5 pode puxar para baixo, usa-se round(v-0.5)+0.5
+            if (traco && wpx % 2 == 1) sn = v => Math.Round(v - 0.5) + 0.5;
+            var m = Tok.Matches(d);
+            var t = new List<string>(); foreach (Match x in m) t.Add(x.Value);
+            var sb = new StringBuilder();
+            int i = 0; char cmd = 'M';
+            double cx = 0, cy = 0, sx = 0, sy = 0, lcx = 0, lcy = 0; char prev = ' ';
+            Func<double> num = () => double.Parse(t[i++], CultureInfo.InvariantCulture);
+            double off = q * s * (1 - ampl) / 2;   // ampliacao em torno do centro (icones de 16 px ganham ~12%)
+            s = s * ampl;
+            Action<double, double> pt = (x, y) => sb.Append(F("{0:0.###},{1:0.###} ", sn(x * s + off), sn(y * s + off)));
+            Action<double, double> cp = (x, y) => sb.Append(F("{0:0.###},{1:0.###} ", x * s + off, y * s + off));   // pontos de controle: sem encaixe
+            while (i < t.Count)
+            {
+                if (char.IsLetter(t[i][0])) { cmd = t[i][0]; i++; if (cmd == 'Z' || cmd == 'z') { sb.Append("Z "); cx = sx; cy = sy; prev = 'z'; continue; } }
+                bool rel = char.IsLower(cmd);
+                switch (char.ToUpperInvariant(cmd))
+                {
+                    case 'M': { double x = num(), y = num(); if (rel) { x += cx; y += cy; } cx = sx = x; cy = sy = y; sb.Append("M "); pt(x, y); cmd = rel ? 'l' : 'L'; prev = 'M'; break; }
+                    case 'L': { double x = num(), y = num(); if (rel) { x += cx; y += cy; } cx = x; cy = y; sb.Append("L "); pt(x, y); prev = 'L'; break; }
+                    case 'H': { double x = num(); if (rel) x += cx; cx = x; sb.Append("L "); pt(cx, cy); prev = 'H'; break; }
+                    case 'V': { double y = num(); if (rel) y += cy; cy = y; sb.Append("L "); pt(cx, cy); prev = 'V'; break; }
+                    case 'C': { double x1 = num(), y1 = num(), x2 = num(), y2 = num(), x = num(), y = num(); if (rel) { x1 += cx; y1 += cy; x2 += cx; y2 += cy; x += cx; y += cy; } sb.Append("C "); cp(x1, y1); cp(x2, y2); pt(x, y); lcx = x2; lcy = y2; cx = x; cy = y; prev = 'C'; break; }
+                    case 'S': { double x2 = num(), y2 = num(), x = num(), y = num(); if (rel) { x2 += cx; y2 += cy; x += cx; y += cy; } double x1 = prev == 'C' ? 2 * cx - lcx : cx, y1 = prev == 'C' ? 2 * cy - lcy : cy; sb.Append("C "); cp(x1, y1); cp(x2, y2); pt(x, y); lcx = x2; lcy = y2; cx = x; cy = y; prev = 'C'; break; }
+                    case 'Q': { double x1 = num(), y1 = num(), x = num(), y = num(); if (rel) { x1 += cx; y1 += cy; x += cx; y += cy; } sb.Append("Q "); cp(x1, y1); pt(x, y); cx = x; cy = y; prev = 'Q'; break; }
+                    case 'A': { double rx = num(), ry = num(), rot = num(), la = num(), sw = num(), x = num(), y = num(); if (rel) { x += cx; y += cy; } double rxs = rx * s, rys = ry * s; if (Math.Abs(rx - ry) < 1e-6 && Math.Abs(Math.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) - 2 * rx) < 0.05) { double dx = sn(x * s + off) - sn(cx * s + off), dy = sn(y * s + off) - sn(cy * s + off); rxs = rys = Math.Sqrt(dx * dx + dy * dy) / 2; } sb.Append(F("A {0:0.###},{1:0.###} {2} {3} {4} ", rxs, rys, rot, la, sw)); pt(x, y); cx = x; cy = y; prev = 'A'; break; }
+                    default: i++; break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        static readonly Dictionary<string, ImageSource> cache = new Dictionary<string, ImageSource>();
+        static readonly Dictionary<Color, Brush> pinceis = new Dictionary<Color, Brush>();
+        static Brush Pincel(Color c) { Brush b; if (!pinceis.TryGetValue(c, out b)) { var sb = new SolidColorBrush(c); sb.Freeze(); pinceis[c] = b = sb; } return b; }
+
+        static ImageSource Fonte(string nome, double tam)
+        {
+            double dpi = DpiAtual();
+            string chave = nome + "|" + tam.ToString(CultureInfo.InvariantCulture) + "|" + dpi.ToString(CultureInfo.InvariantCulture);
+            ImageSource src;
+            if (cache.TryGetValue(chave, out src)) return src;
+            Cam[] camadas;
+            if (!D.TryGetValue(nome, out camadas)) camadas = D["novo"];
+            double px = tam * dpi;   // lado do icone em pixels de tela
+            var g = new DrawingGroup();
+            g.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, px, px))));
+            foreach (var c in camadas)
+            {
+                double s = px / c.Q;
+                int wpx = c.S != null ? Math.Max(1, (int)Math.Round(c.W * s, MidpointRounding.AwayFromZero)) : 0;
+                Geometry geo = Geometry.Parse(Mapear(c.D, s, c.S != null && wpx > 0, wpx, c.Q, tam <= 20 ? 1.12 : 1.0));
+                if (geo.CanFreeze) geo.Freeze();
+                Pen p = null;
+                if (c.S != null && wpx > 0)
+                {
+                    p = new Pen(Pincel(c.S.Value), wpx) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+                    if (c.Tracejado) { p.DashStyle = new DashStyle(new double[] { 2, 2 }, 0); p.DashCap = PenLineCap.Flat; }
+                    p.Freeze();
+                }
+                g.Children.Add(new GeometryDrawing(c.F != null ? Pincel(c.F.Value) : null, p, geo));
+            }
+            var raiz = new DrawingGroup { Transform = new ScaleTransform(1 / dpi, 1 / dpi) };
+            raiz.Children.Add(g);
+            raiz.Freeze();
+            var di = new DrawingImage(raiz);
+            di.Freeze();
+            cache[chave] = di;
+            return di;
+        }
 
         public static UIElement Criar(string nome, double tam)
         {
-            (string f, string s, double w, string d)[] camadas;
-            if (!D.TryGetValue(nome, out camadas)) camadas = D["novo"];
-            double k = 32.0 / tam;   // espessura "em pixels" -> unidades do quadro de 32
-            var g = new DrawingGroup();
-            foreach (var c in camadas)
-            {
-                string geo = c.d; bool tracejado = geo.StartsWith("~");
-                if (tracejado) geo = geo.Substring(1);
-                Brush f = c.f == null ? null : new SolidColorBrush((Color)ColorConverter.ConvertFromString(c.f));
-                Pen p = null;
-                if (c.s != null && c.w != 0)
-                {
-                    double esp = c.w < 0 ? -c.w * k : c.w;
-                    p = new Pen(new SolidColorBrush((Color)ColorConverter.ConvertFromString(c.s)), esp) { LineJoin = PenLineJoin.Miter, StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat };
-                    if (tracejado) p.DashStyle = new DashStyle(new double[] { 2, 2 }, 0);
-                }
-                g.Children.Add(new GeometryDrawing(f, p, Geometry.Parse(geo)));
-            }
-            if (tam >= 24) g.Transform = new ScaleTransform(1.12, 1.12, 16, 16);   // grande ocupa o quadro de 32 px
-            var raiz = new DrawingGroup { ClipGeometry = new RectangleGeometry(new Rect(0, 0, 32, 32)) };
-            raiz.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, 32, 32))));
-            raiz.Children.Add(g);
-            raiz.Freeze();
-            return new Image { Source = new DrawingImage(raiz), Width = tam, Height = tam, Stretch = Stretch.Uniform, SnapsToDevicePixels = true };
+            return new Image { Source = Fonte(nome, tam), Width = tam, Height = tam, Stretch = Stretch.None, SnapsToDevicePixels = true, UseLayoutRounding = true };
         }
+
+        // para botoes que trocam a cor do glifo (rodape): so o contorno, uma cor, geometria no quadro 'tam'
+        public static bool Existe(string nome) { return D.ContainsKey(nome); }
     }
 }

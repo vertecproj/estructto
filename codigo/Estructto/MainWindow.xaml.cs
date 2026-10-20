@@ -11,7 +11,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Portico;
 using F = Fluent;
-using Drawing = System.Drawing;
 
 namespace NovoFtool
 {
@@ -23,7 +22,9 @@ namespace NovoFtool
         System.Windows.Controls.Primitives.ToggleButton stGrade, stAtrair, stOrto, stPolar, stObj;
         F.TextBox cFx, cFy, cMz, cQx, cQy, cQi, cQf, cGrade, cSeg, cFlecha;
         F.ComboBox cbFamilia, cbSecao, cbMaterial;
-        F.RibbonTabItem abaInicio, abaResultados, ctxBarra, ctxNo;
+        internal HudVista Hud;
+        F.ToggleButton tgCalor;
+        internal F.RibbonTabItem abaInicio, abaResultados, ctxBarra, ctxNo;
 
         public MainWindow()
         {
@@ -37,10 +38,10 @@ namespace NovoFtool
             // selecao azul nas listas/arvore (no lugar do branco padrao do Windows)
             foreach (var res in new[] { Arvore.Resources, ListaAvisos.Resources })
             {
-                res[SystemColors.HighlightBrushKey] = TemaPlant.B(TemaPlant.C("#1C6EA4"));
-                res[SystemColors.HighlightTextBrushKey] = Brushes.White;
-                res[SystemColors.InactiveSelectionHighlightBrushKey] = TemaPlant.B(TemaPlant.C("#2B4E72"));
-                res[SystemColors.InactiveSelectionHighlightTextBrushKey] = Brushes.White;
+                res[SystemColors.HighlightBrushKey] = TemaPlant.BSelecao;
+                res[SystemColors.HighlightTextBrushKey] = TemaPlant.BTexto1;
+                res[SystemColors.InactiveSelectionHighlightBrushKey] = TemaPlant.BSup2;
+                res[SystemColors.InactiveSelectionHighlightTextBrushKey] = TemaPlant.BTexto1;
             }
             Loaded += (s, e) => { if (TitleBar != null) { TitleBar.Background = TemaPlant.B(TemaPlant.Titulo); TitleBar.Foreground = TemaPlant.B(TemaPlant.TextoFraco); } };
             TitleBarHeight = 32;                                       // linha do titulo do Plant 3D: 32 px
@@ -59,13 +60,17 @@ namespace NovoFtool
             MontarFaixa();
             MontarBastidores();
             MontarStatus();
-            EstiloPropriedades();
             LigarEventos();
+            Hud = new HudVista(Vista, (d, calor) => MostrarDiagrama(d, calor), () => { try { return Vista.Resolvido ? "Mostrando: " + NomeResultado() : ""; } catch { return ""; } }, f => Escala(f));
+            GridVista.Children.Add(Hud);
+            Vista.SizeChanged += (s, e) => Hud.Compacto = Vista.ActualHeight < 340;
+            HistBtn.Click += (s, e) => { bool abrir = HistoricoCaixa.Visibility != Visibility.Visible; HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed; HistBtn.Content = abrir ? "▾" : "▴"; Comando.Focus(); };
             NovoModelo(new Modelo(), null);
-            Loaded += (s, e) => { Vista.ZoomTudo(); Vista.Focus(); OferecerRecuperacao(); };
-            Log("Bem-vindo. Escolha uma ferramenta na faixa, use um assistente ou digite um comando (AJUDA lista todos). F1 = atalhos.");
+            Loaded += (s, e) => { Vista.ZoomTudo(); Vista.Focus(); if (!Capturas.Ativo) OferecerRecuperacao(); };
+            Log("Bem-vindo. Escolha uma ferramenta na faixa, use um assistente ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
+            if (Capturas.Configurar(this, args)) return;
             string arqInicial = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--") && File.Exists(a));
             if (arqInicial != null)
                 Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => Abrir(arqInicial)), System.Windows.Threading.DispatcherPriority.Loaded);
@@ -73,14 +78,14 @@ namespace NovoFtool
                 if (a == "--tela2")
                 {
                     // testes automaticos: abre no monitor que NAO e o principal, para nao atrapalhar quem esta usando o PC
-                    var outra = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(sc => !sc.Primary);
+                    var outra = OutroMonitor();
                     if (outra != null)
                     {
                         WindowStartupLocation = WindowStartupLocation.Manual;
                         double dpi = 1;
-                        Left = outra.WorkingArea.Left / dpi + 40; Top = outra.WorkingArea.Top / dpi + 40;
+                        Left = outra.Value.Left / dpi + 40; Top = outra.Value.Top / dpi + 40;
                         ShowActivated = false;
-                        if (args.Contains("--1920")) { Left = outra.WorkingArea.Left; Top = outra.WorkingArea.Top; Width = 1920; Height = 1032; }   // comparacao pixel a pixel
+                        if (args.Contains("--1920")) { Left = outra.Value.Left; Top = outra.Value.Top; Width = 1920; Height = 1032; }   // comparacao pixel a pixel
                     }
                 }
             // --png=arquivo : o app desenha a propria janela num PNG e fecha (comparacao visual sem mexer na tela do usuario)
@@ -203,6 +208,7 @@ namespace NovoFtool
             Tamanho(b, pequeno);
             if (keytip != null) F.KeyTip.SetKeys(b, keytip);
             b.Click += (s, e) => { acao(); Vista.Focus(); };
+            Reg(icone, texto, atalho, dica, acao);
             return b;
         }
 
@@ -215,6 +221,7 @@ namespace NovoFtool
             };
             Tamanho(b, pequeno);
             b.Click += (s, e) => { acao(b.IsChecked == true); Vista.Focus(); };
+            Reg(icone, texto, null, dica, () => { b.IsChecked = !(b.IsChecked == true); acao(b.IsChecked == true); });
             return b;
         }
 
@@ -227,6 +234,7 @@ namespace NovoFtool
             };
             Tamanho(b, pequeno);
             b.Click += (s, e) => { AcionarFerramenta(f); Vista.Focus(); };
+            Reg(icone, texto, atalho, dica, () => AcionarFerramenta(f));
             if (!btnFerr.ContainsKey(f)) btnFerr[f] = new List<F.ToggleButton>();
             btnFerr[f].Add(b);
             return b;
@@ -236,7 +244,17 @@ namespace NovoFtool
         {
             var b = new F.ToggleButton { Header = texto, LargeIcon = Icone(icone, 32), Icon = Icone(icone, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(texto, dica, atalho) };
             b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? d : Diagrama.Nenhum); Vista.Focus(); };
+            Reg(icone, texto, atalho, dica, () => AlternarDiagrama(d));
             btnDiag[d] = b;
+            return b;
+        }
+
+        F.ToggleButton BotaoCalor()
+        {
+            var b = new F.ToggleButton { Header = "Mapa de calor", LargeIcon = Icone("verif", 32), Icon = Icone("verif", 16), Size = F.RibbonControlSize.Middle, ToolTip = Dica("Mapa de calor", "Colore as barras pelo aproveitamento: verde até 75%, ciano até 90%, âmbar até 100%, vermelho acima, com selo ⚠/✕ nas críticas.", "CALOR + Enter") };
+            Tamanho(b, true);
+            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? Diagrama.Verificacao : Diagrama.Nenhum, b.IsChecked == true); Vista.Focus(); };
+            Reg("verif", "Mapa de calor", null, "Colore as barras pelo aproveitamento.", () => Executar("CALOR"));
             return b;
         }
 
@@ -280,14 +298,14 @@ namespace NovoFtool
                     BotaoFerramenta("sel", "Selecionar", Ferramenta.Selecionar, "Clique num nó ou barra. Arraste da esquerda p/ direita = janela (só o que está dentro); da direita p/ esquerda = cruzamento (o que tocar). Shift/Ctrl soma.", "Esc"),
                     BotaoFerramenta("barra", "Barra", Ferramenta.Barra, "Clique os pontos em sequência. Digite um número para o comprimento exato na direção do mouse, ou x,y  @dx,dy  @L<ângulo. Botão direito ou Esc termina.", "B + Enter"),
                     BotaoFerramenta("no", "Nó", Ferramenta.No, "Insere um nó; se cair sobre uma barra, divide a barra.", "NO + Enter", true),
-                    BotaoFerramenta("medir", "Medir", Ferramenta.Medir, "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos (encaixa nos nós e na grade). Clique no 1º e no 2º ponto; o 3º clique inicia nova medida e Esc cancela.", "Ctrl+M / DI", true)),
+                    BotaoFerramenta("medir", "Medir", Ferramenta.Medir, "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos (encaixa nos nós e na grade). Clique no 1º e no 2º ponto; o 3º clique inicia nova medida e Esc cancela.", "Ctrl+M / DI", true),
+                    Botao("assist", "Assistentes", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas.", null, true)),
                 Grupo("Modificar",
-                    Botao("apagar", "Apagar", Apagar, "Apaga os nós ou barras selecionados.", "Del", true),
-                    Botao("dividir", "Dividir barra", DividirSelecao, "Divide as barras selecionadas em partes iguais.", "DIVIDIR", true),
                     Botao("mover", "Mover", () => Transformar("mover", new[] { "MOVER" }), "Move os nós/barras selecionados por um deslocamento (dx, dy).", "MOVER dx dy", true),
                     Botao("copiar", "Copiar", () => Transformar("copiar", new[] { "COPIAR" }), "Copia as barras selecionadas, uma ou várias vezes (matriz linear), com apoios e cargas.", "COPIAR dx dy vezes", true),
                     Botao("espelhar", "Espelhar", () => Transformar("espelhar", new[] { "ESPELHAR" }), "Cria a cópia espelhada das barras selecionadas em relação a uma reta x = valor ou y = valor.", "ESPELHAR X valor", true),
-                    Botao("assist", "Assistentes", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas.", null, true)),
+                    Botao("dividir", "Dividir barra", DividirSelecao, "Divide as barras selecionadas em partes iguais.", "DIVIDIR", true),
+                    Botao("apagar", "Apagar", Apagar, "Apaga os nós ou barras selecionados.", "Del", true)),
                 Grupo("Vista",
                     Botao("zoomtudo", "Enquadrar", () => Vista.ZoomTudo(), "Mostra o modelo inteiro (ou duplo clique na roda do mouse).", "F4"),
                     Botao("zoommais", "Aproximar", () => Vista.ZoomFator(1.4), "Aproxima a visualização em torno do centro da tela (ou use a roda do mouse).", null, true),
@@ -333,10 +351,10 @@ namespace NovoFtool
                     Botao("pincel", "Aplicar à seleção", () => AplicarSecao(false), "Aplica seção e material às barras selecionadas (ou, sem seleção, passa a valer para as próximas barras desenhadas).", null, true),
                     Botao("pincel", "Aplicar a todas", () => AplicarSecao(true), "Aplica seção e material a todas as barras.", null, true)),
                 Grupo("Barra contínua",
-                    Botao("dividir", "Unir trechos", UnirMembro, "Une os trechos selecionados numa barra contínua (uma peça só, mesmo dividida por nós): mesmo perfil, dimensionada junto. Selecione um trecho dela + barras novas para adicionar trechos.", "UNIR"),
-                    Botao("dividir", "Tirar trecho", TirarTrecho, "Tira os trechos selecionados da barra contínua (o resto continua unido).", "TIRAR", true),
-                    Botao("dividir", "Separar tudo", SepararMembro, "Desfaz a barra contínua: cada trecho volta a ser uma barra independente.", "SEPARAR", true),
-                    Botao("dividir", "Selecionar a barra", SelecionarMembro, "Seleciona todos os trechos da barra contínua do trecho selecionado.", "SELMEMBRO", true)));
+                    Botao("unir", "Unir trechos", UnirMembro, "Une os trechos selecionados numa barra contínua (uma peça só, mesmo dividida por nós): mesmo perfil, dimensionada junto. Selecione um trecho dela + barras novas para adicionar trechos.", "UNIR"),
+                    Botao("tirar", "Tirar trecho", TirarTrecho, "Tira os trechos selecionados da barra contínua (o resto continua unido).", "TIRAR", true),
+                    Botao("separar", "Separar tudo", SepararMembro, "Desfaz a barra contínua: cada trecho volta a ser uma barra independente.", "SEPARAR", true),
+                    Botao("selmembro", "Selecionar a barra", SelecionarMembro, "Seleciona todos os trechos da barra contínua do trecho selecionado.", "SELMEMBRO", true)));
             abaEstrutura.ToolTip = "Apoios externos, rótulas nas pontas, placas de base, escolha de perfil/material e barras contínuas.";
 
             // CARGAS
@@ -367,23 +385,23 @@ namespace NovoFtool
             tgReac = Alternar("reac", "Reações", v => { Vista.MostrarReacoes = v; Vista.InvalidateVisual(); }, "Mostra as reações de apoio.", true);
             tgValores = Alternar("valores", "Valores", v => { Vista.MostrarValores = v; Vista.InvalidateVisual(); }, "Escreve os valores nos diagramas.", true);
             tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); }, "Mostra as cargas no desenho.", true);
-            tgNomes = Alternar("nomes", "Nomes dos perfis", v => { Vista.MostrarNomes = v; Vista.InvalidateVisual(); }, "Escreve perfil e comprimento ao lado das barras.", true);
+            tgNomes = Alternar("nomes", "Nomes", v => { Vista.MostrarNomes = v; Vista.InvalidateVisual(); }, "Escreve perfil e comprimento ao lado das barras.", true);
             tgValores.IsChecked = true; tgCargas.IsChecked = true; tgReac.IsChecked = true; tgNomes.IsChecked = true;   // tudo visivel por padrao
             abaResultados = Aba("Resultados", "R",
                 Grupo("Diagramas",
                     BotaoDiagrama("def", "Deformada", Diagrama.Deformada, "Configuração deformada (ampliada). Passe o mouse para ler os deslocamentos.", "D + Enter"),
                     BotaoDiagrama("normal", "Normal", Diagrama.Normal, "Esforço normal N (kN). Positivo = tração.", "N + Enter"),
                     BotaoDiagrama("cortante", "Cortante", Diagrama.Cortante, "Esforço cortante Q (kN).", "Q + Enter"),
-                    BotaoDiagrama("momento", "Momento", Diagrama.Momento, "Momento fletor M (kN·m), desenhado do lado tracionado.", "M + Enter")),
+                    BotaoDiagrama("momento", "Momento", Diagrama.Momento, "Momento fletor M (kN·m), desenhado do lado tracionado.", "M + Enter"),
+                    Botao("mais", "Ampliar", () => Escala(1.4), "Aumenta a escala do diagrama ou da deformada.", "+", true),
+                    Botao("menos", "Reduzir", () => Escala(1 / 1.4), "Diminui a escala do diagrama ou da deformada.", "-", true)),
                 Grupo("Verificar",
-                    BotaoDiagrama("verif", "Barras", Diagrama.Verificacao, "Pinta as barras: verde passa, amarelo > 90%, vermelho não passa. Duplo clique abre o detalhe.", "V + Enter"),
-                    Botao("comparar", "Comparar perfis", () => AbrirVerificacao(null), "Abre a verificação da barra selecionada com a lista de perfis da mesma família.", null, true),
-                    Botao("assist", "Dimensionar perfis", () => DimensionarPerfis(false), "Troca cada barra pelo perfil mais leve da mesma família que passa na verificação (considera a envoltória). Recalcula e repete até estabilizar. Ctrl+Z desfaz.", "DIMENSIONAR", true),
+                    BotaoDiagrama("verif", "Verificação", Diagrama.Verificacao, "Pinta as barras: verde passa, amarelo > 90%, vermelho não passa. Duplo clique abre o detalhe.", "V + Enter"),
+                    (tgCalor = BotaoCalor()),
+                    Botao("comparar", "Comparar", () => AbrirVerificacao(null), "Abre a verificação da barra selecionada com a lista de perfis da mesma família.", null, true),
+                    Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Troca cada barra pelo perfil mais leve da mesma família que passa na verificação (considera a envoltória). Recalcula e repete até estabilizar. Ctrl+Z desfaz.", "DIMENSIONAR", true),
                     Botao("placa", "Placa de base", () => AbrirPlaca(null), "Resultados da placa de base do nó selecionado.", null, true)),
                 Grupo("Mostrar", tgReac, tgValores, tgCargas, tgNomes),
-                Grupo("Escala",
-                    Botao("mais", "Ampliar diagrama", () => Escala(1.4), "Aumenta a escala do diagrama ou da deformada.", "+", true),
-                    Botao("menos", "Reduzir diagrama", () => Escala(1 / 1.4), "Diminui a escala do diagrama ou da deformada.", "-", true)),
                 Grupo("Relatório",
                     Botao("relatorio", "Relatório", AbrirRelatorio, "Memorial com modelo, casos de carga, combinações, diagramas, reações, esforços, verificação e placas. Imprime ou salva em PDF (impressora \"Microsoft Print to PDF\").", "Ctrl+P"),
                     Botao("tabela", "Tabelas", () => { PainelTabelas.Show(); PainelTabelas.IsActive = true; }, "Mostra as tabelas de nós, barras e verificação.", null, true),
@@ -399,8 +417,7 @@ namespace NovoFtool
                 Grupo("Navegar",
                     Botao("zoomtudo", "Enquadrar", () => Vista.ZoomTudo(), "Mostra o modelo inteiro.", "F4"),
                     Botao("zoommais", "Aproximar", () => Vista.ZoomFator(1.4), "Aproxima a visualização em torno do centro da tela.", null, true),
-                    Botao("zoommenos", "Afastar", () => Vista.ZoomFator(1 / 1.4), "Afasta a visualização para enxergar uma área maior do modelo.", null, true),
-                    BotaoFerramenta("medir", "Medir", Ferramenta.Medir, "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos (encaixa nos nós e na grade). Clique no 1º e no 2º ponto; o 3º clique inicia nova medida e Esc cancela.", "Ctrl+M / DI")),
+                    Botao("zoommenos", "Afastar", () => Vista.ZoomFator(1 / 1.4), "Afasta a visualização para enxergar uma área maior do modelo.", null, true)),
                 Grupo("Grade", cGrade),
                 Grupo("Painéis",
                     Botao("painel", "Projeto", () => Alternar(PainelProjeto), "Mostra/oculta o painel Projeto.", null, true),
@@ -414,7 +431,7 @@ namespace NovoFtool
             tgEixoFraco = Alternar("eixo", "Perfil deitado", v => { foreach (Barra b in Vista.Sel.OfType<Barra>()) b.EixoFraco = v; SincronizarMembros(Vista.Sel.OfType<Barra>()); Confirmar(v ? "Perfil deitado: menor inércia (Iy) no plano." : "Perfil em pé: maior inércia (Ix) no plano."); }, "Ligado = perfil deitado: a menor inércia (Iy) fica no plano do pórtico. Desligado = em pé (Ix no plano). Fora do plano vale o outro eixo.");
             ctxBarra.Groups.Add(Grupo("Verificação",
                 Botao("comparar", "Verificar / comparar", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), "Abre a verificação detalhada da barra selecionada e compara perfis alternativos da família."),
-                Botao("assist", "Dimensionar", () => DimensionarPerfis(true), "Perfil mais leve da família que passa, só nas barras selecionadas.", "DIMSEL", true), tgEixoFraco));
+                Botao("dimens", "Dimensionar", () => DimensionarPerfis(true), "Perfil mais leve da família que passa, só nas barras selecionadas.", "DIMSEL", true), tgEixoFraco));
             ctxBarra.Groups.Add(Grupo("Ligações",
                 Botao("rotulab", "Rótula no início", () => RotularSel(true, false), "Liga/desliga a rótula no início das barras selecionadas.", null, true),
                 Botao("rotulab", "Rótula no fim", () => RotularSel(false, true), "Liga/desliga a rótula no fim das barras selecionadas.", null, true),
@@ -487,9 +504,12 @@ namespace NovoFtool
             BsAbas.Items.Add(BotaoBs("Salvar como...", "Ctrl+Shift+S", () => Salvar(true), "Salva uma cópia do modelo atual com outro nome ou em outra pasta."));
             BsAbas.Items.Add(new F.SeparatorTabItem());
             bsInicio = new F.BackstageTabItem { Header = "Assistentes", ToolTip = "Gera estruturas típicas parametrizadas (viga contínua, pórtico, treliça ou galpão)." };
-            var sp = new StackPanel { Margin = new Thickness(30, 20, 30, 20), MaxWidth = 560, HorizontalAlignment = HorizontalAlignment.Left };
-            sp.Children.Add(new TextBlock { Text = "Criar a partir de um modelo", FontSize = 22, FontWeight = FontWeights.Light, Margin = new Thickness(0, 0, 0, 14) });
-            foreach (var c in CartoesAssistente()) sp.Children.Add(c);
+            var sp = new StackPanel { Margin = new Thickness(30, 20, 30, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
+            sp.Children.Add(new TextBlock { Text = "Criar a partir de um assistente", FontSize = 22, FontWeight = FontWeights.Light, Margin = new Thickness(0, 0, 0, 4) });
+            sp.Children.Add(new TextBlock { Text = "Escolha o tipo de estrutura; no assistente a figura muda ao vivo conforme os parâmetros.", FontSize = 12, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 0, 0, 14) });
+            var gAss = new UniformGrid { Columns = 2 };
+            foreach (var a in AssistentesInicio()) { var c = CartaoAssistente(a.titulo, a.sub, a.tipo, a.modelo); c.Margin = new Thickness(0, 0, 10, 10); gAss.Children.Add(c); }
+            sp.Children.Add(gAss);
             bsInicio.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             BsAbas.Items.Add(bsInicio);
             bsRecentes = new F.BackstageTabItem { Header = "Recentes", ToolTip = "Lista os últimos arquivos de modelo abertos para acesso rápido." };
@@ -511,13 +531,15 @@ namespace NovoFtool
             return b;
         }
 
+        internal void MostrarRecentesBs() { Bastidor.IsOpen = true; AtualizarRecentesBs(); BsAbas.SelectedItem = bsRecentes; }
+
         void AtualizarRecentesBs()
         {
             var sp = new StackPanel { Margin = new Thickness(30, 20, 30, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
             sp.Children.Add(new TextBlock { Text = "Arquivos recentes", FontSize = 22, FontWeight = FontWeights.Light, Margin = new Thickness(0, 0, 0, 14) });
             var lista = Config.Recentes();
-            if (lista.Count == 0) sp.Children.Add(new TextBlock { Text = "Nenhum arquivo aberto ainda.", Foreground = Brushes.Gray });
-            foreach (string c in lista) sp.Children.Add(CartaoArquivo(c, () => { Bastidor.IsOpen = false; Abrir(c); }));
+            if (lista.Count == 0) sp.Children.Add(new TextBlock { Text = "Nenhum arquivo aberto ainda.", Foreground = TemaPlant.BTexto3 });
+            foreach (string c in lista) { var ca = CartaoRecente(c); ca.Margin = new Thickness(0, 0, 0, 8); sp.Children.Add(ca); }
             bsRecentes.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         }
 
@@ -526,38 +548,12 @@ namespace NovoFtool
             var dp = new DockPanel();
             if (icone != null) { var ic = Icone(icone, 26); DockPanel.SetDock(ic, Dock.Left); ((FrameworkElement)ic).Margin = new Thickness(0, 0, 12, 0); dp.Children.Add(ic); }
             var sp = new StackPanel();
-            sp.Children.Add(new TextBlock { Text = titulo, FontSize = 14, Foreground = Brushes.White });
-            if (sub != null) sp.Children.Add(new TextBlock { Text = sub, FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0xA9, 0xB2, 0xBF)), TextWrapping = TextWrapping.Wrap });
+            sp.Children.Add(new TextBlock { Text = titulo, FontSize = 14, Foreground = TemaPlant.BTexto1 });
+            if (sub != null) sp.Children.Add(new TextBlock { Text = sub, FontSize = 11, Foreground = TemaPlant.BTexto2, TextWrapping = TextWrapping.Wrap });
             dp.Children.Add(sp);
             var b = new Button { Content = dp, Style = (Style)FindResource("Cartao"), HorizontalContentAlignment = HorizontalAlignment.Stretch, ToolTip = dica ?? (sub != null ? titulo + " — " + sub : titulo) };
             b.Click += (s, e) => acao();
             return b;
-        }
-
-        Button CartaoArquivo(string caminho, Action acao)
-        {
-            string quando = File.Exists(caminho) ? File.GetLastWriteTime(caminho).ToString("dd/MM/yyyy HH:mm") : "arquivo não encontrado";
-            return Cartao(System.IO.Path.GetFileName(caminho), System.IO.Path.GetDirectoryName(caminho) + "  ·  " + quando, acao, "abrir", "Abre o arquivo " + caminho);
-        }
-
-        IEnumerable<Button> CartoesAssistente()
-        {
-            yield return Cartao("Viga contínua", "Vãos e apoios em uma linha, carga distribuída.", () => AbrirAssistente("viga"), "cargadist");
-            yield return Cartao("Pórtico de vários andares", "Vãos × pavimentos, bases engastadas ou rotuladas, cargas nas vigas e vento.", () => AbrirAssistente("portico"), "engaste");
-            yield return Cartao("Treliça", "Pratt, Howe ou Warren, com carga nos nós do banzo superior.", () => AbrirAssistente("trelica"), "rotula");
-            yield return Cartao("Galpão (duas águas)", "Pórtico com cobertura inclinada.", () => AbrirAssistente("galpao"), "def");
-        }
-
-        void MontarTelaInicial()
-        {
-            CartoesComecar.Children.Clear();
-            CartoesComecar.Children.Add(Cartao("Modelo em branco", "Desenhe barras com a tecla B.", () => { TelaInicial.Visibility = Visibility.Collapsed; AcionarFerramenta(Ferramenta.Barra); }, "barra"));
-            foreach (var c in CartoesAssistente()) CartoesComecar.Children.Add(c);
-            CartoesComecar.Children.Add(Cartao("Abrir arquivo...", ".estructto (ou .portico antigo) ou .ftl do Ftool original.", AbrirDialogo, "abrir"));
-            CartoesRecentes.Children.Clear();
-            var rec = Config.Recentes().Take(6).ToList();
-            foreach (string c in rec) { string cc = c; CartoesRecentes.Children.Add(CartaoArquivo(cc, () => Abrir(cc))); }
-            SemRecentes.Visibility = rec.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // ================= status =================
@@ -568,8 +564,8 @@ namespace NovoFtool
         void MontarStatus()
         {
             NovoBloco();
-            stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade (F7)", v => { M.MostrarGrade = v; Vista.InvalidateVisual(); });
             stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade (F9)", v => M.AtrairGrade = v);
+            stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade (F7)", v => { M.MostrarGrade = v; Vista.InvalidateVisual(); });
             NovoBloco();
             stOrto = StatusBtn("M4,3 V16 H17", "Orto — só horizontal/vertical (F8, ou segure Shift)", v => Vista.Orto = v);
             stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => Vista.Polar = v); stPolar.IsChecked = true;
@@ -584,14 +580,16 @@ namespace NovoFtool
 
         void NovoBloco()
         {
-            blocoStatus = new StackPanel { Orientation = Orientation.Horizontal };
-            StatusBotoes.Children.Add(new Border { Background = TemaPlant.B(TemaPlant.Painel), Margin = new Thickness(2, 3, 0, 3), Padding = new Thickness(2, 0, 2, 0), Child = blocoStatus });
+            // grupos separados por um divisor fino (sem caixas)
+            if (StatusBotoes.Children.Count > 0)
+                StatusBotoes.Children.Add(new Border { Width = 1, Height = 14, Background = TemaPlant.BBordaSutil, Margin = new Thickness(4, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center });
+            blocoStatus = StatusBotoes;
         }
 
         static System.Windows.Shapes.Path IconeStatus(string d)
         {
             return new System.Windows.Shapes.Path { Data = Geometry.Parse(d), StrokeThickness = 1.6, Width = 18, Height = 18, Stretch = Stretch.Uniform, StrokeLineJoin = PenLineJoin.Round, StrokeEndLineCap = PenLineCap.Round, StrokeStartLineCap = PenLineCap.Round,
-                Stroke = TemaPlant.B(TemaPlant.C("#D5DAE2")) };
+                Stroke = TemaPlant.BTexto2 };
         }
 
         static Style estiloStatus;
@@ -635,11 +633,43 @@ namespace NovoFtool
             return cm;
         }
 
+        // Pilula alternavel do rodape: icone + nome; ligada = fundo de acento suave, borda e texto de destaque.
+        static Style estiloPilula;
+        static Style EstiloPilula()
+        {
+            if (estiloPilula != null) return estiloPilula;
+            var t = new ControlTemplate(typeof(System.Windows.Controls.Primitives.ToggleButton));
+            var bd = new FrameworkElementFactory(typeof(Border), "b");
+            bd.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+            bd.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
+            bd.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+            bd.SetValue(Border.PaddingProperty, new Thickness(7, 2, 8, 2));
+            var cp = new FrameworkElementFactory(typeof(ContentPresenter)); cp.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center); bd.AppendChild(cp);
+            t.VisualTree = bd;
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BSup3, "b"));
+            t.Triggers.Add(hover);
+            var lig = new Trigger { Property = System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, Value = true };
+            lig.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BAcentoSutil, "b"));
+            lig.Setters.Add(new Setter(Border.BorderBrushProperty, TemaPlant.B(TemaPlant.Acento, 0x99), "b"));
+            t.Triggers.Add(lig);
+            estiloPilula = new Style(typeof(System.Windows.Controls.Primitives.ToggleButton));
+            estiloPilula.Setters.Add(new Setter(Control.TemplateProperty, t));
+            estiloPilula.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
+            estiloPilula.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null));
+            return estiloPilula;
+        }
+
         System.Windows.Controls.Primitives.ToggleButton StatusBtn(string icone, string dica, Action<bool> acao)
         {
-            var ic = IconeStatus(icone);
-            var b = new System.Windows.Controls.Primitives.ToggleButton { Content = ic, ToolTip = dica, Style = EstiloBotaoStatus() };
-            void Cor() { ic.Stroke = b.IsChecked == true ? TemaPlant.B(TemaPlant.C("#3BA7E6")) : TemaPlant.B(TemaPlant.C("#B4BCC8")); }
+            string nome = dica.StartsWith("Atração") ? "Objetos" : dica.StartsWith("Rastreamento") ? "Rastreio" : dica.Split(' ')[0];
+            var ic = IconeStatus(icone); ic.Width = 14; ic.Height = 14; ic.StrokeThickness = 1.7;
+            var tx = new TextBlock { Text = nome, FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = TemaPlant.BTexto2 };
+            var sp = new StackPanel { Orientation = Orientation.Horizontal }; sp.Children.Add(ic); sp.Children.Add(tx);
+            var b = new System.Windows.Controls.Primitives.ToggleButton { Content = sp, ToolTip = dica, Style = EstiloPilula() };
+            System.Windows.Automation.AutomationProperties.SetName(b, nome);
+            void Cor() { var c = b.IsChecked == true ? TemaPlant.BRealce : TemaPlant.BTexto2; ic.Stroke = c; tx.Foreground = c; }
             b.Checked += (s, e) => Cor(); b.Unchecked += (s, e) => Cor(); Cor();
             b.Click += (s, e) => { acao(b.IsChecked == true); Vista.Focus(); };
             blocoStatus.Children.Add(b);
@@ -663,23 +693,24 @@ namespace NovoFtool
             return sp;
         }
 
-        void EstiloPropriedades()
+        // Area de trabalho do primeiro monitor que nao e o principal (so para o modo de testes --tela2). Sem WinForms: user32.
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] struct RectI { public int L, T, R, B; }
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] struct InfoMon { public int Tam; public RectI Mon, Trab; public int Flags; }
+        delegate bool EnumMon(IntPtr h, IntPtr dc, ref RectI r, IntPtr dados);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, EnumMon cb, IntPtr dados);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr h, ref InfoMon info);
+
+        static Rect? OutroMonitor()
         {
-            // paleta Propriedades do Plant 3D: fundo #3B4453, linhas de categoria #2E3440, texto claro
-            Drawing.Color fundo = Drawing.Color.FromArgb(0x3B, 0x44, 0x53), claro = Drawing.Color.FromArgb(0xF0, 0xF2, 0xF5);
-            Prop.BackColor = fundo;
-            Prop.ViewBackColor = fundo;
-            Prop.ViewForeColor = claro;
-            Prop.ViewBorderColor = Drawing.Color.FromArgb(0x2E, 0x34, 0x40);
-            Prop.LineColor = Drawing.Color.FromArgb(0x2E, 0x34, 0x40);
-            Prop.CategoryForeColor = claro;
-            Prop.CategorySplitterColor = Drawing.Color.FromArgb(0x2E, 0x34, 0x40);
-            Prop.HelpBackColor = fundo;
-            Prop.HelpForeColor = Drawing.Color.FromArgb(0xC8, 0xCF, 0xD8);
-            Prop.HelpBorderColor = Drawing.Color.FromArgb(0x4A, 0x54, 0x63);
-            Prop.SelectedItemWithFocusBackColor = Drawing.Color.FromArgb(0x1C, 0x5F, 0x86);
-            Prop.DisabledItemForeColor = Drawing.Color.FromArgb(0xA9, 0xB2, 0xBF);
-            Prop.Font = new Drawing.Font("Segoe UI", 9f);
+            Rect? r = null;
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr dc, ref RectI rc, IntPtr d) =>
+            {
+                var info = new InfoMon { Tam = System.Runtime.InteropServices.Marshal.SizeOf(typeof(InfoMon)) };
+                if (GetMonitorInfo(h, ref info) && (info.Flags & 1) == 0 && r == null)
+                    r = new Rect(info.Trab.L, info.Trab.T, info.Trab.R - info.Trab.L, info.Trab.B - info.Trab.T);
+                return true;
+            }, IntPtr.Zero);
+            return r;
         }
     }
 }

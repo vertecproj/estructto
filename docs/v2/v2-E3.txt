@@ -1,0 +1,24 @@
+ETAPA E3 — INSPECTOR WPF NATIVO (sai o PropertyGrid do WinForms da janela principal)
+Pasta: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto. Leia docs\v2\GUIA-DESIGN.md (padrões de componente: campo numérico com
+unidade, cartão, pílula/segmentado, chip, barra de capacidade, inspector) e docs\v2\PESQUISA.md (P1.2). Veja como o painel PROPRIEDADES é montado hoje
+(MainWindow.xaml ~WindowsFormsHost/PropertyGrid, MainWindow.xaml.cs, Paineis.cs) e QUAIS objetos ele edita (Modelo, No, Barra, cargas, casos, seção, material…)
+e quais atributos [Category]/[DisplayName]/[Description]/TypeConverter cada propriedade tem.
+
+1. Crie Inspector.cs: um painel WPF nativo que substitui o PropertyGrid na janela principal, alimentado pelos MESMOS objetos/propriedades (reflexão sobre
+   as propriedades com [Browsable]/[Category]/[DisplayName]/[Description]/TypeConverter/ReadOnly), para não perder nenhum campo:
+   - cabeçalho do objeto (ícone + nome, ex.: "Barra 3 · Tubo 30×20×1,06") e, quando houver resultado, um resumo (aproveitamento com barra de capacidade, N/V/M máx.);
+   - categorias como seções recolhíveis (Expander do tema), rótulo à esquerda (nunca cortado; quebra/elipse com dica) e editor à direita;
+   - editores: número com unidade (aceita expressão simples tipo "2,5+0,3" e vírgula/ponto; Enter aplica, Esc cancela, seta ↑/↓ incrementa),
+     ComboBox para TypeConverter com valores padrão, alternador Sim/Não (pílula segmentada) para bool/SimNao, texto;
+   - seletor de perfil (Secao) com busca e miniatura vetorial da seção (I, U, L, tubo retangular/circular) desenhada pelos dados do perfil;
+   - multi-seleção: mostra campos comuns, "(vários)" quando diferem; editar aplica a todos;
+   - dica (ToolTip) em cada rótulo com o [Description];
+   - ações rápidas quando fizer sentido (nó: botões de apoio engaste/rótula/rolete/livre; barra: "verificar", "trocar perfil").
+   Toda alteração tem que passar pelo MESMO caminho de antes (undo/redo, recálculo, marcação de modificado). Ache como o PropertyGrid notificava (PropertyValueChanged)
+   e reproduza.
+2. Troque o PropertyGrid da janela principal pelo Inspector. Se o WinForms não for mais usado em lugar nenhum, remova UseWindowsForms do csproj
+   (procure por System.Windows.Forms em todo o código antes; MessageBox/SaveFileDialog etc. de WinForms precisam virar WPF/Microsoft.Win32 se for remover).
+3. Capturas: no modo --capturas, gere 30-inspector-modelo.png, 31-inspector-no.png, 32-inspector-barra.png, 33-inspector-carga.png, 34-inspector-multi.png
+   (selecione os objetos programaticamente). Revise com o checklist do GUIA-DESIGN.md.
+PROVA: build 0 erros; portico\compilar.ps1 -Testes (todos passam); capturas revisadas; um teste manual por código (no modo capturas) que altera um
+campo via Inspector e confere que o modelo mudou e o undo desfaz.

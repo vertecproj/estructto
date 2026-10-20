@@ -152,8 +152,8 @@ namespace NovoFtool
             var semSolucao = grupos.Where(g => ApGrupo(g, Biblioteca.AcharSecao(g.Barras[0].Secao)) > 1).ToList();
             int trocadas = alvo.Count(b => inicial[b] != b.Secao);
             double antes = alvo.Sum(b => Massa(b, inicial[b])), depois = alvo.Sum(b => Massa(b, b.Secao));
-            string msg = "Dimensionamento: " + trocadas + " de " + alvo.Count + " trecho(s) trocado(s) em " + iter + " iteração(ões)"
-                + (subidas > 0 ? " (" + subidas + " aumento(s) em peças vizinhas para fechar a flecha/rigidez)" : "") + ". Peso das barras: "
+            string msg = "Dimensionamento: " + trocadas + " de " + Pl.N(alvo.Count, "trecho", "trechos") + (trocadas == 1 ? " trocado" : " trocados") + " em " + Pl.N(iter, "iteração", "iterações")
+                + (subidas > 0 ? " (" + Pl.N(subidas, "aumento", "aumentos") + " em peças vizinhas para fechar a flecha/rigidez)" : "") + ". Peso das barras: "
                 + Num.Fmt(antes, 0) + " → " + Num.Fmt(depois, 0) + " kg.";
             msg += semSolucao.Count > 0 ? " ⚠ Ainda não passa: " + string.Join(", ", semSolucao.Select(g => g.Nome)) + " — troque a família ou a geometria."
                                         : " ✓ Todas passam.";
@@ -212,12 +212,6 @@ namespace NovoFtool
             AbaSoldas.ToolTip = "Perna mínima de solda de filete nas pontas sem rótula de cada barra, calculada para o eletrodo " + Eletrodo + "XX.";
         }
 
-        static void ColunaSolda(object s, DataGridAutoGeneratingColumnEventArgs e)
-        {
-            var pd = e.PropertyDescriptor as PropertyDescriptor;
-            if (pd == null) return;
-            if (!pd.IsBrowsable) { e.Cancel = true; return; }
-            e.Column.Header = pd.DisplayName;
-        }
+        static void ColunaSolda(object s, DataGridAutoGeneratingColumnEventArgs e) { Coluna(s, e); }
     }
 }

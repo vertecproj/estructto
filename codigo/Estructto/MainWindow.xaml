@@ -4,10 +4,9 @@
         xmlns:fluent="urn:fluent-ribbon"
         xmlns:ad="https://github.com/Dirkster99/AvalonDock"
         xmlns:adt="clr-namespace:AvalonDock.Themes;assembly=AvalonDock.Themes.VS2013"
-        xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"
         xmlns:local="clr-namespace:NovoFtool"
         Title="Estructto" Icon="estructto.ico" Width="1440" Height="900" MinWidth="1000" MinHeight="640" WindowStartupLocation="CenterScreen"
-        UseLayoutRounding="True" SnapsToDevicePixels="True">
+        FontFamily="{StaticResource Font.Primary}" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <DockPanel>
     <fluent:Ribbon x:Name="Faixa" DockPanel.Dock="Top" IsQuickAccessToolBarVisible="True" CanCustomizeQuickAccessToolBar="False">
       <fluent:Ribbon.Menu>
@@ -16,31 +15,32 @@
         </fluent:Backstage>
       </fluent:Ribbon.Menu>
       <fluent:Ribbon.ContextualGroups>
-        <fluent:RibbonContextualTabGroup x:Name="CtxBarra" Header="BARRA SELECIONADA" Visibility="Collapsed" Background="#0696D7" BorderBrush="#0696D7" ToolTip="Comandos para verificar, dimensionar, rotular, dividir ou apagar as barras selecionadas."/>
-        <fluent:RibbonContextualTabGroup x:Name="CtxNo" Header="NÓ SELECIONADO" Visibility="Collapsed" Background="#2EA44F" BorderBrush="#2EA44F" ToolTip="Comandos para aplicar apoio, carga ou placa de base aos nós selecionados."/>
+        <fluent:RibbonContextualTabGroup x:Name="CtxBarra" Header="BARRA SELECIONADA" Visibility="Collapsed" Background="{DynamicResource Accent.Primary}" BorderBrush="{DynamicResource Accent.Primary}" ToolTip="Comandos para verificar, dimensionar, rotular, dividir ou apagar as barras selecionadas."/>
+        <fluent:RibbonContextualTabGroup x:Name="CtxNo" Header="NÓ SELECIONADO" Visibility="Collapsed" Background="{DynamicResource Status.Ok}" BorderBrush="{DynamicResource Status.Ok}" ToolTip="Comandos para aplicar apoio, carga ou placa de base aos nós selecionados."/>
       </fluent:Ribbon.ContextualGroups>
     </fluent:Ribbon>
 
     <!-- barra das abas de arquivo, largura toda, logo abaixo da faixa (como "≡ / Start / desenho × +" do Plant 3D) -->
-    <Border DockPanel.Dock="Top" Background="#222933" Height="26">
+    <Border DockPanel.Dock="Top" Background="{DynamicResource Surface.0}" Height="26" BorderBrush="{DynamicResource Border.Subtle}" BorderThickness="0,0,0,1">
       <StackPanel Orientation="Horizontal">
-        <Button x:Name="ArqMenu" Content="☰" Width="34" Background="Transparent" BorderThickness="0" Foreground="#F0F2F5" FontSize="15" Cursor="Hand" ToolTip="Abre o menu Arquivo (novo, abrir, salvar, importar .ftl, exportar CSV e assistentes)."/>
-        <TextBlock Text="/" Foreground="#5E6878" FontSize="17" VerticalAlignment="Center" Margin="0,0,2,0"/>
-        <Button x:Name="ArqInicio" Content="Início" Padding="10,0" Background="Transparent" BorderThickness="0" Foreground="#F0F2F5" Cursor="Hand" ToolTip="Mostra ou oculta a tela inicial com os assistentes de estruturas e arquivos recentes."/>
-        <TextBlock Text="/" Foreground="#5E6878" FontSize="17" VerticalAlignment="Center" Margin="2,0,0,0"/>
+        <Button x:Name="ArqMenu" Content="☰" Width="34" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text.Primary}" FontSize="15" Cursor="Hand" ToolTip="Abre o menu Arquivo (novo, abrir, salvar, importar .ftl, exportar CSV e assistentes)."/>
+        <TextBlock Text="/" Foreground="{DynamicResource Text.Muted}" FontSize="17" VerticalAlignment="Center" Margin="0,0,2,0"/>
+        <Button x:Name="ArqInicio" Content="Início" Padding="10,0" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text.Primary}" Cursor="Hand" ToolTip="Mostra ou oculta a tela inicial com os assistentes de estruturas e arquivos recentes."/>
+        <TextBlock Text="/" Foreground="{DynamicResource Text.Muted}" FontSize="17" VerticalAlignment="Center" Margin="2,0,0,0"/>
         <StackPanel x:Name="AbasDocs" Orientation="Horizontal"/>
-        <TextBlock Text="/" Foreground="#5E6878" FontSize="17" VerticalAlignment="Center" Margin="0,0,2,0"/>
-        <Button x:Name="ArqNovo" Content="+" Width="30" Background="Transparent" BorderThickness="0" Foreground="#F0F2F5" FontSize="17" Cursor="Hand" ToolTip="Cria um novo modelo em branco em uma nova aba (Ctrl+N)."/>
+        <TextBlock Text="/" Foreground="{DynamicResource Text.Muted}" FontSize="17" VerticalAlignment="Center" Margin="0,0,2,0"/>
+        <Button x:Name="ArqNovo" Content="+" Width="30" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text.Primary}" FontSize="17" Cursor="Hand" ToolTip="Cria um novo modelo em branco em uma nova aba (Ctrl+N)."/>
       </StackPanel>
     </Border>
 
-    <!-- rodape no padrao do Plant 3D: abas Modelo/Resultados a esquerda, botoes-icone de status a direita -->
-    <DockPanel DockPanel.Dock="Bottom" Background="#222933" Height="32">
-      <StackPanel x:Name="StatusBotoes" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0"/>
-      <TextBlock x:Name="Coord" DockPanel.Dock="Right" Margin="10,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="11" Foreground="#C8CFD8" ToolTip="Coordenadas X e Y (em metros) da posição atual do cursor no modelo."/>
-      <Button x:Name="SeloAvisos" DockPanel.Dock="Right" Margin="0,2,10,2" Padding="8,0" Cursor="Hand" Visibility="Collapsed"
-              Background="#5A3A1A" Foreground="#FFD27F" BorderBrush="#E8B448" ToolTip="Abre o painel Avisos para ver erros ou alertas de cálculo e verificação."/>
-      <TextBlock x:Name="StatusMsg" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11" Foreground="#B4BCC8" TextTrimming="CharacterEllipsis" ToolTip="Resumo do estado atual do modelo, da seleção ou do último cálculo."/>
+    <!-- barra de status: mensagem a esquerda; aviso, pílulas Snap/Grade/Orto/Polar..., coordenadas do cursor e unidades a direita -->
+    <DockPanel DockPanel.Dock="Bottom" Background="{DynamicResource Surface.0}" Height="30">
+      <TextBlock x:Name="StatusUnid" DockPanel.Dock="Right" Margin="0,0,12,0" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource Text.Tertiary}" Text="m · kN · kN·m" ToolTip="Unidades do modelo: comprimentos em metros, forças em kN, momentos em kN·m."/>
+      <TextBlock x:Name="Coord" DockPanel.Dock="Right" Margin="10,0,10,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Mono}" FontSize="11" Typography.NumeralAlignment="Tabular" Foreground="{DynamicResource Text.Secondary}" ToolTip="Coordenadas X e Y (em metros) da posição atual do cursor no modelo."/>
+      <StackPanel x:Name="StatusBotoes" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0"/>
+      <Button x:Name="SeloAvisos" DockPanel.Dock="Right" Margin="0,3,10,3" Padding="8,0" Cursor="Hand" Visibility="Collapsed"
+              Background="{DynamicResource Status.WarnBg}" Foreground="{DynamicResource Status.Warn}" BorderBrush="{DynamicResource Status.Warn}" ToolTip="Abre o painel Avisos para ver erros ou alertas de cálculo e verificação."/>
+      <TextBlock x:Name="StatusMsg" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11" Foreground="{DynamicResource Text.Secondary}" TextTrimming="CharacterEllipsis" ToolTip="Resumo do estado atual do modelo, da seleção ou do último cálculo."/>
     </DockPanel>
 
     <ad:DockingManager x:Name="Docas" AllowMixedOrientation="True">
@@ -51,7 +51,7 @@
         <ad:LayoutPanel Orientation="Horizontal">
           <ad:LayoutAnchorablePane DockWidth="250">
             <ad:LayoutAnchorable x:Name="PainelProjeto" Title="GERENCIADOR DO PROJETO" ContentId="projeto" CanClose="False" CanHide="True">
-              <TreeView x:Name="Arvore" Background="#3B4453" BorderThickness="0" Padding="2,4" ToolTip="Árvore do projeto: clique em um nó, barra ou grupo para selecioná-lo no modelo."/>
+              <TreeView x:Name="Arvore" Background="{DynamicResource Surface.1}" BorderThickness="0" Padding="2,4" ToolTip="Árvore do projeto: clique em um nó, barra ou grupo para selecioná-lo no modelo."/>
             </ad:LayoutAnchorable>
           </ad:LayoutAnchorablePane>
 
@@ -59,90 +59,70 @@
             <ad:LayoutDocumentPane>
               <ad:LayoutDocument x:Name="DocModelo" Title="Sem título" ContentId="modelo" CanClose="False" CanFloat="False">
                 <Grid>
-                  <local:Vista x:Name="Vista"/>
-                  <!-- legenda do que esta sendo mostrado -->
-                  <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8,4" CornerRadius="3" Background="#992B323D" IsHitTestVisible="False">
-                    <TextBlock x:Name="LegendaDiag" Foreground="{StaticResource TextoFraco}" FontSize="11"/>
-                  </Border>
-                  <!-- aviso de erro de calculo -->
-                  <!-- linha de comando flutuante (AutoCAD): historico transparente acima, campo escuro translucido -->
-                  <StackPanel x:Name="LinhaComando" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Margin="60,0,60,14">
-                    <Border Background="#99212830" Padding="8,3" CornerRadius="2" HorizontalAlignment="Stretch" IsHitTestVisible="False">
-                      <TextBlock x:Name="Historico" Foreground="#C8CFD8" FontFamily="Consolas" FontSize="11"/>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                  </Grid.RowDefinitions>
+                  <!-- area de desenho: o HUD (seletor de diagrama, escala, legenda) e criado em codigo (Hud.cs) e entra aqui -->
+                  <Grid x:Name="GridVista" Grid.Row="0" ClipToBounds="True">
+                    <local:Vista x:Name="Vista"/>
+                    <!-- aviso de erro de calculo -->
+                    <Border x:Name="Aviso" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,16" Padding="12,6" CornerRadius="6"
+                            Background="{DynamicResource Surface.WarnBanner}" BorderBrush="{DynamicResource Status.Error}" BorderThickness="1" Visibility="Collapsed">
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="AvisoTxt" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                        <Button x:Name="AvisoAcao" Margin="10,0,0,0" Padding="8,1" Visibility="Collapsed" ToolTip="Executa a ação sugerida para resolver o aviso."/>
+                      </StackPanel>
                     </Border>
-                    <Border Background="#E62E3540" BorderBrush="#5A677C" BorderThickness="1" CornerRadius="2" Height="30">
+                    <!-- mensagens rapidas: aparecem no canto e somem sozinhas (o histórico fica na linha de comando) -->
+                    <Border x:Name="Toast" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="12,7" CornerRadius="6" MaxWidth="360"
+                            Background="{DynamicResource Surface.Overlay}" BorderBrush="{DynamicResource Border.Subtle}" BorderThickness="1" Visibility="Collapsed" IsHitTestVisible="False">
+                      <TextBlock x:Name="ToastTxt" Foreground="{DynamicResource Text.Primary}" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="36"/>
+                    </Border>
+                  </Grid>
+                  <!-- linha de comando: encaixada embaixo da vista (nao cobre o desenho); o histórico recolhe/expande -->
+                  <StackPanel x:Name="LinhaComando" Grid.Row="1" Background="{DynamicResource Surface.1}">
+                    <Border x:Name="HistoricoCaixa" Visibility="Collapsed" Background="{DynamicResource Surface.0}" BorderBrush="{DynamicResource Border.Subtle}" BorderThickness="0,1,0,0" Padding="12,5">
+                      <TextBlock x:Name="Historico" Foreground="{DynamicResource Text.Secondary}" FontFamily="{StaticResource Font.Mono}" FontSize="11"/>
+                    </Border>
+                    <Border BorderBrush="{DynamicResource Border.Subtle}" BorderThickness="0,1,0,0" Height="30">
                       <DockPanel>
-                        <TextBlock DockPanel.Dock="Left" Text="✕" Foreground="#9AA5B4" VerticalAlignment="Center" Margin="9,0,4,0" FontSize="11" ToolTip="Cancela o comando ativo ou limpa o texto digitado (Esc)."/>
-                        <TextBlock DockPanel.Dock="Left" Text="⌨▸" Foreground="#9AA5B4" VerticalAlignment="Center" Margin="4,0,6,0" FontSize="12" ToolTip="Linha de comando: digite o nome do comando ou coordenadas e tecle Enter."/>
+                        <Button x:Name="HistBtn" DockPanel.Dock="Right" Content="▴" Width="30" Height="26" Padding="0" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text.Secondary}" Cursor="Hand" ToolTip="Mostra ou recolhe o histórico de comandos (F2 abre a janela completa)."/>
+                        <TextBlock DockPanel.Dock="Left" Text="✕" Foreground="{DynamicResource Text.Muted}" VerticalAlignment="Center" Margin="10,0,2,0" FontSize="11" ToolTip="Cancela o comando ativo ou limpa o texto digitado (Esc)."/>
+                        <TextBlock DockPanel.Dock="Left" Text="›" Foreground="{DynamicResource Accent.Hover}" VerticalAlignment="Center" Margin="4,-2,6,0" FontSize="17" FontFamily="{StaticResource Font.Mono}" ToolTip="Linha de comando: digite o nome do comando ou coordenadas e tecle Enter."/>
                         <Grid>
-                          <TextBox x:Name="Comando" Background="Transparent" BorderThickness="0" Foreground="#F0F2F5" CaretBrush="#F0F2F5" FontFamily="Consolas" FontSize="13" VerticalContentAlignment="Center" ToolTip="Digite um comando (ex.: B, MEDIR, MOVER, CALC, AJUDA) ou coordenadas (x,y, @dx,dy, @L&lt;ângulo) e tecle Enter. Tab completa o comando."/>
-                          <TextBlock x:Name="Sugestao" IsHitTestVisible="False" FontFamily="Consolas" FontSize="13" Foreground="#8A95A6" Margin="2,0,0,0" VerticalAlignment="Center"/>
-                          <TextBlock x:Name="DicaComando" IsHitTestVisible="False" FontFamily="Consolas" FontSize="13" Foreground="#8A95A6" Margin="2,0,0,0" VerticalAlignment="Center" Text="Digite um comando"/>
+                          <TextBox x:Name="Comando" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Text.Primary}" CaretBrush="{DynamicResource Text.Primary}" FontFamily="{StaticResource Font.Mono}" FontSize="12.5" VerticalContentAlignment="Center" ToolTip="Digite um comando (ex.: B, MEDIR, MOVER, CALC, AJUDA) ou coordenadas (x,y, @dx,dy, @L&lt;ângulo) e tecle Enter. Tab completa o comando."/>
+                          <TextBlock x:Name="Sugestao" IsHitTestVisible="False" FontFamily="{StaticResource Font.Mono}" FontSize="12.5" Foreground="{DynamicResource Text.Muted}" Margin="2,0,0,0" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="DicaComando" IsHitTestVisible="False" FontFamily="{StaticResource Font.Mono}" FontSize="12.5" Foreground="{DynamicResource Text.Muted}" Margin="2,0,0,0" VerticalAlignment="Center" Text="Digite um comando" TextTrimming="CharacterEllipsis"/>
                         </Grid>
                       </DockPanel>
                     </Border>
                   </StackPanel>
-                  <Border x:Name="Aviso" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,82" Padding="12,6" CornerRadius="3"
-                          Background="#E08A2B2B" Visibility="Collapsed">
-                    <StackPanel Orientation="Horizontal">
-                      <TextBlock x:Name="AvisoTxt" Foreground="White" VerticalAlignment="Center"/>
-                      <Button x:Name="AvisoAcao" Margin="10,0,0,0" Padding="8,1" Visibility="Collapsed" ToolTip="Executa a ação sugerida para resolver o aviso."/>
-                    </StackPanel>
-                  </Border>
                   <!-- tela inicial (modelo vazio) -->
-                  <Border x:Name="TelaInicial" Background="#E6212830" Visibility="Collapsed">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Width="760" Margin="0,20">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="30"/>
-                        <ColumnDefinition Width="*"/>
-                      </Grid.ColumnDefinitions>
-                      <StackPanel Grid.Column="0">
-                        <StackPanel Orientation="Horizontal">
-                          <Image Source="estructto.png" Width="44" Height="44" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                          <TextBlock Text="Estructto" FontSize="30" FontWeight="Light" Foreground="White" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <TextBlock Text="Análise de pórticos planos" FontSize="13" Foreground="{StaticResource TextoFraco}" Margin="0,0,0,18"/>
-                        <TextBlock Text="COMEÇAR" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextoFraco}" Margin="0,0,0,6"/>
-                        <StackPanel x:Name="CartoesComecar"/>
-                      </StackPanel>
-                      <StackPanel Grid.Column="2">
-                        <TextBlock Text="RECENTES" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextoFraco}" Margin="0,58,0,6"/>
-                        <StackPanel x:Name="CartoesRecentes"/>
-                        <TextBlock x:Name="SemRecentes" Text="Nenhum arquivo aberto ainda." Foreground="#9AA5B4" FontSize="12"/>
-                        <TextBlock Text="Dica: tecle B e clique dois pontos para desenhar uma barra; F1 mostra todos os atalhos."
-                                   TextWrapping="Wrap" Foreground="#9AA5B4" FontSize="12" Margin="0,18,0,0"/>
-                      </StackPanel>
-                    </Grid>
-                    </ScrollViewer>
+                  <Border x:Name="TelaInicial" Grid.RowSpan="2" Background="{DynamicResource Bg.Canvas}" Visibility="Collapsed">
+                    <ScrollViewer x:Name="ConteudoInicio" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"/>
                   </Border>
                 </Grid>
               </ad:LayoutDocument>
             </ad:LayoutDocumentPane>
-            <ad:LayoutAnchorablePane DockHeight="210">
+            <ad:LayoutAnchorablePane DockHeight="222">
               <ad:LayoutAnchorable x:Name="PainelTabelas" Title="TABELAS DE RESULTADOS" ContentId="tabelas" CanClose="False">
-                <TabControl x:Name="AbasTabela" Background="#3B4453" BorderThickness="0">
-                  <TabItem Header="Nós" ToolTip="Coordenadas, apoios, deslocamentos (mm), giros (rad) e reações de apoio de cada nó."><DataGrid x:Name="TabNos" Style="{StaticResource Tabela}" ToolTip="Clique em uma linha para selecionar o nó correspondente no modelo."/></TabItem>
-                  <TabItem Header="Barras" ToolTip="Perfil, comprimento, esforços extremos (N, Q, M) e flecha máxima de cada barra."><DataGrid x:Name="TabBarras" Style="{StaticResource Tabela}" ToolTip="Clique em uma linha para selecionar a barra correspondente no modelo."/></TabItem>
-                  <TabItem Header="Verificação" ToolTip="Aproveitamento e situação (passa / não passa) de cada barra. Duplo clique abre a comparação de perfis."><DataGrid x:Name="TabVerif" Style="{StaticResource Tabela}" ToolTip="Clique para selecionar a barra; duplo clique abre a janela de verificação e comparação de perfis."/></TabItem>
+                <TabControl x:Name="AbasTabela" Background="{DynamicResource Surface.1}" BorderThickness="0">
+                  <TabItem Header="Nós" ToolTip="Coordenadas, apoios, deslocamentos (mm), giros (rad) e reações de apoio de cada nó."><Grid><DataGrid x:Name="TabNos" Style="{StaticResource Tabela}" ToolTip="Clique em uma linha para selecionar o nó correspondente no modelo."/><TextBlock x:Name="VazioNos" Text="Nenhum nó ainda. Desenhe barras (B) ou use um assistente." Foreground="{DynamicResource Text.Tertiary}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,24,0,0" IsHitTestVisible="False" Visibility="Collapsed"/></Grid></TabItem>
+                  <TabItem Header="Barras" ToolTip="Perfil, comprimento, esforços extremos (N, Q, M) e flecha máxima de cada barra."><Grid><DataGrid x:Name="TabBarras" Style="{StaticResource Tabela}" ToolTip="Clique em uma linha para selecionar a barra correspondente no modelo."/><TextBlock x:Name="VazioBarras" Text="Nenhuma barra ainda. Tecle B e clique dois pontos no desenho." Foreground="{DynamicResource Text.Tertiary}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,24,0,0" IsHitTestVisible="False" Visibility="Collapsed"/></Grid></TabItem>
+                  <TabItem Header="Verificação" ToolTip="Aproveitamento e situação (passa / não passa) de cada barra. Duplo clique abre a comparação de perfis."><DockPanel><StackPanel x:Name="BarraVerif" DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,5,8,5"><TextBlock x:Name="ContVerif" Foreground="{DynamicResource Text.Tertiary}" FontSize="11.5" VerticalAlignment="Center" Margin="12,0,0,0"/></StackPanel><Grid><DataGrid x:Name="TabVerif" Style="{StaticResource Tabela}" ToolTip="Clique para selecionar a barra; duplo clique abre a janela de verificação e comparação de perfis."/><TextBlock x:Name="VazioVerif" Foreground="{DynamicResource Text.Tertiary}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/></Grid></DockPanel></TabItem>
                   <TabItem x:Name="AbaSoldas" Header="Soldas" ToolTip="Perna mínima de solda de filete necessária nas pontas não rotuladas de cada barra."><DataGrid x:Name="TabSoldas" Style="{StaticResource Tabela}" ToolTip="Soldas de filete nas extremidades das barras para o eletrodo selecionado."/></TabItem>
                 </TabControl>
               </ad:LayoutAnchorable>
               <ad:LayoutAnchorable x:Name="PainelAvisos" Title="AVISOS" ContentId="avisos" CanClose="False">
-                <ListBox x:Name="ListaAvisos" Background="#3B4453" BorderThickness="0" Foreground="{StaticResource Texto}" ToolTip="Avisos de modelagem, estabilidade e verificação. Clique em um item para selecionar os elementos no desenho."/>
+                <ListBox x:Name="ListaAvisos" Background="{DynamicResource Surface.1}" BorderThickness="0" Foreground="{DynamicResource Text.Primary}" ToolTip="Avisos de modelagem, estabilidade e verificação. Clique em um item para selecionar os elementos no desenho."/>
               </ad:LayoutAnchorable>
             </ad:LayoutAnchorablePane>
           </ad:LayoutPanel>
 
           <ad:LayoutAnchorablePane DockWidth="320">
             <ad:LayoutAnchorable x:Name="PainelProp" Title="PROPRIEDADES" ContentId="propriedades" CanClose="False">
-              <DockPanel Background="#3B4453">
-                <TextBlock x:Name="PropTitulo" DockPanel.Dock="Top" Margin="8,6" FontWeight="SemiBold" Foreground="{StaticResource Texto}" ToolTip="Elemento (ou conjunto de elementos) selecionado cujas propriedades são editadas abaixo."/>
-                <WindowsFormsHost x:Name="HostProp">
-                  <wf:PropertyGrid x:Name="Prop" ToolbarVisible="False" HelpVisible="True" PropertySort="Categorized"/>
-                </WindowsFormsHost>
-              </DockPanel>
+              <local:Inspector x:Name="Insp"/>
             </ad:LayoutAnchorable>
           </ad:LayoutAnchorablePane>
         </ad:LayoutPanel>

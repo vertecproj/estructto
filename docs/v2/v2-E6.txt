@@ -1,0 +1,12 @@
+ETAPA E6 — DIÁLOGOS + TELA INICIAL + RIBBON/PAINÉIS
+Pasta: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto. Leia docs\v2\GUIA-DESIGN.md (padrões de componente, checklist).
+Revise e refaça no padrão novo, um por um, olhando as capturas: JanelaVerificacao (23-*), JanelaCasos (24), JanelaRelatorio (25), JanelaAssistente (26-*;
+preview ao vivo da estrutura ao mudar parâmetros), caixas de mensagem/pergunta (27), ajuda (28), backstage/tela inicial (01: cartões com ilustração
+vetorial de cada assistente, arquivos recentes com miniatura do modelo, "novo em branco" destacado, atalhos), ribbon (agrupamento e ordem lógica dos
+comandos; nomes curtos; tamanhos grandes só para os principais; questione e reorganize se fizer sentido, registrando em docs\v2\STATUS.md), painéis
+Gerenciador do projeto (árvore com ícones e contagens, menos texto cru) e Tabelas de resultados (cabeçalhos com unidade, alinhamento numérico à direita,
+barra de capacidade na coluna de aproveitamento, filtro "só críticos").
+Cada diálogo: título claro, hierarquia, botões primário/secundário consistentes (Enter/Esc), estados vazios, dicas no mouse, sem rolagem desnecessária
+em 1280×720. Não perca função nenhuma.
+Capturas: refaça 01, 09-*, 22–28 + novas que precisar. Revise TODAS com o checklist.
+PROVA: build 0 erros; portico\compilar.ps1 -Testes; capturas revisadas.

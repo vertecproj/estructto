@@ -2,6 +2,13 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Bruno (v2: modernização da interface)
+
+- Interface inteira modernizada (feita na cópia `estructto-v2` de madrugada e trazida para cá): tema novo, ícones refeitos, painel de
+  propriedades WPF (sai o WinForms), vista com HUD/diagramas/mapa de calor, placa de base refeita em 3 passos com 3D, janelas e tela inicial
+  novas, Ctrl+K e entrada dinâmica no cursor. Cálculo inalterado (200 testes). Detalhe e decisões: [v2/RELATORIO.md](v2/RELATORIO.md).
+- Modo `--capturas` + `capturar.ps1` para conferência visual automática. Build passa a sair em `C:\dev\build\EstructtoV2`.
+
 ## 19/10/2026 — Bruno
 
 - **Função "Comparar fixações" ([TAREFA-COMPARAR-FIXACOES.md](TAREFA-COMPARAR-FIXACOES.md)):**

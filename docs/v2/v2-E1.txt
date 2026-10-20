@@ -1,0 +1,27 @@
+PROJETO: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto (C# WPF .NET 8, Fluent.Ribbon 11, AvalonDock 4.72 tema VS2013).
+Edite SÓ a pasta estructto-v2 (NUNCA a pasta ftool). Não adicione pacotes NuGet.
+Leia antes: ..\..\docs\v2\PESQUISA.md (seções 1, 2 e 4 — tokens de cor, tipografia, espaçamento) e ..\..\docs\v2\PLANO-V2.md (etapa E1).
+
+ETAPA E1 — TEMA NOVO + ESTILOS GLOBAIS
+1. Tokens: centralize em TemaPlant.cs (ou num ResourceDictionary Tema.xaml novo carregado em App.xaml) os tokens da PESQUISA 4.1–4.3:
+   fundo/superfícies 0..3, borda, texto 1/2/3, acento (#38BDF8 ou o que a pesquisa definiu), sucesso/alerta/erro, cores do canvas
+   (N, V, M, deformada, cargas, reações, seleção, grade). Exponha como Brush estáticos E como DynamicResource (chaves) para XAML.
+   Troque as cores fixas espalhadas (Pincel(0x..), Color.FromRgb, #hex em XAML) por esses tokens em TODOS os arquivos .cs/.xaml,
+   inclusive JanelaEscura (BFundo, BPainel, BTexto, ...) que deve passar a apontar para os tokens (mantenha os nomes para não quebrar).
+2. Tipografia: Segoe UI Variable (fallback Segoe UI), tamanhos da pesquisa, números tabulares (Typography.NumeralAlignment=Tabular) nas tabelas
+   e campos numéricos.
+3. Estilos implícitos modernos (raio 4–6, hover/pressed suaves com animação ~150 ms, foco visível com anel de acento, padding na grade de 4 px)
+   para: Button (normal e primário), ToggleButton, TextBox, PasswordBox, ComboBox (+ ComboBoxItem), CheckBox, RadioButton, TabControl/TabItem,
+   DataGrid (cabeçalho, linhas alternadas sutis, seleção, sem linhas verticais pesadas), TreeView/TreeViewItem, ListBox/ListBoxItem,
+   ScrollBar fina (6 px, cresce no hover), Expander, ToolTip (cartão escuro com sombra), ContextMenu/MenuItem, Slider, ProgressBar, GroupBox, Separator.
+   Retinte o Fluent.Ribbon (fundo, abas, grupos, botões, backstage) e o AvalonDock (abas, cabeçalhos de painel, splitters) com os tokens.
+   Barra de título das janelas (TituloEscuro/DWM) na cor do tema.
+4. NÃO mude layout, textos, comportamento nem o motor de cálculo. Não mexa em lógica de JanelaPlaca (só cores/estilos).
+
+PROVA (obrigatória):
+- dotnet build -c Release (0 erros, sem avisos novos).
+- cd ..\portico ; .\compilar.ps1 -Testes (todos passam).
+- Rode .\capturar.ps1 e ABRA (veja as imagens) pelo menos: 02-modelo, 06-momento, 09-ribbon-inicio, 20-placa-no4, 23-verificacao-barra1, 24-casos,
+  26-assistente-portico, 01-inicio. Corrija o que ficar ilegível, com contraste ruim ou com controle no estilo "Windows clássico".
+- NÃO deixe processo aberto, NÃO espere janela interativa.
+RESUMO FINAL curto: arquivos alterados, onde ficaram os tokens, estilos criados, o que olhou nas capturas e o que corrigiu, o que ficou pendente.

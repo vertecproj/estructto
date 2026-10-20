@@ -102,5 +102,60 @@ namespace NovoFtool
             foreach (double p in Pernas) if (p >= hn - 1e-9 && CalcularSimples(sec, deitado, N, V, M, p, adm) <= 1) return p;
             return 0;
         }
+
+        // Por que a solda com perna h nao passa e o que fazer (so diagnostico; o calculo e o de Calcular).
+        // Ordem: erro do perfil -> parede mais fina que a perna minima de norma (nenhuma perna cabe) -> menor perna
+        // da tabela que cabe na parede e passa com o mesmo eletrodo -> eletrodo mais forte -> sem solucao na tabela.
+        public static DiagSolda Diagnosticar(Secao sec, bool deitado, double N, double V, double M, double h, string eletrodo, double tChapa = 0)
+        {
+            DiagSolda d = new DiagSolda();
+            string el = string.IsNullOrEmpty(eletrodo) ? "E70" : eletrodo.ToUpperInvariant().Replace("XX", "");
+            ResSolda r = Calcular(sec, deitado, N, V, M, h, el, tChapa);
+            if (r.Erro != "") { d.Porque = r.Erro; d.OQueFazer = "Confira o perfil do pilar."; d.SemSolucao = true; return d; }
+            if (r.Passa) return d;
+            double t = r.Espessura, hn = r.HMinNorma;
+            if (t > 0 && hn > t + 1e-9)
+            {
+                d.Porque = "parede do perfil " + Num.Fmt(t, 2) + " mm < perna mínima de norma " + Num.Fmt(hn, 0) + " mm (NBR 8800 Tab. 10).";
+                d.OQueFazer = "perna máx. ≈ " + Num.Fmt(t, 1) + " mm. Use perfil com parede ≥ " + Num.Fmt(hn, 0) +
+                              " mm, chapa de reforço/luva no pé do pilar ou detalhe a ligação à parte.";
+                d.PernaMax = t;
+                d.SemSolucao = true;
+                return d;
+            }
+            if (r.MaiorQueParede) d.Porque = "perna de " + Num.Fmt(h, 0) + " mm maior que a parede do perfil (" + Num.Fmt(t, 1) + " mm).";
+            else if (r.AbaixoMinimo) d.Porque = "perna de " + Num.Fmt(h, 0) + " mm abaixo do mínimo de norma (" + Num.Fmt(hn, 0) + " mm pela peça mais fina).";
+            else d.Porque = "τ = " + Num.Fmt(r.Tau, 0) + " MPa passa do admissível do " + el + "XX (" + Num.Fmt(r.TauAdm, 0) + " MPa) com perna de " + Num.Fmt(h, 0) + " mm.";
+            int ie = Array.IndexOf(Eletrodos, el);
+            if (ie < 0) ie = 1;
+            for (int k = ie; k < Eletrodos.Length; k++)
+            {
+                foreach (double p in Pernas)
+                {
+                    if (p < hn - 1e-9 || (t > 0 && p > t + 1e-9)) continue;
+                    if (CalcularSimples(sec, deitado, N, V, M, p, TauAdm[k]) <= 1)
+                    {
+                        d.Perna = p;
+                        d.Eletrodo = Eletrodos[k];
+                        d.OQueFazer = k == ie ? "use perna de " + Num.Fmt(p, 0) + " mm." : "nenhuma perna que cabe passa com " + el + "XX: use " + Eletrodos[k] + "XX com perna de " + Num.Fmt(p, 0) + " mm.";
+                        return d;
+                    }
+                }
+            }
+            double pm = t > 0 ? Math.Min(t, Pernas[Pernas.Length - 1]) : Pernas[Pernas.Length - 1];
+            d.PernaMax = pm;
+            d.SemSolucao = true;
+            d.OQueFazer = "nem a maior perna que cabe (" + Num.Fmt(pm, 0) + " mm) com " + Eletrodos[Eletrodos.Length - 1] + "XX passa: use pilar maior, nervuras (enrijecedores) no pé ou detalhe a ligação à parte.";
+            return d;
+        }
+    }
+
+    // Diagnostico da solda reprovada: Porque vazio = passa. Perna/Eletrodo > 0 = sugestao aplicavel com um clique.
+    public class DiagSolda
+    {
+        public string Porque = "", OQueFazer = "", Eletrodo = "";
+        public double Perna, PernaMax;
+        public bool SemSolucao;
+        public bool Passa { get { return Porque == ""; } }
     }
 }

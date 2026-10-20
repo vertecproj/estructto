@@ -203,7 +203,7 @@ namespace NovoFtool
             var m = j.Resultado;
             foreach (Barra b in m.Barras) b.Dono = m;
             Vista.M = m; Vista.Sel.Clear();
-            Confirmar(m.Casos.Count + " caso(s) e " + m.Combinacoes.Count + " combinação(ões).");
+            Confirmar(Pl.N(m.Casos.Count, "caso", "casos") + " e " + Pl.N(m.Combinacoes.Count, "combinação", "combinações") + ".");
             SelecaoMudou();
         }
 
@@ -257,8 +257,8 @@ namespace NovoFtool
         void Montar()
         {
             corpo.Children.Clear(); lc.Clear(); lk.Clear();
-            corpo.Children.Add(T("Casos de carga", 16, BTexto, FontWeights.SemiBold));
-            corpo.Children.Add(T("As cargas são lançadas no caso ativo (aba Cargas). O peso próprio, se ligado, entra no caso marcado.", 11, BFraco));
+            corpo.Children.Add(UiPlaca.TituloSecao("Casos de carga", null, 0));
+            corpo.Children.Add(Ajuda("As cargas são lançadas no caso ativo (aba Cargas). O peso próprio, se ligado, entra no caso marcado."));
             for (int i = 0; i < m.Casos.Count; i++)
             {
                 int ii = i;
@@ -272,18 +272,19 @@ namespace NovoFtool
                 ex.IsEnabled = m.Casos.Count > 1;
                 ex.ToolTip = "Remove este caso de carga e todas as cargas lançadas nele.";
                 linha.Children.Add(ex);
-                if (i == m.CasoAtivo) linha.Children.Add(T("  ◄ ativo", 11, BAzul));
+                if (i == m.CasoAtivo) { var ch = UiPlaca.Chip("ativo", UiPlaca.Nivel.Info, "Caso que recebe as cargas lançadas na aba Cargas."); ch.Margin = new Thickness(6, 0, 0, 0); linha.Children.Add(ch); }
                 corpo.Children.Add(linha);
                 lc.Add((nome, tipo, pp));
             }
             var novo = B("+ Novo caso", () => { Ler(); m.AdicionarCaso(new CasoCarga { Nome = "Q" + m.Casos.Count + " - Sobrecarga", Tipo = "Q" }); Montar(); });
-            novo.HorizontalAlignment = HorizontalAlignment.Left; novo.Margin = new Thickness(0, 8, 0, 18);
+            novo.HorizontalAlignment = HorizontalAlignment.Left; novo.Margin = new Thickness(0, 10, 0, 14);
             novo.ToolTip = "Adiciona um novo caso de carga ao modelo (sobrecarga, vento, equipamento...).";
             corpo.Children.Add(novo);
+            corpo.Children.Add(new Border { Height = 1, Background = TemaPlant.BBordaSutil, Margin = new Thickness(0, 0, 0, 14) });
 
-            corpo.Children.Add(T("Combinações", 16, BTexto, FontWeights.SemiBold));
-            corpo.Children.Add(T("Fator de cada caso em cada combinação. \"Gerar\" cria as combinações normais da NBR 8681/8800 (γg 1,4 ou 1,0 favorável; sobrecarga 1,5 e ψ0 0,5; vento 1,4 e ψ0 0,6; ELS quase permanente e frequentes). Confira os fatores para o seu caso. Com cargas majoradas (ELU), ajuste a \"Segurança\" da aba Análise (ex.: 1,1 = γa1).", 11, BFraco));
-            var cab = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            corpo.Children.Add(UiPlaca.TituloSecao("Combinações", null, 4));
+            corpo.Children.Add(Ajuda("Fator de cada caso em cada combinação. \"Gerar\" cria as combinações normais da NBR 8681/8800 (γg 1,4 ou 1,0 favorável; sobrecarga 1,5 e ψ0 0,5; vento 1,4 e ψ0 0,6; ELS quase permanente e frequentes). Confira os fatores para o seu caso. Com cargas majoradas (ELU), ajuste a \"Segurança\" da aba Análise (ex.: 1,1 = γa1)."));
+            var cab = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0), Visibility = m.Combinacoes.Count == 0 ? Visibility.Collapsed : Visibility.Visible };
             cab.Children.Add(Cab("Nome", 246)); cab.Children.Add(Cab("Tipo", 86));
             foreach (CasoCarga c in m.Casos) cab.Children.Add(Cab(c.Nome, 86));
             corpo.Children.Add(cab);
@@ -310,7 +311,7 @@ namespace NovoFtool
                 corpo.Children.Add(linha);
                 lk.Add((nome, tipo, fs));
             }
-            if (m.Combinacoes.Count == 0) corpo.Children.Add(T("Nenhuma combinação: os resultados são os de cada caso isolado.", 12, BFraco));
+            if (m.Combinacoes.Count == 0) { var ev = UiTabela.Vazio("tabela", "Nenhuma combinação", "Os resultados são os de cada caso isolado. Use \"Gerar combinações\" para criar as da NBR 8681/8800."); ev.Margin = new Thickness(0, 14, 0, 10); corpo.Children.Add(ev); }
             var bt = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
             var nk = B("+ Nova combinação", () =>
             {
@@ -332,6 +333,8 @@ namespace NovoFtool
             bt.Children.Add(bg);
             corpo.Children.Add(bt);
         }
+
+        static UIElement Ajuda(string s) { var t = T(s, 11.5, TemaPlant.BTexto3); t.MaxWidth = 860; t.HorizontalAlignment = HorizontalAlignment.Left; t.Margin = new Thickness(0, 0, 0, 4); return t; }
 
         static UIElement Cab(string s, double larg) { var t = T(s, 11, BFraco, FontWeights.SemiBold); t.Width = larg; t.TextTrimming = TextTrimming.CharacterEllipsis; t.TextWrapping = TextWrapping.NoWrap; t.ToolTip = s; return t; }
 

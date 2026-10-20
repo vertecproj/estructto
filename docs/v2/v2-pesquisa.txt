@@ -1,0 +1,28 @@
+PESQUISA (não edite código). Projeto: Estructto — programa Windows (C# WPF .NET 8, Fluent.Ribbon 11, AvalonDock 4.72, tema escuro no estilo AutoCAD Plant 3D)
+para análise de pórticos planos (clone moderno do Ftool) com verificação de barras, placa de base com chumbadores, solda, memorial.
+Código em G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto (leia MainWindow.xaml, TemaPlant.cs, Icones.cs, Janelas.cs por cima para entender o estado atual).
+
+OBJETIVO: vamos MODERNIZAR toda a interface: manter a usabilidade de CAD (ribbon, linha de comando, snaps, atalhos, painéis encaixáveis,
+propriedades), mas ficar muito bonito e impressionante, dinâmico e fácil. Pesquise na web e no GitHub e escreva um relatório prático.
+
+Escreva o relatório em G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\docs\v2\PESQUISA.md com:
+1. Referências de UI de software de engenharia/CAD modernos (AutoCAD 2025/2026, Revit, Fusion, Onshape, SkyCiv, Tekla, Robot, SAP2000,
+   Figma como referência de UX moderna): o que cada um faz bem (painéis, inspector, ribbon contextual, command palette, HUD, feedback ao vivo,
+   resultados coloridos, legendas, mini-mapas, estados vazios, onboarding). Liste 15–25 padrões concretos aplicáveis ao Estructto.
+2. Bibliotecas/repos GitHub para WPF moderno, com LICENÇA e se servem com Fluent.Ribbon + AvalonDock e .NET 8:
+   WPF-UI (lepoco/wpfui), ModernWpf, MahApps, HandyControl, iNKORE UI.WPF.Modern, MaterialDesignInXaml, Fluent.Ribbon temas, AvalonDock temas,
+   ScottPlot/LiveCharts para gráficos, SharpVectors/Svg para ícones, etc. Recomende UMA combinação de baixo risco (mudar o mínimo de dependências).
+3. Ícones: conjuntos de ícones com licença livre (MIT/Apache/OFL) bons para CAD/estruturas: Fluent System Icons (Microsoft, MIT),
+   Lucide, Tabler, Phosphor, Material Symbols, Codicons, Iconoir. Para cada: estilo, licença, nº de ícones, se tem ícones úteis para:
+   barra/linha, nó, apoio (engaste, rótula, rolete), carga distribuída, carga pontual, momento, deformada, diagramas, medir, snap, grade,
+   placa, parafuso, solda, relatório/PDF, desfazer/refazer, zoom. Recomende UM conjunto e como embutir em WPF (Path geometry / fonte).
+   Diga quais ícones específicos de engenharia estrutural terão que ser desenhados à mão (e dê ideia de desenho para cada um).
+4. Paleta e tipografia: proposta de tema escuro moderno (e claro opcional) com tokens (fundo, superfícies 1/2/3, borda, texto 1/2/3,
+   acento, sucesso/alerta/erro, cores dos diagramas N/V/M, deformada, cargas, reações), contraste WCAG AA, fonte (Segoe UI Variable / Inter),
+   tamanhos, espaçamentos (grade de 4 px), raios, sombras, animações curtas (150–200 ms).
+5. Padrões de UX para a janela de PLACA DE BASE / ligação (software como IDEA StatiCa, RISA Connection, Hilti PROFIS, CYPE Connect,
+   Simpson Anchor Designer): fluxo, como escolhem chumbador/chapa, como mostram resultado, 3D, relatório. O que copiar.
+6. Lista priorizada (P1/P2/P3) de melhorias recomendadas para o Estructto, com esforço estimado.
+
+Cite as fontes (URLs). Seja concreto, sem enrolação. Não invente licenças: confira.
+NÃO fique aguardando nada em segundo plano; termine quando o arquivo estiver escrito. Responda com um resumo de 10 linhas.

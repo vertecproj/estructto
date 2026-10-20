@@ -16,19 +16,19 @@ namespace NovoFtool
 {
     public partial class MainWindow
     {
-        string arquivo;
-        bool alterado;
+        internal string arquivo;
+        internal bool alterado;
         string atual;
         readonly Stack<string> desfazer = new Stack<string>(), refazer = new Stack<string>();
         readonly List<string> historico = new List<string>();
         readonly DispatcherTimer autoSalvar = new DispatcherTimer { Interval = TimeSpan.FromMinutes(2) };
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-        Modelo M { get { return Vista.M; } }
+        internal Modelo M { get { return Vista.M; } }
 
         void LigarEventos()
         {
-            Vista.MouseMundo += p => Coord.Text = "X " + Num.Fmt(p.X, 3).PadLeft(9) + "   Y " + Num.Fmt(p.Y, 3).PadLeft(9) + "  m";
+            Vista.MouseMundo += p => Coord.Text = "X " + Num.Fmt(p.X, 3).PadLeft(8) + " m   Y " + Num.Fmt(p.Y, 3).PadLeft(8) + " m";
             Vista.Clique += CliqueNaVista;
             Vista.SelecaoMudou += SelecaoMudou;
             Vista.NoArrastado += (n, de, para) => Confirmar("Nó " + n.Id + " movido para (" + Num.Fmt(para.X, 3) + "; " + Num.Fmt(para.Y, 3) + ").");
@@ -47,19 +47,22 @@ namespace NovoFtool
                 else { PainelProp.Show(); PainelProp.IsActive = true; }
             };
             Vista.Verificar = b => VerificarAtual(b, Biblioteca.AcharSecao(b.Secao));
-            Prop.PropertyValueChanged += (s, e) =>
+            Insp.Verificar = b => Vista.Resolvido && b.Res != null ? Vista.Verificar(b) : null;
+            Insp.Acoes = AcoesDoInspector;
+            Insp.Alterado += (alvos, rotulo) =>
             {
-                SincronizarMembros((Prop.SelectedObjects ?? new object[0]).OfType<Barra>());
-                Confirmar("Propriedade alterada: " + e.ChangedItem.Label + ".");
+                // mesmo caminho do antigo PropertyValueChanged: sincroniza barra continua e confirma (desfazer, recalculo, modificado)
+                SincronizarMembros(alvos.OfType<Barra>());
+                Confirmar("Propriedade alterada: " + rotulo + ".");
             };
             Arvore.SelectedItemChanged += ArvoreMudou;
+            MontarFiltroVerif();
             TabNos.SelectionChanged += (s, e) => SelecionarDaTabela(TabNos);
             TabBarras.SelectionChanged += (s, e) => SelecionarDaTabela(TabBarras);
             TabVerif.SelectionChanged += (s, e) => SelecionarDaTabela(TabVerif);
             TabVerif.MouseDoubleClick += (s, e) => { var b = Vista.Sel.OfType<Barra>().FirstOrDefault(); if (b != null) AbrirVerificacao(b); };
             ListaAvisos.SelectionChanged += (s, e) => { if (ListaAvisos.SelectedItem is ListBoxItem it && it.Tag is IEnumerable<object> objs) { Vista.Selecionar(objs); } };
             SeloAvisos.Click += (s, e) => { PainelAvisos.Show(); PainelAvisos.IsSelected = true; PainelAvisos.IsActive = true; };
-            Prop.SelectedObjectsChanged += (s, e) => AjustarDivisorPropriedades(); Prop.SizeChanged += (s, e) => AjustarDivisorPropriedades();
             Comando.KeyDown += ComandoTecla;
             Comando.TextChanged += (s, e) => MostrarSugestao();
             var tmDica = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
@@ -144,7 +147,7 @@ namespace NovoFtool
             SelecaoMudou();
         }
 
-        void Desfazer()
+        internal void Desfazer()
         {
             if (desfazer.Count == 0) { Log("Nada para desfazer."); return; }
             refazer.Push(atual); Restaurar(desfazer.Pop()); Log("Desfeito.");
@@ -166,7 +169,7 @@ namespace NovoFtool
 
         // ================= calculo =================
 
-        void Resolver(bool avisar)
+        internal void Resolver(bool avisar)
         {
             Vista.Resolvido = false;
             erroCalculo = "";
@@ -191,18 +194,21 @@ namespace NovoFtool
                 int falham = M.Barras.Count(b => { var v = Vista.Verificar(b); return v.Aplicavel && !v.Passa; });
                 double rx = 0, ry = 0, dmax = 0;
                 foreach (No n in M.Nos.Where(x => x.Res != null)) { rx += n.Res[3]; ry += n.Res[4]; dmax = Math.Max(dmax, Math.Sqrt(n.Res[0] * n.Res[0] + n.Res[1] * n.Res[1])); }
-                StatusMsg.Text = "Calculado — " + NomeResultado() + ".  " + (Vista.Envoltoria != null ? "Envoltória de " + CombinacoesDaEnvoltoria().Count + " combinação(ões)"
-                                 : "ΣRx = " + Num.Fmt(rx, 2) + " kN   ΣRy = " + Num.Fmt(ry, 2) + " kN   desl. máx. = " + Num.Fmt(dmax * 1000, 3) + " mm") +
-                                 (M.PesoProprio ? "  (com peso próprio)" : "") + (falham > 0 ? "   ⚠ " + falham + " barra(s) não passam" : "");
+                StatusMsg.Text = "Calculado — " + NomeResultado() + ".  " + (Vista.Envoltoria != null ? "Envoltória de " + Pl.N(CombinacoesDaEnvoltoria().Count, "combinação", "combinações")
+                                 : "ΣRx " + Num.Fmt(rx, 2) + " · ΣRy " + Num.Fmt(ry, 2) + " kN · desl. máx. " + Num.Fmt(dmax * 1000, 3) + " mm") +
+                                 (M.PesoProprio ? " (com peso próprio)" : "") + (falham > 0 ? " · ⚠ " + Pl.N(falham, "barra não passa", "barras não passam") : "");
                 if (avisar) Log(StatusMsg.Text);
             }
             AtualizarLegenda();
+            if (avisar) Vista.EnquadrarLivre();
             Vista.InvalidateVisual();
         }
 
-        void MostrarDiagrama(Diagrama d)
+        internal void MostrarDiagrama(Diagrama d, bool calor = false)
         {
             Vista.Diag = d;
+            Vista.MapaCalor = calor && d == Diagrama.Verificacao;
+            if (tgCalor != null) tgCalor.IsChecked = Vista.MapaCalor;
             if (d != Diagrama.Nenhum && Vista.Ferr != Ferramenta.Selecionar) UsarFerramenta(Ferramenta.Selecionar);
             foreach (var kv in btnDiag) kv.Value.IsChecked = kv.Key == d;
             if (d != Diagrama.Nenhum) Faixa.SelectedTabItem = abaResultados;
@@ -216,15 +222,12 @@ namespace NovoFtool
             Vista.InvalidateVisual();
         }
 
+        // A legenda agora vive no HUD da vista (Hud.cs).
         void AtualizarLegenda()
         {
-            LegendaDiag.Text = Vista.Diag == Diagrama.Deformada ? "Deformada" + Vista.LegendaDeformada()
-                : Vista.Diag == Diagrama.Normal ? "Esforço normal N (kN) — azul + tração · vermelho − compressão"
-                : Vista.Diag == Diagrama.Cortante ? "Esforço cortante Q (kN) — azul + · vermelho −"
-                : Vista.Diag == Diagrama.Momento ? "Momento fletor M (kN·m) — desenhado do lado tracionado; + traciona a fibra de baixo"
-                : Vista.Diag == Diagrama.Verificacao ? "Verificação: verde passa · amarelo > 90% · vermelho não passa · cinza sem verificação"
-                : "Modelo";
-            if (Vista.Diag != Diagrama.Nenhum && !Vista.Resolvido) LegendaDiag.Text += "  (sem resultados)";
+            if (Hud != null) Hud.Atualizar();
+            foreach (var kv in btnDiag) kv.Value.IsChecked = kv.Key == Vista.Diag && !(Vista.MapaCalor && kv.Key == Diagrama.Verificacao);
+            if (tgCalor != null) tgCalor.IsChecked = Vista.Diag == Diagrama.Verificacao && Vista.MapaCalor;
         }
 
         void MudarCriterio()
@@ -259,12 +262,13 @@ namespace NovoFtool
             UsarFerramenta(Vista.Ferr == f && f != Ferramenta.Selecionar ? Ferramenta.Selecionar : f);
         }
 
-        void UsarFerramenta(Ferramenta f)
+        internal void UsarFerramenta(Ferramenta f)
         {
             Vista.Ferr = f;
             Vista.InicioBarra = null;
             Vista.MedidaIni = null;
             Vista.MedidaFim = null;
+            Vista.DinLimpar();
             Vista.LimparRastreio();   // pontos de rastreamento valem por comando, como no AutoCAD
             if (f != Ferramenta.Selecionar && Vista.Sel.Count > 0) { Vista.Sel.Clear(); SelecaoMudou(); }
             SincronizarFerramenta();
@@ -308,7 +312,7 @@ namespace NovoFtool
                 if (f == Ferramenta.ApoioLivre) { n.MolaX = n.MolaY = n.MolaGiro = 0; n.RecalqueX = n.RecalqueY = 0; n.Placa = null; }
                 if (!n.ApoioGiro && n.Placa != null && f != Ferramenta.ApoioEngaste) { }
             }
-            Confirmar((f == Ferramenta.ApoioLivre ? "Apoio removido de " : "Apoio aplicado em ") + lista.Count + " nó(s).");
+            Confirmar((f == Ferramenta.ApoioLivre ? "Apoio removido de " : "Apoio aplicado em ") + Pl.N(lista.Count, "nó", "nós") + ".");
         }
 
         void AplicarCargaNo(IEnumerable<No> nos)
@@ -318,7 +322,7 @@ namespace NovoFtool
             double? fx = Ler(cFx, "Fx"), fy = Ler(cFy, "Fy"), mz = Ler(cMz, "Mz");
             if (fx == null || fy == null || mz == null) return;
             foreach (No n in lista) { n.Fx = fx.Value; n.Fy = fy.Value; n.Mz = mz.Value; }
-            Confirmar("Carga aplicada em " + lista.Count + " nó(s).");
+            Confirmar("Carga aplicada em " + Pl.N(lista.Count, "nó", "nós") + ".");
         }
 
         void AplicarCargaBarra(IEnumerable<Barra> barras)
@@ -327,7 +331,7 @@ namespace NovoFtool
             double? qx = Ler(cQx, "qx"), qy = Ler(cQy, "qy"), qi = Ler(cQi, "q⊥ início"), qf = Ler(cQf, "q⊥ fim");
             if (qx == null || qy == null || qi == null || qf == null) return;
             foreach (Barra b in lista) { b.QGlobalX = qx.Value; b.QGlobalY = qy.Value; b.QLocalIni = qi.Value; b.QLocalFim = qf.Value; }
-            Confirmar("Carga aplicada em " + lista.Count + " barra(s).");
+            Confirmar("Carga aplicada em " + Pl.N(lista.Count, "barra", "barras") + ".");
         }
 
         void RotularSel(bool ini, bool fim)
@@ -336,7 +340,7 @@ namespace NovoFtool
             if (bs.Count == 0) { Log("Selecione barras."); return; }
             bool novo = !(ini ? bs[0].RotulaInicio : bs[0].RotulaFim);
             foreach (Barra b in bs) { if (ini) b.RotulaInicio = novo; if (fim) b.RotulaFim = novo; }
-            Confirmar("Rótulas alteradas em " + bs.Count + " barra(s).");
+            Confirmar("Rótulas alteradas em " + Pl.N(bs.Count, "barra", "barras") + ".");
         }
 
         void CliqueNaVista(double x, double y)
@@ -391,6 +395,7 @@ namespace NovoFtool
 
         void PontoBarra(double x, double y)
         {
+            Vista.DinLimpar();
             if (Vista.InicioBarra == null)
             {
                 Vista.InicioBarra = new Point(x, y);
@@ -414,8 +419,9 @@ namespace NovoFtool
             Vista.Garantir(new Point(x, y));
         }
 
-        void PontoMedida(double x, double y)
+        internal void PontoMedida(double x, double y)
         {
+            Vista.DinLimpar();
             if (Vista.MedidaIni == null || Vista.MedidaFim != null)
             {
                 Vista.MedidaIni = new Point(x, y);
@@ -444,7 +450,7 @@ namespace NovoFtool
             if (alvo.Count == 0) { Log("Nenhuma barra selecionada: " + cbSecao.Text + " vale para as próximas barras desenhadas."); return; }
             foreach (Barra b in alvo) { b.Secao = cbSecao.Text; b.Material = cbMaterial.Text; }
             SincronizarMembros(alvo);
-            Confirmar("Seção " + cbSecao.Text + " aplicada em " + alvo.Count + " barra(s).");
+            Confirmar("Seção " + cbSecao.Text + " aplicada em " + Pl.N(alvo.Count, "barra", "barras") + ".");
         }
 
         void Apagar()
@@ -457,7 +463,7 @@ namespace NovoFtool
                 else if (o is No n && M.Nos.Contains(n)) M.RemoverNo(n);
             }
             Vista.Sel.Clear();
-            Confirmar(qt + " item(ns) apagado(s). Ctrl+Z desfaz.");
+            Confirmar(Pl.N(qt, "item apagado", "itens apagados") + ". Ctrl+Z desfaz.");
             SelecaoMudou();
         }
 
@@ -475,7 +481,7 @@ namespace NovoFtool
                 for (int i = 1; i < n; i++) M.ObterNo(ax + (cx - ax) * i / n, ay + (cy - ay) * i / n, 1e-6);
             }
             Vista.Sel.Clear();
-            Confirmar(bs.Count + " barra(s) dividida(s) em " + n + ".");
+            Confirmar(Pl.N(bs.Count, "barra dividida", "barras divididas") + " em " + n + ".");
             SelecaoMudou();
         }
 
@@ -497,44 +503,45 @@ namespace NovoFtool
             Confirmar("Grade = " + Num.Fmt(g, 3) + " m.");
         }
 
-        void MenuContexto(object o, Point p)
+        internal ContextMenu CriarMenuContexto(object o)
         {
             var cm = new ContextMenu();
-            void Add(string t, Action a, string atalho = null, string dica = null)
+            void Add(string t, Action a, string atalho = null, string dica = null, string ic = null)
             {
                 var mi = new MenuItem { Header = t, InputGestureText = atalho, ToolTip = dica };
+                if (ic != null) mi.Icon = Icone(ic, 16);
                 mi.Click += (s, e) => a();
                 cm.Items.Add(mi);
             }
             if (o is No)
             {
-                var ap = new MenuItem { Header = "Apoio", ToolTip = "Define o tipo de vinculação externa dos nós selecionados." };
+                var ap = new MenuItem { Header = "Apoio", Icon = Icone("engaste", 16), ToolTip = "Define o tipo de vinculação externa dos nós selecionados." };
                 foreach (var par in new[]
                 {
-                    ("Engaste", Ferramenta.ApoioEngaste, "Trava deslocamentos X, Y e giro nos nós selecionados."),
-                    ("Fixo (2º gênero)", Ferramenta.ApoioRotula, "Trava deslocamentos X e Y, deixando o giro livre."),
-                    ("Móvel (1º gênero)", Ferramenta.ApoioRoloV, "Trava apenas o deslocamento vertical Y (rolete)."),
-                    ("Móvel em X", Ferramenta.ApoioRoloH, "Trava apenas o deslocamento horizontal X."),
-                    ("Sem apoio", Ferramenta.ApoioLivre, "Remove apoios, molas, recalques e placa de base do nó.")
+                    ("Engaste", Ferramenta.ApoioEngaste, "Trava deslocamentos X, Y e giro nos nós selecionados.", "engaste"),
+                    ("Fixo (2º gênero)", Ferramenta.ApoioRotula, "Trava deslocamentos X e Y, deixando o giro livre.", "rotula"),
+                    ("Móvel (1º gênero)", Ferramenta.ApoioRoloV, "Trava apenas o deslocamento vertical Y (rolete).", "rolo"),
+                    ("Móvel em X", Ferramenta.ApoioRoloH, "Trava apenas o deslocamento horizontal X.", "roloh"),
+                    ("Sem apoio", Ferramenta.ApoioLivre, "Remove apoios, molas, recalques e placa de base do nó.", "livre")
                 })
                 {
-                    var mi = new MenuItem { Header = par.Item1, ToolTip = par.Item3 };
+                    var mi = new MenuItem { Header = par.Item1, ToolTip = par.Item3, Icon = Icone(par.Item4, 16) };
                     var f = par.Item2;
                     mi.Click += (s, e) => AplicarApoio(f, Vista.Sel.OfType<No>());
                     ap.Items.Add(mi);
                 }
                 cm.Items.Add(ap);
-                Add("Aplicar carga da aba Cargas", () => AplicarCargaNo(Vista.Sel.OfType<No>()), null, "Aplica Fx, Fy e Mz preenchidos na aba Cargas aos nós selecionados.");
-                Add("Placa de base...", () => AbrirPlaca(Vista.Sel.OfType<No>().FirstOrDefault()), null, "Abre a janela de dimensionamento e verificação da placa de base deste nó.");
+                Add("Aplicar carga da aba Cargas", () => AplicarCargaNo(Vista.Sel.OfType<No>()), null, "Aplica Fx, Fy e Mz preenchidos na aba Cargas aos nós selecionados.", "cargano");
+                Add("Placa de base...", () => AbrirPlaca(Vista.Sel.OfType<No>().FirstOrDefault()), null, "Abre a janela de dimensionamento e verificação da placa de base deste nó.", "placa");
                 cm.Items.Add(new Separator());
-                Add("Apagar", Apagar, "Del", "Remove os nós selecionados e as barras conectadas a eles.");
+                Add("Apagar", Apagar, "Del", "Remove os nós selecionados e as barras conectadas a eles.", "apagar");
             }
             else if (o is Barra)
             {
-                Add("Verificar / comparar perfis...", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), null, "Abre a verificação detalhada da barra e compara opções de perfis da mesma família.");
-                Add("Aplicar seção da aba Estrutura", () => AplicarSecao(false), null, "Atribui a seção e o material escolhidos na aba Estrutura às barras selecionadas.");
-                Add("Aplicar carga distribuída da aba Cargas", () => AplicarCargaBarra(Vista.Sel.OfType<Barra>()), null, "Aplica as cargas distribuídas qx, qy e q⊥ da aba Cargas às barras selecionadas.");
-                var ro = new MenuItem { Header = "Rótula", ToolTip = "Adiciona ou remove articulações (momento nulo) nas pontas das barras selecionadas." };
+                Add("Verificar / comparar perfis...", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), null, "Abre a verificação detalhada da barra e compara opções de perfis da mesma família.", "verif");
+                Add("Aplicar seção da aba Estrutura", () => AplicarSecao(false), null, "Atribui a seção e o material escolhidos na aba Estrutura às barras selecionadas.", "aplicar");
+                Add("Aplicar carga distribuída da aba Cargas", () => AplicarCargaBarra(Vista.Sel.OfType<Barra>()), null, "Aplica as cargas distribuídas qx, qy e q⊥ da aba Cargas às barras selecionadas.", "cargadist");
+                var ro = new MenuItem { Header = "Rótula", Icon = Icone("rotulab", 16), ToolTip = "Adiciona ou remove articulações (momento nulo) nas pontas das barras selecionadas." };
                 foreach (var par in new[]
                 {
                     ("No início", true, false, "Liga ou desliga a rótula na extremidade inicial da barra."),
@@ -548,20 +555,26 @@ namespace NovoFtool
                     ro.Items.Add(mi);
                 }
                 cm.Items.Add(ro);
-                Add("Dividir...", DividirSelecao, null, "Divide as barras selecionadas em partes iguais criando nós intermediários.");
+                Add("Dividir...", DividirSelecao, null, "Divide as barras selecionadas em partes iguais criando nós intermediários.", "dividir");
                 cm.Items.Add(new Separator());
-                Add("Apagar", Apagar, "Del", "Remove as barras selecionadas do modelo.");
+                Add("Apagar", Apagar, "Del", "Remove as barras selecionadas do modelo.", "apagar");
             }
             else
             {
-                Add("Desenhar barra", () => UsarFerramenta(Ferramenta.Barra), "B", "Ativa a ferramenta para desenhar novas barras clicando nos pontos.");
-                Add("Medir distância", () => UsarFerramenta(Ferramenta.Medir), "Ctrl+M", "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos da vista.");
-                Add("Enquadrar", () => Vista.ZoomTudo(), "F4", "Ajusta o zoom para mostrar o modelo inteiro na tela.");
-                Add("Selecionar todas as barras", () => Vista.Selecionar(M.Barras.Cast<object>()), "Ctrl+A", "Seleciona todas as barras do modelo de uma só vez.");
-                Add("Desfazer", Desfazer, "Ctrl+Z", "Desfaz a última alteração realizada no modelo.");
+                Add("Desenhar barra", () => UsarFerramenta(Ferramenta.Barra), "B", "Ativa a ferramenta para desenhar novas barras clicando nos pontos.", "barra");
+                Add("Medir distância", () => UsarFerramenta(Ferramenta.Medir), "Ctrl+M", "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos da vista.", "medir");
+                Add("Enquadrar", () => Vista.ZoomTudo(), "F4", "Ajusta o zoom para mostrar o modelo inteiro na tela.", "zoomtudo");
+                Add("Selecionar todas as barras", () => Vista.Selecionar(M.Barras.Cast<object>()), "Ctrl+A", "Seleciona todas as barras do modelo de uma só vez.", "sel");
+                Add("Desfazer", Desfazer, "Ctrl+Z", "Desfaz a última alteração realizada no modelo.", "desfazer");
             }
             cm.Items.Add(new Separator());
-            Add("Propriedades", () => { PainelProp.Show(); PainelProp.IsActive = true; }, null, "Mostra e ativa o painel Propriedades para editar os dados do item selecionado.");
+            Add("Propriedades", () => { PainelProp.Show(); PainelProp.IsActive = true; }, null, "Mostra e ativa o painel Propriedades para editar os dados do item selecionado.", "painel");
+            return cm;
+        }
+
+        void MenuContexto(object o, Point p)
+        {
+            var cm = CriarMenuContexto(o);
             cm.PlacementTarget = Vista; cm.Placement = System.Windows.Controls.Primitives.PlacementMode.RelativePoint;
             cm.HorizontalOffset = p.X; cm.VerticalOffset = p.Y; cm.IsOpen = true;
         }
@@ -598,7 +611,7 @@ namespace NovoFtool
             if (d.ShowDialog(this) == true) foreach (string f in d.FileNames) Abrir(f);
         }
 
-        void Abrir(string caminho)
+        internal void Abrir(string caminho)
         {
             // ja aberto: so troca para a aba dele
             GuardarDoc();
@@ -724,7 +737,7 @@ namespace NovoFtool
         }
 
         // Placa: no resultado da tela; na envoltoria, a combinacao com o pior aproveitamento (parafuso ou chapa).
-        ResPlaca PlacaPior(No n)
+        internal ResPlaca PlacaPior(No n)
         {
             if (Vista.Envoltoria == null) return PlacaCalc.Calcular(M, n);
             ResPlaca pior = null; double nota = double.MinValue;
@@ -739,7 +752,7 @@ namespace NovoFtool
             return pior;
         }
 
-        double NotaPlaca(ResPlaca rp, No n)
+        internal double NotaPlaca(ResPlaca rp, No n)
         {
             if (!rp.TemEsforcos) return -1;
             double par = rp.ApFix;
@@ -808,7 +821,7 @@ namespace NovoFtool
         // ================= teclado e linha de comando =================
 
         static readonly string[] Comandos = { "BARRA", "NO", "MEDIR", "DI", "DIST", "SEL", "APAGAR", "DIVIDIR", "ZE", "DESFAZER", "REFAZER", "CALC", "NOVO", "ABRIR", "SALVAR",
-            "UNIR", "TIRAR", "SEPARAR", "SELMEMBRO", "DEF", "NORMAL", "CORTANTE", "MOMENTO", "VERIFICAR", "MOVER", "COPIAR", "ESPELHAR", "QD", "FN", "SELNOS", "SELBASE", "SELTODAS", "REAC", "GRADE", "ORTO", "POLAR", "ENGASTE", "FIXO", "MOVEL", "ROTULA", "CARGA", "ASSISTENTE", "TABELAS", "CSV", "AJUDA", "ABA", "CASOS", "CASO", "NOVOCASO", "GERARCOMB", "RESULTADO", "RELATORIO" };
+            "UNIR", "TIRAR", "SEPARAR", "SELMEMBRO", "DEF", "NORMAL", "CORTANTE", "MOMENTO", "VERIFICAR", "CALOR", "MOVER", "COPIAR", "ESPELHAR", "QD", "FN", "SELNOS", "SELBASE", "SELTODAS", "REAC", "GRADE", "ORTO", "POLAR", "ENGASTE", "FIXO", "MOVEL", "ROTULA", "CARGA", "ASSISTENTE", "TABELAS", "CSV", "AJUDA", "ABA", "CASOS", "CASO", "NOVOCASO", "GERARCOMB", "RESULTADO", "RELATORIO" };
 
         void MostrarSugestao()
         {
@@ -820,7 +833,7 @@ namespace NovoFtool
 
         bool Editando()
         {
-            return (Keyboard.FocusedElement is TextBox tb && tb != Comando) || HostProp.IsKeyboardFocusWithin || Keyboard.FocusedElement is ComboBox
+            return (Keyboard.FocusedElement is TextBox tb && tb != Comando) || Insp.IsKeyboardFocusWithin || Keyboard.FocusedElement is ComboBox
                 || (Keyboard.FocusedElement is FrameworkElement fe && fe.TemplatedParent is ComboBox);
         }
 
@@ -830,6 +843,14 @@ namespace NovoFtool
             if (Editando() || Comando.IsKeyboardFocusWithin || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
             if (!(Keyboard.FocusedElement == Vista || Vista.IsMouseOver)) return;
             char c = e.Text[0];
+            // Entrada dinamica (barra/medir em andamento): digitos vao para a caixinha do campo ativo.
+            if (Vista.DinAtivo)
+            {
+                if (Vista.DinTecla(e.Text, Key.None)) { e.Handled = true; return; }
+                // virgula/ponto-e-virgula/< viram coordenadas na linha de comando: leva junto o que ja foi digitado
+                string pend = Vista.Din[Vista.DinCampo];
+                if (pend != "" && (c == ',' || c == ';' || c == '<')) { Vista.DinLimpar(); Comando.Focus(); Comando.Text = pend + e.Text; Comando.CaretIndex = Comando.Text.Length; e.Handled = true; return; }
+            }
             // Como no AutoCAD: tudo o que se digita vai para a linha de comando e so executa no Enter/Espaco.
             // Assim "MOVEL" nao dispara "M" (momento) no meio da palavra. Atalhos de uma letra: B, M, Q, N, D, V + Enter.
             if (char.IsLetterOrDigit(c) || c == '@' || c == '-' || c == ',' || c == '.' || c == ';' || c == '<')
@@ -843,12 +864,31 @@ namespace NovoFtool
         // Diagrama pelo teclado: o mesmo comando liga e, repetido, desliga (igual ao botao da faixa).
         void AlternarDiagrama(Diagrama d) { MostrarDiagrama(Vista.Diag == d ? Diagrama.Nenhum : d); }
 
+        // Enter na entrada dinamica: fecha o ponto com o comprimento/angulo digitados (e o que faltar vem do mouse, com snap/orto).
+        internal void ConfirmarDinamica()
+        {
+            Point pd = Vista.PontoDinamico();
+            bool medir = Vista.Ferr == Ferramenta.Medir;
+            Vista.DinLimpar(); Vista.Focus();
+            if (medir) PontoMedida(pd.X, pd.Y); else PontoBarra(pd.X, pd.Y);
+            Vista.InvalidateVisual();
+        }
+
         void Tecla(object s, KeyEventArgs e)
         {
             bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control), shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
             bool editando = Editando();
             Key k = e.Key == Key.System ? e.SystemKey : e.Key;
-            if (ctrl && k == Key.Z && !editando) { Desfazer(); e.Handled = true; }
+            if (!editando && !ctrl && Vista.DinAtivo && Comando.Text == "" && (k == Key.Tab || k == Key.Back || ((k == Key.Enter || k == Key.Return) && Vista.DinTravado)))
+            {
+                if (k == Key.Enter || k == Key.Return)
+                {
+                    ConfirmarDinamica(); e.Handled = true;
+                }
+                else if (Vista.DinTecla(null, k)) { Vista.Focus(); e.Handled = true; }
+            }
+            else if (ctrl && k == Key.K) { AbrirPaleta(); e.Handled = true; }
+            else if (ctrl && k == Key.Z && !editando) { Desfazer(); e.Handled = true; }
             else if (ctrl && k == Key.Y && !editando) { Refazer(); e.Handled = true; }
             else if (ctrl && shift && k == Key.S) { Salvar(true); e.Handled = true; }
             else if (ctrl && k == Key.S) { Salvar(false); e.Handled = true; }
@@ -874,6 +914,7 @@ namespace NovoFtool
             {
                 // cancela em cascata: texto digitado > barra/medida em andamento > ferramenta > selecao
                 if (Comando.Text != "") Comando.Text = "";
+                else if (Vista.DinTravado) Vista.DinLimpar();
                 else if (Vista.InicioBarra != null) { Vista.InicioBarra = null; Log("Barra terminada."); }
                 else if (Vista.MedidaIni != null) { Vista.MedidaIni = null; Vista.MedidaFim = null; Vista.Etiqueta = "MEDIR — clique o 1º ponto (ou digite x,y).   Botão direito ou Esc encerra."; Log("Medida cancelada."); }
                 else if (Vista.Ferr != Ferramenta.Selecionar) UsarFerramenta(Ferramenta.Selecionar);
@@ -984,6 +1025,7 @@ namespace NovoFtool
                 case "M": case "MOMENTO": AlternarDiagrama(Diagrama.Momento); break;
                 case "D": case "DEF": case "DEFORMADA": AlternarDiagrama(Diagrama.Deformada); break;
                 case "V": case "VERIFICAR": AlternarDiagrama(Diagrama.Verificacao); break;
+                case "CALOR": case "MAPA": MostrarDiagrama(Vista.Diag == Diagrama.Verificacao && Vista.MapaCalor ? Diagrama.Nenhum : Diagrama.Verificacao, true); break;
                 case "COMPARAR": AbrirVerificacao(null); break;
                 case "DIMENSIONAR": DimensionarPerfis(false); break;
                 case "DIMSEL": DimensionarPerfis(true); break;
@@ -1004,7 +1046,7 @@ namespace NovoFtool
                     var bs = Vista.Sel.OfType<Barra>().ToList();
                     if (bs.Count == 0) { Log("Selecione as barras antes (clique ou janela) e repita QD."); break; }
                     foreach (Barra b in bs) { b.QGlobalY = qy; b.QGlobalX = qx; }
-                    Confirmar("Carga qy = " + Num.Fmt(qy, 2) + (qx != 0 ? ", qx = " + Num.Fmt(qx, 2) : "") + " kN/m em " + bs.Count + " barra(s).");
+                    Confirmar("Carga qy = " + Num.Fmt(qy, 2) + (qx != 0 ? ", qx = " + Num.Fmt(qx, 2) : "") + " kN/m em " + Pl.N(bs.Count, "barra", "barras") + ".");
                     break;
                 }
                 case "FN":
@@ -1015,7 +1057,7 @@ namespace NovoFtool
                     var ns = Vista.Sel.OfType<No>().ToList();
                     if (ns.Count == 0) { Log("Selecione os nós antes e repita FN."); break; }
                     foreach (No n in ns) { n.Fx = fx; n.Fy = fy; n.Mz = mz; }
-                    Confirmar("Carga aplicada em " + ns.Count + " nó(s).");
+                    Confirmar("Carga aplicada em " + Pl.N(ns.Count, "nó", "nós") + ".");
                     break;
                 }
                 case "REAC": tgReac.IsChecked = !tgReac.IsChecked; Vista.MostrarReacoes = tgReac.IsChecked == true; Resolver(false); break;
@@ -1063,7 +1105,7 @@ namespace NovoFtool
                     else Log("Uso: RESULTADO ativo | caso:N | comb:N | env:ELU | env:ELS  (N a partir de 0)");
                     break;
                 case "SELNOS": Vista.Selecionar(M.Nos.Cast<object>()); Log(M.Nos.Count + " nós selecionados."); break;
-                case "SELBASE": { var b0 = M.Nos.Count == 0 ? new List<object>() : M.Nos.Where(n => Math.Abs(n.Y - M.Nos.Min(x => x.Y)) < 1e-6).Cast<object>().ToList(); Vista.Selecionar(b0); Log(b0.Count + " nó(s) da base selecionado(s)."); break; }
+                case "SELBASE": { var b0 = M.Nos.Count == 0 ? new List<object>() : M.Nos.Where(n => Math.Abs(n.Y - M.Nos.Min(x => x.Y)) < 1e-6).Cast<object>().ToList(); Vista.Selecionar(b0); Log(Pl.N(b0.Count, "nó da base selecionado", "nós da base selecionados") + "."); break; }
                 case "SELNO":
                 {
                     int id; var n = w.Length > 1 && int.TryParse(w[1], out id) ? M.NoPorId(id) : null;
@@ -1113,7 +1155,7 @@ namespace NovoFtool
                 if (a.Length < 2 || !(a[0].ToUpperInvariant() == "X" || a[0].ToUpperInvariant() == "Y") || !Num.Ler(a[1], out v)) { Log("Uso: ESPELHAR X valor  ou  ESPELHAR Y valor"); return; }
                 bool emX = a[0].ToUpperInvariant() == "X";
                 int qt = CopiarBarras(barras, p => emX ? new Point(2 * v - p.X, p.Y) : new Point(p.X, 2 * v - p.Y), true);
-                Confirmar(qt + " barra(s) espelhada(s) em " + (emX ? "x" : "y") + " = " + Num.Fmt(v, 3) + ".");
+                Confirmar(Pl.N(qt, "barra espelhada", "barras espelhadas") + " em " + (emX ? "x" : "y") + " = " + Num.Fmt(v, 3) + ".");
                 return;
             }
             double dx, dy;
@@ -1124,14 +1166,14 @@ namespace NovoFtool
                 foreach (Barra b in barras) { alvo.Add(M.NoPorId(b.N1)); alvo.Add(M.NoPorId(b.N2)); }
                 foreach (No n in alvo) { n.X = Math.Round(n.X + dx, 9); n.Y = Math.Round(n.Y + dy, 9); }
                 var sobrepostos = M.Nos.Where(n => !alvo.Contains(n) && alvo.Any(o => Math.Abs(o.X - n.X) < 1e-6 && Math.Abs(o.Y - n.Y) < 1e-6)).ToList();
-                Confirmar(alvo.Count + " nó(s) movido(s) (" + Num.Fmt(dx, 3) + "; " + Num.Fmt(dy, 3) + ")." + (sobrepostos.Count > 0 ? " ⚠ Há nós sobrepostos: não foram fundidos." : ""));
+                Confirmar(Pl.N(alvo.Count, "nó movido", "nós movidos") + " (" + Num.Fmt(dx, 3) + "; " + Num.Fmt(dy, 3) + ")." + (sobrepostos.Count > 0 ? " ⚠ Há nós sobrepostos: não foram fundidos." : ""));
                 return;
             }
             int vezes = 1;
             if (a.Length > 2 && (!int.TryParse(a[2], out vezes) || vezes < 1 || vezes > 200)) { Log("Número de cópias: 1 a 200."); return; }
             int total = 0;
             for (int k = 1; k <= vezes; k++) { int kk = k; total += CopiarBarras(barras, p => new Point(p.X + kk * dx, p.Y + kk * dy), true); }
-            Confirmar(total + " barra(s) criada(s) em " + vezes + " cópia(s).");
+            Confirmar(Pl.N(total, "barra criada", "barras criadas") + " em " + Pl.N(vezes, "cópia", "cópias") + ".");
             Vista.ZoomTudo();
         }
 
@@ -1203,12 +1245,34 @@ namespace NovoFtool
             if ((string)DicaComando.Text != d) DicaComando.Text = d;
         }
 
-        void Log(string s)
+        void Log(string s, bool toast = true)
         {
             if (historico.Count > 0 && historico[historico.Count - 1] == s) return;   // nao repete a mesma linha
             historico.Add(s);
             if (historico.Count > 300) historico.RemoveAt(0);
-            Historico.Text = string.Join("\n", historico.Skip(Math.Max(0, historico.Count - 2)));
+            Historico.Text = string.Join("\n", historico.Skip(Math.Max(0, historico.Count - 8)));
+            if (toast) MostrarToast(s);
+        }
+
+        // Mensagem discreta no canto da vista: some sozinha em 4 s (o historico completo fica na linha de comando e em F2).
+        readonly System.Windows.Threading.DispatcherTimer tmToast = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        bool toastLigado;
+
+        internal void MostrarToast(string s, bool forcar = false)
+        {
+            if (string.IsNullOrWhiteSpace(s) || (Capturas.Ativo && !forcar)) return;
+            if (!toastLigado) { toastLigado = true; tmToast.Tick += (a, b) => { tmToast.Stop(); EsconderToast(); }; }
+            ToastTxt.Text = s;
+            Toast.BeginAnimation(OpacityProperty, null);
+            Toast.Opacity = 1; Toast.Visibility = Visibility.Visible;
+            tmToast.Stop(); tmToast.Start();
+        }
+
+        void EsconderToast()
+        {
+            var an = new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(160)) { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } };
+            an.Completed += (a, b) => { if (!tmToast.IsEnabled) Toast.Visibility = Visibility.Collapsed; };
+            Toast.BeginAnimation(OpacityProperty, an);
         }
     }
 }

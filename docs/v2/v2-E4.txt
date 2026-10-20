@@ -1,0 +1,17 @@
+ETAPA E4 — VISTA (canvas) E BARRA DE STATUS
+Pasta: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto. Arquivos: Vista.cs, MainWindow.xaml(.cs), Acoes.cs (só o necessário).
+Leia docs\v2\GUIA-DESIGN.md (tokens Cad.*, HUD no canvas) e docs\v2\PESQUISA.md (P1.3, P2.2). Olhe as capturas 02–08.
+Problemas vistos nas capturas: modelo pequeno no meio (zoom ao abrir/calcular não enquadra), rótulos de valores e reações se sobrepõem,
+linha de comando e mensagens por cima do desenho, legenda solta no topo.
+1. Enquadrar (zoom tudo) ao abrir, ao calcular e com duplo clique no botão do meio; margem confortável; manter o zoom do usuário depois.
+2. Diagramas N/V/M: preenchimento translúcido com gradiente suave para a linha de base, contorno nítido, cor por sinal (tokens), valores só nos extremos
+   e pontos notáveis, rótulos com fundo (pílula) e algoritmo simples de anti-sobreposição (desloca/omite rótulos que colidem). Deformada com a forma
+   original fantasma. Reações como setas limpas com rótulo em pílula, sem sobreposição.
+3. Mapa de calor de aproveitamento: modo (botão na aba Resultados) que colore as barras pelo % (verde/ciano/âmbar/vermelho) com selo ⚠/✕ nas críticas e legenda.
+4. HUD flutuante no canto da vista (cartão translúcido): seletor segmentado [Deformada | N | V | M | % Aprov.], escala (− slider +), caso/combinação atual;
+   legenda do diagrama ativo (unidade, máx/mín). Remover a legenda solta antiga se o HUD a substitui.
+5. Inspeção ao passar o mouse sobre uma barra com diagrama ativo: marcador na posição + cartão com x, N(x), V(x), M(x), δ(x).
+6. Linha de comando: não sobrepor o desenho (encaixada embaixo da vista, compacta, com histórico recolhível); mensagens viram toast discreto que some.
+7. Barra de status: pílulas alternáveis Snap / Grade / Ortho / Polar (com ícones) + coordenadas do cursor + unidades; aviso "1 aviso" clicável.
+Capturas: refaça 02–08 nas duas resoluções + 35-hud.png, 36-mapa-calor.png, 37-inspecao-mouse.png (simule a posição do mouse). Revise com o checklist.
+PROVA: build 0 erros; portico\compilar.ps1 -Testes; capturas revisadas. Não mude resultados de cálculo.

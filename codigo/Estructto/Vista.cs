@@ -47,28 +47,41 @@ namespace NovoFtool
         Point? janelaIni;                                  // selecao por janela
         No arrastando; Point arrastoIni; bool arrastoMoveu;
         public Point? InicioBarra, MedidaIni, MedidaFim;
-        public string Leitura;                             // leitura do diagrama sob o mouse
+        public string Leitura;                             // leitura do diagrama sob o mouse (texto; o cartao usa Insp)
+        public bool MapaCalor;                             // vista Verificacao como mapa de calor (faixas de aproveitamento)
+        public Rect ReservaHud;                            // area do HUD (nenhum rotulo vai para ela)
+        bool zoomUsuario;                                  // o usuario mexeu no zoom/pan: nao reenquadrar sozinho
+        DadosInsp insp;                                    // ponto sob o mouse (cartao de inspecao)
+
+        // ---------- rotulos com anti-sobreposicao ----------
+        sealed class Rot { public string T; public Point P; public Brush Cor; public int Prio; public double Peso; public Vector Pref; public bool Forcar; }
+        readonly List<Rot> rotulos = new List<Rot>();
+        readonly List<Rect> ocupados = new List<Rect>();   // caixas ja usadas (nomes das barras, etiqueta)
+        static readonly Dictionary<Brush, Pen> bordasPilula = new Dictionary<Brush, Pen>();
+        sealed class DadosInsp { public Barra B; public double X; public Point Base, Alvo; public bool TemAlvo; public string Pos, N, V, M, D; public Brush CorAlvo; }
 
         // ---------- cores (tema escuro Autodesk) ----------
-        static SolidColorBrush Cor(byte r, byte g, byte b, byte a = 255) { var x = new SolidColorBrush(Color.FromArgb(a, r, g, b)); x.Freeze(); return x; }
         static Pen Caneta(Brush b, double w, double[] tr = null) { var p = new Pen(b, w); if (tr != null) p.DashStyle = new DashStyle(tr, 0); p.Freeze(); return p; }
         // as cores que mudam no modo de impressao (fundo branco) sao de instancia
-        Brush Fundo = Cor(0x21, 0x28, 0x30);
-        static readonly Pen GradeMenor = Caneta(Cor(140, 160, 180, 34), 1), GradeMaior = Caneta(Cor(140, 160, 180, 70), 1);
-        static readonly Pen EixoX = Caneta(Cor(220, 80, 80, 170), 1.2), EixoY = Caneta(Cor(90, 200, 90, 170), 1.2);
-        Brush BBarra = Cor(0xE8, 0xEC, 0xF0);
-        Pen PBarra = Caneta(Cor(0xE8, 0xEC, 0xF0), 2.6);
-        static readonly Pen PHover = Caneta(Cor(0x5A, 0xC8, 0xFA), 4), PSel = Caneta(Cor(0x0A, 0x9B, 0xE6), 5);
-        Pen PApoio = Caneta(Cor(0x5A, 0xC8, 0xFA), 1.6), PCarga = Caneta(Cor(0xF2, 0x6B, 0x5B), 1.6), PReac = Caneta(Cor(0x4C, 0xD9, 0x64), 1.6);
-        Pen PDef = Caneta(Cor(0xFF, 0xC1, 0x07), 2, new double[] { 4, 2 });
-        static readonly Pen PFant = Caneta(Cor(0x0A, 0x9B, 0xE6), 1.5, new double[] { 5, 3 });
-        static readonly Pen PEnv = Caneta(Cor(0xB0, 0xB8, 0xC4, 160), 1, new double[] { 3, 2 });
-        static readonly Pen PGuia = Caneta(Cor(0x4C, 0xD9, 0x64, 200), 1, new double[] { 2, 3 }), PMarca = Caneta(Cor(0x4C, 0xD9, 0x64), 2);
-        static readonly Pen PJanela = Caneta(Cor(0x3D, 0x8B, 0xFD), 1), PCruz = Caneta(Cor(0x4C, 0xD9, 0x64), 1, new double[] { 4, 3 });
-        static readonly Brush BJanela = Cor(0x3D, 0x8B, 0xFD, 40), BCruz = Cor(0x4C, 0xD9, 0x64, 40);
-        Brush BTexto = Cor(0xD0, 0xD6, 0xDC), BFundoTexto = Cor(0x21, 0x28, 0x30, 190);
-        static readonly Brush BCaixa = Cor(0x1C, 0x5F, 0x86, 235);
-        static readonly Brush BMedida = Cor(0xE8, 0xB4, 0x48), BFundoMedida = Cor(0x1F, 0x24, 0x2C, 235), BTextoMedida = Cor(0xF0, 0xF2, 0xF5);
+        // Todas as cores vem dos tokens do TemaPlant (secao "Canvas CAD" do GUIA-DESIGN).
+        Brush Fundo = TemaPlant.BBgCanvas;
+        static readonly Pen GradeMenor = Caneta(TemaPlant.BGradeMenor, 1), GradeMaior = Caneta(TemaPlant.BGradeMaior, 1);
+        static readonly Pen EixoX = Caneta(TemaPlant.BEixoX, 1.2), EixoY = Caneta(TemaPlant.BEixoY, 1.2);
+        Brush BBarra = TemaPlant.BBarra;
+        Pen PBarra = Caneta(TemaPlant.BBarra, 2.4);
+        static readonly Pen PHover = Caneta(TemaPlant.BBarraHover, 4), PSel = Caneta(TemaPlant.BBarraSel, 5);
+        static readonly Pen PHoverCalor = Caneta(TemaPlant.BBarraHover, 9), PSelCalor = Caneta(TemaPlant.BBarraSel, 11);
+        Pen PApoio = Caneta(TemaPlant.BApoio, 1.6), PCarga = Caneta(TemaPlant.BCarga, 1.6), PReac = Caneta(TemaPlant.BReacao, 1.6);
+        Pen PDef = Caneta(TemaPlant.BDeformada, 2.4);   // deformada: tracado cheio; a forma original fica como fantasma
+        Pen PFantasma = Caneta(TemaPlant.B(TemaPlant.CorBarra, 0x70), 1.3, new double[] { 4, 3 });
+        static readonly Pen PFant = Caneta(TemaPlant.BBarraSel, 1.5, new double[] { 5, 3 });
+        static readonly Pen PEnv = Caneta(TemaPlant.B(TemaPlant.CorDeformadaEnv, 160), 1, new double[] { 3, 2 });
+        static readonly Pen PGuia = Caneta(TemaPlant.BGuiaSnap, 1, new double[] { 2, 3 }), PMarca = Caneta(TemaPlant.BMarcaSnap, 2);
+        static readonly Pen PJanela = Caneta(TemaPlant.BJanelaSel, 1), PCruz = Caneta(TemaPlant.BCruzSel, 1, new double[] { 4, 3 });
+        static readonly Brush BJanela = TemaPlant.BJanelaSelArea, BCruz = TemaPlant.BCruzSelArea;
+        Brush BTexto = TemaPlant.BTexto1, BFundoTexto = TemaPlant.BFundoTextoCanvas;
+        static readonly Brush BCaixa = TemaPlant.BCaixaHud;
+        static readonly Brush BMedida = TemaPlant.BAlerta, BFundoMedida = TemaPlant.BFundoMedida, BTextoMedida = TemaPlant.BTexto1;
         static readonly Pen PMedida = Caneta(BMedida, 1.8, new double[] { 5, 3 }), PMedidaPonto = Caneta(BMedida, 1.8), PBordaMedida = Caneta(BMedida, 1);
 
         // Relatorio: fundo branco, sem grade, barras e textos escuros.
@@ -80,10 +93,11 @@ namespace NovoFtool
             {
                 impressao = value;
                 if (!value) return;
-                Fundo = Brushes.White; BBarra = Cor(0x20, 0x24, 0x2A); PBarra = Caneta(BBarra, 2.2);
-                BTexto = Cor(0x20, 0x24, 0x2A); BFundoTexto = Cor(255, 255, 255, 210);
-                PApoio = Caneta(Cor(0x00, 0x5A, 0x9C), 1.6); PCarga = Caneta(Cor(0xC6, 0x28, 0x28), 1.6); PReac = Caneta(Cor(0x1B, 0x7F, 0x3A), 1.6);
-                PDef = Caneta(Cor(0xD0, 0x7A, 0x00), 2, new double[] { 4, 2 });
+                Fundo = Brushes.White; BBarra = TemaPlant.BImpTinta; PBarra = Caneta(BBarra, 2.2);
+                BTexto = TemaPlant.BImpTinta; BFundoTexto = TemaPlant.BImpFundoTexto;
+                PApoio = Caneta(TemaPlant.BImpApoio, 1.6); PCarga = Caneta(TemaPlant.BImpCarga, 1.6); PReac = Caneta(TemaPlant.BImpVerde, 1.6);
+                PDef = Caneta(TemaPlant.BImpDef, 2.4);
+                PFantasma = Caneta(TemaPlant.B(TemaPlant.C("#94A3B8"), 0xB0), 1.2, new double[] { 4, 3 });
             }
         }
 
@@ -96,20 +110,77 @@ namespace NovoFtool
             if (Envoltoria != null && Envoltoria.ContainsKey(b)) return Envoltoria[b];
             return b.Res != null ? new List<ResBarra> { b.Res } : new List<ResBarra>();
         }
-        static readonly Brush BPos = Cor(0x3D, 0x8B, 0xFD, 90), BNeg = Cor(0xF2, 0x6B, 0x5B, 90);
-        static readonly Pen PPos = Caneta(Cor(0x3D, 0x8B, 0xFD), 1.4), PNeg = Caneta(Cor(0xF2, 0x6B, 0x5B), 1.4);
-        static readonly Pen POk = Caneta(Cor(0x4C, 0xD9, 0x64), 5), PAtencao = Caneta(Cor(0xE8, 0xB4, 0x48), 5), PFalha = Caneta(Cor(0xF2, 0x4B, 0x4B), 5), PSemVer = Caneta(Cor(0x80, 0x88, 0x94), 4);
-        static readonly Typeface Fonte = new Typeface("Segoe UI");
+        // cores por diagrama (0 = N, 1 = V, 2 = M): positivo e negativo (tokens do TemaPlant)
+        static readonly Color[] CorPos = { TemaPlant.CorNormalPos, TemaPlant.CorCortante, TemaPlant.CorMomento };
+        static readonly Color[] CorNeg = { TemaPlant.CorNormalNeg, TemaPlant.CorCortanteNeg, TemaPlant.CorMomentoNeg };
+        static readonly Pen[] PPosD = { Caneta(TemaPlant.B(CorPos[0]), 1.8), Caneta(TemaPlant.B(CorPos[1]), 1.8), Caneta(TemaPlant.B(CorPos[2]), 1.8) };
+        static readonly Pen[] PNegD = { Caneta(TemaPlant.B(CorNeg[0]), 1.8), Caneta(TemaPlant.B(CorNeg[1]), 1.8), Caneta(TemaPlant.B(CorNeg[2]), 1.8) };
+        static readonly Pen[] PFechoPos = { Caneta(TemaPlant.B(CorPos[0], 0x80), 1), Caneta(TemaPlant.B(CorPos[1], 0x80), 1), Caneta(TemaPlant.B(CorPos[2], 0x80), 1) };
+        static readonly Pen[] PFechoNeg = { Caneta(TemaPlant.B(CorNeg[0], 0x80), 1), Caneta(TemaPlant.B(CorNeg[1], 0x80), 1), Caneta(TemaPlant.B(CorNeg[2], 0x80), 1) };
+        static readonly Pen POk = Caneta(TemaPlant.BSucesso, 5), PAtencao = Caneta(TemaPlant.BAlerta, 5), PFalha = Caneta(TemaPlant.BErro, 5), PSemVer = Caneta(TemaPlant.BTexto3, 4);
+        // mapa de calor: verde <= 75%, ciano 75-90%, ambar 90-100%, vermelho > 100%
+        static readonly Pen[] PCalor = { Caneta(TemaPlant.B(TemaPlant.CorCalor1), 6), Caneta(TemaPlant.B(TemaPlant.CorCalor2), 6), Caneta(TemaPlant.B(TemaPlant.CorCalor3), 6), Caneta(TemaPlant.B(TemaPlant.CorCalor4), 6) };
+        static int FaixaCalor(double ap) { return ap > 1 ? 3 : ap > 0.9 ? 2 : ap > 0.75 ? 1 : 0; }
+        static readonly Typeface Fonte = new Typeface("Segoe UI"), FonteNum = new Typeface("Cascadia Mono, Consolas, Segoe UI");
 
         public Vista()
         {
             Focusable = true; ClipToBounds = true; Cursor = Cursors.Arrow;
+            // enquadra sozinho enquanto o usuario nao mexer no zoom (abrir, calcular, redimensionar o painel)
+            SizeChanged += (s, e) => { if (!zoomUsuario && !impressao && ActualWidth > 10 && ActualHeight > 10) ZoomTudo(); };
         }
+
+        // Enquadra se o usuario ainda nao mexeu no zoom (usado ao abrir e ao calcular).
+        public void EnquadrarLivre() { if (!zoomUsuario) ZoomTudo(); }
 
         public Point Tela(double x, double y) { return new Point(ox + x * zoom, oy - y * zoom); }
         public Point Mundo(Point p) { return new Point((p.X - ox) / zoom, (oy - p.Y) / zoom); }
         public double TolMundo { get { return 8 / zoom; } }
         public Point PontoMouse { get { return mouseMundo; } }
+
+        // ---- entrada dinamica (caixinhas Comprimento/Angulo junto ao cursor, como no AutoCAD) ----
+        // Din[0] = comprimento digitado (m), Din[1] = angulo digitado (graus). Texto nao vazio = valor travado.
+        public readonly string[] Din = { "", "" };
+        public int DinCampo;
+        public bool DinAtivo { get { return DinBase != null; } }
+        public Point? DinBase { get { return Ferr == Ferramenta.Barra ? InicioBarra : Ferr == Ferramenta.Medir && MedidaFim == null ? MedidaIni : null; } }
+        public bool DinTravado { get { return DinAtivo && (Din[0] != "" || Din[1] != ""); } }
+        public void DinLimpar() { Din[0] = ""; Din[1] = ""; DinCampo = 0; }
+        static bool DinLer(string t, out double v) { v = 0; return t != "" && t != "-" && Num.Ler(t, out v) && double.IsFinite(v); }
+
+        // Ponto final considerando os valores travados; o que nao esta travado vem do mouse (que ja respeita snap/orto).
+        public Point PontoDinamico()
+        {
+            Point a = DinBase ?? mouseMundo;
+            double dx = mouseMundo.X - a.X, dy = mouseMundo.Y - a.Y, dm = Math.Sqrt(dx * dx + dy * dy);
+            double angM = dm < 1e-9 ? 0 : Math.Atan2(dy, dx);
+            double l, g;
+            bool tl = DinLer(Din[0], out l), tg = DinLer(Din[1], out g);
+            if (!tl && !tg) return mouseMundo;
+            double ang = tg ? g * Math.PI / 180 : angM;
+            double len = tl ? l : dm * Math.Max(0, Math.Cos(angM - ang));
+            if (tl && l < 0) { len = -l; ang += Math.PI; }
+            return new Point(Math.Round(a.X + len * Math.Cos(ang), 9), Math.Round(a.Y + len * Math.Sin(ang), 9));
+        }
+
+        // Teclas da entrada dinamica. Devolve true se consumiu.
+        public bool DinTecla(string texto, Key tecla)
+        {
+            if (!DinAtivo) return false;
+            if (tecla == Key.Tab) { DinCampo = 1 - DinCampo; InvalidateVisual(); return true; }
+            if (tecla == Key.Back) { string t = Din[DinCampo]; if (t.Length > 0) { Din[DinCampo] = t.Substring(0, t.Length - 1); InvalidateVisual(); return true; } return false; }
+            if (!string.IsNullOrEmpty(texto))
+            {
+                char c = texto[0];
+                if (char.IsDigit(c) || c == '.' || (c == '-' && Din[DinCampo] == ""))
+                {
+                    if (c == '.' && Din[DinCampo].Contains(".")) return true;
+                    if (Din[DinCampo].Length < 9) Din[DinCampo] += c;
+                    InvalidateVisual(); return true;
+                }
+            }
+            return false;
+        }
         public Point MouseTela { get { return mouseTela; } }
         public bool Ocupado { get { return arrastando != null || janelaIni != null; } }
 
@@ -120,6 +191,7 @@ namespace NovoFtool
             Point p = e.GetPosition(this), w = Mundo(p);
             zoom = Math.Max(0.5, Math.Min(20000, zoom * (e.Delta > 0 ? 1.2 : 1 / 1.2)));
             ox = p.X - w.X * zoom; oy = p.Y + w.Y * zoom;
+            zoomUsuario = true;
             InvalidateVisual();
         }
 
@@ -139,7 +211,7 @@ namespace NovoFtool
 
             if (Ferr != Ferramenta.Selecionar)
             {
-                Point w = Atrair(p);
+                Point w = DinTravado ? PontoDinamico() : Atrair(p);
                 if (Clique != null) Clique(w.X, w.Y);
                 return;
             }
@@ -205,8 +277,8 @@ namespace NovoFtool
             mouseTela = p; mouseDentro = true;
             if (panIni != null)
             {
-                if ((p - panIni.Value).Length > 3) panMoveu = true;
-                ox = panOrig.X + p.X - panIni.Value.X; oy = panOrig.Y + p.Y - panIni.Value.Y;
+                if ((p - panIni.Value).Length > 3) { panMoveu = true; zoomUsuario = true; }
+                ox =panOrig.X + p.X - panIni.Value.X; oy = panOrig.Y + p.Y - panIni.Value.Y;
             }
             if (arrastando != null)
             {
@@ -222,7 +294,18 @@ namespace NovoFtool
             InvalidateVisual();
         }
 
-        protected override void OnMouseLeave(MouseEventArgs e) { mouseDentro = false; hover = null; Leitura = null; InvalidateVisual(); }
+        protected override void OnMouseLeave(MouseEventArgs e) { mouseDentro = false; hover = null; Leitura = null; insp = null; InvalidateVisual(); }
+
+        // Posiciona o mouse por codigo (capturas de tela e testes): mesmo efeito de mover o cursor sobre a vista.
+        public void SimularMouse(Point? p)
+        {
+            if (p == null) { OnMouseLeave(null); return; }
+            mouseTela = p.Value; mouseDentro = true;
+            mouseMundo = Mundo(p.Value);
+            hover = Acertar(p.Value);
+            Leitura = LerDiagrama(p.Value);
+            InvalidateVisual();
+        }
 
         void Avisar() { if (SelecaoMudou != null) SelecaoMudou(); InvalidateVisual(); }
 
@@ -435,20 +518,36 @@ namespace NovoFtool
 
         public void ZoomTudo()
         {
+            zoomUsuario = false;
             if (M.Nos.Count == 0 || ActualWidth < 10) { zoom = 60; ox = ActualWidth / 2 - 5 * zoom; oy = ActualHeight / 2 + 3 * zoom; InvalidateVisual(); return; }
             double x0 = M.Nos.Min(n => n.X), x1 = M.Nos.Max(n => n.X), y0 = M.Nos.Min(n => n.Y), y1 = M.Nos.Max(n => n.Y);
             double w = Math.Max(x1 - x0, 1e-3), h = Math.Max(y1 - y0, 1e-3);
-            double margem = impressao ? 120 : 200;   // relatorio: figura aproveita o espaco (sem linha de comando por cima)
-            zoom = Math.Min((ActualWidth - margem) / w, (ActualHeight - margem) / h);
+            // margens em pixels: sobra espaco em cima (HUD, cargas), embaixo (apoios e reacoes) e nas laterais (valores)
+            double mx = impressao ? 40 : 80, mt = impressao ? 40 : Math.Min(64, ActualHeight * 0.16), mb = impressao ? 40 : Math.Min(80, ActualHeight * 0.18);
+            double aw = Math.Max(40, ActualWidth - 2 * mx), ah = Math.Max(40, ActualHeight - mt - mb);
+            zoom = Math.Min(aw / w, ah / h);
             if (x1 - x0 < 1e-3 && y1 - y0 < 1e-3) zoom = 60;
-            zoom = Math.Max(0.5, Math.Min(20000, zoom));
-            // sobe ~40 px: a linha de comando flutua sobre a parte de baixo do desenho (como no AutoCAD)
-            ox = ActualWidth / 2 - (x0 + x1) / 2 * zoom; oy = ActualHeight / 2 - (impressao ? 0 : 40) + (y0 + y1) / 2 * zoom;
+            zoom = Math.Max(0.5, Math.Min(20000, Math.Min(zoom, 320)));
+            ox = mx + aw / 2 - (x0 + x1) / 2 * zoom; oy = mt + ah / 2 + (y0 + y1) / 2 * zoom;
+            InvalidateVisual();
+        }
+
+        // Centraliza e enquadra os pontos (selecao por nome na paleta): aproxima ate no maximo a escala de ZoomTudo.
+        public void EnquadrarPontos(IList<Point> pts)
+        {
+            if (pts == null || pts.Count == 0 || ActualWidth < 10) return;
+            double x0 = pts.Min(p => p.X), x1 = pts.Max(p => p.X), y0 = pts.Min(p => p.Y), y1 = pts.Max(p => p.Y);
+            double w = x1 - x0, h = y1 - y0;
+            if (w < 1e-3 && h < 1e-3) { zoom = Math.Max(zoom, 80); }
+            else zoom = Math.Max(0.5, Math.Min(Math.Min(320, 20000), Math.Min((ActualWidth - 260) / Math.Max(w, 1e-3), (ActualHeight - 200) / Math.Max(h, 1e-3))));
+            zoomUsuario = true;
+            ox = ActualWidth / 2 - (x0 + x1) / 2 * zoom; oy = ActualHeight / 2 + (y0 + y1) / 2 * zoom;
             InvalidateVisual();
         }
 
         public void ZoomFator(double f)
         {
+            zoomUsuario = true;
             Point c = new Point(ActualWidth / 2, ActualHeight / 2), w = Mundo(c);
             zoom = Math.Max(0.5, Math.Min(20000, zoom * f));
             ox = c.X - w.X * zoom; oy = c.Y + w.Y * zoom;
@@ -477,7 +576,7 @@ namespace NovoFtool
 
         void Caixa(DrawingContext dc, string s, Point p, Brush fundo)
         {
-            var ft = Ft(s, Brushes.White, 11);
+            var ft = Ft(s, TemaPlant.BTexto1, 11);
             Rect r = new Rect(p.X, p.Y, ft.Width + 12, ft.Height + 6);
             if (r.Right > ActualWidth - 4) r.X = ActualWidth - 4 - r.Width;
             if (r.Bottom > ActualHeight - 4) r.Y = p.Y - r.Height - 30;
@@ -485,8 +584,109 @@ namespace NovoFtool
             dc.DrawText(ft, new Point(r.X + 6, r.Y + 3));
         }
 
+        FormattedText FtEtiqueta()
+        {
+            var fe = Ft(Etiqueta, TemaPlant.BTexto1, 11);
+            fe.MaxTextWidth = Math.Max(60, ActualWidth - 34); fe.MaxLineCount = 1; fe.Trimming = TextTrimming.CharacterEllipsis;
+            return fe;
+        }
+
+        // ---------- rotulos em pilula com anti-sobreposicao ----------
+
+        static Vector Gira(Vector v, double graus)
+        {
+            double a = graus * Math.PI / 180, c = Math.Cos(a), s = Math.Sin(a);
+            return new Vector(v.X * c - v.Y * s, v.X * s + v.Y * c);
+        }
+
+        static Rect Aabb(Point c, double w, double h, double graus)
+        {
+            double a = graus * Math.PI / 180, cs = Math.Abs(Math.Cos(a)), sn = Math.Abs(Math.Sin(a));
+            double bw = w * cs + h * sn, bh = w * sn + h * cs;
+            return new Rect(c.X - bw / 2, c.Y - bh / 2, bw, bh);
+        }
+
+        static Pen BordaPilula(Brush cor)
+        {
+            Pen p;
+            if (bordasPilula.TryGetValue(cor, out p)) return p;
+            var b = (Brush)cor.CloneCurrentValue(); b.Opacity = 0.55; b.Freeze();
+            p = new Pen(b, 1); p.Freeze();
+            bordasPilula[cor] = p;
+            return p;
+        }
+
+        // Pede um rotulo: sera desenhado no fim, perto de "p" (com "pref" como deslocamento preferido), sem cobrir outros.
+        // prio menor = mais importante; peso maior vence dentro da mesma prioridade; forcar = nao omitir.
+        void Rotulo(string t, Point p, Brush cor, Vector pref, int prio, double peso = 0, bool forcar = false)
+        {
+            rotulos.Add(new Rot { T = t, P = p, Cor = cor, Pref = pref.Length < 1e-6 ? new Vector(0, -14) : pref, Prio = prio, Peso = peso, Forcar = forcar });
+        }
+
+        void DescarregarRotulos(DrawingContext dc)
+        {
+            if (rotulos.Count == 0) return;
+            var colocados = new List<Rect>(ocupados);
+            if (!impressao && ReservaHud.Width > 0) colocados.Add(ReservaHud);
+            foreach (No n in M.Nos)
+            {
+                Point p = Tela(n.X, n.Y);
+                colocados.Add(n.TemApoio ? new Rect(p.X - 16, p.Y - 8, 32, 34) : new Rect(p.X - 4, p.Y - 4, 8, 8));
+            }
+            var segs = M.Barras.Select(b => { No a = M.NoPorId(b.N1), c = M.NoPorId(b.N2); return Tuple.Create(Tela(a.X, a.Y), Tela(c.X, c.Y)); }).ToList();
+            Rect area = new Rect(4, 4, Math.Max(10, ActualWidth - 8), Math.Max(10, ActualHeight - 8));
+            double[] angulos = { 0, 35, -35, 70, -70, 105, -105, 140, -140, 180 };
+            double[] mult = { 1, 1.5, 2.1, 2.9, 3.9, 5.2 };
+            // area coberta (px²) de um retangulo sobre o que ja esta ocupado: usada se nenhum lugar livre servir
+            Func<Rect, double> cobertura = rc =>
+            {
+                double s = 0; Rect infl = Rect.Inflate(rc, 2, 2);
+                foreach (Rect o in colocados) { Rect i = Rect.Intersect(o, infl); if (!i.IsEmpty) s += i.Width * i.Height; }
+                foreach (var sg in segs) if (CruzaRet(sg.Item1, sg.Item2, Rect.Inflate(rc, 3, 3))) s += 400;
+                return s;
+            };
+            foreach (Rot r in rotulos.OrderBy(x => x.Prio).ThenByDescending(x => x.Peso))
+            {
+                FormattedText ft = Ft(r.T, r.Cor, 10.5);
+                double w = ft.Width + 10, h = ft.Height + 3, pl = r.Pref.Length;
+                Rect? achou = null, primeiro = null; double melhorCob = double.MaxValue;
+                foreach (double m in mult)
+                {
+                    foreach (double a in angulos)
+                    {
+                        Point c = r.P + Gira(r.Pref, a) * m;
+                        Rect rc = new Rect(c.X - w / 2, c.Y - h / 2, w, h);
+                        if (!area.Contains(rc)) continue;
+                        if (r.Forcar) { double cob = cobertura(rc) + (m - 1) * 30; if (cob < melhorCob) { melhorCob = cob; primeiro = rc; } }
+                        else if (primeiro == null) primeiro = rc;
+                        Rect infl = Rect.Inflate(rc, 2, 2);
+                        if (colocados.Any(o => o.IntersectsWith(infl))) continue;
+                        Rect inflB = Rect.Inflate(rc, 3, 3);
+                        if (segs.Any(sg => CruzaRet(sg.Item1, sg.Item2, inflB))) continue;
+                        achou = rc; break;
+                    }
+                    if (achou != null) break;
+                }
+                if (achou == null && r.Forcar)
+                {
+                    Rect fx = primeiro ?? new Rect(Math.Max(4, Math.Min(ActualWidth - w - 4, r.P.X + r.Pref.X - w / 2)), Math.Max(4, Math.Min(ActualHeight - h - 4, r.P.Y + r.Pref.Y - h / 2)), w, h);
+                    achou = fx;
+                }
+                if (achou == null) continue;   // sem lugar: omite (o valor continua na tabela e no cartao do mouse)
+                Rect f = achou.Value;
+                Point centro = new Point(f.X + f.Width / 2, f.Y + f.Height / 2);
+                if ((centro - r.P).Length > pl * 1.25 + 8)   // deslocado: fio fino ate o ponto de origem
+                    dc.DrawLine(BordaPilula(r.Cor), r.P, new Point(Math.Max(f.Left, Math.Min(f.Right, r.P.X)), Math.Max(f.Top, Math.Min(f.Bottom, r.P.Y))));
+                dc.DrawRoundedRectangle(BFundoTexto, BordaPilula(r.Cor), f, 3, 3);
+                dc.DrawText(ft, new Point(f.X + 5, f.Y + 1.5));
+                colocados.Add(f);
+            }
+            rotulos.Clear();
+        }
+
         protected override void OnRender(DrawingContext dc)
         {
+            rotulos.Clear(); ocupados.Clear();
             dc.DrawRectangle(Fundo, null, new Rect(0, 0, ActualWidth, ActualHeight));
             if (M.MostrarGrade && !impressao) DesenharGrade(dc);
             Point o = Tela(0, 0);
@@ -503,29 +703,41 @@ namespace NovoFtool
             {
                 No a = M.NoPorId(b.N1), c = M.NoPorId(b.N2);
                 Point pa = Tela(a.X, a.Y), pc = Tela(c.X, c.Y);
-                if (Sel.Contains(b)) dc.DrawLine(PSel, pa, pc);
-                else if (hover == b || membrosAcesos.Contains(b.Membro)) dc.DrawLine(PHover, pa, pc);
+                bool calor = MapaCalor && Diag == Diagrama.Verificacao && Resolvido && Verificar != null;
+                if (Sel.Contains(b)) dc.DrawLine(calor ? PSelCalor : PSel, pa, pc);
+                else if (hover == b || membrosAcesos.Contains(b.Membro)) dc.DrawLine(calor ? PHoverCalor : PHover, pa, pc);
                 Pen pb = PBarra;
+                Vector u = pc - pa; if (u.Length > 1e-6) u.Normalize();
+                if (Diag == Diagrama.Deformada && Resolvido) pb = PFantasma;   // forma original: so um fantasma tracejado
                 if (Diag == Diagrama.Verificacao && Resolvido && Verificar != null)
                 {
                     Verif v = Verificar(b);
-                    pb = !v.Aplicavel ? PSemVer : v.Ap > 1 ? PFalha : v.Ap > 0.9 ? PAtencao : POk;
-                    if (v.Aplicavel) Texto(dc, (v.Ap * 100).ToString("0") + "%", pa + (pc - pa) / 2 + new Vector(0, -14), pb.Brush, 10);
+                    if (!v.Aplicavel) pb = PSemVer;
+                    else
+                    {
+                        pb = calor ? PCalor[FaixaCalor(v.Ap)] : v.Ap > 1 ? PFalha : v.Ap > 0.9 ? PAtencao : POk;
+                        Vector cima = new Vector(u.Y, -u.X); if (cima.Y > 0) cima = -cima;
+                        string selo = v.Ap > 1 ? "✕ " : v.Ap > 0.9 ? "⚠ " : "";   // codificacao dupla: cor + simbolo
+                        Rotulo(selo + (v.Ap * 100).ToString("0") + "%", pa + (pc - pa) / 2, pb.Brush, cima * 15, 1, v.Ap, v.Ap > 0.9);
+                    }
                 }
                 dc.DrawLine(pb, pa, pc);
-                Vector u = pc - pa; if (u.Length > 1e-6) u.Normalize();
                 if (b.RotulaInicio) dc.DrawEllipse(Fundo, PBarra, pa + u * 8, 4.5, 4.5);
                 if (b.RotulaFim) dc.DrawEllipse(Fundo, PBarra, pc - u * 8, 4.5, 4.5);
                 if (MostrarCargas) CargaBarra(dc, b, pa, pc);
-                if (MostrarNomes && (pc - pa).Length > 90)
+                if (MostrarNomes && (pc - pa).Length > 90 && !(Resolvido && (Diag == Diagrama.Normal || Diag == Diagrama.Cortante || Diag == Diagrama.Momento)))
                 {
                     // texto paralelo a barra, sempre legivel (da esquerda para a direita / de baixo para cima)
                     Vector d = u; if (d.X < -1e-9 || (Math.Abs(d.X) <= 1e-9 && d.Y > 0)) d = -d;
                     double ang = Math.Atan2(d.Y, d.X) * 180 / Math.PI;
                     Point meio = pa + (pc - pa) / 2 + new Vector(d.Y, -d.X) * 11;   // do lado de cima / esquerdo da barra
+                    string nomeB = (b.Membro != 0 ? "B" + b.Membro + " · " : "") + b.Secao + " · " + Num.Fmt(M.Comp(b), 2) + " m";
                     dc.PushTransform(new RotateTransform(ang, meio.X, meio.Y));
-                    Texto(dc, (b.Membro != 0 ? "B" + b.Membro + " · " : "") + b.Secao + " · " + Num.Fmt(M.Comp(b), 2) + " m", meio, BTexto, 10);
+                    Texto(dc, nomeB, meio, BTexto, 10);
                     dc.Pop();
+                    // reserva o espaco do texto (em pedacos ao longo da barra) para os rotulos nao taparem
+                    double wn = Ft(nomeB, BTexto, 10).Width + 6; int nn = Math.Max(1, (int)Math.Ceiling(wn / 24));
+                    for (int i = 0; i < nn; i++) ocupados.Add(Aabb(meio + d * ((i + 0.5) * wn / nn - wn / 2), wn / nn, 14, ang));
                 }
             }
             foreach (No n in M.Nos)
@@ -534,12 +746,19 @@ namespace NovoFtool
                 Apoio(dc, n, p);
                 if (n.Placa != null) { dc.DrawLine(PApoio, new Point(p.X - 12, p.Y + 2), new Point(p.X + 12, p.Y + 2)); }
                 bool sel = Sel.Contains(n);
-                if (sel) dc.DrawRectangle(Cor(0x0A, 0x9B, 0xE6), null, new Rect(p.X - 5, p.Y - 5, 10, 10));   // alca
+                if (sel) dc.DrawRectangle(TemaPlant.BBarraSel, null, new Rect(p.X - 5, p.Y - 5, 10, 10));   // alca
                 else if (hover == n) dc.DrawEllipse(null, PHover, p, 7, 7);
                 dc.DrawRectangle(BBarra, null, new Rect(p.X - 2.5, p.Y - 2.5, 5, 5));
                 if (MostrarCargas) CargaNo(dc, n, p);
                 if (Resolvido && MostrarReacoes && n.Res != null && n.TemApoio) Reacoes(dc, n, p);
             }
+            if (!string.IsNullOrEmpty(Etiqueta))   // reserva o lugar da etiqueta do comando (embaixo, a esquerda)
+            {
+                var fe = FtEtiqueta();
+                ocupados.Add(new Rect(10, ActualHeight - fe.Height - 16 - 6, Math.Min(ActualWidth - 20, fe.Width + 12), fe.Height + 12));
+            }
+            DescarregarRotulos(dc);
+            if (Resolvido && Diag != Diagrama.Nenhum && Diag != Diagrama.Verificacao && Ferr == Ferramenta.Selecionar && mouseDentro && insp != null) DesenharInspecao(dc);
 
             // janela de selecao
             if (janelaIni != null)
@@ -552,13 +771,13 @@ namespace NovoFtool
             // elastico da barra
             if (Ferr == Ferramenta.Barra && InicioBarra != null && mouseDentro)
             {
-                Point a = Tela(InicioBarra.Value.X, InicioBarra.Value.Y), b = Tela(mouseMundo.X, mouseMundo.Y);
+                Point pd = PontoDinamico(); Point a = Tela(InicioBarra.Value.X, InicioBarra.Value.Y), b = Tela(pd.X, pd.Y);
                 dc.DrawLine(PFant, a, b);
             }
             // ferramenta Medir: linha tracejada amarela #E8B448 + etiqueta (em andamento ou fixa apos o 2o clique)
             if (!impressao && MedidaIni != null && (MedidaFim != null || (Ferr == Ferramenta.Medir && mouseDentro)))
             {
-                Point p1 = MedidaIni.Value, p2 = MedidaFim ?? mouseMundo;
+                Point p1 = MedidaIni.Value, p2 = MedidaFim ?? PontoDinamico();
                 Point a = Tela(p1.X, p1.Y), b = Tela(p2.X, p2.Y);
                 dc.DrawLine(PMedida, a, b);
                 dc.DrawEllipse(null, PMedidaPonto, a, 4, 4);
@@ -618,18 +837,50 @@ namespace NovoFtool
                 if (nome != null && atracao != Atracao.Polar && Leitura == null) Texto(dc, nome, new Point(c.X + 10, c.Y + 10), PMarca.Brush, 10, false);
             }
             // entrada dinamica: medidas junto ao cursor
-            if (mouseDentro && Ferr == Ferramenta.Barra && InicioBarra != null)
-            {
-                double dx = mouseMundo.X - InicioBarra.Value.X, dy = mouseMundo.Y - InicioBarra.Value.Y;
-                Caixa(dc, "L " + Num.Fmt(Math.Sqrt(dx * dx + dy * dy), 3) + " m   ∠ " + Num.Fmt(Math.Atan2(dy, dx) * 180 / Math.PI, 1) + "°   (digite p/ medida exata)",
-                    new Point(mouseTela.X + 18, mouseTela.Y + 22), BCaixa);
-            }
+            if (mouseDentro && DinAtivo && !impressao) DesenharEntradaDinamica(dc);
             else if (mouseDentro && arrastando != null)
                 Caixa(dc, "Nó " + arrastando.Id + ": X " + Num.Fmt(arrastando.X, 3) + "  Y " + Num.Fmt(arrastando.Y, 3), new Point(mouseTela.X + 18, mouseTela.Y + 22), BCaixa);
-            else if (mouseDentro && Leitura != null)
+            else if (mouseDentro && Leitura != null && insp == null)
                 Caixa(dc, Leitura, new Point(mouseTela.X + 18, mouseTela.Y + 22), BCaixa);
 
-            if (!string.IsNullOrEmpty(Etiqueta)) Caixa(dc, Etiqueta, new Point(10, 10), BCaixa);   // no topo: embaixo fica a linha de comando
+            // etiqueta do comando ativo: canto inferior esquerdo da vista (a linha de comando fica fora do desenho)
+            if (!string.IsNullOrEmpty(Etiqueta) && !impressao)
+            {
+                var fe = FtEtiqueta();
+                Rect re = new Rect(10, ActualHeight - fe.Height - 16 - 6, Math.Min(ActualWidth - 20, fe.Width + 14), fe.Height + 10);
+                dc.DrawRoundedRectangle(BCaixa, BordaPilula(TemaPlant.BBordaSutil), re, 4, 4);
+                dc.DrawText(fe, new Point(re.X + 7, re.Y + 5));
+            }
+        }
+
+        // Duas caixinhas encostadas no cursor: Comprimento e Angulo. A ativa tem anel de foco; a travada (digitada) fica em destaque.
+        void DesenharEntradaDinamica(DrawingContext dc)
+        {
+            Point a = DinBase.Value, f = PontoDinamico();
+            double dx = f.X - a.X, dy = f.Y - a.Y;
+            string[] rot = { "Comprimento", "Ângulo" }, un = { "m", "°" };
+            string[] val = { Num.Fmt(Math.Sqrt(dx * dx + dy * dy), 3), Num.Fmt(Math.Atan2(dy, dx) * 180 / Math.PI, 1) };
+            Point pc = Tela(f.X, f.Y);
+            double x0 = pc.X + 18, y0 = pc.Y + 22, w = 168, h = 22;
+            if (x0 + w > ActualWidth - 4) x0 = pc.X - 18 - w;
+            if (y0 + 2 * h + 22 > ActualHeight - 4) y0 = pc.Y - 22 - 2 * h - 20;
+            for (int i = 0; i < 2; i++)
+            {
+                bool travado = Din[i] != "", ativo = DinCampo == i;
+                Rect r = new Rect(x0, y0 + i * (h + 2), w, h);
+                var pen = new Pen(ativo ? TemaPlant.BBordaFoco : TemaPlant.BBordaSutil, ativo ? 1.5 : 1); pen.Freeze();
+                dc.DrawRoundedRectangle(travado ? TemaPlant.BAcentoSutil : BCaixa, pen, r, 4, 4);
+                var fr = Ft(rot[i], TemaPlant.BTexto2, 10.5);
+                dc.DrawText(fr, new Point(r.X + 8, r.Y + (h - fr.Height) / 2));
+                string txt = travado ? Din[i] + (ativo ? "|" : "") : val[i];
+                var fv = Ft(txt, travado ? TemaPlant.BTexto1 : TemaPlant.BTexto2, 11.5);
+                var fu = Ft(un[i], TemaPlant.BTexto2, 10.5);
+                dc.DrawText(fu, new Point(r.Right - 8 - fu.Width, r.Y + (h - fu.Height) / 2));
+                dc.DrawText(fv, new Point(r.Right - 12 - fu.Width - fv.Width, r.Y + (h - fv.Height) / 2));
+            }
+            var fd = Ft("Tab alterna · Enter confirma · Esc cancela", TemaPlant.BTexto2, 10);
+            dc.DrawRectangle(BFundoTexto, null, new Rect(x0, y0 + 2 * (h + 2), fd.Width + 8, fd.Height + 2));
+            dc.DrawText(fd, new Point(x0 + 4, y0 + 2 * (h + 2) + 1));
         }
 
         public static string TextoMedida(Point a, Point b)
@@ -689,16 +940,18 @@ namespace NovoFtool
         {
             if (dir.Length < 1e-9) return;
             dir.Normalize();
-            dc.DrawLine(pen, ponta - dir * comp, ponta);
+            if (comp > 6) dc.DrawLine(pen, ponta - dir * comp, ponta - dir * 6);
             Vector nn = new Vector(-dir.Y, dir.X);
-            dc.DrawLine(pen, ponta, ponta - dir * 7 + nn * 3.5);
-            dc.DrawLine(pen, ponta, ponta - dir * 7 - nn * 3.5);
+            var g = new StreamGeometry();   // ponta cheia: seta limpa
+            using (var c = g.Open()) { c.BeginFigure(ponta, true, true); c.LineTo(ponta - dir * 8 + nn * 3.6, false, false); c.LineTo(ponta - dir * 8 - nn * 3.6, false, false); }
+            g.Freeze();
+            dc.DrawGeometry(pen.Brush, null, g);
         }
 
         void CargaNo(DrawingContext dc, No n, Point p)
         {
-            if (n.Fx != 0) { Vector d = new Vector(Math.Sign(n.Fx), 0); Seta(dc, PCarga, p - d * 4, d, 40); Texto(dc, Num.Fmt(Math.Abs(n.Fx), 2) + " kN", p - d * 54, PCarga.Brush, 10); }
-            if (n.Fy != 0) { Vector d = new Vector(0, -Math.Sign(n.Fy)); Seta(dc, PCarga, p - d * 4, d, 40); Texto(dc, Num.Fmt(Math.Abs(n.Fy), 2) + " kN", p - d * 54, PCarga.Brush, 10); }
+            if (n.Fx != 0) { Vector d = new Vector(Math.Sign(n.Fx), 0); Seta(dc, PCarga, p - d * 4, d, 40); Rotulo(Num.Fmt(Math.Abs(n.Fx), 2) + " kN", p - d * 44, PCarga.Brush, -d * 26, 2); }
+            if (n.Fy != 0) { Vector d = new Vector(0, -Math.Sign(n.Fy)); Seta(dc, PCarga, p - d * 4, d, 40); Rotulo(Num.Fmt(Math.Abs(n.Fy), 2) + " kN", p - d * 44, PCarga.Brush, -d * 16, 2); }
             if (n.Mz != 0)
             {
                 var g = new StreamGeometry();
@@ -709,7 +962,7 @@ namespace NovoFtool
                 }
                 dc.DrawGeometry(null, PCarga, g);
                 Seta(dc, PCarga, new Point(p.X - 16, p.Y), new Vector(0, n.Mz > 0 ? 1 : -1), 1);
-                Texto(dc, Num.Fmt(Math.Abs(n.Mz), 2) + " kN·m", new Point(p.X, p.Y + (n.Mz > 0 ? -26 : 26)), PCarga.Brush, 10);
+                Rotulo(Num.Fmt(Math.Abs(n.Mz), 2) + " kN·m", new Point(p.X, p.Y + (n.Mz > 0 ? -20 : 20)), PCarga.Brush, new Vector(0, n.Mz > 0 ? -10 : 10), 2);
             }
         }
 
@@ -747,7 +1000,7 @@ namespace NovoFtool
                 }
                 rot.Add("q⊥ " + Num.Fmt(b.QLocalIni, 2) + "→" + Num.Fmt(b.QLocalFim, 2));
             }
-            Texto(dc, string.Join("  ", rot) + " kN/m", pa + (pc - pa) / 2 + nn * (h + 12), PCarga.Brush, 10);
+            Rotulo(string.Join("  ", rot) + " kN/m", pa + (pc - pa) / 2 + nn * h, PCarga.Brush, nn * 14, 2);
         }
 
         void Reacoes(DrawingContext dc, No n, Point p)
@@ -757,15 +1010,17 @@ namespace NovoFtool
             double[] r = rs.OrderByDescending(x => Math.Abs(x[4]) + Math.Abs(x[3])).First();
             if (Math.Abs(r[3]) > 1e-6) { Vector d = new Vector(Math.Sign(r[3]), 0); Seta(dc, PReac, p - d * 26, d, 30); }
             if (Math.Abs(r[4]) > 1e-6) Seta(dc, PReac, p + new Vector(0, r[4] > 0 ? 24 : 54), new Vector(0, r[4] > 0 ? -1 : 1), 30);
-            string s = "";
             string[] nome = { "", "", "", "Rx", "Ry", "M" }, un = { "", "", "", " kN", " kN", " kN·m" };
             for (int k = 3; k <= 5; k++)
             {
                 double mn = rs.Min(x => x[k]), mx = rs.Max(x => x[k]);
-                if (Math.Max(Math.Abs(mn), Math.Abs(mx)) <= 1e-6) continue;
-                s += nome[k] + " " + (rs.Count == 1 || Math.Abs(mx - mn) < 1e-9 ? Num.Fmt(mx, 2) : Num.Fmt(mn, 2) + " … " + Num.Fmt(mx, 2)) + un[k] + "\n";
+                if (Math.Max(Math.Abs(mn), Math.Abs(mx)) <= 0.005) continue;
+                string s = nome[k] + " " + (rs.Count == 1 || Math.Abs(mx - mn) < 1e-9 ? Num.Fmt(mx, 2) : Num.Fmt(mn, 2) + " … " + Num.Fmt(mx, 2)) + un[k];
+                // um rotulo por componente, junto a cauda da propria seta
+                if (k == 3) { Vector d = new Vector(Math.Sign(r[3]), 0); Rotulo(s, p - d * 56, PReac.Brush, -d * 30, 0, 3, true); }
+                else if (k == 4) Rotulo(s, new Point(p.X, p.Y + (r[4] > 0 ? 54 : 54)), PReac.Brush, new Vector(0, 14), 0, 2, true);
+                else Rotulo(s, new Point(p.X + 20, p.Y + 10), PReac.Brush, new Vector(40, 8), 0, 1, true);
             }
-            if (s != "") Texto(dc, s.TrimEnd('\n'), new Point(p.X + 16, p.Y + 30), PReac.Brush, 10, false);
         }
 
         // ================= diagramas =================
@@ -799,6 +1054,25 @@ namespace NovoFtool
             return dmax < 1e-15 ? 0 : 0.08 * Extensao() / dmax * EscalaDef;
         }
 
+        // Texto da legenda do HUD: unidade, maximo e minimo do diagrama ativo (ou ampliacao da deformada).
+        public string ResumoDiagrama()
+        {
+            if (!Resolvido) return "sem resultados";
+            if (Diag == Diagrama.Deformada)
+            {
+                double dm; double f = EscalaDeformada(out dm);
+                return f <= 0 ? "sem deslocamento" : "ampliada " + Num.Fmt(f, 0) + "×  ·  máx. " + Num.Fmt(dm * 1000, 2) + " mm" + (Envoltoria != null ? " (todas as combinações)" : "");
+            }
+            if (Diag == Diagrama.Normal || Diag == Diagrama.Cortante || Diag == Diagrama.Momento)
+            {
+                double mn = double.MaxValue, mx = double.MinValue;
+                foreach (Barra b in M.Barras) foreach (ResBarra r in Lista(b)) { double a, c; r.Extremos(Tipo, out a, out c); mn = Math.Min(mn, a); mx = Math.Max(mx, c); }
+                if (mn > mx) return "sem esforços";
+                return "máx. " + Num.Fmt(mx, 2) + "  ·  mín. " + Num.Fmt(mn, 2) + (Tipo == 2 ? " kN·m" : " kN");
+            }
+            return "";
+        }
+
         public string LegendaDeformada()
         {
             double dmax; double f = EscalaDeformada(out dmax);
@@ -827,17 +1101,20 @@ namespace NovoFtool
                         dc.DrawGeometry(null, Envoltoria != null ? PEnv : PDef, g);
                     }
                 }
-                if (MostrarValores && Envoltoria == null)
+                if (Envoltoria == null)
                     foreach (No n in M.Nos) if (n.Res != null)
                     {
                         double d = Math.Sqrt(n.Res[0] * n.Res[0] + n.Res[1] * n.Res[1]);
-                        if (d > 1e-9 && d >= 0.05 * dmax) Texto(dc, Num.Fmt(d * 1000, 2) + " mm", Tela(n.X + f * n.Res[0], n.Y + f * n.Res[1]) + new Vector(0, -14), PDef.Brush, 10);
+                        if (d <= 1e-9) continue;
+                        Point q = Tela(n.X + f * n.Res[0], n.Y + f * n.Res[1]);
+                        dc.DrawEllipse(Fundo, PDef, q, 3.2, 3.2);   // no deslocado
+                        if (MostrarValores && d >= 0.05 * dmax) Rotulo(Num.Fmt(d * 1000, 2) + " mm", q, PDef.Brush, new Vector(0, -16), 3, d);
                     }
                 return;
             }
             int tipo = Tipo;
             double vmax, esc = EscalaEsforco(out vmax);
-            if (esc <= 0) { Texto(dc, "Esforço nulo em todas as barras.", new Point(ActualWidth / 2, 40), BTexto, 12); return; }
+            if (esc <= 0) { Texto(dc, "Esforço nulo em todas as barras.", new Point(ActualWidth / 2, 96), BTexto, 12); return; }
             double sinal = tipo == 2 ? -1 : 1;   // momento do lado tracionado
             foreach (Barra b in M.Barras)
             {
@@ -849,36 +1126,75 @@ namespace NovoFtool
                 foreach (ResBarra r in rs) xs.AddRange(r.Pontos(tipo));
                 xs.Sort();
                 Func<double, double> vMax = x => rs.Max(r => r.Valor(tipo, x)), vMin = x => rs.Min(r => r.Valor(tipo, x));
-                Curva(dc, r0, a, xs, vMax, esc, sinal);
-                if (rs.Count > 1) Curva(dc, r0, a, xs, vMin, esc, sinal);
+                Curva(dc, r0, a, xs, vMax, esc, sinal, tipo);
+                if (rs.Count > 1) Curva(dc, r0, a, xs, vMin, esc, sinal, tipo);
                 if (!MostrarValores) continue;
-                if (rs.Count == 1) Rotulos(dc, r0, a, xs, vMax, esc, sinal, vmax, true);
-                else { Rotulos(dc, r0, a, xs, vMax, esc, sinal, vmax, false); Rotulos(dc, r0, a, xs, vMin, esc, sinal, vmax, false); }
+                if (rs.Count == 1) Rotulos(dc, r0, a, xs, vMax, esc, sinal, vmax, true, tipo);
+                else { Rotulos(dc, r0, a, xs, vMax, esc, sinal, vmax, false, tipo); Rotulos(dc, r0, a, xs, vMin, esc, sinal, vmax, false, tipo); }
             }
         }
 
         // Preenche a area entre a barra e a curva v(x) (azul onde positivo, vermelho onde negativo).
-        void Curva(DrawingContext dc, ResBarra r, No a, List<double> xs, Func<double, double> v, double esc, double sinal)
+        // Em trechos de mesmo sinal: preenchimento translucido com gradiente (forte na curva, suave na linha de base) + contorno nitido.
+        void Curva(DrawingContext dc, ResBarra r, No a, List<double> xs, Func<double, double> v, double esc, double sinal, int tipo)
         {
             double nx = -r.S, ny = r.C;
-            for (int i = 0; i + 1 < xs.Count; i++)
+            Func<double, Point> baseEm = x => Tela(a.X + r.C * x, a.Y + r.S * x);
+            Func<double, double, Point> curvaEm = (x, val) => Tela(a.X + r.C * x + nx * sinal * val * esc, a.Y + r.S * x + ny * sinal * val * esc);
+            // divide a curva nos cruzamentos por zero
+            var pedacos = new List<List<KeyValuePair<double, double>>>();
+            var atual = new List<KeyValuePair<double, double>>();
+            double xp = 0, vp = 0; bool tem = false;
+            foreach (double x in xs)
             {
-                double xa = xs[i], xb = xs[i + 1];
-                if (xb - xa < 1e-12) continue;
-                double va = v(xa), vb = v(xb);
-                Point ba = Tela(a.X + r.C * xa, a.Y + r.S * xa), bb = Tela(a.X + r.C * xb, a.Y + r.S * xb);
-                Point ta = Tela(a.X + r.C * xa + nx * sinal * va * esc, a.Y + r.S * xa + ny * sinal * va * esc);
-                Point tb = Tela(a.X + r.C * xb + nx * sinal * vb * esc, a.Y + r.S * xb + ny * sinal * vb * esc);
-                var g = new StreamGeometry();
-                using (var c = g.Open()) { c.BeginFigure(ba, true, true); c.LineTo(ta, false, false); c.LineTo(tb, false, false); c.LineTo(bb, false, false); }
-                bool pos = (va + vb) >= 0;
-                dc.DrawGeometry(pos ? BPos : BNeg, null, g);
-                dc.DrawLine(pos ? PPos : PNeg, ta, tb);
+                double val = v(x);
+                if (tem && x - xp < 1e-12) continue;
+                if (tem && vp * val < 0)
+                {
+                    double xc = xp + (x - xp) * vp / (vp - val);
+                    atual.Add(new KeyValuePair<double, double>(xc, 0)); pedacos.Add(atual);
+                    atual = new List<KeyValuePair<double, double>> { new KeyValuePair<double, double>(xc, 0) };
+                }
+                atual.Add(new KeyValuePair<double, double>(x, val));
+                xp = x; vp = val; tem = true;
+            }
+            if (atual.Count > 1) pedacos.Add(atual);
+            foreach (var pc in pedacos)
+            {
+                var pico = pc.OrderByDescending(k => Math.Abs(k.Value)).First();
+                bool pos = pico.Value >= 0;
+                Color cor = pos ? CorPos[tipo] : CorNeg[tipo];
+                Pen pen = pos ? PPosD[tipo] : PNegD[tipo];
+                var pts = pc.Select(k => curvaEm(k.Key, k.Value)).ToList();
+                var geo = new StreamGeometry();
+                using (var c = geo.Open())
+                {
+                    c.BeginFigure(baseEm(pc[0].Key), true, true);
+                    foreach (Point q in pts) c.LineTo(q, false, false);
+                    c.LineTo(baseEm(pc[pc.Count - 1].Key), false, false);
+                }
+                geo.Freeze();
+                Point bp = baseEm(pico.Key), tp = curvaEm(pico.Key, pico.Value);
+                if ((tp - bp).Length > 0.5)
+                {
+                    var gr = new LinearGradientBrush(Color.FromArgb(0x70, cor.R, cor.G, cor.B), Color.FromArgb(0x10, cor.R, cor.G, cor.B), 0)
+                    { MappingMode = BrushMappingMode.Absolute, StartPoint = tp, EndPoint = bp };
+                    gr.Freeze();
+                    dc.DrawGeometry(gr, null, geo);
+                }
+                // contorno so na curva (nao na linha de base); fechos finos nas pontas
+                var linha = new StreamGeometry();
+                using (var c = linha.Open()) { c.BeginFigure(pts[0], false, false); foreach (Point q in pts.Skip(1)) c.LineTo(q, true, true); }
+                linha.Freeze();
+                dc.DrawGeometry(null, pen, linha);
+                Pen fecho = pos ? PFechoPos[tipo] : PFechoNeg[tipo];
+                if (Math.Abs(pc[0].Value) > 1e-9) dc.DrawLine(fecho, baseEm(pc[0].Key), pts[0]);
+                if (Math.Abs(pc[pc.Count - 1].Value) > 1e-9) dc.DrawLine(fecho, baseEm(pc[pc.Count - 1].Key), pts[pts.Count - 1]);
             }
         }
 
         // Valores nas pontas e no extremo interno (um resultado), ou so os extremos da curva (envoltoria).
-        void Rotulos(DrawingContext dc, ResBarra r, No a, List<double> xs, Func<double, double> v, double esc, double sinal, double vmax, bool pontas)
+        void Rotulos(DrawingContext dc, ResBarra r, No a, List<double> xs, Func<double, double> v, double esc, double sinal, double vmax, bool pontas, int tipo)
         {
             double nx = -r.S, ny = r.C;
             List<double> marcas = new List<double>();
@@ -895,14 +1211,91 @@ namespace NovoFtool
                 double val = v(x);
                 if (Math.Abs(val) < 0.005) continue;
                 Point t = Tela(a.X + r.C * x + nx * sinal * val * esc, a.Y + r.S * x + ny * sinal * val * esc);
-                Vector off = new Vector(nx * sinal * Math.Sign(val), -ny * sinal * Math.Sign(val)) * 12;
-                Texto(dc, Num.Fmt(val, 2), t + off, val >= 0 ? PPos.Brush : PNeg.Brush, 10);
+                Point b0 = Tela(a.X + r.C * x, a.Y + r.S * x);
+                Vector off = t - b0; if (off.Length < 1) off = new Vector(nx * sinal * Math.Sign(val), -ny * sinal * Math.Sign(val));
+                off.Normalize();
+                // rotulo do lado de fora da curva (longe da barra); valores maiores tem preferencia
+                Rotulo(Num.Fmt(val, 2), t, val >= 0 ? PPosD[tipo].Brush : PNegD[tipo].Brush, off * 16, 0, Math.Abs(val));
+            }
+        }
+
+        // Dados do cartao de inspecao: x, N(x), V(x), M(x) e delta(x) no ponto da barra sob o mouse.
+        DadosInsp MontarInsp(Barra b, No a, double x, List<ResBarra> rs)
+        {
+            var d = new DadosInsp { B = b, X = x, Pos = "Barra " + b.Id + "  ·  x = " + Num.Fmt(x, 2) + " m" };
+            Func<int, string> faixa = tp =>
+            {
+                double mn = rs.Min(r => r.Valor(tp, x)), mx = rs.Max(r => r.Valor(tp, x));
+                return Math.Abs(mx - mn) < 1e-9 ? Num.Fmt(mx, 2) : Num.Fmt(mn, 2) + " … " + Num.Fmt(mx, 2);
+            };
+            d.N = faixa(0); d.V = faixa(1); d.M = faixa(2);
+            d.D = Num.Fmt(rs.Max(r => Math.Sqrt(Math.Pow(r.Ux(x), 2) + Math.Pow(r.V(x), 2))) * 1000, 2);
+            ResBarra r0 = rs[0];
+            d.Base = Tela(a.X + r0.C * x, a.Y + r0.S * x);
+            if (rs.Count == 1)
+            {
+                if (Diag == Diagrama.Deformada)
+                {
+                    double dm; double f = EscalaDeformada(out dm); double ul = r0.Ux(x), vl = r0.V(x);
+                    d.Alvo = Tela(a.X + r0.C * x + f * (r0.C * ul - r0.S * vl), a.Y + r0.S * x + f * (r0.S * ul + r0.C * vl));
+                    d.TemAlvo = f > 0; d.CorAlvo = PDef.Brush;
+                }
+                else
+                {
+                    double vmax; double esc = EscalaEsforco(out vmax); int tp = Tipo; double val = r0.Valor(tp, x), sg = tp == 2 ? -1 : 1;
+                    d.Alvo = Tela(a.X + r0.C * x - r0.S * sg * val * esc, a.Y + r0.S * x + r0.C * sg * val * esc);
+                    d.TemAlvo = esc > 0; d.CorAlvo = (val >= 0 ? PPosD[tp] : PNegD[tp]).Brush;
+                }
+            }
+            return d;
+        }
+
+        static readonly Pen PMarcaInsp = Caneta(TemaPlant.BTexto1, 1.4), PRealceInsp = Caneta(TemaPlant.BRealce, 2), PBordaCartao = Caneta(TemaPlant.BBordaSutil, 1);
+
+        // Marcador na barra + cartao com x, N, V, M e delta (a linha do diagrama ativo fica realcada).
+        void DesenharInspecao(DrawingContext dc)
+        {
+            DadosInsp d = insp;
+            if (d.TemAlvo && (d.Alvo - d.Base).Length > 1) dc.DrawLine(PGuia, d.Base, d.Alvo);
+            dc.DrawEllipse(Fundo, PRealceInsp, d.Base, 4.5, 4.5);
+            if (d.TemAlvo) dc.DrawEllipse(d.CorAlvo, PMarcaInsp, d.Alvo, 4, 4);
+
+            var linhas = new[]
+            {
+                new { Nome = "N", V = d.N, U = "kN", Cor = (Brush)TemaPlant.B(CorPos[0]), Ativa = Diag == Diagrama.Normal },
+                new { Nome = "V", V = d.V, U = "kN", Cor = (Brush)TemaPlant.B(CorPos[1]), Ativa = Diag == Diagrama.Cortante },
+                new { Nome = "M", V = d.M, U = "kN·m", Cor = (Brush)TemaPlant.B(CorPos[2]), Ativa = Diag == Diagrama.Momento },
+                new { Nome = "δ", V = d.D, U = "mm", Cor = (Brush)TemaPlant.BDeformada, Ativa = Diag == Diagrama.Deformada },
+            };
+            var cab = Ft(d.Pos, TemaPlant.BTexto2, 11);
+            var vals = linhas.Select(l => new FormattedText(l.V, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, FonteNum, 11.5, TemaPlant.BTexto1, Dip)).ToList();
+            var unis = linhas.Select(l => Ft(l.U, TemaPlant.BTexto2, 10.5)).ToList();
+            double wv = vals.Max(f => f.Width), wu = unis.Max(f => f.Width);
+            const double pad = 9, linhaH = 19;
+            double w = Math.Max(cab.Width, 28 + wv + 6 + wu) + 2 * pad, h = 8 + cab.Height + 6 + linhas.Length * linhaH + 4;
+            Point pos = new Point(mouseTela.X + 18, mouseTela.Y + 22);
+            if (pos.X + w > ActualWidth - 4) pos.X = mouseTela.X - w - 14;
+            if (pos.Y + h > ActualHeight - 4) pos.Y = mouseTela.Y - h - 14;
+            pos.X = Math.Max(4, pos.X); pos.Y = Math.Max(4, pos.Y);
+            dc.DrawRoundedRectangle(BCaixa, PBordaCartao, new Rect(pos.X, pos.Y, w, h), 6, 6);
+            dc.DrawText(cab, new Point(pos.X + pad, pos.Y + 8));
+            double y = pos.Y + 8 + cab.Height + 6;
+            for (int i = 0; i < linhas.Length; i++)
+            {
+                var l = linhas[i];
+                if (l.Ativa) dc.DrawRoundedRectangle(TemaPlant.BAcentoSutil, null, new Rect(pos.X + 4, y, w - 8, linhaH), 3, 3);
+                dc.DrawEllipse(l.Cor, null, new Point(pos.X + pad + 3, y + linhaH / 2), 3, 3);
+                dc.DrawText(Ft(l.Nome, l.Ativa ? TemaPlant.BTexto1 : TemaPlant.BTexto2, 11.5), new Point(pos.X + pad + 12, y + 2));
+                dc.DrawText(vals[i], new Point(pos.X + pad + 28 + wv - vals[i].Width, y + 1.5));
+                dc.DrawText(unis[i], new Point(pos.X + pad + 28 + wv + 6, y + 3));
+                y += linhaH;
             }
         }
 
         // Leitura ao passar o mouse: esforco ou deslocamento no ponto da barra sob o cursor
         string LerDiagrama(Point tela)
         {
+            insp = null;
             if (!Resolvido || Diag == Diagrama.Nenhum || Ferr != Ferramenta.Selecionar) return null;
             Barra b = Acertar(tela) as Barra;
             if (b == null || b.Res == null) return null;
@@ -912,6 +1305,7 @@ namespace NovoFtool
             double t = Math.Max(0, Math.Min(1, Vector.Multiply(tela - pa, ab) / ab.LengthSquared)), x = t * b.Res.L;
             string pos = "Barra " + b.Id + " a " + Num.Fmt(x, 2) + " m do início: ";
             List<ResBarra> rs = Lista(b);
+            if (Diag != Diagrama.Verificacao && rs.Count > 0) insp = MontarInsp(b, a, x, rs);
             Func<int, string, string, string> faixa = (tp, nome, un) =>
             {
                 double mn = rs.Min(r => r.Valor(tp, x)), mx = rs.Max(r => r.Valor(tp, x));

@@ -37,10 +37,13 @@ codigo\portico\compilar.ps1                # Portico.exe (versão simples, WinFo
 codigo\portico\sincronizar-planilha.ps1 -Planilha "<caminho>\PLANILHA DE CÁLCULO.xlsx"   # aba CHUMBADORES = CSV
 ```
 
-Estructto.exe (precisa do .NET 8 SDK; bin/obj ficam em `C:\dev\build\Estructto`, fora do Drive):
+Estructto.exe (precisa do .NET 8 SDK; bin/obj ficam em `C:\dev\build\EstructtoV2`, fora do Drive):
 
 ```
-dotnet publish codigo\Estructto\Estructto.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o C:\dev\build\Estructto\publish
+dotnet publish codigo\Estructto\Estructto.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o C:\dev\build\EstructtoV2\publish
 ```
 
-Depois copiar `C:\dev\build\Estructto\publish\Estructto.exe` para esta pasta (feche o programa antes).
+Depois copiar `C:\dev\build\EstructtoV2\publish\Estructto.exe` para esta pasta (feche o programa antes).
+
+Conferência visual sem abrir o programa: `codigo\Estructto\capturar.ps1` gera PNG de todas as telas em `C:\dev\build\EstructtoV2\capturas`
+(`Estructto.exe --capturas <pasta>`). Regras de interface: `docs\v2\GUIA-DESIGN.md`; histórico da modernização: `docs\v2\RELATORIO.md`.

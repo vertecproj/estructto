@@ -31,22 +31,22 @@ namespace NovoFtool
                 Directory.CreateDirectory(pasta);
                 var doc = MontarRelatorio(completo);
                 int n = JanelaRelatorio.PaginasPng(doc, pasta);
-                Log("Relatório: " + n + " página(s) em " + pasta);
+                Log("Relatório: " + Pl.N(n, "página", "páginas") + " em " + pasta);
             }
             catch (Exception ex) { Log("Erro no relatório: " + ex.Message); }
         }
 
         // ---------- montagem ----------
 
-        static readonly Brush Tinta = new SolidColorBrush(Color.FromRgb(0x20, 0x24, 0x2A));
-        static readonly Brush Cinza = new SolidColorBrush(Color.FromRgb(0x5F, 0x68, 0x75));
-        static readonly Brush Linha = new SolidColorBrush(Color.FromRgb(0xC8, 0xCE, 0xD6));
-        static readonly Brush Cabeca = new SolidColorBrush(Color.FromRgb(0xE8, 0xEE, 0xF5));
+        static readonly Brush Tinta = TemaPlant.BImpTinta;
+        static readonly Brush Cinza = TemaPlant.BImpCinza;
+        static readonly Brush Linha = TemaPlant.BImpLinha;
+        static readonly Brush Cabeca = TemaPlant.BImpCabeca;
 
         FlowDocument MontarRelatorio() { return MontarRelatorio(false); }
 
         // completo = basico + memorial de calculo com o desenvolvimento de todas as contas
-        FlowDocument MontarRelatorio(bool completo)
+        internal FlowDocument MontarRelatorio(bool completo)
         {
             var doc = new FlowDocument
             {
@@ -186,7 +186,7 @@ namespace NovoFtool
             foreach (string[] l in linhas)
             {
                 var r = new TableRow();
-                foreach (string s in l) r.Cells.Add(Celula(s, s == "NÃO PASSA" ? Brushes.DarkRed : null));
+                foreach (string s in l) r.Cells.Add(Celula(s, s == "NÃO PASSA" ? TemaPlant.BImpVermelho : null));
                 g.Rows.Add(r);
             }
             t.RowGroups.Add(g);
@@ -220,7 +220,7 @@ namespace NovoFtool
     {
         FlowDocument doc;
         readonly Func<bool, FlowDocument> montar;
-        readonly FlowDocumentScrollViewer leitor = new FlowDocumentScrollViewer { Background = new SolidColorBrush(Color.FromRgb(0x5A, 0x62, 0x6E)), VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        readonly FlowDocumentScrollViewer leitor = new FlowDocumentScrollViewer { Background = TemaPlant.BBgCanvas, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         readonly string nome;
 
         public JanelaRelatorio(Func<bool, FlowDocument> montar, string nome)
@@ -228,22 +228,36 @@ namespace NovoFtool
             this.montar = montar; this.nome = nome;
             Width = 900; Height = 860; ShowInTaskbar = true;
             var raiz = new DockPanel();
-            var barra = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 8, 10, 8) };
-            var rbBasico = new RadioButton { Content = "Básico (resumo)", IsChecked = true, Foreground = BTexto, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0), ToolTip = "Gera o relatório resumido com geometria, cargas, diagramas, tabelas de esforços, deslocamentos e resumo das verificações." };
-            var rbCompleto = new RadioButton { Content = "Completo (todo o desenvolvimento das contas)", Foreground = BTexto, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 18, 0), ToolTip = "Inclui, além do resumo, o memorial de cálculo passo a passo com as fórmulas e substituições numéricas de cada barra, solda e placa de base." };
-            rbBasico.Checked += (s, e) => Mostrar(false); rbCompleto.Checked += (s, e) => Mostrar(true);
-            barra.Children.Add(rbBasico); barra.Children.Add(rbCompleto);
-            var btImp = B("Imprimir / Salvar PDF...", Imprimir, true); btImp.ToolTip = "Abre a caixa de impressão do Windows (escolha \"Microsoft Print to PDF\" para salvar o memorial em PDF).";
+            var barra = new DockPanel { Margin = new Thickness(0), LastChildFill = true };
+            var faixa = new Border { Background = BPainel, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(14, 8, 14, 8), Child = barra };
+            var btImp = B("Imprimir / Salvar PDF…", Imprimir, true); btImp.ToolTip = "Abre a caixa de impressão do Windows (escolha \"Microsoft Print to PDF\" para salvar o memorial em PDF) (Enter).";
             var btFechar = B("Fechar", Close); btFechar.ToolTip = "Fecha a visualização do relatório (Esc).";
-            barra.Children.Add(btImp);
-            barra.Children.Add(btFechar);
+            var dir = new StackPanel { Orientation = Orientation.Horizontal };
+            dir.Children.Add(btImp); dir.Children.Add(btFechar);
+            DockPanel.SetDock(dir, Dock.Right); barra.Children.Add(dir);
+            segHost = new ContentControl { VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(segHost, Dock.Left); barra.Children.Add(segHost);
+            var dica = T("Para PDF, escolha a impressora \"Microsoft Print to PDF\".", 11, TemaPlant.BTexto3); dica.Margin = new Thickness(14, 0, 0, 0); dica.VerticalAlignment = VerticalAlignment.Center; dica.TextTrimming = TextTrimming.CharacterEllipsis;
+            barra.Children.Add(dica);
+            DockPanel.SetDock(faixa, Dock.Top);
+            raiz.Children.Add(faixa);
             leitor.ToolTip = "Pré-visualização do memorial de cálculo. Role a página ou use os controles de zoom no canto inferior direito.";
-            barra.Children.Add(T("   PDF: impressora \"Microsoft Print to PDF\".", 11, BFraco));
-            DockPanel.SetDock(barra, Dock.Top);
-            raiz.Children.Add(barra);
             raiz.Children.Add(leitor);
             Content = raiz;
-            Mostrar(false);
+            Alternar(false);
+        }
+
+        readonly ContentControl segHost; bool completoAtual;
+
+        void Alternar(bool completo)
+        {
+            completoAtual = completo;
+            segHost.Content = UiPlaca.Segmentado(new List<(string, bool, Action, string)>
+            {
+                ("Resumo", !completo, () => { if (completoAtual) Alternar(false); }, "Geometria, cargas, diagramas, tabelas de esforços, deslocamentos e resumo das verificações."),
+                ("Completo", completo, () => { if (!completoAtual) Alternar(true); }, "Inclui o memorial de cálculo passo a passo, com fórmulas e substituições numéricas de cada barra, solda e placa de base."),
+            }, 28, 12);
+            Mostrar(completo);
         }
 
         void Mostrar(bool completo)

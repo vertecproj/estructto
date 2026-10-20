@@ -30,6 +30,17 @@ namespace NovoFtool
             catch { }
         }
 
+        static string ArqCmd { get { return Path.Combine(Pasta, "recentes-cmd.txt"); } }
+        public static List<string> RecentesComandos()
+        {
+            try { return File.Exists(ArqCmd) ? File.ReadAllLines(ArqCmd).Where(l => l.Trim() != "").Distinct().Take(6).ToList() : new List<string>(); }
+            catch { return new List<string>(); }
+        }
+        public static void SalvarRecentesComandos(List<string> l)
+        {
+            try { Directory.CreateDirectory(Pasta); File.WriteAllLines(ArqCmd, l.Take(6)); } catch { }
+        }
+
         public static void SalvarRecuperacao(string xml, string original)
         {
             try { Directory.CreateDirectory(Pasta); File.WriteAllText(ArqRecup, xml); File.WriteAllText(ArqRecupOrig, original ?? ""); }

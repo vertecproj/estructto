@@ -1,0 +1,25 @@
+TAREFA DE LEITURA E SÍNTESE (não edite código; escreva SÓ o arquivo pedido).
+
+Pasta: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\docs\v2
+Leia as skills de design baixadas em refs\ :
+- refs\taste-skill\skills\taste-skill\SKILL.md (e outros SKILL.md do repo, se úteis)
+- refs\agent-skills\skills\web-design-guidelines\SKILL.md (ela aponta para as "Web Interface Guidelines" da Vercel: busque o texto das regras na web, ex.: github.com/vercel-labs/web-interface-guidelines)
+- refs\anthropics_skills\skills\frontend-design\SKILL.md
+- refs\nextlevelbuilder_ui-ux-pro-max-skill\ (README + .claude\skills\design-system e ui-styling, e os dados/CSV de estilos, paletas e tipografia se houver)
+- refs\wshaddix_dotnet-skills\skills\dotnet-wpf-modern\SKILL.md e refs\jcurbelo_skills\wpf-best-practices\SKILL.md
+- refs\awesome-design-md\design-md\ : leia os DESIGN.md de linear.app, raycast, warp, figma, vercel, cursor, sentry, supabase (apps escuros e técnicos).
+E também PESQUISA.md e PLANO-V2.md (contexto: Estructto, programa WPF de cálculo estrutural com cara de CAD, tema escuro).
+
+Escreva GUIA-DESIGN.md (máx. ~400 linhas), PRÁTICO e aplicável a WPF/desktop (traduza o que é web para WPF), com:
+1. Direção visual escolhida para o Estructto (1 parágrafo) e os "dials" da taste-skill com valores (variância, movimento, densidade) adequados a CAD.
+2. Qual DESIGN.md de marca serve de referência principal e por quê; tokens finais recomendados (cores com hex, superfícies, bordas, texto,
+   acento, semânticas, cores do canvas/diagramas), tipografia (família, escala, pesos, números tabulares), espaçamento, raios, sombras/elevação, movimento.
+   Compare com os tokens da PESQUISA.md e decida (um conjunto final).
+3. Checklist de revisão de tela (30–50 itens verificáveis olhando uma captura PNG): hierarquia, alinhamento, densidade, contraste AA,
+   estados (hover/foco/pressionado/desabilitado/vazio/carregando/erro), textos (sentence case, verbos, unidades), ícones, consistência, anti-padrões
+   ("AI slop": gradientes gratuitos, sombras exageradas, cantos demais, cor sem significado, etc.).
+4. Regras WPF específicas (das skills WPF): estilos implícitos, DynamicResource, virtualização, DPI, Freeze de Brushes/Geometry, animação com
+   Storyboard leve, acessibilidade (AutomationProperties), teclado/foco.
+5. Padrões de componente para o Estructto: botão primário/secundário/ghost, campo numérico com unidade, pílula/segmentado, cartão, chip de status,
+   barra de capacidade, tabela, inspector, toast/aviso, diálogo, estado vazio, HUD no canvas.
+Cite de qual skill/arquivo veio cada regra (curto). Termine quando o arquivo estiver escrito; resumo de 5 linhas.

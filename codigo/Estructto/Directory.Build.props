@@ -1,8 +1,9 @@
-<Project>
+﻿<Project>
   <!-- bin/obj fora do Google Drive: o Drive trava arquivos durante a sincronizacao e quebra o build. -->
   <PropertyGroup>
-    <BaseIntermediateOutputPath>C:\dev\build\Estructto\obj\</BaseIntermediateOutputPath>
-    <BaseOutputPath>C:\dev\build\Estructto\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>C:\dev\build\EstructtoV2\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>C:\dev\build\EstructtoV2\bin\</BaseOutputPath>
   </PropertyGroup>
 </Project>
+
 

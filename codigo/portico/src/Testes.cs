@@ -501,6 +501,15 @@ namespace Portico
             Sim("solda: perna 3 mm em tubo 7,3 / chapa 8 -> abaixo do minimo, NAO PASSA mesmo com tensao baixa", sd3.Ap < 1 && sd3.AbaixoMinimo && !sd3.Passa);
             Sim("solda: Minima() nunca devolve perna abaixo da normativa", NovoFtool.Solda.Minima(sc, false, -8.87, 0.5, 2.32, "E70", 8) >= 5);
             Conf("solda: n equivalente = 0,577.FEXX/tau (E70: FEXX = 145/0,30)", sd3.NEquiv, 0.577 * (145 / 0.30) / sd3.Tau, 1e-9);
+            // E5: diagnostico da solda reprovada (por que e o que fazer)
+            var dg1 = NovoFtool.Solda.Diagnosticar(sc, false, -8.87, 0.5, 2.32, 3, "E70", 8);
+            Sim("solda diag: perna 3 abaixo do minimo -> sugere a menor perna que passa (5 mm, mesmo eletrodo)", !dg1.Passa && dg1.Perna == 5 && dg1.Eletrodo == "E70" && dg1.Porque.Contains("mínimo"));
+            Sim("solda diag: a sugestao passa de fato no Calcular", NovoFtool.Solda.Calcular(sc, false, -8.87, 0.5, 2.32, dg1.Perna, dg1.Eletrodo, 8).Passa);
+            Secao tuboFino = Biblioteca.AcharSecao("Tubo 30x20x1,06");
+            var dg2 = NovoFtool.Solda.Diagnosticar(tuboFino, false, 0.5, 0.3, 0.05, 3, "E70", 6.35);
+            Sim("solda diag: tubo 30x20x1,06 -> parede 1,06 mm < perna minima 3 mm, sem solucao, perna max ~1,06", dg2.SemSolucao && Math.Abs(dg2.PernaMax - 1.06) < 1e-9 && dg2.Porque.Contains("1,06"));
+            var dg3 = NovoFtool.Solda.Diagnosticar(sc, false, -8.87, 0.5, 2.32, 5, "E70", 8);
+            Sim("solda diag: solda que passa nao tem diagnostico", dg3.Passa && dg3.OQueFazer == "");
             // 7: interacao N + M com amplificacao
             Modelo m3 = m.PosicaoOposta(); Solver.Resolver(m3);
             Verif vi = Verificador.Barra(m3, m3.Barras[0], sc);

@@ -23,7 +23,7 @@ namespace NovoFtool
         readonly List<string> selecionados = new List<string>();
 
         readonly StackPanel listaSeletor = new StackPanel();
-        readonly StackPanel btsFiltro = new StackPanel { Orientation = Orientation.Horizontal };
+        readonly StackPanel btsFiltro = new StackPanel { Orientation = Orientation.Vertical };
         readonly StackPanel areaAvisos = new StackPanel();
         readonly StackPanel painelColunas = new StackPanel { Orientation = Orientation.Horizontal };
         readonly StackPanel areaPares = new StackPanel();
@@ -55,8 +55,8 @@ namespace NovoFtool
             // Rodapé
             var rod = new Border
             {
-                Background = BPainel,
-                BorderBrush = Pincel(0x22, 0x29, 0x33),
+                Background = TemaPlant.BSup1,
+                BorderBrush = TemaPlant.BBordaSutil,
                 BorderThickness = new Thickness(0, 1, 0, 0),
                 Padding = new Thickness(16, 10, 16, 10)
             };
@@ -96,20 +96,23 @@ namespace NovoFtool
             // 1) Coluna esquerda: busca + filtros + lista de todas as linhas
             var esqBorder = new Border
             {
-                Background = BPainel,
-                BorderBrush = Pincel(0x22, 0x29, 0x33),
+                Background = TemaPlant.BSup1,
+                BorderBrush = TemaPlant.BBordaSutil,
                 BorderThickness = new Thickness(0, 0, 1, 0)
             };
             var dpEsq = new DockPanel();
             var cabEsq = new StackPanel { Margin = new Thickness(14, 12, 14, 10) };
 
             var linTitEsq = new DockPanel();
-            badgeContagem.Background = BAzul;
-            badgeContagem.CornerRadius = new CornerRadius(10);
-            badgeContagem.Padding = new Thickness(8, 2, 8, 2);
+            badgeContagem.Background = TemaPlant.BAcentoSutil;
+            badgeContagem.BorderBrush = TemaPlant.BAcento;
+            badgeContagem.BorderThickness = new Thickness(1);
+            badgeContagem.CornerRadius = new CornerRadius(3);
+            badgeContagem.Padding = new Thickness(7, 2, 7, 2);
+            badgeContagem.VerticalAlignment = VerticalAlignment.Center;
             lblContagem.FontSize = 11;
             lblContagem.FontWeight = FontWeights.SemiBold;
-            lblContagem.Foreground = Brushes.White;
+            lblContagem.Foreground = TemaPlant.BRealce;
             badgeContagem.Child = lblContagem;
             Dica(badgeContagem, "Quantidade de fixações selecionadas para comparação lado a lado.");
             DockPanel.SetDock(badgeContagem, Dock.Right);
@@ -123,19 +126,25 @@ namespace NovoFtool
             cabEsq.Children.Add(subEsq);
 
             // Caixa de busca
-            var boxBusca = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+            var boxBusca = new Grid { Margin = new Thickness(0, 0, 0, 8), Height = 30 };
+            boxBusca.Children.Add(new Border { Background = TemaPlant.BSup3, BorderBrush = BBorda, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4) });
+            var icBusca = (FrameworkElement)Icones.Criar("busca", 14);
+            icBusca.HorizontalAlignment = HorizontalAlignment.Left; icBusca.VerticalAlignment = VerticalAlignment.Center; icBusca.Margin = new Thickness(9, 0, 0, 0); icBusca.IsHitTestVisible = false;
+            boxBusca.Children.Add(icBusca);
             var tbBusca = new TextBox
             {
-                Background = BFundo,
+                Background = Brushes.Transparent,
                 Foreground = BTexto,
-                BorderBrush = BBorda,
+                BorderThickness = new Thickness(0),
                 CaretBrush = BTexto,
-                Padding = new Thickness(8, 5, 8, 5),
+                Padding = new Thickness(28, 0, 8, 0),
+                VerticalContentAlignment = VerticalAlignment.Center,
                 FontSize = 12
             };
             Dica(tbBusca, "Filtra as fixações por código (ex.: CB 12300), linha (ex.: WB, WQE 500, WLT), fabricante ou diâmetro (ex.: 1/2\").");
-            var dicaBusca = T("🔍 Buscar código, linha ou Ø (ex.: 1/2\", WB, WQE)…", 11.5, BFraco);
-            dicaBusca.Margin = new Thickness(9, 6, 0, 0);
+            var dicaBusca = T("Buscar código, linha ou Ø (ex.: 1/2\", WB, WQE)…", 11.5, TemaPlant.BTextoMudo);
+            dicaBusca.Margin = new Thickness(32, 0, 0, 0);
+            dicaBusca.VerticalAlignment = VerticalAlignment.Center;
             dicaBusca.IsHitTestVisible = false;
             tbBusca.TextChanged += (s, e) =>
             {
@@ -276,19 +285,23 @@ namespace NovoFtool
             return e;
         }
 
+        // Pílula no padrão do GUIA (ghost; ativo = Accent.Subtle + borda de acento), raio 4
         static Border Pilula(string texto, bool ativo, Action clique, string dica = null)
         {
+            var tb = new TextBlock { Text = texto, FontSize = 11.5, FontWeight = ativo ? FontWeights.SemiBold : FontWeights.Normal, Foreground = ativo ? TemaPlant.BRealce : TemaPlant.BTexto1, VerticalAlignment = VerticalAlignment.Center };
             var b = new Border
             {
-                Background = ativo ? BAzul : Brushes.Transparent,
-                BorderBrush = ativo ? BAzul : BBorda,
+                Background = ativo ? TemaPlant.BAcentoSutil : TemaPlant.BSup2,
+                BorderBrush = ativo ? TemaPlant.BAcento : TemaPlant.BBorda,
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(12),
-                Padding = new Thickness(9, 2.5, 9, 2.5),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(9, 3, 9, 3),
                 Margin = new Thickness(0, 0, 5, 4),
                 Cursor = Cursors.Hand,
-                Child = new TextBlock { Text = texto, FontSize = 11.5, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center }
+                Child = tb
             };
+            b.MouseEnter += (s, e) => { if (!ativo) b.Background = TemaPlant.BSup3; };
+            b.MouseLeave += (s, e) => { if (!ativo) b.Background = TemaPlant.BSup2; };
             b.MouseLeftButtonDown += (s, e) => { clique(); e.Handled = true; };
             if (!string.IsNullOrEmpty(dica)) Dica(b, dica);
             return b;
@@ -324,8 +337,8 @@ namespace NovoFtool
         {
             var bd = new Border
             {
-                Background = BPainel,
-                BorderBrush = Pincel(0x22, 0x29, 0x33),
+                Background = TemaPlant.BSup1,
+                BorderBrush = TemaPlant.BBordaSutil,
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Padding = new Thickness(16, 10, 16, 10)
             };
@@ -432,7 +445,7 @@ namespace NovoFtool
             var dp = new DockPanel { Margin = new Thickness(12, 10, 12, 4) };
             var tag = new Border
             {
-                Background = fl.Informativa ? Pincel(0x5A, 0x4A, 0x28) : fl.Familia == "químico" ? Pincel(0x23, 0x4E, 0x68) : Pincel(0x3A, 0x44, 0x54),
+                Background = fl.Informativa ? TemaPlant.BAlertaFundo : fl.Familia == "químico" ? TemaPlant.BInfoFundo : TemaPlant.BSup3,
                 CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(5, 1, 5, 1),
                 Child = T(fl.Informativa ? "só informativa" : fl.Familia + " · " + fl.Acionamento, 10, fl.Informativa ? BAmarelo : BFraco)
@@ -453,7 +466,7 @@ namespace NovoFtool
 
             var bd = new Border
             {
-                Background = marcado ? Pincel(0x28, 0x45, 0x60) : Brushes.Transparent,
+                Background = marcado ? TemaPlant.BSelecao : Brushes.Transparent,
                 BorderBrush = marcado ? BAzul : BFundo,
                 BorderThickness = new Thickness(marcado ? 1.5 : 0, 0, 0, 1),
                 Padding = new Thickness(12, 7, 12, 7),
@@ -485,7 +498,7 @@ namespace NovoFtool
                 BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 8, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Child = marcado ? new TextBlock { Text = "✓", FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } : null
+                Child = marcado ? new TextBlock { Text = "✓", FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = TemaPlant.BTextoSobreAcento, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } : null
             };
             DockPanel.SetDock(chk, Dock.Left);
             dp.Children.Add(chk);
@@ -521,7 +534,7 @@ namespace NovoFtool
             bool marcado = selecionados.Contains(fl.Linha);
             var bd = new Border
             {
-                Background = marcado ? Pincel(0x28, 0x45, 0x60) : Brushes.Transparent,
+                Background = marcado ? TemaPlant.BSelecao : Brushes.Transparent,
                 BorderBrush = marcado ? BAzul : BFundo,
                 BorderThickness = new Thickness(marcado ? 1.5 : 0, 0, 0, 1),
                 Padding = new Thickness(12, 7, 12, 7),
@@ -543,7 +556,7 @@ namespace NovoFtool
                 BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 8, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Child = marcado ? new TextBlock { Text = "✓", FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } : null
+                Child = marcado ? new TextBlock { Text = "✓", FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = TemaPlant.BTextoSobreAcento, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } : null
             };
             DockPanel.SetDock(chk, Dock.Left);
             dp.Children.Add(chk);
@@ -587,7 +600,7 @@ namespace NovoFtool
             {
                 var dicaUm = new Border
                 {
-                    Background = Pincel(0x36, 0x44, 0x58),
+                    Background = TemaPlant.BSup3,
                     BorderBrush = BAzul,
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
@@ -604,22 +617,38 @@ namespace NovoFtool
             {
                 var bdAv = new Border
                 {
-                    Background = Pincel(0x43, 0x39, 0x26),
-                    BorderBrush = Pincel(0x8A, 0x6A, 0x2A),
+                    Background = TemaPlant.BAlertaFundo,
+                    BorderBrush = TemaPlant.BAlertaBorda,
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(14, 10, 14, 10),
                     Margin = new Thickness(0, 0, 0, 12)
                 };
+                // compacto: uma linha com um chip por aviso (texto completo na dica) + detalhes recolhíveis
+                bdAv.Padding = new Thickness(12, 7, 12, 7);
                 var spAv = new StackPanel();
-                spAv.Children.Add(Dica(T("⚠  AVISOS DE COMPARAÇÃO (SEÇÃO 5.3 DO GUIA DOS CATÁLOGOS)", 11.5, BAmarelo, FontWeights.Bold),
-                    "Cuidados obrigatórios ao comparar grandezas de linhas, concretos ou critérios diferentes."));
+                var linAv = new WrapPanel { Orientation = Orientation.Horizontal };
+                var tAv = UiPlaca.Dica(UiPlaca.Tx("⚠  " + avisos.Count + (avisos.Count == 1 ? " cuidado" : " cuidados") + " ao comparar:", 12, BAmarelo, FontWeights.SemiBold),
+                    "Cuidados obrigatórios ao comparar grandezas de linhas, concretos ou critérios diferentes (seção 5.3 do guia dos catálogos).");
+                tAv.Margin = new Thickness(0, 0, 8, 0);
+                linAv.Children.Add(tAv);
+                foreach (string a in avisos)
+                {
+                    int ip = a.IndexOf(':');
+                    string curto = ip > 0 && ip < 70 ? a.Substring(0, ip) : (a.Length > 60 ? a.Substring(0, 57) + "…" : a);
+                    var ch = UiPlaca.Chip(curto, UiPlaca.Nivel.Alerta, a, null, 11);
+                    ch.Margin = new Thickness(0, 2, 6, 2);
+                    linAv.Children.Add(ch);
+                }
+                spAv.Children.Add(linAv);
+                var spDet = new StackPanel();
                 foreach (string a in avisos)
                 {
                     var ta = T("• " + a, 11.5, BTexto);
                     ta.Margin = new Thickness(0, 4, 0, 0);
-                    spAv.Children.Add(ta);
+                    spDet.Children.Add(ta);
                 }
+                spAv.Children.Add(new Expander { Header = T("ver o texto completo", 11.5, BFraco), IsExpanded = false, Margin = new Thickness(0, 4, 0, 0), Content = spDet, Foreground = BFraco });
                 bdAv.Child = spAv;
                 areaAvisos.Children.Add(bdAv);
             }
@@ -633,9 +662,7 @@ namespace NovoFtool
             List<ParFixacao> pares = Fixacoes.ParesPara(linhasDistintas);
             if (pares.Count > 0)
             {
-                var titPares = T("COMPARAÇÃO DIRETA ENTRE OS PARES SELECIONADOS (SEÇÃO 5.2 DO GUIA)", 12, BAzul, FontWeights.Bold);
-                titPares.Margin = new Thickness(0, 4, 0, 8);
-                areaPares.Children.Add(titPares);
+                areaPares.Children.Add(UiPlaca.TituloSecao("Comparação direta entre os pares selecionados (seção 5.2 do guia)", null, 4));
 
                 foreach (ParFixacao par in pares)
                     areaPares.Children.Add(MontarCartaoPar(par));
@@ -653,22 +680,26 @@ namespace NovoFtool
             var card = new Border
             {
                 Width = 345,
-                Background = BPainel,
-                BorderBrush = fl.Informativa ? Pincel(0x8A, 0x6A, 0x2A) : temVerif ? (ok ? BOk : BRuim) : BBorda,
-                BorderThickness = new Thickness(1.5),
+                Background = TemaPlant.BSup1,
+                BorderBrush = TemaPlant.BBordaSutil,
+                BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
                 Margin = new Thickness(0, 0, 12, 4),
-                VerticalAlignment = VerticalAlignment.Top
+                VerticalAlignment = VerticalAlignment.Top,
+                ClipToBounds = true
             };
 
             var sp = new StackPanel();
+            // faixa de 3 px com a cor do status (o resto do cartão fica neutro)
+            sp.Children.Add(new Border { Height = 3, Background = fl.Informativa ? TemaPlant.BAlerta : temVerif ? (ok ? TemaPlant.BSucesso : TemaPlant.BErro) : TemaPlant.BBorda });
 
-            // Cabeçalho colorido da coluna
+            // Cabeçalho da coluna
             var cab = new Border
             {
-                Background = fl.Informativa ? Pincel(0x4A, 0x3F, 0x2A) : temVerif ? (ok ? BOk : BRuim) : BCinza,
-                CornerRadius = new CornerRadius(5, 5, 0, 0),
-                Padding = new Thickness(12, 10, 12, 10)
+                Background = TemaPlant.BSup2,
+                BorderBrush = TemaPlant.BBordaSutil,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(12, 9, 12, 10)
             };
             var spCab = new StackPanel();
             var topoCab = new DockPanel();
@@ -682,14 +713,18 @@ namespace NovoFtool
             DockPanel.SetDock(btRem, Dock.Right);
             topoCab.Children.Add(btRem);
 
-            string seloTxt = fl.Informativa ? "ℹ SÓ INFORMATIVA (FORA DO CÁLCULO)"
-                           : !temVerif ? "SEM ESFORÇOS NA PLACA"
-                           : ok ? "✓ PASSA NA PLACA ATUAL" : "✕ NÃO PASSA NA PLACA ATUAL";
-            Brush seloCor = fl.Informativa ? BAmarelo : !temVerif ? BFraco : ok ? BVerde : BVermelho;
-            topoCab.Children.Add(T(seloTxt, 11, seloCor, FontWeights.Bold));
+            string seloTxt = fl.Informativa ? "ℹ só informativa (fora do cálculo)"
+                           : !temVerif ? "sem esforços na placa"
+                           : ok ? "✓ passa na placa atual · " + UiPlaca.Pct(tc.ApFix) : "✕ não passa na placa atual · " + UiPlaca.Pct(tc.ApFix);
+            var nivel = fl.Informativa ? UiPlaca.Nivel.Alerta : !temVerif ? UiPlaca.Nivel.Neutro : ok ? UiPlaca.NivelAp(tc.ApFix, true) : UiPlaca.Nivel.Erro;
+            var selo = UiPlaca.Chip(seloTxt, nivel, null, null, 10.5);
+            selo.HorizontalAlignment = HorizontalAlignment.Left;
+            topoCab.Children.Add(selo);
             spCab.Children.Add(topoCab);
 
-            spCab.Children.Add(T(col.Titulo, 16, Brushes.White, FontWeights.Bold));
+            var tTit = T(col.Titulo, 16, TemaPlant.BTexto1, FontWeights.Bold);
+            tTit.Margin = new Thickness(0, 6, 0, 0);
+            spCab.Children.Add(tTit);
             var sub = T(col.Subtitulo, 11.5, BFraco);
             sub.Margin = new Thickness(0, 2, 0, 0);
             spCab.Children.Add(sub);
@@ -702,26 +737,27 @@ namespace NovoFtool
                 {
                     var bUso = new Border
                     {
-                        Background = Pincel(0x28, 0x45, 0x60),
+                        Background = TemaPlant.BSelecao,
                         BorderBrush = BAzul,
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(4),
                         Padding = new Thickness(8, 3, 8, 3),
                         HorizontalAlignment = HorizontalAlignment.Left,
-                        Child = T("✓ Em uso na placa", 11, Brushes.White, FontWeights.SemiBold)
+                        Child = T("✓ Em uso na placa", 11, TemaPlant.BTexto1, FontWeights.SemiBold)
                     };
                     Dica(bUso, "Este chumbador já é o selecionado atualmente na placa de base.");
                     dpUsar.Children.Add(bUso);
                 }
                 else
                 {
-                    var bUsar = Pilula("Usar este chumbador na placa", true, () =>
+                    var bUsar = UiPlaca.Botao("Usar este chumbador na placa", null, () =>
                     {
                         ChumbadorEscolhido = c.Nome;
                         if (p != null) p.Chumbador = c.Nome;
                         DialogResult = true;
                         Close();
-                    }, "Seleciona " + c.Nome + " na placa de base e fecha a janela de comparação.");
+                    }, "Seleciona " + c.Nome + " na placa de base e fecha a janela de comparação.", 28);
+                    bUsar.HorizontalAlignment = HorizontalAlignment.Left;
                     dpUsar.Children.Add(bUsar);
                 }
                 spCab.Children.Add(dpUsar);
@@ -882,23 +918,15 @@ namespace NovoFtool
 
         static UIElement TituloSecaoColuna(string titulo, string dica)
         {
-            var bd = new Border
-            {
-                BorderBrush = Pincel(0x4A, 0x54, 0x63),
-                BorderThickness = new Thickness(0, 0, 0, 1),
-                Padding = new Thickness(0, 8, 0, 3),
-                Margin = new Thickness(0, 6, 0, 6),
-                Child = T(titulo.ToUpperInvariant(), 11, BAzul, FontWeights.Bold)
-            };
-            return Dica(bd, dica);
+            return UiPlaca.Dica(UiPlaca.TituloSecao(titulo, null, 10), dica);
         }
 
         static UIElement CaixaAvisoColuna(string texto, Brush corTexto)
         {
             return new Border
             {
-                Background = Pincel(0x43, 0x39, 0x26),
-                BorderBrush = Pincel(0x8A, 0x6A, 0x2A),
+                Background = TemaPlant.BAlertaFundo,
+                BorderBrush = TemaPlant.BAlertaBorda,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(9, 7, 9, 7),
@@ -937,7 +965,7 @@ namespace NovoFtool
                 g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 var fundo = new Border
                 {
-                    Background = i % 2 == 0 ? Pincel(0x34, 0x3C, 0x4A) : Brushes.Transparent,
+                    Background = i % 2 == 0 ? TemaPlant.BSup2 : Brushes.Transparent,
                     CornerRadius = new CornerRadius(3)
                 };
                 if (!string.IsNullOrEmpty(l.dica)) Dica(fundo, l.dica);
@@ -983,7 +1011,7 @@ namespace NovoFtool
             var fnt = T("Fonte: " + par.Fonte, 11, BFraco);
             DockPanel.SetDock(fnt, Dock.Right);
             cab.Children.Add(fnt);
-            cab.Children.Add(T(par.Titulo, 14, Brushes.White, FontWeights.Bold));
+            cab.Children.Add(T(par.Titulo, 14, TemaPlant.BTexto1, FontWeights.Bold));
             sp.Children.Add(cab);
 
             // Em que diferem

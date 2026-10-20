@@ -177,9 +177,9 @@ namespace NovoFtool
                 if (i == 0) { m.Casos[0].Nome = casos[0]; continue; }
                 m.AdicionarCaso(new CasoCarga { Nome = casos[i], Tipo = "Q" });
             }
-            av.AppendLine("Importados: " + barras + " barra(s), " + mats.Count + " material(is), " + secs.Count + " seção(ões)" + (casos.Count > 0 ? ", " + casos.Count + " caso(s) de carga" : "") + ".");
+            av.AppendLine("Importados: " + Pl.N(barras, "barra", "barras") + ", " + Pl.N(mats.Count, "material", "materiais") + ", " + Pl.N(secs.Count, "seção", "seções") + (casos.Count > 0 ? ", " + Pl.N(casos.Count, "caso", "casos") + " de carga" : "") + ".");
             if (biblioteca.Count > 0)
-                av.AppendLine("O arquivo define a(s) carga(s) nodal(is) " + string.Join(", ", biblioteca) + ", mas não foi possível ler em quais nós ela(s) está(ão) aplicada(s).");
+                av.AppendLine((biblioteca.Count == 1 ? "O arquivo define a carga nodal " : "O arquivo define as cargas nodais ") + string.Join(", ", biblioteca) + ", mas não foi possível ler em quais nós " + (biblioteca.Count == 1 ? "ela está aplicada." : "elas estão aplicadas."));
             // O trecho dos nos (depois das barras) e identico nos arquivos de exemplo, que nao tem apoio nem carga
             // atribuidos; sem um exemplo com apoio/carga aplicados nao da para saber onde o Ftool grava isso.
             av.Append("Apoios e cargas aplicadas não são lidos do .ftl (formato não documentado): aplique-os pelas abas Estrutura e Cargas.");

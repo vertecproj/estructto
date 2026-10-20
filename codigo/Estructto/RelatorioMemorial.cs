@@ -15,8 +15,8 @@ namespace NovoFtool
     {
         static string Fm(double v, int c = 2) { return double.IsInfinity(v) ? "∞" : double.IsNaN(v) ? "—" : Num.Fmt(v, c); }
 
-        static readonly Brush Verde = new SolidColorBrush(Color.FromRgb(0x1E, 0x7B, 0x3A)), Vermelho = new SolidColorBrush(Color.FromRgb(0xB0, 0x1E, 0x1E));
-        static readonly Brush FundoBloco = new SolidColorBrush(Color.FromRgb(0xF6, 0xF8, 0xFB)), AzulEsc = new SolidColorBrush(Color.FromRgb(0x14, 0x3D, 0x6B));
+        static readonly Brush Verde = TemaPlant.BImpVerde, Vermelho = TemaPlant.BImpVermelho;
+        static readonly Brush FundoBloco = TemaPlant.BImpFundoBloco, AzulEsc = TemaPlant.BImpAzulEsc;
         static readonly FontFamily Mat = new FontFamily("Cambria Math"), Mono = new FontFamily("Consolas");
 
         // ---------- pecas de formatacao ----------
@@ -94,7 +94,7 @@ namespace NovoFtool
                     new[] { "Posições analisadas", "—", rot.Count > 0 ? "0° e 180° (Fx e Mz com sinal trocado)" : "—", "", "pórtico plano: 90°/270° (momento fora do plano) não analisadas" },
                     new[] { "Coef. dinâmico já incluído nas cargas", "ψ", M.Psi > 0 ? Fm(M.Psi, 2) : "NÃO INFORMADO", "—", M.Psi > 0 ? "NBR 8400 (içamento), declarado pelo usuário; o programa não multiplica de novo" : "confirme se a carga do equipamento já inclui ψ (NBR 8400)" },
                 }));
-                if (M.Psi <= 0 && rot.Count > 0) { dd.Nota("⚠ Há carga giratória, mas o coeficiente dinâmico ψ não foi declarado: o memorial não sabe se a carga lançada já está majorada."); dd.S.BorderBrush = Brushes.DarkGoldenrod; }
+                if (M.Psi <= 0 && rot.Count > 0) { dd.Nota("⚠ Há carga giratória, mas o coeficiente dinâmico ψ não foi declarado: o memorial não sabe se a carga lançada já está majorada."); dd.S.BorderBrush = TemaPlant.BImpCarga; }
                 doc.Blocks.Add(dd.S);
             }
 
@@ -322,7 +322,7 @@ namespace NovoFtool
                 var a = new Bloco("⚠ Atenção");
                 if (v.Aviso != "") a.Nota(v.Aviso);
                 if (v.AvisoInversao != "") a.Nota(v.AvisoInversao + ".");
-                a.S.BorderBrush = Brushes.DarkGoldenrod; doc.Blocks.Add(a.S);
+                a.S.BorderBrush = TemaPlant.BImpCarga; doc.Blocks.Add(a.S);
             }
 
             var res = new Bloco("Resultado da barra " + b.Id);
@@ -330,7 +330,7 @@ namespace NovoFtool
                 new[] { new[] { Pct(v.ApTensao), Pct(v.ApCorte), Pct(v.ApFlecha), v.Nc > 1e-6 ? Pct(v.NoPlano.Ap) : "—", v.Nc > 1e-6 ? Pct(v.ForaPlano.Ap) : "—",
                                 v.LimEsbeltez > 0 ? Pct(v.ApEsbeltez) + " (≤" + Fm(v.LimEsbeltez, 0) + ")" : "—", v.Nc > 1e-6 ? Pct(v.ApInteracao) : "—",
                                 v.Critico + " (" + Pct(v.Ap) + ")", v.Passa ? (v.AvisoInversao != "" ? "passa com ⚠" : "passa") : "NÃO PASSA" } }));
-            if (v.Passa && v.Aviso == "" && v.AvisoInversao != "") { res.Selo(true, "⚠ PASSA COM AVISO"); res.S.BorderBrush = Brushes.DarkGoldenrod; }
+            if (v.Passa && v.Aviso == "" && v.AvisoInversao != "") { res.Selo(true, "⚠ PASSA COM AVISO"); res.S.BorderBrush = TemaPlant.BImpCarga; }
             else res.Selo(v.Passa && v.Aviso == "");
             doc.Blocks.Add(res.S);
         }
@@ -544,7 +544,7 @@ namespace NovoFtool
                 else so.Nota(sd.Erro);
                 doc.Blocks.Add(so.S);
             }
-            if (r.Aviso != "") { var a = new Bloco("⚠ Atenção"); a.Nota(r.Aviso); a.S.BorderBrush = Brushes.DarkGoldenrod; doc.Blocks.Add(a.S); }
+            if (r.Aviso != "") { var a = new Bloco("⚠ Atenção"); a.Nota(r.Aviso); a.S.BorderBrush = TemaPlant.BImpCarga; doc.Blocks.Add(a.S); }
         }
     }
 }

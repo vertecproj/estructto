@@ -1,0 +1,22 @@
+PROJETO: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto (C# WPF .NET 8). Edite SÓ a pasta estructto-v2. Sem pacotes novos.
+Leia: ..\..\docs\v2\GUIA-DESIGN.md (regras de design OBRIGATÓRIAS, sintetizadas das skills taste/frontend-design/web-design-guidelines/WPF), ..\..\docs\v2\PESQUISA.md seção 3 (ícones) e 4 (cores), ..\..\docs\v2\PLANO-V2.md (E2), Icones.cs inteiro, e onde os ícones são usados
+(MainWindow.xaml.cs: Botao/BotaoFerramenta, menus, árvore, barra de status).
+
+ETAPA E2 — ÍCONES, UM POR UM, COM CARINHO
+1. Motor Icones.cs: PenLineCap/PenLineJoin arredondados, preenchimento duotone (acento com ~15% de opacidade), cores pelos tokens do tema
+   (TemaPlant), espessura de traço coerente (1,5–2 px a 32 px; versão 16 px com traço proporcional e "pixel-snapping" para não borrar).
+2. Revise CADA ícone existente da ribbon e dos menus (faça uma lista no resumo): redesenhe os que estiverem fracos, confusos ou fora do padrão.
+   Ícones estruturais desenhados à mão no padrão da PESQUISA 3 (barra, nó, engaste, rótula, rolete vertical/horizontal, apoio livre, rótula interna,
+   carga nodal, carga distribuída/trapezoidal, momento aplicado, deformada, N, V, M, reações, valores, verificação/aproveitamento, dimensionar perfis,
+   comparar perfis, placa de base, parafuso/chumbador, solda, medir, snap, grade, ortho, zoom tudo/ampliar/reduzir, relatório/PDF, tabelas, CSV,
+   casos de carga/combinações, assistentes (viga, pórtico, treliça, galpão), novo/abrir/salvar/desfazer/refazer, ajuda).
+   Ícones de UI genéricos (busca, fechar, filtro, olho, configurações, seta, mais/menos, aviso, info, ok/erro): extraia os path "d" do Tabler Icons (MIT,
+   github.com/tabler/tabler-icons, outline 24×24) e embuta como Geometry (cite a licença num comentário e num arquivo docs/v2/LICENCAS-ICONES.md).
+3. Gere uma FOLHA DE ÍCONES no modo --capturas: arquivo 00-icones.png com todos os ícones em grade, nome embaixo, em 32 px e 16 px,
+   sobre o fundo do tema (e uma segunda folha sobre fundo de ribbon). Use isso para revisar: todos com o mesmo peso visual, centrados, legíveis em 16 px.
+4. Aplique os ícones novos em todos os lugares (ribbon grande/pequeno, menus de contexto, árvore do projeto, barra de status, backstage, diálogos).
+5. NÃO mude comportamento, textos nem o motor de cálculo.
+
+PROVA: dotnet build -c Release (0 erros); cd ..\portico ; .\compilar.ps1 -Testes (todos passam); .\capturar.ps1 e VEJA 00-icones.png,
+09-ribbon-*.png e 10-menu-contexto.png; corrija o que ficar feio/borrado/desalinhado. Não deixe processo aberto.
+RESUMO curto: ícones redesenhados (lista), novos, origem (Tabler/próprio), problemas.

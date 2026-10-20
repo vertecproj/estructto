@@ -1,0 +1,30 @@
+ETAPA E5 — PLACA DE BASE REFEITA (sólida e fácil)
+Pasta: G:\Meu Drive\3. UPWORK\10000\7. AGENTES\estructto-v2\codigo\Estructto. Classes JanelaPlaca e PlanoPlaca em Janelas.cs; JanelaComparar.cs;
+Acoes.cs (AbrirPlaca). Motor: ..\portico\src\Nucleo.cs (PlacaCalc, Chumbadores, PlacaBase, ResPlaca) — NÃO mude cálculo; pode ACRESCENTAR métodos.
+Leia: docs\v2\PLANO-V2.md seção "Placa de base (E5) — crítica e redesenho" (é a especificação), docs\v2\GUIA-DESIGN.md, docs\v2\PESQUISA.md seção 5,
+ftool\docs\CHUMBADORES.md e FIXACOES-GUIA.md (em estructto-v2\docs). Olhe as capturas atuais 20-*.png, 21-*.png, 22-comparar.png.
+
+O que já existe e tem que continuar funcionando (não perder nenhuma função): chumbador/parafuso, trocar chumbador (lista agrupada), comparar fixações,
+quantidade (2×2, 2×3, 3×3, outro), coeficientes (placa/parafuso e chumbador; tipo de carga, risco, fck), chapa (espessura, régua, aço fy, ajustar tamanho com
+regras), solda (perna, eletrodo), cotas editáveis no desenho, vista 3D, forças nos furos, ficha de fabricação, cálculo detalhado, melhores opções, outras
+fixações + pior caso + dimensionar pelo pior caso + copiar para nós marcados, preferências mais leve/furo menor, dimensionar, remover placa, aplicar/cancelar.
+
+Redesenho (seguir o PLANO-V2):
+1. Topo: veredito numa linha + 3 chips clicáveis (Fixação/Chapa/Solda com % e ✓✕) que rolam/destacam o passo correspondente; avisos viram chips
+   compactos com dica (barra inclinada, coeficiente abaixo do recomendado, risco não informado) — nada de parágrafo enorme no topo.
+2. Esquerda: área de desenho com seletor segmentado [Planta | 3D | Forças | Ficha | Cálculo]. Planta = PlanoPlaca atual polido. 3D maior e melhor:
+   placa com espessura, pilar com o ângulo real, bloco de concreto translúcido, chumbadores com embutimento hef, cones 1,5·hef tracejados, solda indicada;
+   rotacionável arrastando com o mouse (projeção própria, sem Viewport3D se ficar pesado). Cálculo = tabelas legíveis (fórmula, valores, ✓✕).
+3. Direita em 3 passos numerados ① Fixação ② Chapa ③ Solda, cada um com o essencial visível e o resto em "mais opções":
+   ① tipo (Mecânico | Químico | Parafuso), o escolhido + Trocar/Comparar, quantidade, coeficiente com a ORIGEM escrita ("tabela Walsywa: dinâmica, alto risco → n = 15")
+      e os 3 controles que mudam o n (tipo de carga, risco, fck) visíveis; capacidade.
+   ② espessura (régua) + tamanho (H×B×borda com "Ajustar tamanho" e dica das regras) + aço + coeficiente da placa; capacidade.
+   ③ perna (auto) + eletrodo; se reprovar, dizer o PORQUÊ e O QUE FAZER (ex.: parede do tubo 1,06 mm → perna máx. ~1 mm; sugerir).
+   "Melhores opções" vira um botão "Sugerir" no passo ① que mostra as 3 opções num popup leve.
+4. Rodapé: "Dimensionar tudo" (com Mais leve/Furo menor), "Aplicar também em…" (abre a lista de outros nós com pior caso e dimensionar pelo pior caso),
+   Cancelar/Aplicar. Em 1280×720 nada essencial pode exigir rolagem.
+5. JanelaComparar no mesmo padrão visual.
+6. Questione e simplifique: se algo duplicado/confuso, unifique e registre a decisão em docs\v2\STATUS.md (Decisões tomadas).
+Capturas: atualize/adicione no modo --capturas: 20-placa-no1/no4 (cada vista do seletor), 21-placa-parafuso, 22-comparar, 29-placa-sugerir,
+29-placa-aplicar-em, também em 1280×720. Revise com o checklist do GUIA-DESIGN.md.
+PROVA: build 0 erros; portico\compilar.ps1 -Testes (todos passam; se acrescentar métodos no motor, acrescente testes); capturas revisadas.
