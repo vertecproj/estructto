@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using static NovoFtool.UiAcoes;
 
 namespace NovoFtool
@@ -147,6 +148,9 @@ namespace NovoFtool
             MontarPrevia();
         }
 
+        // NBR 15421 tabela 1 (limite superior da faixa; zona 4 = 0,15g), igual ao motor (acoes/sismo.py AG_ZONA)
+        static readonly double[] AgZona = { 0.025, 0.05, 0.10, 0.15, 0.15 };
+
         static Border Chip(string rot, double v) { var c = UiPlaca.Chip(rot + " = " + F(v, 2).TrimEnd('0').TrimEnd(','), UiPlaca.Nivel.Neutro, null, null, 11); c.Margin = new Thickness(0, 0, 6, 0); return c; }
         static TextBlock Sep(string s) { var t = UiPlaca.Tx(s, 12, TemaPlant.BTexto2); t.Margin = new Thickness(8, 0, 8, 0); return t; }
 
@@ -184,6 +188,14 @@ namespace NovoFtool
         {
             var sp = new StackPanel();
             var px = geracao?["parametros"]?["SX"];
+            if (zona > 0)
+            {
+                double ag = px != null && !double.IsNaN(D(px["ag"])) ? D(px["ag"]) : AgZona[zona];
+                var g = new GraficoEspectro(ag, classe, px != null ? D(px["T"]) : double.NaN) { Margin = new Thickness(0, 0, 0, 10) };
+                sp.Children.Add(UiPlaca.TituloSecao("Espectro de projeto Sa(T) · NBR 15421 6.3", null, 0));
+                sp.Children.Add(g);
+                Anim.Valor(g, GraficoEspectro.ProgressoProperty, 0, 1, Anim.Espacial);
+            }
             if (px != null) sp.Children.Add(Resumo(
                 ("ag", F(D(px?["ag"]), 3), "g", "Aceleração sísmica horizontal de projeto (fração de g)."),
                 ("Cs", F(D(px?["Cs"]), 4), null, "Coeficiente de resposta sísmica (NBR 15421 9.1)."),
@@ -218,6 +230,98 @@ namespace NovoFtool
             }
             if (geracao != null) sp.Children.Add(Avisos(Lista(geracao["avisos"]).Where(a => !S(a?["codigo"]).StartsWith("vento"))));
             hostDir.Child = sp;
+        }
+    }
+
+    // Espectro de resposta de projeto, NBR 15421:2006 6.3 (ags0 = Ca·ag, ags1 = Cv·ag; Ca, Cv da tabela 3 com
+    // interpolação linear em ag entre 0,10g e 0,15g, como o motor). Marca o período T da estrutura (quando gerado).
+    // Progresso 0→1 desenha a curva da esquerda para a direita (Anim.Valor; nas capturas sai em 1).
+    public class GraficoEspectro : FrameworkElement
+    {
+        public static readonly DependencyProperty ProgressoProperty = DependencyProperty.Register("Progresso", typeof(double), typeof(GraficoEspectro),
+            new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsRender));
+        public double Progresso { get => (double)GetValue(ProgressoProperty); set => SetValue(ProgressoProperty, value); }
+
+        static readonly Dictionary<string, (double ca1, double ca2, double cv1, double cv2)> Tab3 = new()
+        {
+            ["A"] = (0.8, 0.8, 0.8, 0.8), ["B"] = (1.0, 1.0, 1.0, 1.0), ["C"] = (1.2, 1.2, 1.7, 1.7),
+            ["D"] = (1.6, 1.5, 2.4, 2.2), ["E"] = (2.5, 2.1, 3.5, 3.4),
+        };
+        readonly double ag, Ca, Cv, T;
+        const double TMax = 3.0;
+
+        public GraficoEspectro(double ag, string classe, double T)
+        {
+            this.ag = ag; this.T = T; Height = 200;
+            var c = Tab3.TryGetValue(classe, out var v) ? v : Tab3["C"];
+            double t = Math.Min(Math.Max((ag - 0.10) / 0.05, 0), 1);
+            Ca = c.ca1 + (c.ca2 - c.ca1) * t; Cv = c.cv1 + (c.cv2 - c.cv1) * t;
+            ToolTip = "Sa(T) = ags0·(18,75·T·Ca/Cv + 1) até T = 0,08·Cv/Ca; 2,5·ags0 até 0,4·Cv/Ca; depois ags1/T.";
+        }
+
+        public double Sa(double T)
+        {
+            double ags0 = Ca * ag, ags1 = Cv * ag;
+            if (T <= 0.08 * Cv / Ca) return ags0 * (18.75 * T * Ca / Cv + 1.0);
+            if (T <= 0.4 * Cv / Ca) return 2.5 * ags0;
+            return ags1 / T;
+        }
+
+        static FormattedText Txt(string s, Brush b, double tam = 10.5) =>
+            new FormattedText(s, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(TemaPlant.Fonte, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), tam, b, 1.0);
+        static string N(double v, int c) => v.ToString("F" + c, System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            double W = ActualWidth, H = ActualHeight, x0 = 44, y0 = 8, x1 = W - 12, y1 = H - 24;
+            if (W < 80) return;
+            dc.DrawRectangle(TemaPlant.BBgCanvas, new Pen(TemaPlant.BBordaSutil, 1), new Rect(0.5, 0.5, W - 1, H - 1));
+            double sMax = 2.5 * Ca * ag * 1.2;
+            Point P(double t, double s) => new Point(x0 + (x1 - x0) * t / TMax, y1 - (y1 - y0) * s / sMax);
+            var grade = new Pen(TemaPlant.BGradeMaior, 1); grade.Freeze();
+            var eixo = new Pen(TemaPlant.BBorda, 1); eixo.Freeze();
+            for (int i = 0; i <= 6; i++)
+            {
+                var a = P(i * 0.5, 0); dc.DrawLine(grade, new Point(a.X, y0), new Point(a.X, y1));
+                var ft = Txt(N(i * 0.5, 1), TemaPlant.BTexto3); dc.DrawText(ft, new Point(a.X - ft.Width / 2, y1 + 4));
+            }
+            for (int i = 0; i <= 4; i++)
+            {
+                double s = sMax * i / 4; var a = P(0, s); dc.DrawLine(grade, new Point(x0, a.Y), new Point(x1, a.Y));
+                var ft = Txt(N(s, 3), TemaPlant.BTexto3); dc.DrawText(ft, new Point(x0 - ft.Width - 4, a.Y - ft.Height / 2));
+            }
+            dc.DrawLine(eixo, new Point(x0, y0), new Point(x0, y1)); dc.DrawLine(eixo, new Point(x0, y1), new Point(x1, y1));
+            var un = Txt("T (s)", TemaPlant.BTexto2); dc.DrawText(un, new Point(x1 - un.Width, y1 - un.Height - 2));
+            dc.DrawText(Txt("Sa (g)", TemaPlant.BTexto2), new Point(x0 + 4, y0));
+
+            // curva até Progresso·TMax
+            double tFim = TMax * Math.Max(0, Math.Min(1, Progresso));
+            var geo = new StreamGeometry();
+            using (var g = geo.Open())
+            {
+                g.BeginFigure(P(0, Sa(0)), false, false);
+                for (int i = 1; i <= 300; i++) { double t = TMax * i / 300; if (t > tFim) { g.LineTo(P(tFim, Sa(tFim)), true, false); break; } g.LineTo(P(t, Sa(t)), true, true); }
+            }
+            geo.Freeze();
+            dc.DrawGeometry(null, new Pen(TemaPlant.BAcento, 2) { LineJoin = PenLineJoin.Round }, geo);
+
+            // legenda dos parâmetros
+            var leg = Txt("ag = " + N(ag, 3) + "g · Ca = " + N(Ca, 2) + " · Cv = " + N(Cv, 2) + " · patamar 2,5·ags0 = " + N(2.5 * Ca * ag, 3) + "g", TemaPlant.BTexto2);
+            dc.DrawText(leg, new Point(x1 - leg.Width - 2, y0));
+
+            // período da estrutura
+            if (!double.IsNaN(T) && T > 0 && T <= TMax && T <= tFim)
+            {
+                var p = P(T, Sa(T));
+                var tr = new Pen(TemaPlant.BAlerta, 1) { DashStyle = DashStyles.Dash }; tr.Freeze();
+                dc.DrawLine(tr, new Point(p.X, y1), p); dc.DrawLine(tr, new Point(x0, p.Y), p);
+                dc.DrawEllipse(TemaPlant.BAlerta, null, p, 4, 4);
+                var ft = Txt("T = " + N(T, 3) + " s · Sa = " + N(Sa(T), 3) + "g", TemaPlant.BTexto1, 11);
+                double lx = p.X + 8 + ft.Width > x1 ? p.X - 8 - ft.Width : p.X + 8;
+                var r = new Rect(lx - 3, p.Y - ft.Height - 6, ft.Width + 6, ft.Height + 2);
+                dc.DrawRectangle(TemaPlant.BFundoTextoCanvas, null, r);
+                dc.DrawText(ft, new Point(lx, r.Y + 1));
+            }
         }
     }
 }
