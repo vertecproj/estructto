@@ -736,20 +736,30 @@ namespace NovoFtool
             }
         }
 
-        // Placa: no resultado da tela; na envoltoria, a combinacao com o pior aproveitamento (parafuso ou chapa).
+        // Placa: no resultado da tela; na envoltoria, a fixacao na pior combinacao dela e a chapa na pior combinacao dela
+        // (o mesmo criterio da janela da placa: trocar o chumbador pode mudar qual combinacao manda).
         internal ResPlaca PlacaPior(No n)
         {
             if (Vista.Envoltoria == null) return PlacaCalc.Calcular(M, n);
-            ResPlaca pior = null; double nota = double.MinValue;
+            ResPlaca r = EnvoltoriaPlaca(n);
+            RestaurarResultado();
+            return r;
+        }
+
+        // Percorre as combinacoes (mexe em b.Res; quem chama restaura): fixacao com maior ApFix + numeros da chapa com maior EspNec.
+        ResPlaca EnvoltoriaPlaca(No n)
+        {
+            ResPlaca pFix = null, pCh = null;
             for (int i = 0; i < Vista.NomesEnv.Count; i++)
             {
                 foreach (Barra b in M.Barras) b.Res = Vista.Envoltoria[b][i];
                 ResPlaca rp = PlacaCalc.Calcular(M, n);
-                double v = NotaPlaca(rp, n);
-                if (pior == null || v > nota) { pior = rp; nota = v; }
+                double vf = rp.TemEsforcos ? rp.ApFix : -1, vc = rp.TemEsforcos ? rp.EspNec : -1;
+                if (pFix == null || vf > (pFix.TemEsforcos ? pFix.ApFix : -1)) pFix = rp;
+                if (pCh == null || vc > (pCh.TemEsforcos ? pCh.EspNec : -1)) pCh = rp;
             }
-            RestaurarResultado();
-            return pior;
+            if (pFix != null && pCh != null && pCh != pFix) JanelaPlaca.CopiarChapa(pCh, pFix);
+            return pFix;
         }
 
         internal double NotaPlaca(ResPlaca rp, No n)
@@ -758,6 +768,29 @@ namespace NovoFtool
             double par = rp.ApFix;
             double ch = n.Placa != null && n.Placa.Esp > 0 ? rp.EspNec / n.Placa.Esp : 0;
             return Math.Max(par, ch);
+        }
+
+        // Para a janela da placa: resultado no nó na combinação que maximiza a nota (fixação, chapa ou solda), e o nome dela.
+        internal Func<Func<ResPlaca, double>, (ResPlaca r, string nome)> PiorCombinacaoPlaca(No nn)
+        {
+            return nota =>
+            {
+                if (Vista.Envoltoria == null || Vista.NomesEnv == null) return (PlacaCalc.Calcular(M, nn), null);
+                var salvo = M.Barras.Select(b => b.Res).ToList();
+                try
+                {
+                    ResPlaca pior = null; double vp = double.MinValue; int ip = 0;
+                    for (int i = 0; i < Vista.NomesEnv.Count; i++)
+                    {
+                        foreach (Barra b in M.Barras) b.Res = Vista.Envoltoria[b][i];
+                        ResPlaca rp = PlacaCalc.Calcular(M, nn);
+                        double v = nota(rp);
+                        if (pior == null || v > vp) { pior = rp; vp = v; ip = i; }
+                    }
+                    return (pior, Vista.NomesEnv[ip]);
+                }
+                finally { for (int k = 0; k < M.Barras.Count; k++) M.Barras[k].Res = salvo[k]; }
+            };
         }
 
         void AbrirPlaca(No n)
@@ -775,7 +808,8 @@ namespace NovoFtool
             JanelaPlaca j;
             try { j = new JanelaPlaca(M, n) { Owner = this }; }
             catch (Exception ex) { n.Placa = orig; if (crit != null) RestaurarResultado(); Log("Erro ao abrir a placa: " + ex.Message); return; }
-            if (crit != null) j.Title += " — combinação crítica: " + crit;
+            // a janela reavalia cada item (fixação, chapa, solda) na pior combinação dele a cada mudança, e põe o nome no título
+            j.PiorCombinacao = PiorCombinacaoPlaca(nn);
             // outros pés de pilar onde a mesma placa pode ir, avaliados cada um na sua pior combinação
             j.Candidatos = M.Nos.Where(x => x != nn && (x.Placa != null || x.TemApoio) && PlacaCalc.Pilar(M, x, out Secao s3, out double a3, out double b3, out string e3) != null).ToList();
             j.AvaliarEm = (no, pl) =>
@@ -785,15 +819,7 @@ namespace NovoFtool
                 try
                 {
                     if (Vista.Envoltoria == null) return PlacaCalc.Calcular(M, no);
-                    ResPlaca pior = null; double nota = double.MinValue;
-                    for (int i = 0; i < Vista.NomesEnv.Count; i++)
-                    {
-                        foreach (Barra b in M.Barras) b.Res = Vista.Envoltoria[b][i];
-                        ResPlaca rp = PlacaCalc.Calcular(M, no);
-                        double v = NotaPlaca(rp, no);
-                        if (pior == null || v > nota) { pior = rp; nota = v; }
-                    }
-                    return pior;
+                    return EnvoltoriaPlaca(no);
                 }
                 finally { no.Placa = p0; for (int k = 0; k < M.Barras.Count; k++) M.Barras[k].Res = salvo[k]; }
             };

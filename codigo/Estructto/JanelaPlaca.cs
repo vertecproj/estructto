@@ -42,6 +42,38 @@ namespace NovoFtool
 
         // Outras fixações: quem abre a janela informa os nós possíveis e como avaliar uma placa num nó (pior combinação)
         public Func<No, PlacaBase, ResPlaca> AvaliarEm;
+
+        // Envoltória (várias combinações e as posições 0° / 180° da carga giratória): devolve o resultado da placa em edição na
+        // combinação que maximiza a nota dada, e o nome dela. Cada item (fixação, chapa, solda) é verificado na SUA pior
+        // combinação, recalculada a cada mudança: trocar o chumbador pode mudar qual combinação manda. null = um resultado só.
+        public Func<Func<ResPlaca, double>, (ResPlaca r, string nome)> PiorCombinacao;
+        public string TituloBase;
+
+        (ResPlaca r, string nome) Pior(Func<ResPlaca, double> nota) { return PiorCombinacao != null ? PiorCombinacao(nota) : (PlacaCalc.Calcular(m, n), null); }
+        static double NotaFix(ResPlaca t) { return t.TemEsforcos ? t.ApFix : -1; }
+        static double NotaChapa(ResPlaca t) { return t.TemEsforcos ? t.EspNec : -1; }
+        double NotaSolda(ResPlaca t)
+        {
+            if (!t.TemEsforcos || t.Sec == null) return -1;
+            var s = Solda.Calcular(t.Sec, t.Deitado, t.NBarra, t.VBarra, t.MBarra, edit.Solda > 0 ? edit.Solda : 5, edit.Eletrodo, edit.Esp);
+            return s.Erro == "" ? s.Tau : -1;
+        }
+        ResPlaca CalcFix() { return Pior(NotaFix).r; }
+        ResPlaca CalcSd() { return Pior(NotaSolda).r; }
+        // fixação na pior combinação dela, com os números da chapa da pior combinação da chapa
+        ResPlaca CalcEnv() { var a = CalcFix(); CopiarChapa(Pior(NotaChapa).r, a); return a; }
+        internal static void CopiarChapa(ResPlaca de, ResPlaca para)
+        {
+            para.EspNec = de.EspNec; para.EspNecT = de.EspNecT; para.EspNecC = de.EspNecC; para.CConc = de.CConc; para.BracoC = de.BracoC;
+            para.TLinha = de.TLinha; para.Braco = de.Braco; para.LargEf = de.LargEf;
+        }
+        void AtualizarTitulo(string cFix, string cCh, string cSd)
+        {
+            if (TituloBase == null) TituloBase = Title;
+            if (cFix == null) { Title = TituloBase; return; }
+            if (cFix == cCh && cCh == cSd) Title = TituloBase + " — combinação crítica: " + cFix;
+            else Title = TituloBase + " — críticas: fixação " + cFix + " · chapa " + cCh + " · solda " + cSd;
+        }
         public List<No> Candidatos = new List<No>();
         public readonly List<No> AplicarEm = new List<No>();   // nós que recebem a mesma placa ao Aplicar
         readonly HashSet<int> marcados = new HashSet<int>();
@@ -96,7 +128,7 @@ namespace NovoFtool
         // Dimensiona segundo a preferência ativa ("Mais leve" ou "Furo menor").
         void Dimensionar()
         {
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            ResPlaca r = CalcFix();
             if (!r.TemEsforcos) return;
             bool achou = false;
             if (r.Ch != null || !string.IsNullOrEmpty(edit.Chumbador))
@@ -117,7 +149,7 @@ namespace NovoFtool
                         {
                             if (arr[0] * arr[1] < f0 * q0) continue;
                             edit.Chumbador = c.Nome; edit.Fileiras = Math.Max(arr[0], f0); edit.PorFileira = Math.Max(arr[1], q0);
-                            ResPlaca t = PlacaCalc.Calcular(m, n);
+                            ResPlaca t = CalcFix();
                             if (t.Erro == "" && t.TemEsforcos && t.ChOk)
                             {
                                 achou = true;
@@ -139,7 +171,7 @@ namespace NovoFtool
                         for (int id = 0; id < Parafusos.D.Length && !achou; id++)
                         {
                             edit.Classe = Parafusos.Classes[ic]; edit.Diametro = Parafusos.D[id];
-                            ResPlaca t = PlacaCalc.Calcular(m, n);
+                            ResPlaca t = CalcFix();
                             if (t.Erro == "" && t.ChOk) achou = true;
                         }
                 }
@@ -149,16 +181,17 @@ namespace NovoFtool
                         for (int ic = ic0; ic < Parafusos.Classes.Length && !achou; ic++)
                         {
                             edit.Classe = Parafusos.Classes[ic]; edit.Diametro = Parafusos.D[id];
-                            ResPlaca t = PlacaCalc.Calcular(m, n);
+                            ResPlaca t = CalcFix();
                             if (t.Erro == "" && t.ChOk) achou = true;
                         }
                 }
                 msgDim = achou ? "Escolhido automaticamente: " + edit.Fileiras * edit.PorFileira + " × M" + Num.Fmt(edit.Diametro, 0) + " classe " + edit.Classe + "." : "Nenhum parafuso da tabela passa nesta placa.";
             }
-            r = PlacaCalc.Calcular(m, n);
+            r = CalcEnv();
             double ch = PlacaCalc.Chapas.FirstOrDefault(e => e >= r.EspNec - 1e-9);
             if (ch > 0) edit.Esp = ch;
-            if (r.Sec != null) { double h = Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, edit.Eletrodo, edit.Esp); edit.Solda = h > 0 ? h : 25; }
+            var rs0 = CalcSd();   // solda pela pior combinação dela
+            if (rs0.Sec != null) { double h = Solda.Minima(rs0.Sec, rs0.Deitado, rs0.NBarra, rs0.VBarra, rs0.MBarra, edit.Eletrodo, edit.Esp); edit.Solda = h > 0 ? h : 25; }
         }
 
         public JanelaPlaca(Modelo m, No n)
@@ -254,7 +287,8 @@ namespace NovoFtool
                 }
             };
             Closing += (s, e) => { if (!Mudou) n.Placa = original; };
-            Loaded += (s, e) => Recalcular();   // Candidatos/AvaliarEm chegam depois do construtor
+            // Candidatos/AvaliarEm/PiorCombinacao chegam depois do construtor: placa nova é redimensionada já pela envoltória
+            Loaded += (s, e) => { if (original == null && PiorCombinacao != null) Dimensionar(); Recalcular(); };
             Recalcular();
         }
 
@@ -291,8 +325,11 @@ namespace NovoFtool
         void Recalcular()
         {
             plano.FecharEditor(false);
-            ResPlaca r = PlacaCalc.Calcular(m, n);
-            var sd = SoldaPilar(r);
+            var pf = Pior(NotaFix); var pc = Pior(NotaChapa); var ps = Pior(NotaSolda);
+            ResPlaca r = pf.r, rCh = pc.r, rSd = ps.r;
+            CopiarChapa(rCh, r);   // cabeçalho, desenho e cálculo: fixação na pior dela + chapa na pior dela
+            var sd = SoldaPilar(rSd);
+            AtualizarTitulo(pf.nome, pc.nome, ps.nome);
             plano.R = r; plano.P = edit;
             vista3d.R = r; vista3d.P = edit; vista3d.Sd = sd;
 
@@ -301,8 +338,8 @@ namespace NovoFtool
 
             colDir.Children.Clear();
             cardFix = MontarPassoFixacao(r);
-            cardCh = MontarPassoChapa(r);
-            cardSd = MontarPassoSolda(r, sd);
+            cardCh = MontarPassoChapa(rCh);
+            cardSd = MontarPassoSolda(rSd, sd);
             colDir.Children.Add(cardFix);
             colDir.Children.Add(cardCh);
             colDir.Children.Add(cardSd);
@@ -798,7 +835,7 @@ namespace NovoFtool
             if (lista.Count == 0) return;
             double dRef = atual != null ? atual.Rosca : edit.Diametro;
             edit.Chumbador = lista.OrderBy(c => Math.Abs(c.Rosca - dRef)).ThenBy(c => c.Hef).First().Nome;   // base do tipo certo (coeficiente do chumbador)
-            ResPlaca rb = PlacaCalc.Calcular(m, n);
+            ResPlaca rb = CalcFix();
             if (rb.TemEsforcos)
             {
                 var ok = lista.FirstOrDefault(c => PlacaCalc.CandidatoChumbador(rb, edit, m, c).ChOk);
@@ -810,7 +847,7 @@ namespace NovoFtool
 
         void AbrirComparar(Chumbador chAt)
         {
-            var rc = PlacaCalc.Calcular(m, n);
+            var rc = CalcFix();
             var ini = new List<string> { chAt.Nome };
             var alt = Chumbadores.Lista.Where(c => c != chAt && c.Linha != chAt.Linha && PlacaCalc.CandidatoChumbador(rc, edit, m, c).ChOk).OrderBy(c => c.Rosca).ThenBy(c => c.Hef).Select(c => c.Nome).FirstOrDefault();
             if (alt != null) ini.Add(alt);
@@ -1037,7 +1074,7 @@ namespace NovoFtool
         void MostrarSugerir()
         {
             FecharFlutuantes();
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            ResPlaca r = CalcEnv();
             var ops = MelhoresOpcoes(r);
             var sp = new StackPanel();
             var cab = new DockPanel { Margin = new Thickness(0, 0, 0, 2) };
@@ -1149,7 +1186,7 @@ namespace NovoFtool
         {
             listaAplicarEm.Children.Clear();
             if (AvaliarEm == null || Candidatos.Count == 0) { listaAplicarEm.Children.Add(Tx("Não há outros pés de pilar onde esta placa caiba.", 12, TemaPlant.BTexto2)); return; }
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            ResPlaca r = CalcEnv();
             var todos = new List<(No no, double nota, bool passa)> { (n, NotaEm(r, edit), PassaEm(r, edit)) };
             todos.AddRange(Candidatos.Select(no => { var t = AvaliarEm(no, edit.Copiar()); return (no, NotaEm(t, edit), PassaEm(t, edit)); }));
             var pior = todos.OrderByDescending(x => x.nota).First();
@@ -1220,7 +1257,7 @@ namespace NovoFtool
             double ch = PlacaCalc.Chapas.FirstOrDefault(e => e >= espNec - 1e-9);
             achou.Esp = ch > 0 ? ch : PlacaCalc.Chapas.Last();
             edit.Chumbador = achou.Chumbador; edit.Diametro = achou.Diametro; edit.Classe = achou.Classe; edit.Fileiras = achou.Fileiras; edit.PorFileira = achou.PorFileira; edit.Esp = achou.Esp;
-            var r = PlacaCalc.Calcular(m, n);
+            var r = CalcSd();
             if (r.Sec != null) { double h = Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, edit.Eletrodo, edit.Esp); edit.Solda = h > 0 ? h : 25; }
             msgDim = "Dimensionado pelo pior caso entre os nós " + string.Join(", ", grupo.Select(g => g.Id)) + ".";
         }
@@ -1300,7 +1337,7 @@ namespace NovoFtool
             }));
 
             listaTrocar.Children.Clear();
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            ResPlaca r = CalcFix();
             string q = (filtroBuscaCh ?? "").Trim().ToLowerInvariant();
             var todos = Chumbadores.Lista.Where(c =>
             {
@@ -1673,7 +1710,7 @@ namespace NovoFtool
         }
 
         // ---------- Sugerir: até 3 combinações fixação + chapa que passam ----------
-        ResPlaca Testar(PlacaBase pl) { n.Placa = pl; try { return PlacaCalc.Calcular(m, n); } finally { n.Placa = edit; } }
+        ResPlaca Testar(PlacaBase pl) { n.Placa = pl; try { return CalcEnv(); } finally { n.Placa = edit; } }
 
         static string DescFix(PlacaBase p, int qt)
         {
@@ -1740,7 +1777,7 @@ namespace NovoFtool
 
         void AjustarTamanho()
         {
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            ResPlaca r = CalcFix();
             if (r.RefIn <= 0) return;
             Chumbador c = Chumbadores.Achar(edit.Chumbador);
             double d = c != null ? c.Rosca : edit.Diametro;

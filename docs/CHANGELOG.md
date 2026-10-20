@@ -15,7 +15,14 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   (`JanelaPlaca.cs`); cálculo inalterado.
 - Placa → Solda (pedido do Bruno): linha **Segurança** "n = 0,577·FEXX / τ ≥ 1,92". Critério: a norma (AWS/AISC, tensões admissíveis)
   não pede n separado; o limite τ ≤ 0,30·FEXX já embute n = 0,577/0,30 ≈ 1,92, então "passa" e "n ≥ 1,92" são a mesma condição.
-  É o mesmo `NEquiv` que o memorial já mostrava. Só interface. Build, capturas e 200 testes ok (SDK .NET 8 instalado no PC do Bruno).
+  É o mesmo `NEquiv` que o memorial já mostrava. Só interface.
+- **Correção (bug relatado pelo Bruno): a placa "aprovava" e ao reabrir voltava "não passa".** Causa: a janela fixava UMA combinação
+  ao abrir (a pior para a placa daquele momento, ex. carga giratória a 0°) e recalculava tudo nela; trocando chumbador/chapa, outra
+  combinação (180°) passava a mandar sem a janela perceber. Critério novo: com envoltória, **cada item é verificado na sua pior
+  combinação, reavaliada a cada mudança** — fixação = maior ApFix, chapa = maior espessura necessária, solda = maior τ — e o título
+  mostra qual combinação manda em cada um. Vale também para Trocar, régua de diâmetros, Sugerir, Dimensionar, "Aplicar também em",
+  desenho, relatório e memorial (`PlacaPior`/`EnvoltoriaPlaca` em `Acoes.cs`; `PiorCombinacao` em `JanelaPlaca.cs`). Motor inalterado
+  (200 testes). Conferido com cópia do modelo do Bruno: CBE 3/8" hef 47 em 230×250×16 agora já aparece "não passa" (fixação 176% a 180°). Build, capturas e 200 testes ok (SDK .NET 8 instalado no PC do Bruno).
 
 ## 19/10/2026 — Bruno
 

@@ -608,6 +608,7 @@ namespace NovoFtool
                     bool tinhaPlaca = no.Placa != null;
                     var jp = new JanelaPlaca(w.M, no);
                     jp.Candidatos = w.M.Nos.Where(x => x != no && (x.Placa != null || x.TemApoio) && PlacaCalc.Pilar(w.M, x, out Secao _, out double _, out double _, out string _) != null).ToList();
+                    jp.PiorCombinacao = w.PiorCombinacaoPlaca(no);
                     jp.AvaliarEm = (noCand, pl) =>
                     {
                         var p0 = noCand.Placa; noCand.Placa = pl;
