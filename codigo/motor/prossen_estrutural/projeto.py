@@ -1586,17 +1586,24 @@ def _aco_comb(m, b, L, res, tipo, balanco=False):
         return _nbr14762.verificar_pff(sec, mat, esf, Lx, Ly, Lz, Lb, Cb, An, Ct, p.get("Ndist"), p.get("Mdist"))
     return _nbr8800.verificar_barra_aco(sec, mat, esf, Lx, Ly, Lb, Cb, Lz, An, Ct, p.get("ligacao_uma_aba"),
                                         L=L, Lv=p.get("Lv"), tubo_com_costura=bool(p.get("tubo_com_costura", False)),
-                                        ponto_aplicacao=p.get("ponto_aplicacao") or "centro", C2=p.get("C2"))
+                                        ponto_aplicacao=p.get("ponto_aplicacao") or "centro", C2=p.get("C2"), Lt=p.get("Lt"))
 
 
 def _aco_barra(m, b, L, resultados, elu, so=None):
     """Pior combinação de uma barra de aço/PFF. → (resultado, combinação, [{combinacao, taxa, criterio}])."""
-    pior, por, balanco = None, [], _balanco(m, b)
+    pior, esb, por, balanco = None, None, [], _balanco(m, b)
     for nome in ([so] if so else elu):
         r = _aco_comb(m, b, L, resultados[nome], b.tipo, balanco)
         por.append({"combinacao": nome, "taxa": r["taxa_max"], "criterio": r["criterio"]})
         if pior is None or r["taxa_max"] > pior[0]["taxa_max"]:
             pior = (r, nome)
+        t = ((r.get("detalhes") or {}).get("taxas") or {}).get("esbeltez", 0.0)
+        if esb is None or t > esb[0]:
+            esb = (t, r, nome)
+    # a esbeltez independe do esforço: a combinação governante por esforço pode esconder outra que reprova
+    # por KL/r > 200 (5.3.4) ou L/r > 300 (5.2.8). Se a pior esbeltez reprova e a linha não a mostraria, usa-a.
+    if esb[0] > 1 and esb[2] != pior[1] and pior[0]["ok"]:
+        return esb[1], esb[2], por
     return pior[0], pior[1], por
 
 

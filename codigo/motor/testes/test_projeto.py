@@ -971,6 +971,27 @@ class TestCorrecoes026(unittest.TestCase):
         self.assertLess(l["taxa_esforco"], 1.0)
         self.assertTrue(l["combinacao"].startswith("ELU"))
 
+    def test_esbeltez_de_combinacao_nao_governante_reprova(self):
+        """Barra de 8 m (W310x38.7, ry ~ 3 cm): G1 comprime 10 kN (KL/r ~ 250 > 200) e Q1 traciona 400 kN, que
+        governa por esforço (L/r < 300). A combinação de compressão não pode ser escondida: reprova em 5.3.4."""
+        m = balanco(L=8.0, q=0.0)
+        P.adicionar(m, "caso", {"nome": "Q1", "tipo": "Q"})
+        P.adicionar(m, "carga_nodal", {"caso": "G1", "no": "n2", "F": [-10.0, 0, 0, 0, 0, 0]})
+        P.adicionar(m, "carga_nodal", {"caso": "Q1", "no": "n2", "F": [400.0, 0, 0, 0, 0, 0]})
+        c = P.calcular(m)
+        l = c.verificacao[0]
+        self.assertFalse(l["ok"])
+        self.assertEqual((l["criterio"], l["item"]), ("esbeltez", "5.3.4"))
+        self.assertGreater(l["taxa"], 1.0)
+
+    def test_Lt_chega_ao_motor(self):
+        """Lt (5.2.8, tração sem K) pequeno não muda a compressão; Lt grande reprova a tração (> 300)."""
+        m = balanco(L=2.0, q=0.0, params={"Lt": 12.0})
+        P.adicionar(m, "carga_nodal", {"caso": "G1", "no": "n2", "F": [50.0, 0, 0, 0, 0, 0]})
+        l = P.calcular(m).verificacao[0]
+        self.assertFalse(l["ok"])
+        self.assertEqual(l["item"], "5.2.8.1")
+
     def test_balanco_flecha_na_ponta_e_limite_2L(self):
         """Balanço de 4 m, q = 10 kN/m (G1 + peso próprio não ligado): flecha da ponta = qL⁴/(8EI) (resistência
         dos materiais); limite NBR 8800 C.1 nota a: 2L/350 (balanço de piso)."""
