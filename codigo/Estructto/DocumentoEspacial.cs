@@ -103,7 +103,8 @@ namespace NovoFtool
         // Recoloca este modelo no servidor (por arquivo na pasta de trabalho: "abrir" zera as pilhas de desfazer).
         // ponytail: trocar de aba entre dois modelos espaciais perde o desfazer do outro; guardar as pilhas se fizer falta.
         // Recolocar zera a pilha de desfazer do servidor: HistoricoPerdido avisa a janela.
-        public async Task Garantir()
+        // Sem trava: só dentro de Motor.Exclusivo (que não aninha). De fora, Ativar.
+        async Task Garantir()
         {
             await Motor.Get("/api/versao");
             if (noMotor == this && Motor.Dono == this) return;
@@ -113,6 +114,9 @@ namespace NovoFtool
             if (TemHistorico) HistoricoPerdido = true;
             TemHistorico = false;
         }
+
+        // Ao ativar a aba: recoloca o modelo no motor na fila das outras operações (F5 logo depois espera, não é pulado).
+        public Task Ativar() => Motor.Exclusivo(Garantir);
 
         async Task Recarregar()
         {
@@ -127,11 +131,13 @@ namespace NovoFtool
         static async Task<DocumentoEspacial> Criar(Func<Task> preparar, string titulo, string arquivo)
         {
             var d = new DocumentoEspacial { Titulo = titulo, Arquivo = arquivo };
-            await Motor.Get("/api/versao");
-            noMotor = null;
-            await preparar();
-            await d.Recarregar();
-            await d.Garantir();
+            await Motor.Exclusivo(async () =>
+            {
+                noMotor = null;
+                await preparar();
+                await d.Recarregar();
+                await d.Garantir();
+            });
             return d;
         }
 
@@ -150,8 +156,11 @@ namespace NovoFtool
                 return d;
             }
             var doc = new DocumentoEspacial { Arquivo = caminho, Json = (JsonObject)JsonNode.Parse(File.ReadAllText(caminho)) };
-            await doc.Garantir();      // o motor valida ao abrir
-            await doc.Recarregar();
+            await Motor.Exclusivo(async () =>
+            {
+                await doc.Garantir();      // o motor valida ao abrir
+                await doc.Recarregar();
+            });
             return doc;
         }
 
@@ -160,9 +169,11 @@ namespace NovoFtool
         {
             var d = new DocumentoEspacial { Titulo = titulo, Json = modelo };
             foreach (var a in avisos?.AsArray() ?? new JsonArray()) d.Avisos.Add(a is JsonValue ? (string)a : a?.ToJsonString());
-            // ponytail: Garantir + Recarregar sem a trava do Motor; envolver com a trava de operação composta quando ela existir.
-            await d.Garantir();
-            await d.Recarregar();
+            await Motor.Exclusivo(async () =>
+            {
+                await d.Garantir();
+                await d.Recarregar();
+            });
             return d;
         }
 
@@ -183,32 +194,32 @@ namespace NovoFtool
             await Motor.Post("/api/modelo/lote", new JsonObject { ["itens"] = itens });
         }, titulo, null);
 
-        public async Task Editar(string tipo, string id, JsonObject campos)
+        public Task Editar(string tipo, string id, JsonObject campos) => Motor.Exclusivo(async () =>
         {
             await Garantir();
             await Motor.Chamar("PATCH", "/api/modelo/" + tipo + "/" + Url(id), campos);
             TemHistorico = true;
             await Recarregar();
-        }
+        });
 
         // POST /api/modelo/{tipo}; devolve o id (ou nome) criado.
-        public async Task<string> Adicionar(string tipo, JsonObject dados)
+        public Task<string> Adicionar(string tipo, JsonObject dados) => Motor.Exclusivo(async () =>
         {
             await Garantir();
             var r = await Motor.Post("/api/modelo/" + tipo, dados);
             TemHistorico = true;
             await Recarregar();
             return (string)(r?["id"] ?? r?["nome"]);
-        }
+        });
 
         // DELETE /api/modelo/{tipo}/{id}?cascata=true (nó leva barras e cargas; barra leva as cargas).
-        public async Task Remover(string tipo, string id)
+        public Task Remover(string tipo, string id) => Motor.Exclusivo(async () =>
         {
             await Garantir();
             await Motor.Chamar("DELETE", "/api/modelo/" + tipo + "/" + Url(id) + "?cascata=true", new JsonObject());
             TemHistorico = true;
             await Recarregar();
-        }
+        });
 
         // Perfil do catálogo do motor (/api/catalogo) que ainda não está no modelo entra antes de ser usado.
         public async Task GarantirSecao(string nome)
@@ -224,8 +235,11 @@ namespace NovoFtool
         {
             CombDiagrama = comb;
             if (!Calculado) return;
-            await Garantir();
-            await CarregarDiagramas();
+            await Motor.Exclusivo(async () =>
+            {
+                await Garantir();
+                await CarregarDiagramas();
+            });
         }
 
         async Task CarregarDiagramas()
@@ -236,16 +250,16 @@ namespace NovoFtool
         }
 
         // false = pilha vazia
-        public async Task<bool> Trocar(bool desfazer)
+        public Task<bool> Trocar(bool desfazer) => Motor.Exclusivo(async () =>
         {
             await Garantir();
             try { await Motor.Post(desfazer ? "/api/desfazer" : "/api/refazer", new JsonObject()); }
             catch (MotorErro e) when (e.Status == 409) { return false; }
             await Recarregar();
             return true;
-        }
+        });
 
-        public async Task Calcular()
+        public Task Calcular() => Motor.Exclusivo(async () =>
         {
             await Garantir();
             var c = await Motor.Post("/api/calcular", new JsonObject());
@@ -258,7 +272,7 @@ namespace NovoFtool
             Calculo = c;
             if (CombDiagrama != null && !Combinacoes.Contains(CombDiagrama)) CombDiagrama = null;
             await CarregarDiagramas();
-        }
+        });
 
         public double[] Desl(string no) => Vetor(desl?[no])?.Take(3).ToArray();
         public double[] Esforco(string barra, string comp) => Vetor(esforcos?[barra]?[comp]);
@@ -396,13 +410,11 @@ namespace NovoFtool
         }
 
         // Recoloca o modelo do documento no motor ao ativar a aba (o servidor guarda um modelo só).
+        // Sem espRodando: a fila do Motor.Exclusivo ordena com as outras operações (antes um F5 logo após abrir era pulado).
         async Task AtivarEspacial(DocumentoEspacial d)
         {
-            if (espRodando) return;
-            espRodando = true;
-            try { await d.Garantir(); }
+            try { await d.Ativar(); }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; }
-            finally { espRodando = false; }
             AvisarHistorico(d);
         }
 
@@ -500,7 +512,8 @@ namespace NovoFtool
         internal async Task CalcularEspacial()
         {
             var d = Esp;
-            if (d == null || espRodando) return;
+            if (d == null) return;
+            if (espRodando) { MostrarToast("Aguarde: o motor ainda está trabalhando. Tente F5 de novo em seguida.", true); return; }
             espRodando = true;
             var barra = new ProgressBar { IsIndeterminate = true, Width = 90, Height = 6, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
             StatusBotoes.Children.Insert(0, barra);
