@@ -45,7 +45,15 @@ Estructto.exe (precisa do .NET 8 SDK; bin/obj ficam em `C:\dev\build\EstructtoV2
 dotnet publish codigo\Estructto\Estructto.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o C:\dev\build\EstructtoV2\publish
 ```
 
-Depois copiar `C:\dev\build\EstructtoV2\publish\Estructto.exe` para esta pasta (feche o programa antes).
+Antes do publish, empacotar o motor Python (precisa de python com numpy e pyinstaller). O publish copia a pasta gerada para
+`publish\motor\`, ao lado do `Estructto.exe`; sem ela o programa só tem o motor interno (ou o da variável `ESTRUCTTO_MOTOR`):
+
+```
+codigo\motor\empacotar.ps1 -Motor <pasta que contém prossen_estrutural>   # gera codigo\motor\dist\estructto-motor.exe
+```
+
+Depois copiar `C:\dev\build\EstructtoV2\publish\Estructto.exe` **e a pasta `motor\`** para esta pasta (feche o programa antes).
+Em desenvolvimento, sem empacotar: `$env:ESTRUCTTO_MOTOR = "<pasta que contém prossen_estrutural>"` (roda `python -m prossen_estrutural.web`).
 
 Conferência visual sem abrir o programa: `codigo\Estructto\capturar.ps1` gera PNG de todas as telas em `C:\dev\build\EstructtoV2\capturas`
 (`Estructto.exe --capturas <pasta>`). Regras de interface: `docs\v2\GUIA-DESIGN.md`; histórico da modernização: `docs\v2\RELATORIO.md`.

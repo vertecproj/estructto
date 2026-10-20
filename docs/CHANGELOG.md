@@ -4,6 +4,9 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 
 ## 20/10/2026 — Gabriel (início da unificação com o motor Python)
 
+- Ponte com o motor Python ([UNIFICACAO-MOTOR.md](UNIFICACAO-MOTOR.md)): `MotorModelo.cs` converte o modelo e lê resultados; opção Motor em
+  Análise › Opções (Interno padrão; Python roda no F5 com progresso); `--conferir-motor` (análise confere a 10⁻¹¹ nos guinchos);
+  `codigo/motor/empacotar.ps1` + publish põe `motor\` ao lado do exe; motor desligado ao sair.
 - Plano da unificação em [UNIFICACAO.md](UNIFICACAO.md) e revisão de abas/telas em [REVISAO-TELAS.md](REVISAO-TELAS.md) (proposta aprovada).
   Passo 1 feito: faixa nova sobre as funções atuais, abas na ordem do trabalho — Modelo (Início + Estrutura), Ações (ex-Cargas), Análise,
   Dimensionamento, Ligações e bases, Relatório, Vista. Calcular (F5) só na barra de acesso rápido; zoom só em Vista; Mostrar e Tabelas em Vista;

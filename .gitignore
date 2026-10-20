@@ -6,6 +6,7 @@ referencias/
 *.exe
 bin/
 obj/
+codigo/motor/dist/
 
 # Google Drive / Windows
 desktop.ini
