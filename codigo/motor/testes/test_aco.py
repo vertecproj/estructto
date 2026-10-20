@@ -348,6 +348,25 @@ class TestVerificarLista(unittest.TestCase):
         self.assertLess(rel(r["detalhes"]["taxas"]["esbeltez"], 8 / self.w.props["ry"] / 200), 1e-9)
         self.assertTrue(any("5.3.4" in a for a in r["avisos"]))
 
+    def test_esbeltez_tracao_sem_K(self):
+        # NBR 8800 5.2.8.1: L/r ≤ 300 com L = comprimento destravado, SEM K (o K é da compressão, 5.3.4).
+        # W 200x26,6: ry = 3,10 cm. Barra L = 4 m, K = 2 (Lx = Ly = 8 m).
+        ry = self.w.props["ry"]
+        t = lambda r: r["detalhes"]["esbeltez"]  # noqa: E731
+        # tração pura: L/ry = 4/0,031 = 129,0 → 129,0/300 = 0,430 (antes: KL/ry/300 = 258/300 = 0,860)
+        r = n.verificar_barra_aco(self.w, self.a36, dict(N=10), 8, 8, 4, L=4)
+        self.assertLess(rel(t(r)["valor"], 4 / ry), 1e-9)
+        self.assertEqual((t(r)["limite"], t(r)["item"]), (300, "5.2.8.1"))
+        self.assertLess(rel(r["detalhes"]["taxas"]["esbeltez"], 4 / ry / 300), 1e-9)
+        # Lt (trecho entre travamentos) prevalece sobre L: (x 4 m, y 2 m) → max(4/rx, 2/ry) = 2/0,031 = 64,5
+        r = n.verificar_barra_aco(self.w, self.a36, dict(N=10), 8, 8, 4, L=4, Lt=(4, 2))
+        self.assertLess(rel(t(r)["valor"], max(4 / self.w.props["rx"], 2 / ry)), 1e-9)
+        # tração e compressão na mesma combinação: governa KL/r/200 = 258/200 = 1,290 (> 129/300)
+        r = n.verificar_barra_aco(self.w, self.a36, [dict(N=10), dict(N=-1)], 8, 8, 4, L=4)
+        self.assertEqual(t(r)["limite"], 200)
+        self.assertLess(rel(r["detalhes"]["taxas"]["esbeltez"], 8 / ry / 200), 1e-9)
+        self.assertFalse(r["ok"])
+
 
 class TestServico(unittest.TestCase):
     def test_limite_deslocamento(self):

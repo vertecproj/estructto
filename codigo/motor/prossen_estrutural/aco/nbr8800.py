@@ -698,7 +698,7 @@ def _validar_entrada(funcao, pontos, positivos, nao_negativos):
         raise ValueError(f"{funcao}: " + "; ".join(erros))
 
 
-_ITENS = {"normal": "5.2/5.3", "esbeltez": "5.2.8/5.3.4", "cortante_y": "5.4.3.1", "cortante_x": "5.4.3.5",
+_ITENS = {"normal": "5.2/5.3", "esbeltez": "5.2.8.1/5.3.4", "cortante_y": "5.4.3.1", "cortante_x": "5.4.3.5",
           "interacao": "5.5.1.2", "torcao": "5.5.2", "torcao_interacao": "5.5.2 (AISC 360-05 H3.2)",
           "von_mises": "critério adicional (Von Mises)", "nao_verificado": "ver avisos"}
 
@@ -718,7 +718,7 @@ def tubo_espessura_calculo(sec):
 
 def verificar_barra_aco(secao, material, esforcos, Lx, Ly, Lb, Cb=1.0, Lz=None, An=None, Ct=1.0,
                         ligacao_uma_aba=None, L=None, Lv=None, tubo_com_costura=False,
-                        ponto_aplicacao="centro", C2=None):
+                        ponto_aplicacao="centro", C2=None, Lt=None):
     """esforcos: dict (ou lista de dicts, um por ponto da barra) N (+ tração, − compressão), Mx, My,
     Vy (paralela à alma), Vx, T — valores de cálculo na notação da NBR (ver esforcos_nbr).
     Lx, Ly, Lz: comprimentos de flambagem (K·L; Lz None ou 0 → max(Lx, Ly)); Lb: comprimento destravado.
@@ -727,6 +727,8 @@ def verificar_barra_aco(secao, material, esforcos, Lx, Ly, Lb, Cb=1.0, Lz=None, 
     Comprimento ≤ 0 (Lb < 0), esforço não finito, Cb > 3 ou Ct fora de (0; 1] → ValueError.
     ligacao_uma_aba: cantoneira simples ligada por uma aba (E.1.4), ver compressao.
     ponto_aplicacao ('centro' | 'topo' | 'base') e C2: altura da carga no Mcr da FLT (ver flexao_x).
+    Lt: comprimento destravado da barra tracionada (5.2.8: L/r, SEM K), número ou (Ltx, Lty); padrão L;
+    sem L nem Lt usa Lx, Ly (equivale a K = 1).
     Resistências calculadas uma vez; devolve o ponto determinante (ResultadoNorma, ESPEC §4)."""
     pontos = [esforcos] if isinstance(esforcos, dict) else list(esforcos)
     if not pontos:
@@ -769,19 +771,27 @@ def verificar_barra_aco(secao, material, esforcos, Lx, Ly, Lb, Cb=1.0, Lz=None, 
         for a in ([v["aviso"]] if "aviso" in v else []) + v.get("avisos", []):
             avisos.append(f"{nome}: {a}")
 
-    # esbeltez: 5.3.4 (KL/r ≤ 200, compressão) e 5.2.8 (L/r ≤ 300, tração) como taxa
+    # esbeltez: 5.3.4 (KL/r ≤ 200, compressão) e 5.2.8 (L/r ≤ 300, tração) como taxa.
+    # NBR 8800 5.2.8.1: "L é o comprimento destravado" — sem o K, que é da compressão (5.3.4).
     p = secao.props
     taxa_esb = 0.0
     try:
-        esb = max(Lx / p["rx"], Ly / p["ry"])
-        if "rmin" in p:  # cantoneira: eixo principal de menor inércia
-            esb = max(esb, max(Lx, Ly) / p["rmin"])
-        lim = 200 if tem_compr else (300 if tem_tracao else None)
-        if lim:
-            taxa_esb = esb / lim
-            d["esbeltez"] = dict(valor=esb, limite=lim, item="5.3.4" if lim == 200 else "5.2.8")
+        def esb_de(ax, ay):
+            v = max(ax / p["rx"], ay / p["ry"])
+            return max(v, max(ax, ay) / p["rmin"]) if "rmin" in p else v  # cantoneira: eixo de menor inércia
+        Ltx, Lty = (Lt if isinstance(Lt, (tuple, list)) else (Lt, Lt)) if Lt else ((L, L) if L else (Lx, Ly))
+        cand = []  # (taxa, valor, limite, item)
+        if tem_compr:
+            e_c = esb_de(Lx, Ly)
+            cand.append((e_c / 200, e_c, 200, "5.3.4"))
+        if tem_tracao:
+            e_t = esb_de(float(Ltx), float(Lty))
+            cand.append((e_t / 300, e_t, 300, "5.2.8.1"))
+        if cand:
+            taxa_esb, esb, lim, it = max(cand)
+            d["esbeltez"] = dict(valor=esb, limite=lim, item=it)
             if taxa_esb > 1:
-                avisos.append(f"esbeltez {esb:.0f} > {lim} ({d['esbeltez']['item']})" + (
+                avisos.append(f"esbeltez {esb:.0f} > {lim} ({it})" + (
                     "; a 5.2.8 é recomendação, reprovada aqui a favor da segurança" if lim == 300 else ""))
     except KeyError as e:
         avisos.append(f"esbeltez: perfil sem dados ({e.args[0]})")
