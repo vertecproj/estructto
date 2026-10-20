@@ -354,6 +354,27 @@ class TestModeloAPI(BaseWeb):
 class TestCalculoAPI(BaseWeb):
     """Cálculo, resultados, verificação, estabilidade e relatório (ops 17–24, 29)."""
 
+    def test_grupos_de_ligacoes(self):
+        """Identificar/editar grupos empilham desfazer mas não descartam o cálculo; dimensionar exige cálculo."""
+        self.api("POST", "/api/exemplos/portico_aco")
+        self.api("POST", "/api/calcular", {})
+        r = self.api("POST", "/api/ligacoes/identificar")
+        self.assertGreater(r["grupos"], 0)
+        self.assertIsNotNone(self.api("GET", "/api/calculo"))
+        gr = self.api("GET", "/api/ligacoes/grupos")
+        base = next(g for g in gr if g["tipo"] == "base")
+        self.assertIsNotNone(base["taxa_max"])
+        self.api("POST", "/api/ligacoes/grupos/editar", {"acao": "renomear", "grupo": base["id"], "nome": "Bases"})
+        self.assertEqual(self.api("GET", "/api/modelo")["ligacoes"]["grupos"][base["id"]]["nome"], "Bases")
+        d = self.api("POST", f"/api/ligacoes/grupos/{base['id']}/dimensionar")
+        self.assertEqual(d["taxa_max"], max(x["taxa"] for x in d["membros"]))
+        self.assertEqual(self.api("POST", "/api/ligacoes/grupos/editar", {"acao": "renomear", "grupo": "X9", "nome": "a"},
+                                  status=404)["erro"], "nao_encontrado")
+        self.api("POST", "/api/desfazer")  # desfaz o renomear
+        self.assertNotEqual(self.api("GET", "/api/modelo")["ligacoes"]["grupos"][base["id"]]["nome"], "Bases")
+        self.assertEqual(self.api("POST", f"/api/ligacoes/grupos/{base['id']}/dimensionar", status=409)["erro"],
+                         "sem_calculo")
+
     def test_sem_calculo(self):
         self.api("POST", "/api/exemplos/viga_biapoiada")
         self.assertIsNone(self.api("GET", "/api/calculo"))  # 200 + null: a interface não loga erro

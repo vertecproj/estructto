@@ -24,6 +24,13 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 - WPF: galeria **Treliças e contraventamentos** (Modelo › Gerar, Ctrl+K) com miniaturas, prévia ao vivo e Inserir (um Ctrl+Z).
   Detalhe em [v3/TRELICAS.md](v3/TRELICAS.md). Capturas `50-*`.
 - Pendente: barra só de tração no motor; treliça espacial multiplanar; mísulas no galpão.
+## 20/10/2026 — Grupos de ligações: a pior do grupo dimensiona todas (branch wt-grupos)
+
+- Motor `aco/ligacoes_modelo.py`: identifica as ligações nos nós (base, viga–pilar mesa/alma, viga–viga, emenda, gusset, nó de
+  treliça), agrupa por assinatura, edições do usuário (renomear, travar, mover, dividir, unir, projeto) que sobrevivem à
+  re-identificação, dimensiona o grupo pela pior ligação em todas as combinações ELU. JSON: chave `ligacoes` (`versao_formato` 2 só com grupos).
+  Exposto em `projeto.py`, rotas `/api/ligacoes/...` e 4 ferramentas MCP. Interface: **Ligações e bases › Gerenciar ligações**
+  (`JanelaLigacoesGrupos.cs`), placa de base do grupo abre na JanelaPlaca com a pior base. Detalhe: [v3/LIGACOES-GRUPOS.md](v3/LIGACOES-GRUPOS.md). Capturas `49-*`.
 
 ## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
 

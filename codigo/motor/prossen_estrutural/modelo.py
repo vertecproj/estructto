@@ -7,7 +7,8 @@ import re
 from dataclasses import dataclass, field, asdict
 
 MPa = 1000.0  # kN/m²
-VERSAO_FORMATO = 1
+VERSAO_FORMATO = 2  # 2 = com `ligacoes` (grupos de ligações); sem grupos o arquivo continua saindo como 1
+VERSOES_LIDAS = (0, 1, 2)
 
 
 @dataclass
@@ -126,9 +127,10 @@ class Modelo:
     peso_proprio: str | None = None  # nome do caso que recebe o peso próprio
     config: dict = field(default_factory=dict)  # tipo_uso, vento, sismo...
     nome: str = ""
-    versao_formato: int = VERSAO_FORMATO
+    versao_formato: int = 1  # em memória; to_dict grava 2 só quando há `ligacoes`
     cargas_pontuais: list = field(default_factory=list)
     pavimentos: dict = field(default_factory=dict)
+    ligacoes: dict = field(default_factory=dict)  # {"grupos": {...}} — aco/ligacoes_modelo.py
 
     def __post_init__(self):
         self._ultimo_id = {}  # prefixo -> maior número já atribuído (não reaproveita)
@@ -159,7 +161,7 @@ class Modelo:
                 d[c] = list(d[c])
             return d
         return {
-            "versao_formato": VERSAO_FORMATO,
+            "versao_formato": VERSAO_FORMATO if self._tem_ligacoes() else 1,
             "nome": self.nome,
             "nos": {k: {c: x for c, x in lst(v, "apoio", "molas", "recalques").items()
                         if c not in ("molas", "recalques") or any(x)}  # sem mola/recalque: JSON de antes
@@ -176,17 +178,21 @@ class Modelo:
             "pavimentos": {k: asdict(v) for k, v in self.pavimentos.items()},
             "peso_proprio": self.peso_proprio,
             "config": copy.deepcopy(self.config),
+            **({"ligacoes": copy.deepcopy(self.ligacoes)} if self._tem_ligacoes() else {}),
         }
+
+    def _tem_ligacoes(self):
+        return isinstance(self.ligacoes, dict) and bool(self.ligacoes.get("grupos"))
 
     @classmethod
     def from_dict(cls, d):
         """Lê v1 ou v0 (núcleo antigo: sem versao_formato, ids, cargas_pontuais, pavimentos)."""
         d = copy.deepcopy(d)
         versao = d.get("versao_formato", 0)
-        if versao not in (0, VERSAO_FORMATO):
+        if versao not in VERSOES_LIDAS:
             raise ValueError(f"versao_formato {versao} não suportada (máximo {VERSAO_FORMATO})")
         m = cls(nome=d.get("nome", ""), peso_proprio=d.get("peso_proprio"),
-                config=d.get("config", {}))
+                config=d.get("config", {}), ligacoes=d.get("ligacoes") or {})
         for k, c in (("nos", No), ("materiais", Material), ("secoes", Secao),
                      ("barras", Barra), ("casos", CasoCarga), ("pavimentos", Pavimento)):
             for chave, v in d.get(k, {}).items():

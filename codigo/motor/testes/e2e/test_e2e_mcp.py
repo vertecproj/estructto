@@ -103,7 +103,7 @@ async def fluxo_f5(self, c):
 def conferir_f5(self, r):
     ref_m, ref_c, ref = referencia_f2()
     # catálogo
-    self.assertEqual(len(r["tools"]), 42)
+    self.assertEqual(len(r["tools"]), 46)
     self.assertEqual({t.name for t in r["tools"]}, QUARENTA)
     self.assertEqual({e["nome"] for e in r["exemplos"]["itens"]}, set(NOMES_EXEMPLOS))
     # geração e ações

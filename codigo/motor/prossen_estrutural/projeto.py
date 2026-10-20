@@ -36,7 +36,7 @@ from .acoes import vento as _vento
 from .aco import nbr8800 as _nbr8800
 from .concreto import nbr6118 as _nbr6118
 from .modelo import (Barra, CargaDistribuida, CargaNodal, CargaPontual, CasoCarga, Material, Modelo, MPa,
-                     No, Pavimento, Secao, VERSAO_FORMATO)
+                     No, Pavimento, Secao, VERSAO_FORMATO, VERSOES_LIDAS)
 from .solver import ErroMecanismo  # noqa: F401  (re-export, ESPEC §6.1)
 
 try:  # a NBR 14762 chegou na ficha 003; sem ela as barras "pff" saem como não verificadas
@@ -505,8 +505,16 @@ def _esquema(d):
         erros.append({"campo": c, "mensagem": msg})
     if not isinstance(d, dict):
         return [{"campo": "", "mensagem": "esperado um objeto JSON"}]
-    if d.get("versao_formato", 0) not in (0, VERSAO_FORMATO):
+    if d.get("versao_formato", 0) not in VERSOES_LIDAS:
         err("versao_formato", f"{d.get('versao_formato')!r} não suportada (máximo {VERSAO_FORMATO})")
+    lig = d.get("ligacoes", {})
+    if not isinstance(lig, dict) or not isinstance(lig.get("grupos", {}), dict):
+        err("ligacoes", "esperado objeto {grupos: {id: {...}}}")
+    else:
+        for gid, g in lig.get("grupos", {}).items():
+            if not isinstance(g, dict) or not isinstance(g.get("membros"), list) or not all(
+                    isinstance(x, dict) and {"no", "barra", "ponta"} <= set(x) for x in g["membros"]):
+                err(f"ligacoes.grupos.{gid}", "esperado {nome, tipo, assinatura, membros: [{no, barra, ponta}], ...}")
     secoes = (("nos", No), ("materiais", Material), ("secoes", Secao), ("barras", Barra),
               ("casos", CasoCarga), ("pavimentos", Pavimento), ("cargas_nodais", CargaNodal),
               ("cargas_distribuidas", CargaDistribuida), ("cargas_pontuais", CargaPontual))
@@ -2355,6 +2363,40 @@ def verificar_ligacao(tipo, dados, esforcos):
         return _puro(lig.verificar_ligacao(tipo, dados, esforcos))
     except (ValueError, KeyError, TypeError) as e:
         raise ErroEntrada(str(e.args[0] if isinstance(e, KeyError) and e.args else e), "ligacao") from e
+
+
+# ---- grupos de ligações do modelo (aco/ligacoes_modelo.py, docs/v3/LIGACOES-GRUPOS.md)
+
+def _lm(fn, modelo, *a):
+    from .aco import ligacoes_modelo as lm
+    try:
+        return _puro(getattr(lm, fn)(modelo, *a))
+    except KeyError as e:
+        raise ErroNaoEncontrado("grupo de ligações", e.args[0] if e.args else "", lm._grupos(modelo)) from None
+    except (ValueError, TypeError) as e:
+        raise ErroEntrada(str(e), "ligacoes") from e
+
+
+def ligacoes_identificar(modelo):
+    """Identifica as ligações nos nós e (re)agrupa as iguais em `modelo.ligacoes`, guardando as edições do
+    usuário (grupos travados/manuais). → {grupos, membros, novos}"""
+    return _lm("identificar", modelo)
+
+
+def ligacoes_grupos(modelo, calculo=None):
+    """Grupos de ligações; com cálculo, cada grupo vem com taxa por membro, governante e taxa máxima."""
+    return _lm("resumo_grupos", modelo, calculo)
+
+
+def ligacoes_editar(modelo, dados):
+    """Edição dos grupos: {acao: renomear|travar|projeto|mover|dividir|unir, ...} (ver ligacoes_modelo.editar)."""
+    return _lm("editar", modelo, dados)
+
+
+def ligacoes_dimensionar(modelo, calculo, grupo):
+    """Dimensiona o grupo pela pior ligação (todas as combinações ELU de todos os membros); o projeto vale
+    para o grupo inteiro."""
+    return _lm("dimensionar_grupo", modelo, calculo, grupo)
 
 
 def _norm(s):

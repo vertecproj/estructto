@@ -414,6 +414,8 @@ namespace NovoFtool
             var abaLigacoes = Aba("Ligações e bases", "L",
                 Grupo("Bases",
                     BotaoFerramenta("placa", "Placa de base", Ferramenta.Placa, "Placa de base com chumbadores no pé do pilar (nó onde chega uma só barra). Com um nó selecionado, abre a verificação da placa dele.")),
+                Grupo("Grupos",
+                    Botao("unir", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Modelo 3D: identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
                 Grupo("Ligações",
                     Botao("parafuso", "Parafusos", () => AbrirLigacaoTipo("parafuso"), "Ligação parafusada: cisalhamento, pressão de contato e tração nos parafusos (NBR 8800, motor Python)."),
                     Botao("solda", "Filete de solda", () => AbrirLigacaoTipo("solda_filete"), "Solda de filete: resistência do metal de solda e do metal-base (NBR 8800, motor Python)."),
