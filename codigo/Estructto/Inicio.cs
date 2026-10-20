@@ -140,7 +140,7 @@ namespace NovoFtool
             bool existe = File.Exists(caminho);
             string nome = Path.GetFileNameWithoutExtension(caminho), pasta = Path.GetDirectoryName(caminho) ?? "";
             ImageSource img = null;
-            if (existe)
+            if (existe && !EhEspacial(caminho))   // .json/.ed3 (modelo espacial): sem miniatura 2D, só o ícone
             {
                 var info = new FileInfo(caminho);
                 img = Miniatura.Gerar(caminho + info.LastWriteTimeUtc.Ticks, () => Modelo.DeXml(File.ReadAllText(caminho)), tw, th);

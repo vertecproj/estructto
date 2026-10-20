@@ -61,7 +61,7 @@ namespace NovoFtool
             TabBarras.SelectionChanged += (s, e) => SelecionarDaTabela(TabBarras);
             TabVerif.SelectionChanged += (s, e) => SelecionarDaTabela(TabVerif);
             TabVerif.MouseDoubleClick += (s, e) => { var b = Vista.Sel.OfType<Barra>().FirstOrDefault(); if (b != null) AbrirVerificacao(b); };
-            ListaAvisos.SelectionChanged += (s, e) => { if (ListaAvisos.SelectedItem is ListBoxItem it && it.Tag is IEnumerable<object> objs) { Vista.Selecionar(objs); } };
+            ListaAvisos.SelectionChanged += (s, e) => { if (ListaAvisos.SelectedItem is ListBoxItem it && it.Tag is IEnumerable<object> objs) { if (objs.FirstOrDefault() is RefMotor r) SelecionarEsp(r); else Vista.Selecionar(objs); } };
             SeloAvisos.Click += (s, e) => { PainelAvisos.Show(); PainelAvisos.IsSelected = true; PainelAvisos.IsActive = true; };
             Comando.KeyDown += ComandoTecla;
             Comando.TextChanged += (s, e) => MostrarSugestao();

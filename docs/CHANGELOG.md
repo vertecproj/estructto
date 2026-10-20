@@ -41,6 +41,10 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 - Modelo espacial ([MODELO-ESPACIAL.md](MODELO-ESPACIAL.md)): documento 3D cuja fonte é o JSON do motor (`DocumentoEspacial.cs`). Abre
   .json/.ed3/exemplos, Gerar 3D (edifício, galpão, pórtico), edição por PATCH, desfazer/refazer e F5 pelo motor, mapa de aproveitamento e
   diagramas na Vista3D, salva .json. 2D sem mudança. Capturas 41-*.
+- Modelo espacial, lista "Falta" fechada: árvore, tabelas (Nós/Barras/Verificação), avisos e legenda do HUD mostram o modelo e os
+  resultados do motor; criar/apagar nó e barra, cargas nodais e distribuídas por caso, seção do catálogo (`/api/catalogo`) entra no modelo;
+  Resultados › Mostrar escolhe envoltória ELU (padrão) ou uma combinação; .json/.ed3 nos recentes; troca de aba recoloca o modelo e avisa
+  que o desfazer é por documento ativo. Capturas 41-espacial-tabela-*, -combinacao, -barra-nova, -no-novo.
 
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 

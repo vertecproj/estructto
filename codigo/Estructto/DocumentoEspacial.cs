@@ -23,13 +23,61 @@ namespace NovoFtool
     // Nó ou barra do motor escolhido na vista (mesma instância entre recargas: a Vista3D compara por referência).
     public sealed class RefMotor { public string Tipo, Id; }
 
+    // Linhas das tabelas no modelo espacial (ids do motor são texto; 3 coordenadas).
+    public class LinhaEsp { [System.ComponentModel.Browsable(false)] public RefMotor Obj { get; set; } }
+
+    public class LinhaNoEsp : LinhaEsp
+    {
+        [System.ComponentModel.DisplayName("Nó")] public string Id { get; set; }
+        [System.ComponentModel.DisplayName("X (m)")] public string X { get; set; }
+        [System.ComponentModel.DisplayName("Y (m)")] public string Y { get; set; }
+        [System.ComponentModel.DisplayName("Z (m)")] public string Z { get; set; }
+        [System.ComponentModel.DisplayName("Apoio")] public string Apoio { get; set; }
+        [System.ComponentModel.DisplayName("ux (mm)")] public string DX { get; set; }
+        [System.ComponentModel.DisplayName("uy (mm)")] public string DY { get; set; }
+        [System.ComponentModel.DisplayName("uz (mm)")] public string DZ { get; set; }
+    }
+
+    public class LinhaBarraEsp : LinhaEsp
+    {
+        [System.ComponentModel.DisplayName("Barra")] public string Id { get; set; }
+        [System.ComponentModel.DisplayName("Nós")] public string Nos { get; set; }
+        [System.ComponentModel.DisplayName("Perfil")] public string Perfil { get; set; }
+        [System.ComponentModel.DisplayName("Material")] public string Material { get; set; }
+        [System.ComponentModel.DisplayName("L (m)")] public string L { get; set; }
+        [System.ComponentModel.DisplayName("N mín/máx (kN)")] public string N { get; set; }
+        [System.ComponentModel.DisplayName("Vz mín/máx (kN)")] public string Vz { get; set; }
+        [System.ComponentModel.DisplayName("My mín/máx (kN·m)")] public string My { get; set; }
+    }
+
+    public class LinhaVerifEsp : LinhaEsp
+    {
+        [System.ComponentModel.DisplayName("Barra")] public string Id { get; set; }
+        [System.ComponentModel.DisplayName("Perfil")] public string Perfil { get; set; }
+        [System.ComponentModel.DisplayName("Situação")] public string Situacao { get; set; }
+        [System.ComponentModel.DisplayName("Aproveitamento")] public string Ap { get; set; }
+        [System.ComponentModel.DisplayName("Limitado por")] public string Critico { get; set; }
+        [System.ComponentModel.DisplayName("Combinação")] public string Combinacao { get; set; }
+        [System.ComponentModel.Browsable(false)] public double ApNum { get; set; } = -1;
+        [System.ComponentModel.Browsable(false)] public bool Pass { get; set; } = true;
+        [System.ComponentModel.Browsable(false)] public System.Windows.Media.Brush CorAp { get; set; } = TemaPlant.BTextoMudo;
+        [System.ComponentModel.Browsable(false)] public Visibility BarraVis { get; set; } = Visibility.Collapsed;
+        [System.ComponentModel.Browsable(false)] public string SitTxt { get; set; } = "";
+        [System.ComponentModel.Browsable(false)] public System.Windows.Media.Brush SitFg { get; set; } = TemaPlant.BTexto2;
+        [System.ComponentModel.Browsable(false)] public System.Windows.Media.Brush SitBg { get; set; } = TemaPlant.BSup2;
+        [System.ComponentModel.Browsable(false)] public System.Windows.Media.Brush SitBd { get; set; } = TemaPlant.BBordaSutil;
+    }
+
     public class DocumentoEspacial
     {
         public JsonObject Json;              // modelo do motor (cópia do último GET /api/modelo)
         public string Arquivo, Titulo;       // Arquivo: .json do motor (null = ainda não salvo)
         public List<string> Avisos = new List<string>();
         public JsonNode Calculo;             // POST /api/calcular (null = sem cálculo)
-        public string CombDiagrama;          // combinação dos diagramas, deformada (a da barra mais solicitada)
+        public string CombDiagrama;          // combinação dos diagramas e da deformada; null = envoltória (esforços ELU, deslocamentos ELS)
+        public string CasoAtivo;             // caso das cargas lançadas no painel
+        public bool TemHistorico, HistoricoPerdido;   // desfazer do motor: só do documento ativo (ver Garantir)
+        public JsonArray Validacao = new JsonArray();  // GET /api/validar do último Recarregar
         public Dictionary<string, JsonNode> PiorPorBarra = new Dictionary<string, JsonNode>();
         JsonObject esforcos, desl;
         readonly Dictionary<string, RefMotor> refs = new Dictionary<string, RefMotor>();
@@ -49,19 +97,25 @@ namespace NovoFtool
 
         // Recoloca este modelo no servidor (por arquivo na pasta de trabalho: "abrir" zera as pilhas de desfazer).
         // ponytail: trocar de aba entre dois modelos espaciais perde o desfazer do outro; guardar as pilhas se fizer falta.
-        async Task Garantir()
+        // Recolocar zera a pilha de desfazer do servidor: HistoricoPerdido avisa a janela.
+        public async Task Garantir()
         {
             await Motor.Get("/api/versao");
             if (noMotor == this && Motor.Dono == this) return;
             File.WriteAllText(Path.Combine(Motor.Pasta, "_espacial.json"), Json.ToJsonString());
             await Motor.Post("/api/modelo/abrir", new JsonObject { ["caminho"] = "_espacial.json" });
             noMotor = this; Motor.Dono = this;
+            if (TemHistorico) HistoricoPerdido = true;
+            TemHistorico = false;
         }
 
         async Task Recarregar()
         {
             Json = (JsonObject)await Motor.Get("/api/modelo");
-            Calculo = null; esforcos = desl = null; CombDiagrama = null; PiorPorBarra.Clear();
+            Calculo = null; esforcos = desl = null; PiorPorBarra.Clear();
+            try { Validacao = await Motor.Get("/api/validar") as JsonArray ?? new JsonArray(); } catch (MotorErro) { Validacao = new JsonArray(); }
+            var casos = (Json["casos"] as JsonObject)?.Select(x => x.Key).ToList() ?? new List<string>();
+            if (!casos.Contains(CasoAtivo)) CasoAtivo = casos.FirstOrDefault();
         }
 
         // O modelo que `preparar` deixou no servidor vira um documento novo (sem pilha de desfazer).
@@ -117,7 +171,52 @@ namespace NovoFtool
         {
             await Garantir();
             await Motor.Chamar("PATCH", "/api/modelo/" + tipo + "/" + Url(id), campos);
+            TemHistorico = true;
             await Recarregar();
+        }
+
+        // POST /api/modelo/{tipo}; devolve o id (ou nome) criado.
+        public async Task<string> Adicionar(string tipo, JsonObject dados)
+        {
+            await Garantir();
+            var r = await Motor.Post("/api/modelo/" + tipo, dados);
+            TemHistorico = true;
+            await Recarregar();
+            return (string)(r?["id"] ?? r?["nome"]);
+        }
+
+        // DELETE /api/modelo/{tipo}/{id}?cascata=true (nó leva barras e cargas; barra leva as cargas).
+        public async Task Remover(string tipo, string id)
+        {
+            await Garantir();
+            await Motor.Chamar("DELETE", "/api/modelo/" + tipo + "/" + Url(id) + "?cascata=true", new JsonObject());
+            TemHistorico = true;
+            await Recarregar();
+        }
+
+        // Perfil do catálogo do motor (/api/catalogo) que ainda não está no modelo entra antes de ser usado.
+        public async Task GarantirSecao(string nome)
+        {
+            if (Json["secoes"]?[nome] == null) await Adicionar("secao", new JsonObject { ["perfil"] = nome });
+        }
+
+        public string NomeDiagrama => CombDiagrama ?? "envoltória ELU (deslocamentos: ELS)";
+        public IEnumerable<string> Combinacoes => Calculo?["combinacoes"]?.AsArray().Select(x => (string)x["nome"]) ?? new string[0];
+
+        // Troca a combinação dos diagramas (null = envoltória) sem recalcular.
+        public async Task MudarDiagrama(string comb)
+        {
+            CombDiagrama = comb;
+            if (!Calculado) return;
+            await Garantir();
+            await CarregarDiagramas();
+        }
+
+        async Task CarregarDiagramas()
+        {
+            string q = CombDiagrama == null ? "" : "&combinacao=" + Url(CombDiagrama);
+            esforcos = (await Motor.Get("/api/resultados?alvo=esforcos" + q)) as JsonObject;
+            desl = (await Motor.Get("/api/resultados?alvo=deslocamentos" + q)) as JsonObject;
         }
 
         // false = pilha vazia
@@ -140,16 +239,13 @@ namespace NovoFtool
                 string b = (string)l["barra"];
                 if (!PiorPorBarra.TryGetValue(b, out var at) || Taxa(l) > Taxa(at)) PiorPorBarra[b] = l;
             }
-            var pior = PiorPorBarra.Values.OrderByDescending(Taxa).FirstOrDefault();
-            CombDiagrama = (string)pior?["combinacao"] ?? c["combinacoes"]?.AsArray().Select(x => (string)x["nome"]).FirstOrDefault();
-            if (CombDiagrama != null && CombDiagrama.Contains("Envolt")) CombDiagrama = null;
-            string q = CombDiagrama == null ? "" : "&combinacao=" + Url(CombDiagrama);
-            esforcos = (await Motor.Get("/api/resultados?alvo=esforcos" + q)) as JsonObject;
-            desl = (await Motor.Get("/api/resultados?alvo=deslocamentos" + q)) as JsonObject;
             Calculo = c;
+            if (CombDiagrama != null && !Combinacoes.Contains(CombDiagrama)) CombDiagrama = null;
+            await CarregarDiagramas();
         }
 
-        public double[] Desl(string no) => desl?[no] is JsonArray a ? a.Take(3).Select(x => (double)x).ToArray() : null;
+        public double[] Desl(string no) => Vetor(desl?[no])?.Take(3).ToArray();
+        public double[] Esforco(string barra, string comp) => Vetor(esforcos?[barra]?[comp]);
 
         public static double Taxa(JsonNode l) => l?["taxa"] == null ? -1 : (double)l["taxa"];
 
@@ -163,7 +259,7 @@ namespace NovoFtool
             var p = PiorPorBarra.Values.OrderByDescending(Taxa).FirstOrDefault();
             return s + " · " + Pl.N(ncomb, "combinação", "combinações") + " · " + (reprov == 0 ? "todas as barras passam" : "⚠ " + Pl.N(reprov, "barra não passa", "barras não passam")) +
                    (p != null && Taxa(p) >= 0 ? " · pior: " + (string)p["barra"] + " " + Num.Fmt(Taxa(p) * 100, 0) + "% (" + (string)p["criterio"] + ")" : "") +
-                   (CombDiagrama != null ? " · diagramas: " + CombDiagrama : "");
+                   " · diagramas: " + NomeDiagrama;
         }
 
         public string JsonFormatado() => Json.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
@@ -179,9 +275,8 @@ namespace NovoFtool
             {
                 var n = kv.Value; int id = ids.Count + 1; ids[kv.Key] = id;
                 var ap = n["apoio"]?.AsArray().Select(x => x != null && (bool)x).ToArray() ?? new bool[6];
-                var dd = desl?[kv.Key]?.AsArray();
                 r.Nos.Add(new No3D { Id = id, X = (double)n["x"], Y = (double)n["y"], Z = (double)n["z"], Apoios = ap.Length == 6 ? ap : new bool[6], Origem = Ref("no", kv.Key),
-                                     Desl = dd == null ? null : new[] { (double)dd[0], (double)dd[1], (double)dd[2] } });
+                                     Desl = Desl(kv.Key) });
             }
             int ib = 0;
             foreach (var kv in Json["barras"].AsObject())
@@ -197,7 +292,15 @@ namespace NovoFtool
             return r;
         }
 
-        static double[] Vetor(JsonNode n) => n is JsonArray a ? a.Select(x => (double)x).ToArray() : null;   // envoltória vem como {max, min}: sem diagrama
+        // Combinação: lista. Envoltória {max, min}: em cada ponto o de maior valor absoluto, com o sinal.
+        // ponytail: um diagrama por barra; desenhar max e min juntos quando a Vista3D tiver duas curvas.
+        static double[] Vetor(JsonNode n)
+        {
+            if (n is JsonArray a) return a.Select(x => (double)x).ToArray();
+            if (n is JsonObject o && o["max"] is JsonArray mx && o["min"] is JsonArray mn)
+                return mx.Select((x, i) => { double p = (double)x, q = (double)mn[i]; return Math.Abs(p) >= Math.Abs(q) ? p : q; }).ToArray();
+            return null;
+        }
     }
 
     // ================= janela principal: modo "modelo espacial" =================
@@ -206,11 +309,13 @@ namespace NovoFtool
         DocumentoEspacial Esp => docAtivo >= 0 && docAtivo < docs.Count ? docs[docAtivo].Esp : null;
         RefMotor selEsp;
         bool modoEsp, escolhaEspLigada, espRodando;
+        string ligarDe;                       // "Barra até outro nó": nó de partida, à espera do clique no outro nó
+        static List<string> catalogoEsp;      // nomes do GET /api/catalogo (uma vez por sessão)
         readonly ContentControl painelEsp = new ContentControl();
 
         static bool EhEspacial(string caminho) => caminho.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || caminho.EndsWith(".ed3", StringComparison.OrdinalIgnoreCase);
 
-        internal async Task AbrirEspacial(Func<Task<DocumentoEspacial>> criar, string oque)
+        internal async Task AbrirEspacial(Func<Task<DocumentoEspacial>> criar, string oque, string recente = null)
         {
             Bastidor.IsOpen = false;
             StatusMsg.Text = "Motor Python: " + oque + "…";
@@ -219,6 +324,7 @@ namespace NovoFtool
             try { d = await criar(); }
             catch (Exception ex) { Caixa.Erro(this, "Não foi possível abrir o modelo espacial", ex.Message); StatusMsg.Text = "⚠ " + ex.Message; return; }
             finally { Mouse.OverrideCursor = antes; }
+            if (recente != null) Config.AdicionarRecente(recente);
             GuardarDoc();
             PrepararDocNovo();
             docs[docAtivo].Esp = d;
@@ -231,7 +337,7 @@ namespace NovoFtool
             foreach (string a in d.Avisos) Log("  aviso: " + a, false);
         }
 
-        internal Task AbrirEspacialArquivo(string caminho) => AbrirEspacial(() => DocumentoEspacial.AbrirArquivo(caminho), "abrindo " + Path.GetFileName(caminho));
+        internal Task AbrirEspacialArquivo(string caminho) => AbrirEspacial(() => DocumentoEspacial.AbrirArquivo(caminho), "abrindo " + Path.GetFileName(caminho), caminho);
 
         // Chamado ao trocar de documento: liga ou desliga a vista 3D forçada e o painel de propriedades do motor.
         void AplicarModoEspacial()
@@ -241,11 +347,13 @@ namespace NovoFtool
             {
                 if (!modoEsp) return;
                 modoEsp = false;
+                Vista.ResumoExterno = null;
                 PainelProp.Content = Insp;
                 MostrarVista3D(false);
                 return;
             }
             modoEsp = true;
+            Vista.ResumoExterno = ResumoEspacial;
             TelaInicial.Visibility = Visibility.Collapsed;
             MostrarVista3D(true);
             vista3D.MostrarLegenda = true;
@@ -255,13 +363,70 @@ namespace NovoFtool
                 vista3D.Escolheu += o =>
                 {
                     if (Esp == null) return;
-                    selEsp = (o as No3D)?.Origem as RefMotor ?? (o as Barra3D)?.Origem as RefMotor;
+                    var r = (o as No3D)?.Origem as RefMotor ?? (o as Barra3D)?.Origem as RefMotor;
+                    if (ligarDe != null && r?.Tipo == "no" && r.Id != ligarDe) { string de = ligarDe; ligarDe = null; _ = NovaBarraEsp(de, r.Id); return; }
+                    ligarDe = null;
+                    selEsp = r;
                     MontarPainelEspacial();
+                    SincronizarEsp();
                 };
             }
             PainelProp.Content = painelEsp;
             AtualizarEspacial3D(true);
             Aviso.Visibility = Visibility.Collapsed;
+            _ = AtivarEspacial(d);
+        }
+
+        // Recoloca o modelo do documento no motor ao ativar a aba (o servidor guarda um modelo só).
+        async Task AtivarEspacial(DocumentoEspacial d)
+        {
+            if (espRodando) return;
+            espRodando = true;
+            try { await d.Garantir(); }
+            catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; }
+            finally { espRodando = false; }
+            AvisarHistorico(d);
+        }
+
+        void AvisarHistorico(DocumentoEspacial d)
+        {
+            if (!d.HistoricoPerdido) return;
+            d.HistoricoPerdido = false;
+            Log("Aviso: o motor guarda um modelo só e o desfazer vale só para o documento ativo. " + d.Nome + " voltou ao motor e o histórico de desfazer dele recomeçou.");
+        }
+
+        // Legenda do HUD no modelo espacial (o Vista 2D do documento é vazio).
+        string ResumoEspacial()
+        {
+            var d = Esp;
+            if (d == null || !d.Calculado) return "sem resultados";
+            var bs = d.Json["barras"].AsObject().Select(kv => kv.Key).ToList();
+            switch (Vista.Diag)
+            {
+                case Diagrama.Deformada:
+                    double dm = d.Json["nos"].AsObject().Select(kv => d.Desl(kv.Key)).Where(v => v != null).Select(v => Math.Sqrt(v.Sum(x => x * x))).DefaultIfEmpty(0).Max();
+                    return "máx. " + Num.Fmt(dm * 1000, 2) + " mm";
+                case Diagrama.Normal: case Diagrama.Cortante: case Diagrama.Momento:
+                    string c = Vista.Diag == Diagrama.Normal ? "N" : Vista.Diag == Diagrama.Cortante ? "Vz" : "My";
+                    var v2 = bs.SelectMany(b => d.Esforco(b, c) ?? new double[0]).ToList();
+                    if (v2.Count == 0) return "sem esforços";
+                    return c + " máx. " + Num.Fmt(v2.Max(), 2) + "  ·  mín. " + Num.Fmt(v2.Min(), 2) + (c == "My" ? " kN·m" : " kN");
+                case Diagrama.Verificacao:
+                    var p = d.PiorPorBarra.Values.OrderByDescending(DocumentoEspacial.Taxa).FirstOrDefault();
+                    return p == null ? "sem verificação" : "pior: " + (string)p["barra"] + " " + Num.Fmt(DocumentoEspacial.Taxa(p) * 100, 0) + "%";
+            }
+            return "";
+        }
+
+        // Seleção vinda da árvore, das tabelas ou dos avisos.
+        void SelecionarEsp(RefMotor r)
+        {
+            if (Esp == null) return;
+            selEsp = r; ligarDe = null;
+            vista3D.Selecionado = r;
+            vista3D.Reconstruir();
+            MontarPainelEspacial();
+            SincronizarEsp();
         }
 
         // Atualizar3D redireciona para cá quando o documento ativo é espacial.
@@ -282,6 +447,8 @@ namespace NovoFtool
             if (selEsp != null && vista3D.Selecionado == null) selEsp = null;
             StatusMsg.Text = d.Resumo();
             MontarPainelEspacial();
+            AtualizarListasCasos(); AtualizarArvore(); AtualizarTabelas(); Diagnosticar();   // versões espaciais (Paineis.cs, Casos.cs)
+            SincronizarEsp();
         }
 
         void DepoisDeMudarEspacial(string msg)
@@ -300,6 +467,7 @@ namespace NovoFtool
             try { await f(d); if (Esp == d) DepoisDeMudarEspacial(msg); }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
             finally { espRodando = false; }
+            AvisarHistorico(d);
         }
 
         async Task TrocarEspacial(bool desfazer)
@@ -343,6 +511,7 @@ namespace NovoFtool
             {
                 File.WriteAllText(c, d.JsonFormatado());   // Json = último GET /api/modelo (atualizado depois de cada mudança)
                 d.Arquivo = c; arquivo = c; alterado = false;
+                Config.AdicionarRecente(c);
                 AtualizarTitulo();
                 Log("Salvo: " + c);
                 return true;
@@ -397,6 +566,56 @@ namespace NovoFtool
                 cb.SelectionChanged += (s, e) => { if (cb.SelectedItem is string x && x != atual) aplicar(x); };
                 return cb;
             };
+            // linha de campos curtos (x y z, Fx Fy Fz…) + botão; o botão lê os números e chama a ação
+            Action<string[], double[], string, Action<double[]>> vetor = (rots, ini, txt, acao) =>
+            {
+                var wp = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
+                var tbs = new List<TextBox>();
+                for (int i = 0; i < rots.Length; i++)
+                {
+                    wp.Children.Add(new TextBlock { Text = rots[i], Foreground = TemaPlant.BTexto2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
+                    var tb = JanelaEscura.Campo(Num.Fmt(ini[i], 2), 52); tb.Margin = new Thickness(0, 0, 8, 2);
+                    tbs.Add(tb); wp.Children.Add(tb);
+                }
+                var b = JanelaEscura.B(txt, () =>
+                {
+                    var v = new double[tbs.Count];
+                    for (int i = 0; i < v.Length; i++)
+                        if (!double.TryParse(tbs[i].Text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out v[i])) { StatusMsg.Text = "⚠ Número inválido: " + tbs[i].Text; return; }
+                    acao(v);
+                });
+                b.Margin = new Thickness(0, 0, 0, 2);
+                wp.Children.Add(b);
+                sp.Children.Add(wp);
+            };
+            void botoes(params (string, Action)[] bs)
+            {
+                var wp = new WrapPanel { Margin = new Thickness(0, 4, 0, 2) };
+                foreach (var (t, a) in bs) { var b = JanelaEscura.B(t, a); b.Margin = new Thickness(0, 0, 6, 4); wp.Children.Add(b); }
+                sp.Children.Add(wp);
+            }
+            // caso das cargas: o mesmo de Ações › Caso ativo
+            Action casoCargas = () =>
+            {
+                var casos = (d.Json["casos"] as JsonObject)?.Select(x => x.Key).ToList() ?? new List<string>();
+                if (casos.Count == 0) { sp.Children.Add(leitura("O modelo não tem casos de carga.")); return; }
+                linha("Caso", combo(casos, d.CasoAtivo, v => { d.CasoAtivo = v; AtualizarListasCasos(); MontarPainelEspacial(); }));
+            };
+            // cargas existentes deste nó/barra (todos os casos), com botão de apagar
+            Action<string, string, string, string> cargas = (col, tipo, alvo, id) =>
+            {
+                foreach (var c in (d.Json[col] as JsonArray ?? new JsonArray()).Where(c => (string)c[alvo] == id))
+                {
+                    string cid = (string)c["id"], campo = tipo == "carga_nodal" ? "F" : "q";
+                    var v = c[campo].AsArray().Take(3).Select(x => Num.Fmt((double)x, 2));
+                    var dp = new DockPanel { Margin = new Thickness(0, 1, 0, 1) };
+                    var x = JanelaEscura.B("×", () => _ = Espacial(dd => dd.Remover(tipo, cid), "Carga " + cid + " apagada."), false, "Apaga esta carga");
+                    x.Padding = new Thickness(6, 0, 6, 0); x.MinWidth = 0;
+                    DockPanel.SetDock(x, Dock.Right); dp.Children.Add(x);
+                    dp.Children.Add(leitura((string)c["caso"] + ": (" + string.Join("; ", v) + ")" + (tipo == "carga_nodal" ? " kN" : " kN/m")));
+                    sp.Children.Add(dp);
+                }
+            };
 
             JsonNode el = selEsp == null ? null : d.Json[selEsp.Tipo == "no" ? "nos" : "barras"]?[selEsp.Id];
             if (el == null)
@@ -408,8 +627,16 @@ namespace NovoFtool
                 foreach (var (r, k) in new[] { ("Nós", "nos"), ("Barras", "barras"), ("Seções", "secoes"), ("Materiais", "materiais"), ("Casos", "casos"), ("Pavimentos", "pavimentos") })
                     linha(r, leitura((j[k] as JsonObject)?.Count.ToString() ?? "0"));
                 linha("Casos", leitura(string.Join(", ", (j["casos"] as JsonObject)?.Select(x => x.Key) ?? new string[0])));
+                secao("Novo nó (m)");
+                vetor(new[] { "X", "Y", "Z" }, new double[3], "Adicionar", v => _ = Espacial(async dd =>
+                {
+                    string nid = await dd.Adicionar("no", new JsonObject { ["x"] = v[0], ["y"] = v[1], ["z"] = v[2] });
+                    if (nid != null) selEsp = dd.Ref("no", nid);
+                }, "Nó novo em (" + string.Join("; ", v.Select(x => Num.Fmt(x, 2))) + ") m."));
+                sp.Children.Add(leitura("Barras: escolha um nó e use \"Barra até outro nó\" ou \"Nó + barra\"."));
                 secao("Cálculo");
                 sp.Children.Add(leitura(d.Calculado ? d.Resumo() : "Sem cálculo: F5 calcula pelo motor (NBR 8681, 8800, 14762, 6118)."));
+                sp.Children.Add(new TextBlock { Text = "O motor guarda um modelo só: o desfazer (Ctrl+Z) vale para o documento ativo e recomeça ao voltar de outra aba.", FontSize = 11, Foreground = TemaPlant.BTexto2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) });
             }
             else if (selEsp.Tipo == "no")
             {
@@ -440,16 +667,39 @@ namespace NovoFtool
                 var dl = d.Desl(id);
                 if (dl != null)
                 {
-                    secao("Deslocamento (" + d.CombDiagrama + ")");
+                    secao("Deslocamento (" + d.NomeDiagrama + ")");
                     linha("ux, uy, uz", leitura(string.Join(" · ", dl.Select(x => Num.Fmt(x * 1000, 2))) + " mm"));
                 }
+                secao("Barras");
+                botoes(("Barra até outro nó", () => { ligarDe = id; StatusMsg.Text = "Clique no outro nó da barra (clique fora cancela)."; }),
+                       ("Apagar nó", () => _ = Espacial(dd => dd.Remover("no", id), "Nó " + id + " apagado (com as barras e cargas dele).")));
+                sp.Children.Add(leitura("Nó + barra: cria um nó deslocado deste e a barra entre os dois."));
+                vetor(new[] { "dX", "dY", "dZ" }, new double[] { 0, 0, 3 }, "Nó + barra", v => _ = Espacial(async dd =>
+                {
+                    string nid = await dd.Adicionar("no", new JsonObject { ["x"] = (double)el["x"] + v[0], ["y"] = (double)el["y"] + v[1], ["z"] = (double)el["z"] + v[2] });
+                    await dd.Adicionar("barra", DadosBarraNova(dd, id, nid));
+                    selEsp = dd.Ref("no", nid);
+                }, "Nó e barra novos a partir do nó " + id + "."));
+                secao("Cargas no nó");
+                cargas("cargas_nodais", "carga_nodal", "no", id);
+                casoCargas();
+                if (d.CasoAtivo != null)
+                    vetor(new[] { "Fx", "Fy", "Fz" }, new double[] { 0, 0, -10 }, "Adicionar (kN)", v => _ = Espacial(dd => dd.Adicionar("carga_nodal", new JsonObject
+                    { ["caso"] = dd.CasoAtivo, ["no"] = id, ["F"] = new JsonArray(v[0], v[1], v[2], 0.0, 0.0, 0.0) }), "Carga nodal no nó " + id + " (" + d.CasoAtivo + ")."));
             }
             else
             {
                 string id = selEsp.Id;
                 cab("Barra " + id + " · " + (string)el["secao"], (string)el["material"] + " · " + (string)el["tipo"] + " · " + (string)el["ni"] + " → " + (string)el["nj"]);
                 secao("Barra");
-                linha("Seção", combo(d.Json["secoes"].AsObject().Select(x => x.Key), (string)el["secao"], v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["secao"] = v }), "Barra " + id + ": seção " + v + ".")));
+                // seções do modelo + perfis do catálogo do motor; perfil novo entra no modelo antes do PATCH
+                if (catalogoEsp == null) _ = CarregarCatalogoEsp();
+                var noModelo = d.Json["secoes"].AsObject().Select(x => x.Key).ToList();
+                linha("Seção", combo(noModelo.Concat((catalogoEsp ?? new List<string>()).Where(x => !noModelo.Contains(x))), (string)el["secao"], v => _ = Espacial(async dd =>
+                {
+                    await dd.GarantirSecao(v);
+                    await dd.Editar("barra", id, new JsonObject { ["secao"] = v });
+                }, "Barra " + id + ": seção " + v + (noModelo.Contains(v) ? "." : " (do catálogo, adicionada ao modelo)."))));
                 linha("Material", combo(d.Json["materiais"].AsObject().Select(x => x.Key), (string)el["material"], v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["material"] = v }), "Barra " + id + ": material " + v + ".")));
                 linha("Giro (°)", num((double)(el["rot"] ?? 0.0) * 180 / Math.PI, v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["rot"] = v * Math.PI / 180 }), "Barra " + id + ": giro " + Num.Fmt(v, 1) + "°.")));
                 linha("Papel", leitura((string)el["params"]?["papel"] ?? "—"));
@@ -462,14 +712,216 @@ namespace NovoFtool
                     linha("Combinação", leitura((string)v0["combinacao"] ?? "—"));
                 }
                 else if (d.Calculado) { secao("Verificação"); sp.Children.Add(leitura("Barra não verificada pelo motor.")); }
+                botoes(("Apagar barra", () => _ = Espacial(dd => dd.Remover("barra", id), "Barra " + id + " apagada (com as cargas dela).")));
+                secao("Carga distribuída (global, kN/m)");
+                cargas("cargas_distribuidas", "carga_distribuida", "barra", id);
+                casoCargas();
+                if (d.CasoAtivo != null)
+                    vetor(new[] { "qx", "qy", "qz" }, new double[] { 0, 0, -5 }, "Adicionar", v => _ = Espacial(dd => dd.Adicionar("carga_distribuida", new JsonObject
+                    { ["caso"] = dd.CasoAtivo, ["barra"] = id, ["q"] = new JsonArray(v[0], v[1], v[2]) }), "Carga distribuída na barra " + id + " (" + d.CasoAtivo + ")."));
             }
             painelEsp.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = TemaPlant.BSup1 };
+            if (selEsp != selAnimada) { selAnimada = selEsp; Anim.Entrar(sp, 6, Anim.Rapido); }   // só quando a escolha muda
+        }
+        RefMotor selAnimada;
+
+        // Barra nova entre dois nós: seção, material e giro da última barra do modelo (ou a primeira seção/material).
+        static JsonObject DadosBarraNova(DocumentoEspacial d, string ni, string nj)
+        {
+            var ult = (d.Json["barras"] as JsonObject)?.LastOrDefault().Value;
+            return new JsonObject
+            {
+                ["ni"] = ni, ["nj"] = nj,
+                ["secao"] = (string)ult?["secao"] ?? d.Json["secoes"].AsObject().Select(x => x.Key).FirstOrDefault(),
+                ["material"] = (string)ult?["material"] ?? d.Json["materiais"].AsObject().Select(x => x.Key).FirstOrDefault(),
+            };
+        }
+
+        Task NovaBarraEsp(string ni, string nj) => Espacial(async d =>
+        {
+            string id = await d.Adicionar("barra", DadosBarraNova(d, ni, nj));
+            if (id != null) selEsp = d.Ref("barra", id);
+        }, "Barra nova: " + ni + " → " + nj + ".");
+
+        async Task CarregarCatalogoEsp()
+        {
+            catalogoEsp = new List<string>();   // evita buscar duas vezes
+            try { catalogoEsp = (await Motor.Get("/api/catalogo")).AsArray().Select(x => (string)x["nome"]).ToList(); }
+            catch (Exception ex) { Log("Catálogo do motor indisponível: " + ex.Message); return; }
+            MontarPainelEspacial();
+        }
+
+        // ---------- árvore, tabelas, avisos e listas de resultado (chamados pelas versões 2D quando o documento é espacial) ----------
+
+        void ArvoreEspacial()
+        {
+            var d = Esp; var j = d.Json;
+            sincronizando = true;
+            Arvore.Items.Clear();
+            var raiz = Item("painel", "Modelo espacial", d.Nome, null, null, true, "Modelo do motor Python. Clique num nó ou numa barra para escolher na vista 3D.");
+            var nosJ = j["nos"].AsObject(); var barJ = j["barras"].AsObject();
+            var nos = Item("no", "Nós", null, nosJ.Count, null, nosJ.Count < 40, "Nós do modelo espacial.");
+            var comCarga = new HashSet<string>((j["cargas_nodais"] as JsonArray ?? new JsonArray()).Select(c => (string)c["no"]));
+            foreach (var kv in nosJ)
+            {
+                var n = kv.Value;
+                bool ap = n["apoio"]?.AsArray().Any(x => x != null && (bool)x) == true;
+                nos.Items.Add(Item("no", "Nó " + kv.Key, "(" + Num.Fmt((double)n["x"], 2) + "; " + Num.Fmt((double)n["y"], 2) + "; " + Num.Fmt((double)n["z"], 2) + ")", null, d.Ref("no", kv.Key), false,
+                    "Nó " + kv.Key + (ap ? " · com apoio" : "") + (comCarga.Contains(kv.Key) ? " · com carga" : "") + ". Clique para escolher e editar em Propriedades.", ap ? "engaste" : null, comCarga.Contains(kv.Key) ? "cargano" : null));
+            }
+            var barras = Item("barra", "Barras", null, barJ.Count, null, barJ.Count < 40, "Barras do modelo espacial.");
+            foreach (var kv in barJ)
+            {
+                var b = kv.Value; d.PiorPorBarra.TryGetValue(kv.Key, out var v);
+                string tx = v != null && DocumentoEspacial.Taxa(v) >= 0 ? Num.Fmt(DocumentoEspacial.Taxa(v) * 100, 0) + "%" : null;
+                barras.Items.Add(Item("barra", "Barra " + kv.Key, (string)b["secao"] + (tx != null ? " · " + tx : ""), null, d.Ref("barra", kv.Key), false,
+                    "Barra " + kv.Key + " (" + (string)b["secao"] + ", " + (string)b["material"] + ", " + (string)b["ni"] + " → " + (string)b["nj"] + "). Clique para escolher e editar."));
+            }
+            Func<string, string, TreeViewItem> grupo = (chave, rot) =>
+            {
+                var o = j[chave] as JsonObject ?? new JsonObject();
+                var g = Item(chave == "secoes" ? "eixo" : chave == "materiais" ? "pincel" : "tabela", rot, null, o.Count, null, false, rot + " do modelo espacial.");
+                foreach (var kv in o) g.Items.Add(Item(chave == "secoes" ? "eixo" : chave == "materiais" ? "pincel" : "tabela", kv.Key, (string)kv.Value?["tipo"], null, null, false, kv.Key));
+                return g;
+            };
+            raiz.Items.Add(nos); raiz.Items.Add(barras);
+            raiz.Items.Add(grupo("secoes", "Seções")); raiz.Items.Add(grupo("materiais", "Materiais")); raiz.Items.Add(grupo("casos", "Casos de carga"));
+            int ncargas = new[] { "cargas_nodais", "cargas_distribuidas", "cargas_pontuais" }.Sum(k => (j[k] as JsonArray)?.Count ?? 0);
+            raiz.Items.Add(Item("cargano", "Cargas", null, ncargas, null, false, "Cargas nodais, distribuídas e pontuais de todos os casos."));
+            Arvore.Items.Add(raiz);
+            sincronizando = false;
+        }
+
+        void TabelasEspaciais()
+        {
+            var d = Esp; var j = d.Json;
+            sincronizando = true;
+            bool ok = d.Calculado;
+            Func<double, string> mm = x => Num.Fmt(x * 1000, 2);
+            TabNos.ItemsSource = j["nos"].AsObject().Select(kv =>
+            {
+                var n = kv.Value; var dl = ok ? d.Desl(kv.Key) : null;
+                var ap = n["apoio"]?.AsArray().Select(x => x != null && (bool)x).ToArray() ?? new bool[6];
+                string[] gl = { "ux", "uy", "uz", "rx", "ry", "rz" };
+                return new LinhaNoEsp
+                {
+                    Obj = d.Ref("no", kv.Key), Id = kv.Key, X = Num.Fmt((double)n["x"], 3), Y = Num.Fmt((double)n["y"], 3), Z = Num.Fmt((double)n["z"], 3),
+                    Apoio = ap.All(x => x) ? "engaste" : ap.Any(x => x) ? string.Join(" ", gl.Where((g, i) => ap[i])) : "",
+                    DX = dl != null ? mm(dl[0]) : "", DY = dl != null ? mm(dl[1]) : "", DZ = dl != null ? mm(dl[2]) : "",
+                };
+            }).ToList();
+            Func<double[], string> faixa = v => v == null || v.Length == 0 ? "" : Num.Fmt(v.Min(), 2) + " / " + Num.Fmt(v.Max(), 2);
+            TabBarras.ItemsSource = j["barras"].AsObject().Select(kv =>
+            {
+                var b = kv.Value;
+                double L = 0;
+                var ni = j["nos"][(string)b["ni"]]; var nj = j["nos"][(string)b["nj"]];
+                if (ni != null && nj != null) L = Math.Sqrt(new[] { "x", "y", "z" }.Sum(k => Math.Pow((double)nj[k] - (double)ni[k], 2)));
+                return new LinhaBarraEsp
+                {
+                    Obj = d.Ref("barra", kv.Key), Id = kv.Key, Nos = (string)b["ni"] + " → " + (string)b["nj"], Perfil = (string)b["secao"], Material = (string)b["material"], L = Num.Fmt(L, 3),
+                    N = ok ? faixa(d.Esforco(kv.Key, "N")) : "", Vz = ok ? faixa(d.Esforco(kv.Key, "Vz")) : "", My = ok ? faixa(d.Esforco(kv.Key, "My")) : "",
+                };
+            }).ToList();
+            var lv = j["barras"].AsObject().Select(kv =>
+            {
+                var l = new LinhaVerifEsp { Obj = d.Ref("barra", kv.Key), Id = kv.Key, Perfil = (string)kv.Value["secao"] };
+                if (!ok || !d.PiorPorBarra.TryGetValue(kv.Key, out var v)) { l.Situacao = l.SitTxt = ok ? "não verificada" : "sem resultados"; return l; }
+                double t = DocumentoEspacial.Taxa(v);
+                l.Critico = (string)v["criterio"] + " · " + (string)v["norma"] + " " + (string)v["item"]; l.Combinacao = (string)v["combinacao"];
+                if (t < 0) { l.Situacao = l.SitTxt = "não verificada"; return l; }
+                bool passa = v["ok"] == null || (bool)v["ok"];
+                l.Situacao = passa ? "passa" : "NÃO PASSA"; l.SitTxt = passa ? "Passa" : "Não passa"; l.Pass = passa;
+                l.Ap = Num.Fmt(t * 100, 0) + "%"; l.ApNum = t * 100; l.CorAp = UiPlaca.CorAp(t, passa); l.BarraVis = Visibility.Visible;
+                var cs = UiPlaca.Cores(passa ? (t > 0.9 ? UiPlaca.Nivel.Alerta : UiPlaca.Nivel.Ok) : UiPlaca.Nivel.Erro); l.SitFg = cs.fg; l.SitBg = cs.bg; l.SitBd = cs.bd;
+                return l;
+            }).OrderBy(x => x.Pass ? 1 : 0).ThenByDescending(x => x.ApNum).ToList();
+            int tot = lv.Count;
+            if (soCriticos) lv = lv.Where(x => !x.Pass || x.ApNum > 90).ToList();
+            TabVerif.ItemsSource = lv;
+            ContVerif.Text = !ok ? "" : soCriticos ? lv.Count + " de " + tot + " barras" : Pl.N(tot, "barra", "barras");
+            AbasTabela.ToolTip = ok ? "Modelo espacial (motor). Esforços e deslocamentos: " + d.NomeDiagrama + ". Clique numa linha para escolher na vista." : "Modelo espacial: F5 calcula pelo motor para preencher esforços, deslocamentos e verificação.";
+            VazioNos.Visibility = j["nos"].AsObject().Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            VazioBarras.Visibility = VazioVerif.Visibility = tot == 0 ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var dg in new[] { TabNos, TabBarras, TabVerif }) { dg.AutoGeneratingColumn -= Coluna; dg.AutoGeneratingColumn += Coluna; }
+            sincronizando = false;
+        }
+
+        // validação do motor + avisos da importação + barras reprovadas
+        List<(string, string, List<object>)> AvisosEspaciais()
+        {
+            var d = Esp;
+            var lista = new List<(string, string, List<object>)>();
+            foreach (var a in d.Validacao)
+            {
+                var r = a?["ref"]; string tipo = (string)r?["tipo"], id = (string)r?["id"];
+                var objs = tipo == "no" || tipo == "barra" ? new List<object> { d.Ref(tipo, id) } : new List<object>();
+                lista.Add(((string)a["nivel"] == "erro" ? "erro" : "aviso", (string)a["mensagem"], objs));
+            }
+            foreach (string a in d.Avisos) lista.Add(("info", "Importação: " + a, new List<object>()));
+            if (d.Calculado)
+            {
+                var falham = d.PiorPorBarra.Where(kv => kv.Value["ok"] != null && !(bool)kv.Value["ok"]).Select(kv => (object)d.Ref("barra", kv.Key)).ToList();
+                if (falham.Count > 0) lista.Add(("aviso", Pl.N(falham.Count, "barra não passa", "barras não passam") + " na verificação do motor. Clique para escolher a primeira; troque a seção em Propriedades.", falham));
+            }
+            return lista;
+        }
+
+        void SincronizarEsp()
+        {
+            if (sincronizando || Esp == null) return;
+            sincronizando = true;
+            foreach (TreeViewItem raiz in Arvore.Items)
+                foreach (TreeViewItem g in raiz.Items)
+                    foreach (TreeViewItem it in g.Items)
+                        if (selEsp != null && it.Tag == selEsp) { g.IsExpanded = true; it.IsSelected = true; it.BringIntoView(); }
+            foreach (var dg in new[] { TabNos, TabBarras, TabVerif })
+            {
+                dg.SelectedItems.Clear();
+                foreach (var it in (dg.ItemsSource as System.Collections.IEnumerable) ?? new object[0])
+                    if (selEsp != null && it is LinhaEsp le && le.Obj == selEsp) { dg.SelectedItems.Add(it); dg.ScrollIntoView(it); }
+            }
+            sincronizando = false;
+        }
+
+        // Ações › Caso ativo = caso das cargas do painel; Resultados › Mostrar = envoltória ou uma combinação do motor.
+        void ListasEspaciais()
+        {
+            var d = Esp;
+            listasOcupadas = true;
+            cbCaso.Items.Clear();
+            var casos = (d.Json["casos"] as JsonObject)?.ToList() ?? new List<KeyValuePair<string, JsonNode>>();
+            foreach (var kv in casos) cbCaso.Items.Add(new ComboBoxItem { Content = kv.Key + "  [" + (string)kv.Value?["tipo"] + "]", Tag = kv.Key, ToolTip = "As cargas lançadas no painel Propriedades vão para o caso \"" + kv.Key + "\"." });
+            cbCaso.SelectedItem = cbCaso.Items.Cast<ComboBoxItem>().FirstOrDefault(x => (string)x.Tag == d.CasoAtivo);
+            cbResultado.Items.Clear();
+            cbResultado.Items.Add(new ComboBoxItem { Content = "Envoltória ELU (motor)", Tag = "esp:", ToolTip = "Diagramas: em cada ponto o maior valor absoluto entre as combinações ELU; deformada: envoltória ELS." });
+            foreach (string c in d.Combinacoes) cbResultado.Items.Add(new ComboBoxItem { Content = c, Tag = "esp:" + c, ToolTip = "Diagramas, deformada e tabelas da combinação \"" + c + "\" do motor." });
+            cbResultado.SelectedItem = cbResultado.Items.Cast<ComboBoxItem>().FirstOrDefault(x => (string)x.Tag == "esp:" + d.CombDiagrama) ?? cbResultado.Items[0];
+            listasOcupadas = false;
+        }
+
+        // Escolha em Resultados › Mostrar (Casos.cs) quando o documento é espacial.
+        async Task MudarResultadoEsp(string comb)
+        {
+            var d = Esp;
+            if (d == null || espRodando) return;
+            espRodando = true;
+            try { await d.MudarDiagrama(comb == "" ? null : comb); }
+            catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); return; }
+            finally { espRodando = false; }
+            if (Esp != d) return;
+            AtualizarEspacial3D(false);
+            Log("Mostrando: " + d.NomeDiagrama + ".");
         }
 
         // Para as capturas e testes: o documento espacial ativo e um jeito de fechar todos sem perguntar.
         internal DocumentoEspacial EspacialAtivo => Esp;
         internal Task EditarEspacial(string tipo, string id, JsonObject campos) => Espacial(d => d.Editar(tipo, id, campos), "Editado: " + tipo + " " + id + ".");
         internal Task DesfazerEspacial() => TrocarEspacial(true);
+        internal Task OperarEspacial(Func<DocumentoEspacial, Task> f, string msg) => Espacial(f, msg);
+        internal Task MostrarCombinacaoEspacial(string comb) => MudarResultadoEsp(comb ?? "");
+        internal string TextoResultado => NomeResultado();
+        internal void EscolherEspacial(string tipo, string id) => SelecionarEsp(Esp.Ref(tipo, id));
         internal void FecharEspaciaisSemPerguntar()
         {
             GuardarDoc();
