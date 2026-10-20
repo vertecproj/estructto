@@ -1,4 +1,4 @@
-// Botões da faixa que abrem as janelas do motor Python (ComandosAcoes, ComandosAnalise; REVISAO-TELAS 3.2).
+﻿// Botões da faixa que abrem as janelas do motor Python (ComandosAcoes, ComandosAnalise; REVISAO-TELAS 3.2).
 // Antes de abrir, o modelo 2D vai para o motor (MotorModelo.Enviar, docs/UNIFICACAO-MOTOR.md); as janelas que dependem
 // do cálculo (estabilidade, verificação) calculam antes, com o brilho de progresso na barra de status. Erro do motor = toast.
 using System;
@@ -38,7 +38,7 @@ namespace NovoFtool
             StatusBotoes.Children.Insert(0, barra);
             var antes = Mouse.OverrideCursor; Mouse.OverrideCursor = Cursors.AppStarting;
             StatusMsg.Text = "Motor Python: enviando o modelo…";
-            try { await MotorModelo.Enviar(Modelo.DeXml(M.ParaXml())); StatusMsg.Text = "Motor Python: modelo enviado."; return true; }
+            try { var mod = Modelo.DeXml(M.ParaXml()); await Motor.Exclusivo(() => MotorModelo.Enviar(mod)); StatusMsg.Text = "Motor Python: modelo enviado."; return true; }
             catch (Exception ex) { ErroMotor(ex); return false; }
             finally { StatusBotoes.Children.Remove(barra); Mouse.OverrideCursor = antes; motorRodando = false; }
         }
@@ -48,10 +48,26 @@ namespace NovoFtool
             if (await PrepararMotor(calcular)) abrir(this);
         }
 
+        // Vento, Sismo, Pavimentos e Casos do motor: o que a janela mudou no motor vai para M.MotorExtra (arquivo, desfazer,
+        // "modificado"); o próximo MotorModelo.Enviar devolve ao motor. As janelas são modais: nada envia no meio.
+        async void ComMotorExtra(Action<Window> abrir)
+        {
+            if (!await PrepararMotor(false)) return;
+            string antes;
+            try { antes = await Motor.Exclusivo(MotorModelo.LerExtra); } catch (Exception ex) { ErroMotor(ex); return; }
+            abrir(this);
+            try
+            {
+                string depois = await Motor.Exclusivo(MotorModelo.LerExtra);
+                if (depois != antes) { M.MotorExtra = depois; Confirmar("Ações do motor alteradas (vento, sismo, pavimentos ou casos)."); }
+            }
+            catch (Exception ex) { ErroMotor(ex); }
+        }
+
         // Casos: com o motor Python, a janela nova (casos do motor); no interno, a janela antiga de casos e combinações.
         void AbrirCasosConforme()
         {
-            if (MotorAtivo) ComMotor(false, ComandosAcoes.AbrirCasos);
+            if (MotorAtivo) ComMotorExtra(ComandosAcoes.AbrirCasos);
             else AbrirCasos();
         }
 

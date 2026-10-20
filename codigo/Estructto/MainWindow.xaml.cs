@@ -1,4 +1,4 @@
-// Janela principal: monta a faixa (Fluent.Ribbon), os bastidores (menu Arquivo), a barra de status e liga os eventos.
+﻿// Janela principal: monta a faixa (Fluent.Ribbon), os bastidores (menu Arquivo), a barra de status e liga os eventos.
 // A logica fica nos arquivos parciais Acoes.cs (comandos e arquivos) e Paineis.cs (arvore, propriedades, tabelas, avisos).
 using System;
 using System.Collections.Generic;
@@ -72,7 +72,7 @@ namespace NovoFtool
             Vista.SizeChanged += (s, e) => Hud.Compacto = Vista.ActualHeight < 340;
             HistBtn.Click += (s, e) => { bool abrir = HistoricoCaixa.Visibility != Visibility.Visible; HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed; HistBtn.Content = abrir ? "▾" : "▴"; Comando.Focus(); };
             NovoModelo(new Modelo(), null);
-            Loaded += (s, e) => { Vista.ZoomTudo(); Vista.Focus(); if (!Capturas.Ativo) OferecerRecuperacao(); };
+            Loaded += (s, e) => { Vista.ZoomTudo(); Vista.Focus(); if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-motor="))) OferecerRecuperacao(); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
             Log("Bem-vindo. Escolha uma ferramenta na faixa, use Modelo › Gerar estrutura ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
@@ -368,9 +368,9 @@ namespace NovoFtool
                     BotaoFerramenta("cargadist", "Aplicar na barra", Ferramenta.CargaBarra, "Aplica as cargas distribuídas (substitui as existentes). Com barras selecionadas aplica nelas; senão clique nas barras.")),
                 Grupo("Outras", tgPeso, Botao("limpar", "Limpar cargas", LimparCargas, "Remove as cargas dos itens selecionados, ou de todo o modelo se nada estiver selecionado.", null, true)),
                 Grupo("Ações automáticas",
-                    Botao("vento", "Vento", () => ComMotor(false, ComandosAcoes.AbrirVento), "Vento estático pela NBR 6123 (V0, S1, S2, S3, coeficientes) e geração das forças por pavimento (motor Python).", null, true),
-                    Botao("sismo", "Sismo", () => ComMotor(false, ComandosAcoes.AbrirSismo), "Forças sísmicas horizontais equivalentes pela NBR 15421 (zona, classe do terreno, categoria de utilização) (motor Python).", null, true),
-                    Botao("pavimentos", "Pavimentos", () => ComMotor(false, ComandosAcoes.AbrirPavimentos), "Cotas dos pavimentos e diafragma rígido, usados pelo vento, sismo e deslocamentos entre pavimentos (motor Python).", null, true),
+                    Botao("vento", "Vento", () => ComMotorExtra(ComandosAcoes.AbrirVento), "Vento estático pela NBR 6123 (V0, S1, S2, S3, coeficientes) e geração das forças por pavimento (motor Python).", null, true),
+                    Botao("sismo", "Sismo", () => ComMotorExtra(ComandosAcoes.AbrirSismo), "Forças sísmicas horizontais equivalentes pela NBR 15421 (zona, classe do terreno, categoria de utilização) (motor Python).", null, true),
+                    Botao("pavimentos", "Pavimentos", () => ComMotorExtra(ComandosAcoes.AbrirPavimentos), "Cotas dos pavimentos e diafragma rígido, usados pelo vento, sismo e deslocamentos entre pavimentos (motor Python).", null, true),
                     Botao("combinacoes", "Combinações", () => ComMotor(false, ComandosAcoes.AbrirCombinacoes), "Uso da edificação e combinações ELU/ELS geradas pela NBR 8681 com γ e ψ (motor Python).")));
             abaAcoes.ToolTip = "Casos de carga, forças e momentos nos nós, cargas distribuídas, peso próprio, vento, sismo, pavimentos e combinações.";
 

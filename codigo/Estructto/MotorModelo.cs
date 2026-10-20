@@ -91,13 +91,26 @@ namespace NovoFtool
                 if (mt.Fy > 0) { j["fy"] = mt.Fy * 1000; j["fu"] = Fu(nome, mt.Fy) * 1000; }
                 materiais[nome] = j;
             }
+            // Modelo.MotorExtra (janelas Vento, Sismo, Pavimentos e Casos): config, pavimentos e tipo/subtipo dos casos voltam
+            // ao motor; sem isso o PUT apagaria o que essas janelas gravaram.
+            var extra = string.IsNullOrEmpty(m.MotorExtra) ? null : JsonNode.Parse(m.MotorExtra) as JsonObject;
+            var casosExtra = extra?["casos"] as JsonObject ?? new JsonObject();
             var casos = new JsonObject();
-            foreach (CasoCarga c in m.Casos) casos[c.Nome] = new JsonObject { ["nome"] = c.Nome, ["tipo"] = c.Tipo ?? "G", ["subtipo"] = "" };
-            await Motor.Chamar("PUT", "/api/modelo", new JsonObject
+            foreach (CasoCarga c in m.Casos)
+            {
+                var e = casosExtra[c.Nome];
+                casos[c.Nome] = new JsonObject { ["nome"] = c.Nome, ["tipo"] = (string)e?["tipo"] ?? c.Tipo ?? "G", ["subtipo"] = (string)e?["subtipo"] ?? "" };
+            }
+            foreach (var kv in casosExtra)   // casos criados so no motor
+                if (!casos.ContainsKey(kv.Key)) casos[kv.Key] = new JsonObject { ["nome"] = kv.Key, ["tipo"] = (string)kv.Value?["tipo"] ?? "G", ["subtipo"] = (string)kv.Value?["subtipo"] ?? "" };
+            var corpo = new JsonObject
             {
                 ["versao_formato"] = 1, ["nome"] = "Estructto", ["nos"] = nos, ["materiais"] = materiais,
-                ["secoes"] = new JsonObject(), ["barras"] = new JsonObject(), ["casos"] = casos, ["peso_proprio"] = null
-            });
+                ["secoes"] = new JsonObject(), ["barras"] = new JsonObject(), ["casos"] = casos, ["peso_proprio"] = null,
+                ["pavimentos"] = extra?["pavimentos"]?.DeepClone() ?? new JsonObject()
+            };
+            if (extra?["config"] is JsonObject cfg) corpo["config"] = cfg.DeepClone();
+            await Motor.Chamar("PUT", "/api/modelo", corpo);
 
             var itens = new JsonArray();
             var secoes = m.Barras.Select(b => b.Secao).Distinct().ToList();
@@ -160,6 +173,22 @@ namespace NovoFtool
                     ["props"] = new JsonObject { ["Az"] = s.AsX > 0 ? s.AsX : s.A, ["Ay"] = s.AsY > 0 ? s.AsY : s.A }
                 });
             }
+            // cargas automaticas de vento/sismo ja no envio (as janelas as mostram); o calculo gera de novo de qualquer forma
+            if (extra?["config"]?["vento"] != null || extra?["config"]?["sismo"] != null)
+                try { await Motor.Post("/api/acoes/gerar"); } catch (MotorErro) { }
+        }
+
+        // Parte do modelo do motor que so as janelas do motor editam (vai para Modelo.MotorExtra).
+        public static async Task<string> LerExtra()
+        {
+            var d = await Motor.Get("/api/modelo");
+            var casos = new JsonObject();
+            foreach (var kv in d?["casos"] as JsonObject ?? new JsonObject())
+                casos[kv.Key] = new JsonObject { ["tipo"] = kv.Value?["tipo"]?.DeepClone(), ["subtipo"] = kv.Value?["subtipo"]?.DeepClone() };
+            return new JsonObject
+            {
+                ["config"] = d?["config"]?.DeepClone(), ["pavimentos"] = d?["pavimentos"]?.DeepClone(), ["casos"] = casos
+            }.ToJsonString();
         }
 
         // Comprimentos de flambagem iguais aos do Nucleo.cs (Flambagem.Calcular: barra continua inteira, travamento fora do
@@ -224,7 +253,7 @@ namespace NovoFtool
         // ---------- leitura ----------
 
         static double D(JsonNode n) { return n == null ? 0 : n.GetValue<double>(); }
-        static int Num(string id) { return int.Parse(id.Substring(1), CultureInfo.InvariantCulture); }
+        static int Num(string id) { return id != null && id.Length > 1 && int.TryParse(id.Substring(1), NumberStyles.Integer, CultureInfo.InvariantCulture, out int k) ? k : throw new MotorErro(0, "resposta inesperada do motor: id \"" + id + "\""); }
 
         // deslocamentos/reacoes/esforcos (formato do ResultadoDict) -> convencoes do Estructto
         static MotorEstado Ler(Modelo m, JsonNode desl, JsonNode reac, JsonNode esf)
@@ -233,17 +262,17 @@ namespace NovoFtool
             foreach (No n in m.Nos) e.Nos[n.Id] = new double[6];
             foreach (var kv in desl?.AsObject() ?? new JsonObject())
             {
-                var v = e.Nos[Num(kv.Key)]; var d = kv.Value.AsArray();
+                if (!e.Nos.TryGetValue(Num(kv.Key), out var v) || kv.Value is not JsonArray d) throw new MotorErro(0, "resposta inesperada do motor: deslocamento do no " + kv.Key);
                 v[0] = D(d[0]); v[1] = D(d[2]); v[2] = -D(d[4]);
             }
             foreach (var kv in reac?.AsObject() ?? new JsonObject())
             {
-                var v = e.Nos[Num(kv.Key)]; var r = kv.Value.AsArray();
+                if (!e.Nos.TryGetValue(Num(kv.Key), out var v) || kv.Value is not JsonArray r) throw new MotorErro(0, "resposta inesperada do motor: reacao do no " + kv.Key);
                 v[3] = D(r[0]); v[4] = D(r[2]); v[5] = -D(r[4]);
             }
             foreach (var kv in esf?.AsObject() ?? new JsonObject())
             {
-                Barra b = m.Barras.First(x => x.Id == Num(kv.Key));
+                Barra b = m.Barras.FirstOrDefault(x => x.Id == Num(kv.Key)) ?? throw new MotorErro(0, "resposta inesperada do motor: barra " + kv.Key + " nao existe no modelo");
                 double[] A(string c) { return kv.Value[c].AsArray().Select(D).ToArray(); }
                 // em pe: flexao no plano = My, cortante = Vz; deitado (rot pi/2): Mz e Vy
                 e.Barras[b.Id] = b.EixoFraco
@@ -293,14 +322,17 @@ namespace NovoFtool
         }
 
         // Fluxo completo: envia, calcula (combinacoes NBR 8681, verificacao NBR 8800) e le os resultados de cada combinacao.
-        public static async Task<MotorResultado> Calcular(Modelo m, IProgress<string> progresso = null)
+        // Sob Motor.Exclusivo: nenhum outro caminho troca o modelo entre o /api/calcular e os GET dos resultados.
+        public static Task<MotorResultado> Calcular(Modelo m, IProgress<string> progresso = null) => Motor.Exclusivo(() => CalcularSemFila(m, progresso));
+
+        static async Task<MotorResultado> CalcularSemFila(Modelo m, IProgress<string> progresso)
         {
             progresso?.Report("enviando o modelo");
             await Enviar(m);
             progresso?.Report("calculando (combinações e NBR 8800)");
             var calc = await Motor.Post("/api/calcular", new JsonObject());
-            var res = new MotorResultado { Resumo = calc["resumo"] };
-            foreach (var c in calc["combinacoes"].AsArray())
+            var res = new MotorResultado { Resumo = calc?["resumo"] };
+            foreach (var c in calc?["combinacoes"] as JsonArray ?? throw new MotorErro(0, "resposta inesperada do motor: /api/calcular sem combinacoes"))
             {
                 string nome = (string)c["nome"];
                 res.Combinacoes.Add(nome);

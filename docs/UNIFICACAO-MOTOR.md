@@ -100,6 +100,30 @@ difere, e por quê:
    só vigas), fora da linha de verificação.
 5. **Resistências:** o motor faz FLT/FLM/FLA, interação 5.5.1.2 e cortante pela NBR 8800; o interno faz σ = N/A + M/W, τ e flambagem de Euler.
 
+## Dados só do motor (vento, sismo, pavimentos, casos)
+
+As janelas Vento, Sismo, Pavimentos e Casos (motor) mudam só o modelo do motor; antes o próximo `PUT /api/modelo` apagava tudo e o
+`.estructto` não guardava. Agora `Modelo.MotorExtra` (string JSON opaca no XML; arquivo antigo sem o elemento = null, nada muda no
+cálculo do Nucleo.cs) guarda `{config, pavimentos, casos: {nome: {tipo, subtipo}}}` lido de `GET /api/modelo` (`MotorModelo.LerExtra`).
+`MainWindow.ComMotorExtra` lê antes e depois da janela (modal); se mudou, grava em `M.MotorExtra` e chama `Confirmar` (desfazer e
+"modificado"). `MotorModelo.Enviar` devolve config e pavimentos no PUT, usa tipo/subtipo do extra para os casos (o extra vence o
+tipo do caso 2D), acrescenta os casos que só existem no motor e, havendo vento/sismo, chama `/api/acoes/gerar`.
+Prova: projeto de teste (fora do repositório) com guincho-com-placa: vento V0 = 35 m/s ±X + pavimento no topo → calcular → salvar →
+reabrir com motor novo → calcular: casos `V+X`, `V-X` voltam, 8 combinações com vento iguais e deslocamentos iguais (< 1e-9).
+
+## Processo do motor
+
+- Travamento do `--teste-motor` (> 5 min): causa raiz era o diálogo modal "Recuperar o modelo?" (cópia de recuperação em
+  `%AppData%\NovoFtool`, deixada por outra instância), aberto fora da tela no `Loaded`; o `TesteMotor` (prioridade ApplicationIdle)
+  nunca rodava. Em execução automática o diálogo não aparece. Depois: 5 execuções seguidas em 4–5 s cada, todas com código 0.
+- `Motor.Garantir`: uma única Task de partida sob lock (antes a 2ª chamada via `Ligado` e chamava a porta antes de o servidor subir);
+  espera até 60 s; sem resposta, mata o processo.
+- Órfãos: Job Object com KILL_ON_JOB_CLOSE (mata o motor e os filhos se o Estructto morrer à força) e `--pai <PID>` no servidor
+  (`python -m prossen_estrutural.web`, encerra quando o pai termina; o exe empacotado antigo não recebe a opção).
+- `Motor.Exclusivo(op)`: SemaphoreSlim para operações compostas (Enviar + calcular + ler). Não reentrante.
+- `Motor.Chamar`: corpo nulo vira `{}` (DELETE sem corpo); `Dono` zera em toda rota que troca o modelo (PUT modelo, importar_cype,
+  modelo/abrir, modelo/novo, exemplos/*).
+
 ## O que falta
 
 - Motor: esbeltez de tração (5.2.8) com L destravado em vez de K·L; plano instável (K = ∞) como reprovação.
