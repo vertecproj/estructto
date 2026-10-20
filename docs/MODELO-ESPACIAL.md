@@ -61,8 +61,42 @@ Ao ativar a aba, o documento se recoloca no motor na hora. Se ele tinha históri
 Resultados › Mostrar: **Envoltória ELU (motor)** (padrão) ou qualquer combinação do cálculo. Na envoltória, cada ponto do diagrama é o
 valor de maior módulo entre max e min (com sinal); a deformada usa a envoltória ELS (padrão de `projeto.resultados`).
 
+## Cargas e casos (`CargasEspacial.cs`)
+
+- **Barra › Carga distribuída**: global (kN/m; o motor só tem direção global), valor em ni e em nj. Iguais = uniforme (sem `q2`);
+  diferentes = trapezoidal (`q` em ni, `q2` em nj). Cada carga existente tem os campos editáveis + Gravar (`PATCH`, `q2: null` volta
+  a uniforme) e Apagar.
+- **Barra › Cargas pontuais**: `cargas_pontuais` (a desde ni em m, Fx, Fy, Fz global em kN); adicionar, gravar (`PATCH`), apagar.
+- **Modelo (sem escolha) › Casos e ações**: Casos de carga…, Pavimentos…, Vento…, Sismo… Os mesmos botões da faixa (Ações) e o
+  comando `CASOS` também vão para o modelo espacial quando o documento ativo é espacial (`FaixaMotor.cs`: `ComMotor`/`ComMotorExtra`
+  desviam para `JanelaMotorEsp`; antes mandavam o Modelo 2D vazio ao motor).
+- `DocumentoEspacial.ComJanela`: dentro de **um** `Motor.Exclusivo` recoloca o modelo (Garantir), abre a janela modal (ela chama o
+  motor direto), relê `GET /api/modelo` e, se mudou, `Recarregar` (o cálculo anterior é descartado) e marca o documento como alterado.
+  Vento, Sismo e Pavimentos não mudaram: leem o modelo do servidor, então mostram o modelo espacial (capturas `48-espacial-*`).
+- Combinações (faixa, sem cálculo) também abre sobre o modelo espacial. Janelas que precisam de cálculo (Estabilidade, Verificar
+  barra pela faixa) continuam pela ponte 2D: no documento espacial use F5 e os painéis do espacial.
+
+### Carga em área (regra e limites)
+
+Painel do modelo › Carga em área: nível z (cotas com barras horizontais), "Recebem" = vigas em X ou em Y, p (kN/m²), caso.
+Uma chamada `POST /api/modelo/lote` com uma carga distribuída uniforme `(0, 0, -q)` por viga.
+
+- Regra de uma direção: só as barras horizontais no nível (|z − z0| ≤ 1 mm), paralelas à direção escolhida, recebem.
+  q = p × (d₁/2 + d₂/2), d₁ e d₂ = distância em planta à viga paralela mais próxima de cada lado entre as que se sobrepõem
+  ao longo do eixo. Numa grade regular, Σ q·L = p × área da grade (conferido na captura).
+- Limites (`ponytail:` em `CargaArea`): viga de borda leva só o lado interno (sem balanço de laje); sobreposição parcial conta como
+  inteira; não sabe onde há laje (vão sem laje também carrega); as vigas da outra direção não recebem nada (laje armada em uma
+  direção); O(n²) por nível. Laje em duas direções (charneiras/áreas de influência) = trocar `CargaArea`.
+
+### Desenho das cargas na Vista3D (falta; `Vista3D.cs` é de outro agente)
+
+A Vista3D não desenha cargas. Precisa: em `Modelo3D`, listas de cargas por caso (nodal: nó + F; distribuída: barra + q, q2;
+pontual: barra + a + F), um filtro de caso (Ações › Caso ativo) e o desenho: seta por força nodal/pontual (comprimento
+proporcional, rótulo kN), "pente" de setas ao longo da barra para distribuída (altura linear de q a q2), escala própria e
+cor de carga do `TemaPlant`. `DocumentoEspacial.ParaVista` só passaria as listas do JSON.
+
 ## Falta
 
-- Cargas pontuais e casos novos pelo painel (o motor aceita; não há tela).
+- Desenhar as cargas na Vista3D (ver acima).
 - Desenhar max e min juntos na envoltória (hoje uma curva por barra).
 - Pilha de desfazer por documento (o servidor guarda uma só).

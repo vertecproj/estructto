@@ -45,6 +45,7 @@ namespace NovoFtool
 
         async void ComMotor(bool calcular, Action<Window> abrir)
         {
+            if (Esp != null && !calcular) { JanelaMotorEsp(abrir); return; }   // CargasEspacial.cs: edita o modelo espacial
             if (await PrepararMotor(calcular)) abrir(this);
         }
 
@@ -52,6 +53,7 @@ namespace NovoFtool
         // "modificado"); o próximo MotorModelo.Enviar devolve ao motor. As janelas são modais: nada envia no meio.
         async void ComMotorExtra(Action<Window> abrir)
         {
+            if (Esp != null) { JanelaMotorEsp(abrir); return; }   // CargasEspacial.cs: edita o modelo espacial
             if (!await PrepararMotor(false)) return;
             string antes;
             try { antes = await Motor.Exclusivo(MotorModelo.LerExtra); } catch (Exception ex) { ErroMotor(ex); return; }
@@ -67,7 +69,7 @@ namespace NovoFtool
         // Casos: com o motor Python, a janela nova (casos do motor); no interno, a janela antiga de casos e combinações.
         void AbrirCasosConforme()
         {
-            if (MotorAtivo) ComMotorExtra(ComandosAcoes.AbrirCasos);
+            if (MotorAtivo || Esp != null) ComMotorExtra(ComandosAcoes.AbrirCasos);
             else AbrirCasos();
         }
 

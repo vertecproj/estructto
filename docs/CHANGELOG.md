@@ -2,6 +2,11 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Cargas e casos no modelo espacial (branch wt-cargas3d)
+
+- Cargas pontuais e distribuídas trapezoidais (q, q2) no painel da barra; carga em área por nível (lote); Casos, Vento, Sismo,
+  Pavimentos e Combinações editam o modelo espacial: [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md) ("Cargas e casos"). Capturas `48-espacial-*`.
+
 ## 20/10/2026 — Vista 3D Realista (branch wt-vista3d)
 
 - Botão **Realista** em Vista › Navegar (lembra a escolha): perfis reais extrudados (I, U, L, tubos, caixão, maciços) com as

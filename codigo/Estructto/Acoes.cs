@@ -1090,7 +1090,7 @@ namespace NovoFtool
                     foreach (var tab in Faixa.Tabs) if (w.Length > 1 && (tab.Header as string ?? "").StartsWith(w[1], StringComparison.OrdinalIgnoreCase)) Faixa.SelectedTabItem = tab;
                     break;
                 case "SELTODAS": Vista.Selecionar(M.Barras.Cast<object>()); break;
-                case "CASOS": AbrirCasos(); break;
+                case "CASOS": AbrirCasosConforme(); break;
                 case "RELATORIO": case "RELATÓRIO": AbrirRelatorio(); break;
                 case "RELPNG": if (w.Length > 1) SalvarRelatorioPng(string.Join(" ", w.Skip(1))); else Log("Uso: RELPNG pasta"); break;
                 case "NOVOCASO":
