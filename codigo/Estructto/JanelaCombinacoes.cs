@@ -14,6 +14,7 @@ namespace NovoFtool
     {
         readonly List<(string nome, string estado, Dictionary<string, double> f)> combs = new List<(string, string, Dictionary<string, double>)>();
         readonly List<(string nome, string tipo, string sub)> casos = new List<(string, string, string)>();
+        readonly Dictionary<string, JsonNode> detalhe = new Dictionary<string, JsonNode>(); // combinação -> {caso: {gamma, psi, produto}}
         string tipoUso = "comercial", filtro = "todas", sel;
         readonly Border hostBarra = new Border(), hostTabela = new Border(), hostDetalhe = new Border();
         readonly TextBlock status = Status();
@@ -22,15 +23,6 @@ namespace NovoFtool
         {
             ["ELU"] = "ELU normal", ["ELU_EXC"] = "ELU excepcional", ["ELS_QP"] = "ELS quase permanente", ["ELS_FREQ"] = "ELS frequente", ["ELS_RARA"] = "ELS rara",
         };
-        // NBR 8681 tabela 6 (ψ0, ψ1, ψ2), igual a acoes/combinacoes.py PSI
-        static readonly Dictionary<string, double[]> Psi = new Dictionary<string, double[]>
-        {
-            ["residencial"] = new[] { 0.5, 0.4, 0.3 }, ["comercial"] = new[] { 0.7, 0.6, 0.4 }, ["escritorio"] = new[] { 0.7, 0.6, 0.4 },
-            ["biblioteca"] = new[] { 0.8, 0.7, 0.6 }, ["garagem"] = new[] { 0.8, 0.7, 0.6 }, ["cobertura"] = new[] { 0.8, 0.7, 0.6 },
-            ["vento"] = new[] { 0.6, 0.3, 0.0 }, ["temperatura"] = new[] { 0.6, 0.5, 0.3 },
-        };
-        static readonly double[] Gamas = { 1.0, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.5 };
-
         // combinacoes = GET /api/combinacoes; casos = GET /api/modelo/caso; tipoUso = config.tipo_uso. Nulos: busca no motor.
         public JanelaCombinacoes(JsonNode combinacoes = null, JsonNode casosJson = null, string tipoUso = null)
         {
@@ -58,13 +50,14 @@ namespace NovoFtool
 
         void Carregar(JsonNode c, JsonNode k, string uso)
         {
-            combs.Clear(); casos.Clear();
+            combs.Clear(); casos.Clear(); detalhe.Clear();
             tipoUso = string.IsNullOrEmpty(uso) ? "comercial" : uso;
             foreach (var x in Lista(k)) casos.Add((S(x?["nome"]), S(x?["tipo"]), S(x?["subtipo"])));
             foreach (var x in Lista(c))
             {
                 var f = new Dictionary<string, double>();
                 if (x?["fatores"] is JsonObject o) foreach (var kv in o) f[kv.Key] = D(kv.Value, 0);
+                detalhe[S(x?["nome"])] = x?["detalhe"];
                 combs.Add((S(x?["nome"]), S(x?["estado"]), f));
             }
             sel = combs.FirstOrDefault().nome;
@@ -129,8 +122,8 @@ namespace NovoFtool
             foreach (var cs in casos)
             {
                 if (!c.f.TryGetValue(cs.nome, out double f) || f == 0) continue;
-                var (g, p) = Separar(cs, c.estado, f);
-                linhas.Add(new[] { cs.nome, cs.tipo, F(g, 2), double.IsNaN(p) ? "—" : F(p, 2), F(f, 2) });
+                var d = detalhe.GetValueOrDefault(c.nome)?[cs.nome];
+                linhas.Add(new[] { cs.nome, cs.tipo, F(D(d?["gamma"]), 2), cs.tipo is "Q" or "V" ? F(D(d?["psi"]), 2) : "—", F(D(d?["produto"], f), 2) });
             }
             sp.Children.Add(TabelaFixa(new[] { "Caso", "Tipo", "γ", "ψ", "γ·ψ" }, new[] { false, false, true, true, true }, linhas, new[] { 0, 44, 52, 52, 58.0 }));
             sp.Children.Add(Nota("Expressão: " + string.Join(" + ", linhas.Select(l => l[4] + "·" + l[0]))));
@@ -138,21 +131,6 @@ namespace NovoFtool
                 ? "ELU: Fd = Σ γg·Gk + γq·(Q1k + Σ ψ0j·Qjk). A ação variável principal entra com ψ = 1."
                 : "ELS: γ = 1. Quase permanente usa ψ2; frequente, ψ1 na principal e ψ2 nas demais; rara, ψ1 nas secundárias."));
             hostDetalhe.Child = sp;
-        }
-
-        // Separa o fator γ·ψ do motor em γ e ψ. ponytail: dedução pela tabela de ψ (o motor só devolve o produto);
-        // em empates raros (ex.: 1,2 = γ 1,2 principal ou 1,5·0,8 secundária) fica a leitura de ação principal.
-        // Se o motor passar a devolver γ e ψ por caso, trocar por eles.
-        (double g, double p) Separar((string nome, string tipo, string sub) c, string estado, double f)
-        {
-            if (estado.StartsWith("ELS")) return (1.0, c.tipo == "G" ? double.NaN : f);
-            if (c.tipo != "Q" && c.tipo != "V") return (f, double.NaN);
-            if (Gamas.Any(g => Math.Abs(g - f) < 1e-6)) return (f, 1.0);
-            string uso = c.tipo == "V" ? "vento" : string.IsNullOrEmpty(c.sub) ? tipoUso : c.sub;
-            if (Psi.TryGetValue(uso, out var psi))
-                foreach (double p in psi.Where(p => p > 0))
-                    if (Gamas.Any(g => Math.Abs(g * p - f) < 1e-6)) return (f / p, p);
-            return (f, double.NaN);
         }
     }
 }

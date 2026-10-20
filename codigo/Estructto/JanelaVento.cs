@@ -42,17 +42,6 @@ namespace NovoFtool
             "Classe B: maior dimensão entre 20 m e 50 m.",
             "Classe C: maior dimensão acima de 50 m."
         };
-        // NBR 6123 tabela 21 (b, p, zg) e tabela 2 (Fr): só para mostrar q(z) por pavimento antes de gerar.
-        // ponytail: cópia de acoes/vento.py (TAB21, FR); se o motor passar a devolver q por pavimento, apagar.
-        static readonly Dictionary<string, (double[] b, double[] p, double zg)> Tab21 = new Dictionary<string, (double[], double[], double)>
-        {
-            ["I"] = (new[] { 1.10, 1.11, 1.12 }, new[] { 0.06, 0.065, 0.07 }, 250),
-            ["II"] = (new[] { 1.00, 1.00, 1.00 }, new[] { 0.085, 0.09, 0.10 }, 300),
-            ["III"] = (new[] { 0.94, 0.94, 0.93 }, new[] { 0.10, 0.105, 0.115 }, 350),
-            ["IV"] = (new[] { 0.86, 0.85, 0.84 }, new[] { 0.12, 0.125, 0.135 }, 420),
-            ["V"] = (new[] { 0.74, 0.73, 0.71 }, new[] { 0.15, 0.16, 0.175 }, 500),
-        };
-        static readonly double[] Fr = { 1.00, 0.98, 0.95 };
 
         // resumo = GET /api/resumo (config + pavimentos + caixa); geracao = POST /api/acoes/gerar. Nulos: busca no motor.
         public JanelaVento(JsonNode resumo = null, JsonNode geracao = null)
@@ -203,24 +192,14 @@ namespace NovoFtool
         }
 
         // ---------- prévia ----------
-        double Qz(double zRel) { return 0.613 * Math.Pow(V0 * S1 * S2(zRel) * S3, 2) / 1000; }
-
-        double S2(double zRel)
-        {
-            var t = Tab21[cat]; int k = Array.IndexOf(Classes, classe);
-            double z = Math.Min(Math.Max(zRel, cat == "V" ? 10 : 5), t.zg);
-            return t.b[k] * Fr[k] * Math.Pow(z / 10, t.p[k]);
-        }
-
         void MontarPrevia()
         {
             var sp = new StackPanel();
             var casosV = geracao == null ? new List<string>() : Lista(geracao["casos"]).Select(x => S(x)).Where(x => x.StartsWith("V")).ToList();
             var par = geracao?["parametros"]?[casoSel];
-            double topo = pavs.Count > 0 ? pavs[^1].z - baseZ : double.NaN;
             sp.Children.Add(Resumo(
-                ("q no topo", F(double.IsNaN(topo) ? double.NaN : Qz(topo), 2), "kN/m²", "Pressão dinâmica na cota do último pavimento."),
-                ("Vk no topo", F(double.IsNaN(topo) ? double.NaN : V0 * S1 * S2(topo) * S3, 1), "m/s", "Velocidade característica Vk = V0·S1·S2·S3 no topo."),
+                ("q no topo", F(D(par?["q_topo_kN_m2"]), 2), "kN/m²", "Pressão dinâmica na cota do último pavimento."),
+                ("Vk no topo", F(D(par?["Vk_topo_m_s"]), 1), "m/s", "Velocidade característica Vk = V0·S1·S2·S3 no topo."),
                 ("Ca", F(D(par?["Ca"]), 2), null, "Coeficiente de arrasto usado no caso selecionado (gerado)."),
                 ("Força total", F(D(par?["F_total_kN"]), 1), "kN", "Soma das forças de arrasto do caso selecionado.")));
 
@@ -239,10 +218,10 @@ namespace NovoFtool
                 var linhas = pavs.AsEnumerable().Reverse().Select(p =>
                 {
                     var f = forcas.FirstOrDefault(x => S(x?["pavimento"]) == p.nome);
-                    return new[] { p.nome, F(p.z, 2), F(S2(p.z - baseZ), 3), F(Qz(p.z - baseZ), 3), f == null ? "—" : F(D(f["F_kN"]), 2) };
+                    return new[] { p.nome, F(p.z, 2), f == null ? "—" : F(D(f["S2"]), 3), f == null ? "—" : F(D(f["q_kN_m2"]), 3), f == null ? "—" : F(D(f["F_kN"]), 2) };
                 });
                 sp.Children.Add(TabelaFixa(new[] { "Pavimento", "z (m)", "S2", "q(z) (kN/m²)", "F " + casoSel.Replace("-", "−") + " (kN)" }, new[] { false, true, true, true, true }, linhas, new[] { 0, 90, 80, 120, 120.0 }));
-                if (geracao == null) sp.Children.Add(Nota("As forças por pavimento aparecem depois de \"Gerar ações de vento\". q(z) já reflete os dados à esquerda."));
+                if (geracao == null) sp.Children.Add(Nota("S2, q(z) e as forças por pavimento vêm do motor e aparecem depois de \"Gerar ações de vento\"."));
                 else if (par != null) sp.Children.Add(Nota("l1 = " + F(D(par["l1"]), 2) + " m · l2 = " + F(D(par["l2"]), 2) + " m · h/l1 = " + F(D(par["h_l1"]), 2) + " · l1/l2 = " + F(D(par["l1_l2"]), 2) + " · T1 ≈ " + F(D(par["T1_estimado_s"]), 2) + " s"));
             }
             if (geracao != null) sp.Children.Add(Avisos(Lista(geracao["avisos"]).Where(a => S(a?["codigo"]).StartsWith("vento"))));

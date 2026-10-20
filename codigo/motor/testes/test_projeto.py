@@ -378,7 +378,7 @@ class TestAcoes(unittest.TestCase):
         m = edificio_aco()
         P.gerar_acoes(m)
         cs = P.combinacoes(m)
-        self.assertTrue(all(set(c) == {"nome", "estado", "fatores"} for c in cs))
+        self.assertTrue(all({"nome", "estado", "fatores"} <= set(c) for c in cs))
         self.assertEqual(len({c["nome"] for c in cs}), len(cs))
         self.assertTrue({"ELU", "ELS_QP", "ELS_FREQ", "ELS_RARA"} <= {c["estado"] for c in cs})
         P.configurar(m, {"variabilidade": "pequenas"})
