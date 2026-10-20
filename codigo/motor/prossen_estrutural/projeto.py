@@ -2372,12 +2372,12 @@ def _relatorio_mod():
     return relatorio
 
 
-def relatorio_html(modelo, calculo):
-    """#29 Relatório HTML imprimível (string)."""
-    return _relatorio_mod().html(modelo.to_dict(), calculo.to_dict(completo=False))
+def relatorio_html(modelo, calculo, empresa=""):
+    """#29 Relatório HTML imprimível (string). `empresa` vai no carimbo (vazio = em branco)."""
+    return _relatorio_mod().html(modelo.to_dict(), calculo.to_dict(completo=False), empresa)
 
 
-def gerar_relatorio(modelo, calculo, formato="html", caminho=None):
+def gerar_relatorio(modelo, calculo, formato="html", caminho=None, empresa=""):
     """#29 Grava o relatório (`formato` ∈ html, md, json) em `caminho` (cria a pasta). → {caminho, bytes}."""
     if formato not in ("html", "md", "json"):
         raise ErroEntrada(f"formato '{formato}' inválido; use html, md ou json", "formato")
@@ -2386,7 +2386,7 @@ def gerar_relatorio(modelo, calculo, formato="html", caminho=None):
     if formato == "json":
         texto = json.dumps(calculo.to_dict(completo=False), ensure_ascii=False, indent=1)
     elif formato == "html":
-        texto = relatorio_html(modelo, calculo)
+        texto = relatorio_html(modelo, calculo, empresa)
     else:
         texto = _relatorio_mod().markdown(modelo.to_dict(), calculo.to_dict(completo=False))
     return _gravar(caminho, texto)

@@ -470,8 +470,9 @@ def _tab_html(cols, rows):
     return "".join(out)
 
 
-def html(modelo_d, calculo_d):
-    """Documento HTML autônomo (A4 retrato, sem JS): relatorio.css e logotipo embutidos."""
+def html(modelo_d, calculo_d, empresa=""):
+    """Documento HTML autônomo (A4 retrato, sem JS): relatorio.css e logotipo embutidos.
+    `empresa`: nome da empresa/autor no carimbo (vazio = campo em branco para preencher à mão)."""
     meta, blocos = _montar(modelo_d, calculo_d)
     # relatorio.css traz url("fontes/…"), que não existe ao lado do HTML salvo: tira as @font-face dele e embute as
     # fontes em data URI (fontes/relatorio-fontes.css) logo depois; a última @font-face da família vence
@@ -494,7 +495,7 @@ def html(modelo_d, calculo_d):
             corpo.append(_tab_html(b[1], b[2]))
     leg = lambda rot, val: f'<span class="leg">{_h(rot)}</span>' + (f"<b>{_h(val)}</b>" if val else "")
     carimbo = (f'<footer class="carimbo"><div class="marca">{_ler("icones/marca.svg")}</div>'
-               f'<div>{leg("Empresa", "PROSSEN ENGENHARIA")}</div><div>{leg("Projeto", meta["nome"])}</div>'
+               f'<div>{leg("Empresa", (empresa or "").strip())}</div><div>{leg("Projeto", meta["nome"])}</div>'
                f'<div class="sem-d">{leg("Data", meta["data"])}</div>'
                f'<div>{leg("Conteúdo", "Memória de cálculo estrutural")}</div><div>{leg("Normas", meta["normas"])}</div>'
                f'<div class="sem-d">{leg("Revisão", "0")}</div>'

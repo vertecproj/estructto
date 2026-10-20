@@ -42,6 +42,7 @@ Data: 20/10/2026. Base: build Release ok (0 erros), 134 capturas em `C:\dev\buil
 | Placa de base | Veredito + chips; Planta/3D/Forças/Ficha/Cálculo; ① Fixação ② Chapa ③ Solda; Sugerir; Aplicar também em… | `JanelaPlaca.cs`, `PlacaDesenho.cs`, `Solda.cs` | 20/21/29-placa-* |
 | Comparar fixações | Catálogo de chumbadores com filtros e avisos | `JanelaComparar.cs` | 22-comparar |
 | Relatório | Resumo/Completo, imprimir/PDF | `Relatorio.cs` `JanelaRelatorio`, `RelatorioMemorial.cs` | 25-relatorio |
+| Relatório NBR (motor) | Relatório do motor + anexo das placas; Empresa/autor; Salvar PDF/HTML ([RELATORIO-UNIFICADO](RELATORIO-UNIFICADO.md)) | `RelatorioMotor.cs` | 41-relatorio-motor |
 | Ajuda e atalhos | Busca, seções, convenções | `Janelas.cs` `JanelaAjuda` (l.751) | 28-ajuda* |
 | Histórico de comandos | Lista do que foi digitado (F2) | `Acoes.cs` l.1223 | 39-historico |
 | Caixa / Pergunta | Mensagens e confirmações | `Janelas.cs` `Caixa`, `Pergunta` | 27-caixa-mensagem |

@@ -214,10 +214,15 @@ class TestRelatorio(unittest.TestCase):
         self.assertNotIn("<link", self.h)
         self.assertGreaterEqual(self.h.count("<svg"), 2)  # logotipo no cabeçalho e marca no carimbo
         self.assertIn('<footer class="carimbo">', self.h)
-        self.assertIn("PROSSEN ENGENHARIA", self.h)
+        self.assertNotIn("PROSSEN ENGENHARIA", self.h)  # empresa vazia por padrão (preenchida pelo usuário)
         self.assertIn("CREA e nº da ART", self.h)
         self.assertIn("20/10/2026 às 05:12", self.h)
         self.assertIn("Estructto 0.9.0", self.h)
+
+    def test_empresa_no_carimbo_escapada(self):
+        h = relatorio.html(MODELO, CALCULO, empresa="  Acme & Filhos <Eng>  ")
+        self.assertIn('<span class="leg">Empresa</span><b>Acme &amp; Filhos &lt;Eng&gt;</b>', h)
+        self.assertIn('<span class="leg">Empresa</span></div>', self.h)  # padrão: campo em branco
 
     def test_markdown_sem_html_e_tabelas_gfm(self):
         self.assertNotRegex(self.m, r"</?(table|div|span|svg|style|tr|td)\b")
