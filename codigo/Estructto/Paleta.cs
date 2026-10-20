@@ -89,11 +89,11 @@ namespace NovoFtool
             ["Barra"] = "BARRA", ["Nó"] = "NO", ["Medir"] = "MEDIR", ["Selecionar"] = "SEL", ["Apagar"] = "APAGAR", ["Dividir barra"] = "DIVIDIR",
             ["Enquadrar"] = "ZE", ["Desfazer"] = "DESFAZER", ["Refazer"] = "REFAZER", ["Calcular"] = "CALC", ["Novo"] = "NOVO", ["Abrir"] = "ABRIR",
             ["Salvar"] = "SALVAR", ["Unir trechos"] = "UNIR", ["Tirar trecho"] = "TIRAR", ["Separar tudo"] = "SEPARAR", ["Selecionar a barra"] = "SELMEMBRO",
-            ["Deformada"] = "DEF", ["Normal"] = "NORMAL", ["Cortante"] = "CORTANTE", ["Momento"] = "MOMENTO", ["Verificação"] = "VERIFICAR",
-            ["Mapa de calor"] = "CALOR", ["Mover"] = "MOVER", ["Copiar"] = "COPIAR", ["Espelhar"] = "ESPELHAR", ["Reações"] = "REAC",
-            ["Engaste"] = "ENGASTE", ["Fixo"] = "FIXO", ["Móvel"] = "MOVEL", ["Rótula"] = "ROTULA", ["Aplicar no nó"] = "CARGA", ["Assistentes"] = "ASSISTENTE",
+            ["Deformada"] = "DEF", ["Normal"] = "NORMAL", ["Cortante"] = "CORTANTE", ["Momento"] = "MOMENTO",
+            ["Mapa de aproveitamento"] = "CALOR", ["Mover"] = "MOVER", ["Copiar"] = "COPIAR", ["Espelhar"] = "ESPELHAR", ["Reações"] = "REAC",
+            ["Engaste"] = "ENGASTE", ["Fixo"] = "FIXO", ["Móvel"] = "MOVEL", ["Rótula"] = "ROTULA", ["Aplicar no nó"] = "CARGA", ["Gerar estrutura"] = "ASSISTENTE",
             ["Tabelas"] = "TABELAS", ["Exportar CSV"] = "CSV", ["Atalhos e ajuda"] = "AJUDA", ["Relatório"] = "RELATORIO", ["Dimensionar"] = "DIMENSIONAR",
-            ["Comparar"] = "COMPARAR", ["Placa de base"] = "PLACA"
+            ["Verificar barra"] = "COMPARAR", ["Placa de base"] = "PLACA"
         };
 
         static readonly Dictionary<string, string> SinDe = new Dictionary<string, string>
@@ -101,13 +101,13 @@ namespace NovoFtool
             ["Barra"] = "linha elemento viga pilar desenhar line", ["Nó"] = "ponto node inserir", ["Medir"] = "distancia cota dist",
             ["Selecionar"] = "escolher cursor", ["Apagar"] = "excluir deletar remover erase", ["Calcular"] = "resolver analisar rodar processar",
             ["Momento"] = "fletor diagrama mom", ["Cortante"] = "esforco cortante diagrama v shear", ["Normal"] = "axial forca diagrama tracao compressao",
-            ["Deformada"] = "deslocamento flecha diagrama", ["Verificação"] = "verificar aproveitamento norma passa", ["Enquadrar"] = "zoom extents tudo ajustar",
+            ["Deformada"] = "deslocamento flecha diagrama", ["Enquadrar"] = "zoom extents tudo ajustar",
             ["Reações"] = "apoio reacao", ["Relatório"] = "memorial pdf imprimir", ["Exportar CSV"] = "excel planilha tabela exportar",
             ["Desfazer"] = "undo voltar", ["Refazer"] = "redo", ["Novo"] = "criar modelo em branco", ["Abrir"] = "arquivo carregar",
             ["Salvar"] = "gravar arquivo", ["Engaste"] = "apoio fixo travado", ["Fixo"] = "apoio rotulado segundo genero", ["Móvel"] = "apoio rolete primeiro genero",
-            ["Dimensionar"] = "otimizar perfil escolher", ["Placa de base"] = "chumbador base pilar", ["Assistentes"] = "portico trelica galpao viga gerar",
-            ["Mapa de calor"] = "cores aproveitamento heatmap", ["Dividir barra"] = "partir cortar", ["Mover"] = "deslocar move", ["Copiar"] = "duplicar copy",
-            ["Espelhar"] = "mirror simetria", ["Comparar"] = "perfis alternativos", ["Tabelas"] = "nos barras dados"
+            ["Dimensionar"] = "otimizar perfil escolher", ["Placa de base"] = "chumbador base pilar", ["Gerar estrutura"] = "assistente portico trelica galpao viga",
+            ["Mapa de aproveitamento"] = "verificacao verificar mapa de calor cores norma passa heatmap", ["Dividir barra"] = "partir cortar", ["Mover"] = "deslocar move", ["Copiar"] = "duplicar copy",
+            ["Espelhar"] = "mirror simetria", ["Verificar barra"] = "comparar perfis alternativos", ["Tabelas"] = "nos barras dados"
         };
 
         void Reg(string icone, string texto, string atalho, string dica, Action acao)
@@ -151,6 +151,8 @@ namespace NovoFtool
             Extra("Novo caso de carga", "NOVOCASO", "mais", "NOVOCASO tipo", "criar adicionar", "Cria um caso G, Q, V ou E.", () => preenche("NOVOCASO"));
             Extra("Gerar combinações NBR", "GERARCOMB", "calc", null, "nbr 8681 elu els", "Gera as combinações NBR 8681/8800.", () => run("GERARCOMB"));
             Extra("Resultado a exibir", "RESULTADO", "valores", "RESULTADO ...", "envoltoria elu els comb", "Escolhe caso, combinação ou envoltória mostrada.", () => preenche("RESULTADO"));
+            Extra("Tirar trecho da barra contínua", "TIRAR", "tirar", null, "membro remover trecho", "Tira os trechos selecionados da barra contínua.", () => run("TIRAR"));
+            Extra("Selecionar a barra contínua", "SELMEMBRO", "selmembro", null, "membro trechos", "Seleciona todos os trechos da barra contínua.", () => run("SELMEMBRO"));
             Extra("Ir para aba da faixa", "ABA", "painel", "ABA nome", "ribbon", "Muda a aba ativa da faixa de opções.", () => preenche("ABA"));
             Extra("Ajuda: lista de comandos", null, "ajuda", "F1", "atalhos como usar", "Abre a ajuda com atalhos.", MostrarAjuda);
         }
@@ -302,7 +304,7 @@ namespace NovoFtool
             MostrarDiagrama(Diagrama.Nenhum);
 
             ok(topo("calcr") == "Calcular", "busca difusa \"calcr\" acha: " + topo("calcr"));
-            ok(topo("verificacao") == "Verificação", "sem acento \"verificacao\" acha: " + topo("verificacao"));
+            ok(topo("verificacao") == "Mapa de aproveitamento", "sem acento \"verificacao\" acha: " + topo("verificacao"));
             ok(topo("apagar") == "Apagar", "\"apagar\" acha: " + topo("apagar"));
 
             int idNo = M.NoPorId(3) != null ? 3 : (M.Nos.Count > 0 ? M.Nos[0].Id : -1);

@@ -2,6 +2,17 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Gabriel (início da unificação com o motor Python)
+
+- Plano da unificação em [UNIFICACAO.md](UNIFICACAO.md) e revisão de abas/telas em [REVISAO-TELAS.md](REVISAO-TELAS.md) (proposta aprovada).
+  Passo 1 feito: faixa nova sobre as funções atuais, abas na ordem do trabalho — Modelo (Início + Estrutura), Ações (ex-Cargas), Análise,
+  Dimensionamento, Ligações e bases, Relatório, Vista. Calcular (F5) só na barra de acesso rápido; zoom só em Vista; Mostrar e Tabelas em Vista;
+  Exportar CSV só em Relatório (sai do Arquivo, junto com Assistentes). Renomes: Assistentes → Gerar estrutura, Mapa de calor → Mapa de
+  aproveitamento (o modo "Verificação" de 3 cores sai; V/VERIFICAR abrem o mapa), Comparar → Verificar barra, Móvel em X → Móvel horizontal,
+  painéis "Projeto" e "Tabelas". Tirar trecho e Selecionar a barra contínua vão para o menu do botão direito e a paleta Ctrl+K.
+  O "n" global continua (sai com o motor). Indicador "Modelo alterado — Calcular (F5)" não feito: hoje o cálculo é refeito a cada alteração.
+  Build ok, 200 testes ok, capturas 09-ribbon-* conferidas.
+
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 
 - Interface inteira modernizada (feita na cópia `estructto-v2` de madrugada e trazida para cá): tema novo, ícones refeitos, painel de

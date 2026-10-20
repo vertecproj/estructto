@@ -243,7 +243,7 @@ namespace NovoFtool
                 new[] { "Área de cisalhamento", "As", Fm(As * 1e6, 0), "mm²", s.Forma == "TC" ? "A/2 (tubo redondo)" : "alma" },
                 new[] { "Escoamento do aço", "fy", Fm(fy, 0), "MPa", b.Material },
                 new[] { "Módulo de elasticidade", "E", Fm(E, 0), "MPa", b.Material },
-                new[] { "Coeficiente de segurança", "n", Fm(n), "—", "aba Análise" },
+                new[] { "Coeficiente de segurança", "n", Fm(n), "—", "aba Dimensionamento" },
             }));
             doc.Blocks.Add(dados.S);
             if (!v.Aplicavel) { doc.Blocks.Add(Texto(v.Motivo)); return; }

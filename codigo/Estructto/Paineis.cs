@@ -408,7 +408,7 @@ namespace NovoFtool
                 if (rot && alinh) lista.Add(("erro", "Nó " + n.Id + ": barras rotuladas e alinhadas — mecanismo (o nó não resiste na direção perpendicular).", new List<object> { n }));
             }
             bool temCarga = M.Nos.Any(n => n.TemCarga) || M.Barras.Any(b => b.TemCarga) || M.PesoProprio || M.Nos.Any(n => n.RecalqueX != 0 || n.RecalqueY != 0);
-            if (M.Barras.Count > 0 && !temCarga) lista.Add(("info", "Nenhuma carga aplicada: os esforços serão nulos. Use a aba Cargas.", new List<object>()));
+            if (M.Barras.Count > 0 && !temCarga) lista.Add(("info", "Nenhuma carga aplicada: os esforços serão nulos. Use a aba Ações.", new List<object>()));
             if (Vista.Resolvido)
             {
                 var falham = M.Barras.Where(b => { var v = Vista.Verificar(b); return v.Aplicavel && !v.Passa; }).Cast<object>().ToList();

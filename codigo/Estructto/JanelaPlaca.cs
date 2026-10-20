@@ -814,7 +814,7 @@ namespace NovoFtool
             var stN = Stepper(edit.Seguranca > 0 ? "n = " + Num.Fmt(edit.Seguranca, 2) : "n auto " + Num.Fmt(m.Seguranca, 2),
                 PassoValor(ValoresN, edit.Seguranca, -1, v => edit.Seguranca = v), PassoValor(ValoresN, edit.Seguranca, +1, v => edit.Seguranca = v), 92,
                 () => { string resp = Pergunta.Mostrar(this, "Coeficiente da placa", "Coeficiente da chapa" + (modoCh ? " e do aço da barra" : " e do parafuso") + " (0 = o do modelo):", Num.Fmt(edit.Seguranca, 2)); double v; if (resp != null && Num.Ler(resp, out v) && v >= 0) { edit.Seguranca = v; Recalcular(); } },
-                "Coeficiente de segurança da chapa" + (modoCh ? " e do aço da barra roscada (químico)" : " e do parafuso (Sp / √(σ² + 3τ²))") + ". Origem: " + (edit.Seguranca > 0 ? "digitado nesta placa" : "o do modelo (aba Análise), n = " + Num.Fmt(m.Seguranca, 2)) + ". Clique no valor para digitar.");
+                "Coeficiente de segurança da chapa" + (modoCh ? " e do aço da barra roscada (químico)" : " e do parafuso (Sp / √(σ² + 3τ²))") + ". Origem: " + (edit.Seguranca > 0 ? "digitado nesta placa" : "o do modelo (aba Dimensionamento), n = " + Num.Fmt(m.Seguranca, 2)) + ". Clique no valor para digitar.");
             var orig = Tx(edit.Seguranca > 0 ? "desta placa" : "do modelo", 11.5, TemaPlant.BTexto3);
             corpo.Children.Add(Linha("Aço", Horiz(bFy, Gap(10), stN, Gap(8), orig), 6));
 

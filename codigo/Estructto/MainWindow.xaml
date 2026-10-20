@@ -50,7 +50,7 @@
       <ad:LayoutRoot>
         <ad:LayoutPanel Orientation="Horizontal">
           <ad:LayoutAnchorablePane DockWidth="250">
-            <ad:LayoutAnchorable x:Name="PainelProjeto" Title="GERENCIADOR DO PROJETO" ContentId="projeto" CanClose="False" CanHide="True">
+            <ad:LayoutAnchorable x:Name="PainelProjeto" Title="PROJETO" ContentId="projeto" CanClose="False" CanHide="True">
               <TreeView x:Name="Arvore" Background="{DynamicResource Surface.1}" BorderThickness="0" Padding="2,4" ToolTip="Árvore do projeto: clique em um nó, barra ou grupo para selecioná-lo no modelo."/>
             </ad:LayoutAnchorable>
           </ad:LayoutAnchorablePane>
@@ -106,7 +106,7 @@
               </ad:LayoutDocument>
             </ad:LayoutDocumentPane>
             <ad:LayoutAnchorablePane DockHeight="222">
-              <ad:LayoutAnchorable x:Name="PainelTabelas" Title="TABELAS DE RESULTADOS" ContentId="tabelas" CanClose="False">
+              <ad:LayoutAnchorable x:Name="PainelTabelas" Title="TABELAS" ContentId="tabelas" CanClose="False">
                 <TabControl x:Name="AbasTabela" Background="{DynamicResource Surface.1}" BorderThickness="0">
                   <TabItem Header="Nós" ToolTip="Coordenadas, apoios, deslocamentos (mm), giros (rad) e reações de apoio de cada nó."><Grid><DataGrid x:Name="TabNos" Style="{StaticResource Tabela}" ToolTip="Clique em uma linha para selecionar o nó correspondente no modelo."/><TextBlock x:Name="VazioNos" Text="Nenhum nó ainda. Desenhe barras (B) ou use um assistente." Foreground="{DynamicResource Text.Tertiary}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,24,0,0" IsHitTestVisible="False" Visibility="Collapsed"/></Grid></TabItem>
                   <TabItem Header="Barras" ToolTip="Perfil, comprimento, esforços extremos (N, Q, M) e flecha máxima de cada barra."><Grid><DataGrid x:Name="TabBarras" Style="{StaticResource Tabela}" ToolTip="Clique em uma linha para selecionar a barra correspondente no modelo."/><TextBlock x:Name="VazioBarras" Text="Nenhuma barra ainda. Tecle B e clique dois pontos no desenho." Foreground="{DynamicResource Text.Tertiary}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,24,0,0" IsHitTestVisible="False" Visibility="Collapsed"/></Grid></TabItem>

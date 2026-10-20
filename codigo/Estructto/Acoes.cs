@@ -176,7 +176,7 @@ namespace NovoFtool
             Aviso.Visibility = Visibility.Collapsed;
             if (M.Barras.Count == 0) { StatusMsg.Text = "Modelo vazio: desenhe barras (B) ou use um assistente."; AtualizarLegenda(); Vista.InvalidateVisual(); return; }
             // cada caso de carga e resolvido separadamente; combinacoes e envoltorias saem por superposicao
-            resCasos = M.Nos.Any(n => n.TemApoio) ? Analise.ResolverCasos(M) : new ResultadosCasos { Erro = "Sem apoios: selecione um nó e aplique um apoio (aba Estrutura)." };
+            resCasos = M.Nos.Any(n => n.TemApoio) ? Analise.ResolverCasos(M) : new ResultadosCasos { Erro = "Sem apoios: selecione um nó e aplique um apoio (aba Modelo)." };
             if (!string.IsNullOrEmpty(resCasos.Erro))
             {
                 StatusMsg.Text = "⚠ " + resCasos.Erro;
@@ -211,7 +211,7 @@ namespace NovoFtool
             if (tgCalor != null) tgCalor.IsChecked = Vista.MapaCalor;
             if (d != Diagrama.Nenhum && Vista.Ferr != Ferramenta.Selecionar) UsarFerramenta(Ferramenta.Selecionar);
             foreach (var kv in btnDiag) kv.Value.IsChecked = kv.Key == d;
-            if (d != Diagrama.Nenhum) Faixa.SelectedTabItem = abaResultados;
+            if (d != Diagrama.Nenhum) Faixa.SelectedTabItem = d == Diagrama.Verificacao ? abaDimens : abaAnalise;
             Resolver(d != Diagrama.Nenhum);
         }
 
@@ -275,7 +275,7 @@ namespace NovoFtool
             string dica = f == Ferramenta.Barra ? "BARRA — clique o 1º ponto (ou digite x,y)."
                 : f == Ferramenta.No ? "NÓ — clique onde inserir."
                 : f == Ferramenta.Medir ? "MEDIR — clique o 1º ponto (ou digite x,y)."
-                : f == Ferramenta.CargaNo ? "CARGA NO NÓ — clique nos nós (Fx/Fy/Mz da aba Cargas)."
+                : f == Ferramenta.CargaNo ? "CARGA NO NÓ — clique nos nós (Fx/Fy/Mz da aba Ações)."
                 : f == Ferramenta.CargaBarra ? "CARGA NA BARRA — clique nas barras."
                 : f == Ferramenta.Rotula ? "RÓTULA — clique perto da ponta da barra."
                 : f == Ferramenta.Placa ? "PLACA DE BASE — clique no nó do pé do pilar."
@@ -405,7 +405,7 @@ namespace NovoFtool
             }
             Point a = Vista.InicioBarra.Value;
             if (Math.Abs(a.X - x) < 1e-9 && Math.Abs(a.Y - y) < 1e-9) return;
-            if (!SecaoValida(cbSecao.Text)) { Log("Seção \"" + cbSecao.Text + "\" não reconhecida; corrija na aba Estrutura."); return; }
+            if (!SecaoValida(cbSecao.Text)) { Log("Seção \"" + cbSecao.Text + "\" não reconhecida; corrija na aba Modelo."); return; }
             int antes = M.Barras.Count;
             No n1 = M.ObterNo(a.X, a.Y, 1e-6), n2 = M.ObterNo(x, y, 1e-6);
             M.AddBarra(n1, n2, 1e-6);
@@ -521,7 +521,7 @@ namespace NovoFtool
                     ("Engaste", Ferramenta.ApoioEngaste, "Trava deslocamentos X, Y e giro nos nós selecionados.", "engaste"),
                     ("Fixo (2º gênero)", Ferramenta.ApoioRotula, "Trava deslocamentos X e Y, deixando o giro livre.", "rotula"),
                     ("Móvel (1º gênero)", Ferramenta.ApoioRoloV, "Trava apenas o deslocamento vertical Y (rolete).", "rolo"),
-                    ("Móvel em X", Ferramenta.ApoioRoloH, "Trava apenas o deslocamento horizontal X.", "roloh"),
+                    ("Móvel horizontal", Ferramenta.ApoioRoloH, "Trava apenas o deslocamento horizontal X.", "roloh"),
                     ("Sem apoio", Ferramenta.ApoioLivre, "Remove apoios, molas, recalques e placa de base do nó.", "livre")
                 })
                 {
@@ -531,16 +531,16 @@ namespace NovoFtool
                     ap.Items.Add(mi);
                 }
                 cm.Items.Add(ap);
-                Add("Aplicar carga da aba Cargas", () => AplicarCargaNo(Vista.Sel.OfType<No>()), null, "Aplica Fx, Fy e Mz preenchidos na aba Cargas aos nós selecionados.", "cargano");
+                Add("Aplicar carga da aba Ações", () => AplicarCargaNo(Vista.Sel.OfType<No>()), null, "Aplica Fx, Fy e Mz preenchidos na aba Ações aos nós selecionados.", "cargano");
                 Add("Placa de base...", () => AbrirPlaca(Vista.Sel.OfType<No>().FirstOrDefault()), null, "Abre a janela de dimensionamento e verificação da placa de base deste nó.", "placa");
                 cm.Items.Add(new Separator());
                 Add("Apagar", Apagar, "Del", "Remove os nós selecionados e as barras conectadas a eles.", "apagar");
             }
             else if (o is Barra)
             {
-                Add("Verificar / comparar perfis...", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), null, "Abre a verificação detalhada da barra e compara opções de perfis da mesma família.", "verif");
-                Add("Aplicar seção da aba Estrutura", () => AplicarSecao(false), null, "Atribui a seção e o material escolhidos na aba Estrutura às barras selecionadas.", "aplicar");
-                Add("Aplicar carga distribuída da aba Cargas", () => AplicarCargaBarra(Vista.Sel.OfType<Barra>()), null, "Aplica as cargas distribuídas qx, qy e q⊥ da aba Cargas às barras selecionadas.", "cargadist");
+                Add("Verificar barra...", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), null, "Abre a verificação detalhada da barra e compara opções de perfis da mesma família.", "verif");
+                Add("Aplicar seção da aba Modelo", () => AplicarSecao(false), null, "Atribui a seção e o material escolhidos na aba Modelo às barras selecionadas.", "aplicar");
+                Add("Aplicar carga distribuída da aba Ações", () => AplicarCargaBarra(Vista.Sel.OfType<Barra>()), null, "Aplica as cargas distribuídas qx, qy e q⊥ da aba Ações às barras selecionadas.", "cargadist");
                 var ro = new MenuItem { Header = "Rótula", Icon = Icone("rotulab", 16), ToolTip = "Adiciona ou remove articulações (momento nulo) nas pontas das barras selecionadas." };
                 foreach (var par in new[]
                 {
@@ -555,6 +555,8 @@ namespace NovoFtool
                     ro.Items.Add(mi);
                 }
                 cm.Items.Add(ro);
+                Add("Tirar trecho da barra contínua", TirarTrecho, "TIRAR", "Tira os trechos selecionados da barra contínua (o resto continua unido).", "tirar");
+                Add("Selecionar a barra contínua", SelecionarMembro, "SELMEMBRO", "Seleciona todos os trechos da barra contínua do trecho selecionado.", "selmembro");
                 Add("Dividir...", DividirSelecao, null, "Divide as barras selecionadas em partes iguais criando nós intermediários.", "dividir");
                 cm.Items.Add(new Separator());
                 Add("Apagar", Apagar, "Del", "Remove as barras selecionadas do modelo.", "apagar");
@@ -821,7 +823,7 @@ namespace NovoFtool
         // ================= teclado e linha de comando =================
 
         static readonly string[] Comandos = { "BARRA", "NO", "MEDIR", "DI", "DIST", "SEL", "APAGAR", "DIVIDIR", "ZE", "DESFAZER", "REFAZER", "CALC", "NOVO", "ABRIR", "SALVAR",
-            "UNIR", "TIRAR", "SEPARAR", "SELMEMBRO", "DEF", "NORMAL", "CORTANTE", "MOMENTO", "VERIFICAR", "CALOR", "MOVER", "COPIAR", "ESPELHAR", "QD", "FN", "SELNOS", "SELBASE", "SELTODAS", "REAC", "GRADE", "ORTO", "POLAR", "ENGASTE", "FIXO", "MOVEL", "ROTULA", "CARGA", "ASSISTENTE", "TABELAS", "CSV", "AJUDA", "ABA", "CASOS", "CASO", "NOVOCASO", "GERARCOMB", "RESULTADO", "RELATORIO" };
+            "UNIR", "TIRAR", "SEPARAR", "SELMEMBRO", "DEF", "NORMAL", "CORTANTE", "MOMENTO", "CALOR", "MOVER", "COPIAR", "ESPELHAR", "QD", "FN", "SELNOS", "SELBASE", "SELTODAS", "REAC", "GRADE", "ORTO", "POLAR", "ENGASTE", "FIXO", "MOVEL", "ROTULA", "CARGA", "ASSISTENTE", "TABELAS", "CSV", "AJUDA", "ABA", "CASOS", "CASO", "NOVOCASO", "GERARCOMB", "RESULTADO", "RELATORIO" };
 
         void MostrarSugestao()
         {
@@ -1024,8 +1026,7 @@ namespace NovoFtool
                 case "Q": case "CORTANTE": AlternarDiagrama(Diagrama.Cortante); break;
                 case "M": case "MOMENTO": AlternarDiagrama(Diagrama.Momento); break;
                 case "D": case "DEF": case "DEFORMADA": AlternarDiagrama(Diagrama.Deformada); break;
-                case "V": case "VERIFICAR": AlternarDiagrama(Diagrama.Verificacao); break;
-                case "CALOR": case "MAPA": MostrarDiagrama(Vista.Diag == Diagrama.Verificacao && Vista.MapaCalor ? Diagrama.Nenhum : Diagrama.Verificacao, true); break;
+                case "V": case "VERIFICAR": case "CALOR": case "MAPA": MostrarDiagrama(Vista.Diag == Diagrama.Verificacao && Vista.MapaCalor ? Diagrama.Nenhum : Diagrama.Verificacao, true); break;
                 case "COMPARAR": AbrirVerificacao(null); break;
                 case "DIMENSIONAR": DimensionarPerfis(false); break;
                 case "DIMSEL": DimensionarPerfis(true); break;

@@ -24,7 +24,7 @@ namespace NovoFtool
         F.ComboBox cbFamilia, cbSecao, cbMaterial;
         internal HudVista Hud;
         F.ToggleButton tgCalor;
-        internal F.RibbonTabItem abaInicio, abaResultados, ctxBarra, ctxNo;
+        internal F.RibbonTabItem abaModelo, abaAnalise, abaDimens, ctxBarra, ctxNo;
 
         public MainWindow()
         {
@@ -251,10 +251,10 @@ namespace NovoFtool
 
         F.ToggleButton BotaoCalor()
         {
-            var b = new F.ToggleButton { Header = "Mapa de calor", LargeIcon = Icone("verif", 32), Icon = Icone("verif", 16), Size = F.RibbonControlSize.Middle, ToolTip = Dica("Mapa de calor", "Colore as barras pelo aproveitamento: verde até 75%, ciano até 90%, âmbar até 100%, vermelho acima, com selo ⚠/✕ nas críticas.", "CALOR + Enter") };
+            var b = new F.ToggleButton { Header = "Mapa de aproveitamento", LargeIcon = Icone("verif", 32), Icon = Icone("verif", 16), Size = F.RibbonControlSize.Middle, ToolTip = Dica("Mapa de aproveitamento", "Colore as barras pelo aproveitamento: verde até 75%, ciano até 90%, âmbar até 100%, vermelho acima, com selo ⚠/✕ nas críticas.", "V ou CALOR + Enter") };
             Tamanho(b, true);
             b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? Diagrama.Verificacao : Diagrama.Nenhum, b.IsChecked == true); Vista.Focus(); };
-            Reg("verif", "Mapa de calor", null, "Colore as barras pelo aproveitamento.", () => Executar("CALOR"));
+            Reg("verif", "Mapa de aproveitamento", "V + Enter", "Colore as barras pelo aproveitamento.", () => Executar("CALOR"));
             return b;
         }
 
@@ -283,38 +283,18 @@ namespace NovoFtool
 
         void MontarFaixa()
         {
-            // barra de acesso rapido
+            // barra de acesso rapido (Calcular fica sempre visivel aqui, nao em abas)
             var qNovo = Botao("novo", "Novo", Novo, "Cria um novo modelo em branco em uma nova aba.", "Ctrl+N");
             var qAbrir = Botao("abrir", "Abrir", AbrirDialogo, "Abre um arquivo de modelo (.estructto, .portico ou .ftl do Ftool).", "Ctrl+O");
             var qSalvar = Botao("salvar", "Salvar", () => Salvar(false), "Salva as alterações do modelo atual no arquivo.", "Ctrl+S");
             var qDesf = Botao("desfazer", "Desfazer", Desfazer, "Desfaz a última alteração feita no modelo.", "Ctrl+Z");
             var qRef = Botao("refazer", "Refazer", Refazer, "Refaz a última alteração desfeita.", "Ctrl+Y");
-            foreach (var q in new[] { qNovo, qAbrir, qSalvar, qDesf, qRef })
+            var qCalc = Botao("calc", "Calcular", () => Resolver(true), "Calcula a estrutura. O cálculo também é refeito automaticamente a cada alteração.", "F5");
+            foreach (var q in new[] { qNovo, qAbrir, qSalvar, qDesf, qRef, qCalc })
                 Faixa.QuickAccessItems.Add(new F.QuickAccessMenuItem { Target = q, IsChecked = true });
 
-            // INICIO: desenhar e modificar (o fluxo basico)
-            abaInicio = Aba("Início", "I",
-                Grupo("Desenhar",
-                    BotaoFerramenta("sel", "Selecionar", Ferramenta.Selecionar, "Clique num nó ou barra. Arraste da esquerda p/ direita = janela (só o que está dentro); da direita p/ esquerda = cruzamento (o que tocar). Shift/Ctrl soma.", "Esc"),
-                    BotaoFerramenta("barra", "Barra", Ferramenta.Barra, "Clique os pontos em sequência. Digite um número para o comprimento exato na direção do mouse, ou x,y  @dx,dy  @L<ângulo. Botão direito ou Esc termina.", "B + Enter"),
-                    BotaoFerramenta("no", "Nó", Ferramenta.No, "Insere um nó; se cair sobre uma barra, divide a barra.", "NO + Enter", true),
-                    BotaoFerramenta("medir", "Medir", Ferramenta.Medir, "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos (encaixa nos nós e na grade). Clique no 1º e no 2º ponto; o 3º clique inicia nova medida e Esc cancela.", "Ctrl+M / DI", true),
-                    Botao("assist", "Assistentes", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas.", null, true)),
-                Grupo("Modificar",
-                    Botao("mover", "Mover", () => Transformar("mover", new[] { "MOVER" }), "Move os nós/barras selecionados por um deslocamento (dx, dy).", "MOVER dx dy", true),
-                    Botao("copiar", "Copiar", () => Transformar("copiar", new[] { "COPIAR" }), "Copia as barras selecionadas, uma ou várias vezes (matriz linear), com apoios e cargas.", "COPIAR dx dy vezes", true),
-                    Botao("espelhar", "Espelhar", () => Transformar("espelhar", new[] { "ESPELHAR" }), "Cria a cópia espelhada das barras selecionadas em relação a uma reta x = valor ou y = valor.", "ESPELHAR X valor", true),
-                    Botao("dividir", "Dividir barra", DividirSelecao, "Divide as barras selecionadas em partes iguais.", "DIVIDIR", true),
-                    Botao("apagar", "Apagar", Apagar, "Apaga os nós ou barras selecionados.", "Del", true)),
-                Grupo("Vista",
-                    Botao("zoomtudo", "Enquadrar", () => Vista.ZoomTudo(), "Mostra o modelo inteiro (ou duplo clique na roda do mouse).", "F4"),
-                    Botao("zoommais", "Aproximar", () => Vista.ZoomFator(1.4), "Aproxima a visualização em torno do centro da tela (ou use a roda do mouse).", null, true),
-                    Botao("zoommenos", "Afastar", () => Vista.ZoomFator(1 / 1.4), "Afasta a visualização para enxergar uma área maior do modelo.", null, true)),
-                Grupo("Calcular",
-                    Botao("calc", "Calcular", () => Resolver(true), "Calcula a estrutura. O cálculo também é refeito automaticamente a cada alteração.", "F5")));
-            abaInicio.ToolTip = "Ferramentas principais para desenhar barras, medir distâncias, modificar elementos e calcular.";
-
-            // ESTRUTURA: apoios, articulacoes, secao e material
+            // Abas na ordem do trabalho (docs/REVISAO-TELAS.md 3.2): Modelo, Ações, Análise, Dimensionamento, Ligações e bases, Relatório, Vista.
+            // MODELO: gerar, desenhar, modificar, barra continua, apoios e vinculos, secao e material
             cbSecao = new F.ComboBox { Header = "Seção", IsEditable = true, Width = 240, ToolTip = Dica("Seção", "Perfil do catálogo, ou digite: \"Ret 20x50\" (cm), \"Circ 30\" (cm), \"A=45,7 I=3437\" (cm², cm4), \"TC 48.3x3.7\" ou \"TR 100x50x3\" (mm).") };
             // familia (classe) filtra a lista de secoes: evita uma lista unica com todos os perfis
             cbFamilia = new F.ComboBox { Header = "Família", IsEditable = false, Width = 240, ToolTip = Dica("Família", "Tipo de perfil (W, tubos, cantoneiras, U...). Filtra a lista de seções ao lado.") };
@@ -336,101 +316,120 @@ namespace NovoFtool
             cbMaterial = new F.ComboBox { Header = "Material", IsEditable = true, Width = 240, ToolTip = Dica("Material", "Material da lista, ou digite \"E=25000\" (MPa).") };
             foreach (Material m in Biblioteca.Materiais) cbMaterial.Items.Add(m.Nome);
             cbMaterial.Text = Biblioteca.Materiais[0].Nome;
-            var abaEstrutura = Aba("Estrutura", "E",
-                Grupo("Apoios",
+            abaModelo = Aba("Modelo", "M",
+                Grupo("Gerar",
+                    Botao("assist", "Gerar estrutura", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas.")),
+                Grupo("Desenhar",
+                    BotaoFerramenta("sel", "Selecionar", Ferramenta.Selecionar, "Clique num nó ou barra. Arraste da esquerda p/ direita = janela (só o que está dentro); da direita p/ esquerda = cruzamento (o que tocar). Shift/Ctrl soma.", "Esc"),
+                    BotaoFerramenta("barra", "Barra", Ferramenta.Barra, "Clique os pontos em sequência. Digite um número para o comprimento exato na direção do mouse, ou x,y  @dx,dy  @L<ângulo. Botão direito ou Esc termina.", "B + Enter"),
+                    BotaoFerramenta("no", "Nó", Ferramenta.No, "Insere um nó; se cair sobre uma barra, divide a barra.", "NO + Enter", true),
+                    BotaoFerramenta("medir", "Medir", Ferramenta.Medir, "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos (encaixa nos nós e na grade). Clique no 1º e no 2º ponto; o 3º clique inicia nova medida e Esc cancela.", "Ctrl+M / DI", true)),
+                Grupo("Modificar",
+                    Botao("mover", "Mover", () => Transformar("mover", new[] { "MOVER" }), "Move os nós/barras selecionados por um deslocamento (dx, dy).", "MOVER dx dy", true),
+                    Botao("copiar", "Copiar", () => Transformar("copiar", new[] { "COPIAR" }), "Copia as barras selecionadas, uma ou várias vezes (matriz linear), com apoios e cargas.", "COPIAR dx dy vezes", true),
+                    Botao("espelhar", "Espelhar", () => Transformar("espelhar", new[] { "ESPELHAR" }), "Cria a cópia espelhada das barras selecionadas em relação a uma reta x = valor ou y = valor.", "ESPELHAR X valor", true),
+                    Botao("dividir", "Dividir barra", DividirSelecao, "Divide as barras selecionadas em partes iguais.", "DIVIDIR", true),
+                    Botao("apagar", "Apagar", Apagar, "Apaga os nós ou barras selecionados.", "Del", true)),
+                Grupo("Barra contínua",
+                    Botao("unir", "Unir trechos", UnirMembro, "Une os trechos selecionados numa barra contínua (uma peça só, mesmo dividida por nós): mesmo perfil, dimensionada junto. Selecione um trecho dela + barras novas para adicionar trechos.", "UNIR"),
+                    Botao("separar", "Separar tudo", SepararMembro, "Desfaz a barra contínua: cada trecho volta a ser uma barra independente. Tirar trecho e Selecionar a barra ficam no menu do botão direito.", "SEPARAR", true)),
+                Grupo("Apoios e vínculos",
                     BotaoFerramenta("engaste", "Engaste", Ferramenta.ApoioEngaste, "Trava X, Y e giro. Com nós selecionados aplica neles; senão, clique nos nós."),
                     BotaoFerramenta("rotula", "Fixo", Ferramenta.ApoioRotula, "Apoio de 2º gênero: trava X e Y."),
                     BotaoFerramenta("rolo", "Móvel", Ferramenta.ApoioRoloV, "Apoio de 1º gênero: trava só Y (rolete)."),
-                    BotaoFerramenta("roloh", "Móvel em X", Ferramenta.ApoioRoloH, "Trava só X.", null, true),
-                    BotaoFerramenta("livre", "Sem apoio", Ferramenta.ApoioLivre, "Remove o apoio e as molas do nó.", null, true)),
-                Grupo("Ligações",
-                    BotaoFerramenta("rotulab", "Rótula", Ferramenta.Rotula, "Clique perto da ponta da barra para pôr/tirar a rótula naquela ponta."),
-                    BotaoFerramenta("placa", "Placa de base", Ferramenta.Placa, "Placa de base com chumbadores no pé do pilar (nó onde chega uma só barra).", null, true)),
-                Grupo("Seção e material",
+                    BotaoFerramenta("roloh", "Móvel horizontal", Ferramenta.ApoioRoloH, "Trava só o deslocamento horizontal (X).", null, true),
+                    BotaoFerramenta("livre", "Sem apoio", Ferramenta.ApoioLivre, "Remove o apoio e as molas do nó.", null, true),
+                    BotaoFerramenta("rotulab", "Rótula", Ferramenta.Rotula, "Clique perto da ponta da barra para pôr/tirar a rótula naquela ponta.", null, true)),
+                Grupo("Seções e materiais",
                     cbFamilia, cbSecao, cbMaterial,
                     Botao("pincel", "Aplicar à seleção", () => AplicarSecao(false), "Aplica seção e material às barras selecionadas (ou, sem seleção, passa a valer para as próximas barras desenhadas).", null, true),
-                    Botao("pincel", "Aplicar a todas", () => AplicarSecao(true), "Aplica seção e material a todas as barras.", null, true)),
-                Grupo("Barra contínua",
-                    Botao("unir", "Unir trechos", UnirMembro, "Une os trechos selecionados numa barra contínua (uma peça só, mesmo dividida por nós): mesmo perfil, dimensionada junto. Selecione um trecho dela + barras novas para adicionar trechos.", "UNIR"),
-                    Botao("tirar", "Tirar trecho", TirarTrecho, "Tira os trechos selecionados da barra contínua (o resto continua unido).", "TIRAR", true),
-                    Botao("separar", "Separar tudo", SepararMembro, "Desfaz a barra contínua: cada trecho volta a ser uma barra independente.", "SEPARAR", true),
-                    Botao("selmembro", "Selecionar a barra", SelecionarMembro, "Seleciona todos os trechos da barra contínua do trecho selecionado.", "SELMEMBRO", true)));
-            abaEstrutura.ToolTip = "Apoios externos, rótulas nas pontas, placas de base, escolha de perfil/material e barras contínuas.";
+                    Botao("pincel", "Aplicar a todas", () => AplicarSecao(true), "Aplica seção e material a todas as barras.", null, true)));
+            abaModelo.ToolTip = "Gerar e desenhar a estrutura, modificar, apoios e rótulas, seções e materiais, barras contínuas.";
 
-            // CARGAS
+            // ACOES (antes "Cargas"): casos de carga (inseridos por MontarCasosNaFaixa), cargas no no e na barra, peso proprio
             cFx = Campo("Fx (kN)", "0", "Positivo para a direita."); cFy = Campo("Fy (kN)", "0", "Positivo para cima. Gravidade = negativo."); cMz = Campo("Mz (kN·m)", "0", "Positivo anti-horário.");
             cQx = Campo("qx (kN/m)", "0", "Uniforme horizontal, por metro de barra."); cQy = Campo("qy (kN/m)", "0", "Uniforme vertical, por metro de barra. Gravidade = negativo.");
             cQi = Campo("q⊥ início", "0", "Perpendicular à barra, linear do início ao fim (kN/m)."); cQf = Campo("q⊥ fim", "0", "Perpendicular à barra no fim (kN/m).");
             tgPeso = Alternar("peso", "Peso próprio", v => { M.PesoProprio = v; Confirmar("Peso próprio " + (v ? "ligado" : "desligado") + "."); }, "Soma o peso das barras (massa do catálogo ou densidade × área).");
-            var abaCargas = Aba("Cargas", "C",
+            var abaAcoes = Aba("Ações", "A",
                 Grupo("Carga no nó", cFx, cFy, cMz,
                     BotaoFerramenta("cargano", "Aplicar no nó", Ferramenta.CargaNo, "Aplica Fx, Fy e Mz (substitui a carga existente). Com nós selecionados aplica neles; senão clique nos nós.")),
                 Grupo("Carga distribuída", cQx, cQy, cQi, cQf,
                     BotaoFerramenta("cargadist", "Aplicar na barra", Ferramenta.CargaBarra, "Aplica as cargas distribuídas (substitui as existentes). Com barras selecionadas aplica nelas; senão clique nas barras.")),
                 Grupo("Outras", tgPeso, Botao("limpar", "Limpar cargas", LimparCargas, "Remove as cargas dos itens selecionados, ou de todo o modelo se nada estiver selecionado.", null, true)));
-            abaCargas.ToolTip = "Casos de carga, forças e momentos concentrados nos nós, cargas distribuídas nas barras e peso próprio.";
+            abaAcoes.ToolTip = "Casos de carga e combinações, forças e momentos nos nós, cargas distribuídas nas barras e peso próprio.";
 
-            // ANALISE
+            // ANALISE: resultado mostrado (inserido por MontarCasosNaFaixa), opcoes e diagramas
             tgTimo = Alternar("eixo", "Deformação por cortante", v => { M.Timoshenko = v; Confirmar("Timoshenko " + (v ? "ligado" : "desligado") + "."); }, "Viga de Timoshenko (considera a deformação por cortante). Desligado = Euler-Bernoulli.");
-            cSeg = Campo("Segurança", "2", "Coeficiente de segurança mínimo exigido nas verificações de barra e placa.", 48);
-            cFlecha = Campo("Flecha L/", "250", "Flecha máxima admissível = vão / este número.", 48);
-            cSeg.LostFocus += (s, e) => MudarCriterio(); cFlecha.LostFocus += (s, e) => MudarCriterio();
-            cSeg.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); }; cFlecha.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); };
-            var abaAnalise = Aba("Análise", "A",
-                Grupo("Cálculo", Botao("calc", "Calcular", () => Resolver(true), "Calcula a estrutura.", "F5"), tgTimo),
-                Grupo("Critérios de verificação", cSeg, cFlecha, CriarCbEletrodo()));
-            abaAnalise.ToolTip = "Opções do modelo de análise (Timoshenko/Euler-Bernoulli) e critérios globais de segurança, flecha e soldas.";
-
-            // RESULTADOS
-            tgReac = Alternar("reac", "Reações", v => { Vista.MostrarReacoes = v; Vista.InvalidateVisual(); }, "Mostra as reações de apoio.", true);
-            tgValores = Alternar("valores", "Valores", v => { Vista.MostrarValores = v; Vista.InvalidateVisual(); }, "Escreve os valores nos diagramas.", true);
-            tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); }, "Mostra as cargas no desenho.", true);
-            tgNomes = Alternar("nomes", "Nomes", v => { Vista.MostrarNomes = v; Vista.InvalidateVisual(); }, "Escreve perfil e comprimento ao lado das barras.", true);
-            tgValores.IsChecked = true; tgCargas.IsChecked = true; tgReac.IsChecked = true; tgNomes.IsChecked = true;   // tudo visivel por padrao
-            abaResultados = Aba("Resultados", "R",
+            abaAnalise = Aba("Análise", "N",
+                Grupo("Opções", tgTimo),
                 Grupo("Diagramas",
                     BotaoDiagrama("def", "Deformada", Diagrama.Deformada, "Configuração deformada (ampliada). Passe o mouse para ler os deslocamentos.", "D + Enter"),
                     BotaoDiagrama("normal", "Normal", Diagrama.Normal, "Esforço normal N (kN). Positivo = tração.", "N + Enter"),
                     BotaoDiagrama("cortante", "Cortante", Diagrama.Cortante, "Esforço cortante Q (kN).", "Q + Enter"),
                     BotaoDiagrama("momento", "Momento", Diagrama.Momento, "Momento fletor M (kN·m), desenhado do lado tracionado.", "M + Enter"),
                     Botao("mais", "Ampliar", () => Escala(1.4), "Aumenta a escala do diagrama ou da deformada.", "+", true),
-                    Botao("menos", "Reduzir", () => Escala(1 / 1.4), "Diminui a escala do diagrama ou da deformada.", "-", true)),
+                    Botao("menos", "Reduzir", () => Escala(1 / 1.4), "Diminui a escala do diagrama ou da deformada.", "-", true)));
+            abaAnalise.ToolTip = "Resultado mostrado (caso, combinação ou envoltória), opções do modelo de análise e diagramas de esforços e deformada.";
+
+            // DIMENSIONAMENTO: verificar, otimizar e criterios (o "n" global sai quando o motor Python entrar — REVISAO-TELAS 3.5)
+            cSeg = Campo("Segurança", "2", "Coeficiente de segurança mínimo exigido nas verificações de barra e placa.", 48);
+            cFlecha = Campo("Flecha L/", "250", "Flecha máxima admissível = vão / este número.", 48);
+            cSeg.LostFocus += (s, e) => MudarCriterio(); cFlecha.LostFocus += (s, e) => MudarCriterio();
+            cSeg.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); }; cFlecha.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); };
+            abaDimens = Aba("Dimensionamento", "D",
                 Grupo("Verificar",
-                    BotaoDiagrama("verif", "Verificação", Diagrama.Verificacao, "Pinta as barras: verde passa, amarelo > 90%, vermelho não passa. Duplo clique abre o detalhe.", "V + Enter"),
                     (tgCalor = BotaoCalor()),
-                    Botao("comparar", "Comparar", () => AbrirVerificacao(null), "Abre a verificação da barra selecionada com a lista de perfis da mesma família.", null, true),
-                    Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Troca cada barra pelo perfil mais leve da mesma família que passa na verificação (considera a envoltória). Recalcula e repete até estabilizar. Ctrl+Z desfaz.", "DIMENSIONAR", true),
-                    Botao("placa", "Placa de base", () => AbrirPlaca(null), "Resultados da placa de base do nó selecionado.", null, true)),
-                Grupo("Mostrar", tgReac, tgValores, tgCargas, tgNomes),
-                Grupo("Relatório",
-                    Botao("relatorio", "Relatório", AbrirRelatorio, "Memorial com modelo, casos de carga, combinações, diagramas, reações, esforços, verificação e placas. Imprime ou salva em PDF (impressora \"Microsoft Print to PDF\").", "Ctrl+P"),
-                    Botao("tabela", "Tabelas", () => { PainelTabelas.Show(); PainelTabelas.IsActive = true; }, "Mostra as tabelas de nós, barras e verificação.", null, true),
-                    Botao("exportar", "Exportar CSV", ExportarCsv, "Exporta nós e barras para CSV (abre no Excel).", "Ctrl+E", true)));
-            abaResultados.ToolTip = "Diagramas de esforços e deformada, verificação e dimensionamento de perfis, placas de base, tabelas e relatório.";
-            MontarCasosNaFaixa(abaCargas, abaResultados);
+                    Botao("comparar", "Verificar barra", () => AbrirVerificacao(null), "Abre a verificação da barra selecionada com a lista de perfis da mesma família.", "COMPARAR", true)),
+                Grupo("Otimizar",
+                    Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Troca cada barra pelo perfil mais leve da mesma família que passa na verificação (considera a envoltória). Recalcula e repete até estabilizar. Ctrl+Z desfaz.", "DIMENSIONAR")),
+                Grupo("Critérios", cSeg, cFlecha));
+            abaDimens.ToolTip = "Mapa de aproveitamento, verificação de cada barra, perfil mais leve que passa e critérios de segurança e flecha.";
+
+            // LIGACOES E BASES
+            var abaLigacoes = Aba("Ligações e bases", "L",
+                Grupo("Bases",
+                    BotaoFerramenta("placa", "Placa de base", Ferramenta.Placa, "Placa de base com chumbadores no pé do pilar (nó onde chega uma só barra). Com um nó selecionado, abre a verificação da placa dele.")),
+                Grupo("Solda", CriarCbEletrodo()));
+            abaLigacoes.ToolTip = "Placas de base com chumbadores e eletrodo das soldas das barras.";
+
+            // RELATORIO
+            var abaRelatorio = Aba("Relatório", "R",
+                Grupo("Memorial",
+                    Botao("relatorio", "Relatório", AbrirRelatorio, "Memorial com modelo, casos de carga, combinações, diagramas, reações, esforços, verificação e placas. Imprime ou salva em PDF (impressora \"Microsoft Print to PDF\").", "Ctrl+P")),
+                Grupo("Exportar",
+                    Botao("exportar", "Exportar CSV", ExportarCsv, "Exporta nós, barras, reações, esforços e verificação para CSV (abre no Excel).", "Ctrl+E")));
+            abaRelatorio.ToolTip = "Memorial de cálculo (imprimir ou PDF) e exportação dos resultados.";
+            MontarCasosNaFaixa(abaAcoes, abaAnalise);
 
             // VISTA
+            tgReac = Alternar("reac", "Reações", v => { Vista.MostrarReacoes = v; Vista.InvalidateVisual(); }, "Mostra as reações de apoio.", true);
+            tgValores = Alternar("valores", "Valores", v => { Vista.MostrarValores = v; Vista.InvalidateVisual(); }, "Escreve os valores nos diagramas.", true);
+            tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); }, "Mostra as cargas no desenho.", true);
+            tgNomes = Alternar("nomes", "Nomes", v => { Vista.MostrarNomes = v; Vista.InvalidateVisual(); }, "Escreve perfil e comprimento ao lado das barras.", true);
+            tgValores.IsChecked = true; tgCargas.IsChecked = true; tgReac.IsChecked = true; tgNomes.IsChecked = true;   // tudo visivel por padrao
             cGrade = Campo("Passo da grade (m)", "0,5", "Espaçamento da grade de desenho.", 50);
             cGrade.LostFocus += (s, e) => MudarGrade(cGrade.Text);
             cGrade.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarGrade(cGrade.Text); };
             var abaVista = Aba("Vista", "V",
                 Grupo("Navegar",
-                    Botao("zoomtudo", "Enquadrar", () => Vista.ZoomTudo(), "Mostra o modelo inteiro.", "F4"),
-                    Botao("zoommais", "Aproximar", () => Vista.ZoomFator(1.4), "Aproxima a visualização em torno do centro da tela.", null, true),
+                    Botao("zoomtudo", "Enquadrar", () => Vista.ZoomTudo(), "Mostra o modelo inteiro (ou duplo clique na roda do mouse).", "F4"),
+                    Botao("zoommais", "Aproximar", () => Vista.ZoomFator(1.4), "Aproxima a visualização em torno do centro da tela (ou use a roda do mouse).", null, true),
                     Botao("zoommenos", "Afastar", () => Vista.ZoomFator(1 / 1.4), "Afasta a visualização para enxergar uma área maior do modelo.", null, true)),
+                Grupo("Mostrar", tgReac, tgValores, tgCargas, tgNomes),
                 Grupo("Grade", cGrade),
                 Grupo("Painéis",
                     Botao("painel", "Projeto", () => Alternar(PainelProjeto), "Mostra/oculta o painel Projeto.", null, true),
                     Botao("painel", "Propriedades", () => Alternar(PainelProp), "Mostra/oculta o painel Propriedades.", null, true),
-                    Botao("tabela", "Tabelas", () => Alternar(PainelTabelas), "Mostra/oculta as tabelas.", null, true)),
+                    Botao("tabela", "Tabelas", () => Alternar(PainelTabelas), "Mostra/oculta as tabelas de nós, barras e verificação.", "TABELAS", true)),
                 Grupo("Ajuda", Botao("ajuda", "Atalhos e ajuda", MostrarAjuda, "Como usar e lista de atalhos.", "F1")));
-            abaVista.ToolTip = "Controles de zoom, ferramenta de medição, passo da grade, exibição dos painéis e ajuda.";
+            abaVista.ToolTip = "Zoom, o que aparece no desenho (reações, valores, cargas, nomes), passo da grade, painéis e ajuda.";
 
             // abas contextuais (aparecem com a selecao)
             ctxBarra = new F.RibbonTabItem { Header = "Barra", Group = CtxBarra, ToolTip = "Ações rápidas para as barras selecionadas." };
             tgEixoFraco = Alternar("eixo", "Perfil deitado", v => { foreach (Barra b in Vista.Sel.OfType<Barra>()) b.EixoFraco = v; SincronizarMembros(Vista.Sel.OfType<Barra>()); Confirmar(v ? "Perfil deitado: menor inércia (Iy) no plano." : "Perfil em pé: maior inércia (Ix) no plano."); }, "Ligado = perfil deitado: a menor inércia (Iy) fica no plano do pórtico. Desligado = em pé (Ix no plano). Fora do plano vale o outro eixo.");
             ctxBarra.Groups.Add(Grupo("Verificação",
-                Botao("comparar", "Verificar / comparar", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), "Abre a verificação detalhada da barra selecionada e compara perfis alternativos da família."),
+                Botao("comparar", "Verificar barra", () => AbrirVerificacao(Vista.Sel.OfType<Barra>().FirstOrDefault()), "Abre a verificação detalhada da barra selecionada e compara perfis alternativos da família."),
                 Botao("dimens", "Dimensionar", () => DimensionarPerfis(true), "Perfil mais leve da família que passa, só nas barras selecionadas.", "DIMSEL", true), tgEixoFraco));
             ctxBarra.Groups.Add(Grupo("Ligações",
                 Botao("rotulab", "Rótula no início", () => RotularSel(true, false), "Liga/desliga a rótula no início das barras selecionadas.", null, true),
@@ -448,12 +447,12 @@ namespace NovoFtool
                 Botao("rolo", "Móvel", () => AplicarApoio(Ferramenta.ApoioRoloV, Vista.Sel.OfType<No>()), "Apoio móvel de 1º gênero (trava Y)."),
                 Botao("livre", "Sem apoio", () => AplicarApoio(Ferramenta.ApoioLivre, Vista.Sel.OfType<No>()), "Remove o apoio, as molas e a placa de base dos nós selecionados.", null, true)));
             ctxNo.Groups.Add(Grupo("Carga e placa",
-                Botao("cargano", "Aplicar carga", () => AplicarCargaNo(Vista.Sel.OfType<No>()), "Aplica Fx/Fy/Mz da aba Cargas aos nós selecionados."),
+                Botao("cargano", "Aplicar carga", () => AplicarCargaNo(Vista.Sel.OfType<No>()), "Aplica Fx/Fy/Mz da aba Ações aos nós selecionados."),
                 Botao("placa", "Placa de base", () => AbrirPlaca(Vista.Sel.OfType<No>().FirstOrDefault()), "Configura e verifica a placa de base com chumbadores/parafusos.", null, true)));
             ctxNo.Groups.Add(Grupo("Modificar", Botao("apagar", "Apagar", Apagar, "Apaga os nós selecionados e as barras ligadas a eles.", "Del")));
             Faixa.Tabs.Add(ctxNo);
 
-            Faixa.SelectedTabItem = abaInicio;
+            Faixa.SelectedTabItem = abaModelo;
         }
 
         // A aba do documento do AvalonDock e substituida pela barra de arquivos de largura toda (padrao Plant 3D).
@@ -493,7 +492,7 @@ namespace NovoFtool
 
         // ================= bastidores (menu Arquivo) =================
 
-        F.BackstageTabItem bsInicio, bsRecentes;
+        F.BackstageTabItem bsRecentes;
 
         void MontarBastidores()
         {
@@ -503,24 +502,14 @@ namespace NovoFtool
             BsAbas.Items.Add(BotaoBs("Salvar", "Ctrl+S", () => Salvar(false), "Salva as alterações do modelo atual no disco."));
             BsAbas.Items.Add(BotaoBs("Salvar como...", "Ctrl+Shift+S", () => Salvar(true), "Salva uma cópia do modelo atual com outro nome ou em outra pasta."));
             BsAbas.Items.Add(new F.SeparatorTabItem());
-            bsInicio = new F.BackstageTabItem { Header = "Assistentes", ToolTip = "Gera estruturas típicas parametrizadas (viga contínua, pórtico, treliça ou galpão)." };
-            var sp = new StackPanel { Margin = new Thickness(30, 20, 30, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
-            sp.Children.Add(new TextBlock { Text = "Criar a partir de um assistente", FontSize = 22, FontWeight = FontWeights.Light, Margin = new Thickness(0, 0, 0, 4) });
-            sp.Children.Add(new TextBlock { Text = "Escolha o tipo de estrutura; no assistente a figura muda ao vivo conforme os parâmetros.", FontSize = 12, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 0, 0, 14) });
-            var gAss = new UniformGrid { Columns = 2 };
-            foreach (var a in AssistentesInicio()) { var c = CartaoAssistente(a.titulo, a.sub, a.tipo, a.modelo); c.Margin = new Thickness(0, 0, 10, 10); gAss.Children.Add(c); }
-            sp.Children.Add(gAss);
-            bsInicio.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            BsAbas.Items.Add(bsInicio);
             bsRecentes = new F.BackstageTabItem { Header = "Recentes", ToolTip = "Lista os últimos arquivos de modelo abertos para acesso rápido." };
             BsAbas.Items.Add(bsRecentes);
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Importar .ftl do Ftool...", null, ImportarDialogo, "Importa a geometria, seções, materiais e casos de carga de um arquivo .ftl do Ftool original."));
-            BsAbas.Items.Add(BotaoBs("Exportar resultados (CSV)...", "Ctrl+E", ExportarCsv, "Exporta as tabelas de nós, deslocamentos, reações, esforços e verificação para planilha CSV."));
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Ajuda e atalhos", "F1", MostrarAjuda, "Abre a janela de ajuda com o passo a passo, convenções de sinais e lista de atalhos."));
             BsAbas.Items.Add(BotaoBs("Sair", "Alt+F4", Close, "Fecha o programa (pergunta antes caso existam alterações não salvas)."));
-            BsAbas.SelectedItem = bsInicio;
+            BsAbas.SelectedItem = bsRecentes;
             Bastidor.IsOpenChanged += (s, e) => { if (Bastidor.IsOpen) AtualizarRecentesBs(); };
         }
 

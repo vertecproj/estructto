@@ -222,7 +222,7 @@ namespace NovoFtool
             bts.Children.Add(B("Fechar", Close, false, "Fecha a janela sem trocar o perfil da barra (Esc)."));
             DockPanel.SetDock(bts, Dock.Right);
             rod.Children.Add(bts);
-            rod.Children.Add(T("Flecha máx. L/" + Num.Fmt(m.LimiteFlecha, 0) + " (aba Análise). Verificação simplificada: não substitui a NBR 8800 (sem flambagem lateral nem local).", 11, BFraco));
+            rod.Children.Add(T("Flecha máx. L/" + Num.Fmt(m.LimiteFlecha, 0) + " (aba Dimensionamento). Verificação simplificada: não substitui a NBR 8800 (sem flambagem lateral nem local).", 11, BFraco));
             DockPanel.SetDock(rod, Dock.Bottom);
             raiz.Children.Add(rod);
 
@@ -841,7 +841,7 @@ namespace NovoFtool
                 var sp = new StackPanel();
                 sp.Children.Add(T("Como usar em 4 passos", 13, BTexto, FontWeights.SemiBold));
                 int n = 1;
-                foreach (string p in new[] { "Desenhe as barras (B) ou use um Assistente.", "Selecione os nós da base e aplique apoios (aba Estrutura).", "Aplique cargas (aba Cargas).", "Veja os diagramas (aba Resultados): o cálculo é refeito a cada alteração." })
+                foreach (string p in new[] { "Desenhe as barras (B) ou use Gerar estrutura.", "Selecione os nós da base e aplique apoios (aba Modelo).", "Aplique cargas (aba Ações).", "Veja os diagramas (aba Análise): o cálculo é refeito a cada alteração." })
                 {
                     var l = new DockPanel { Margin = new Thickness(0, 5, 0, 0) };
                     var num = new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Background = TemaPlant.BAcento, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Top, Child = new TextBlock { Text = (n++).ToString(), FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = TemaPlant.BTextoSobreAcento, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };

@@ -258,7 +258,7 @@ namespace NovoFtool
         {
             corpo.Children.Clear(); lc.Clear(); lk.Clear();
             corpo.Children.Add(UiPlaca.TituloSecao("Casos de carga", null, 0));
-            corpo.Children.Add(Ajuda("As cargas são lançadas no caso ativo (aba Cargas). O peso próprio, se ligado, entra no caso marcado."));
+            corpo.Children.Add(Ajuda("As cargas são lançadas no caso ativo (aba Ações). O peso próprio, se ligado, entra no caso marcado."));
             for (int i = 0; i < m.Casos.Count; i++)
             {
                 int ii = i;
@@ -272,7 +272,7 @@ namespace NovoFtool
                 ex.IsEnabled = m.Casos.Count > 1;
                 ex.ToolTip = "Remove este caso de carga e todas as cargas lançadas nele.";
                 linha.Children.Add(ex);
-                if (i == m.CasoAtivo) { var ch = UiPlaca.Chip("ativo", UiPlaca.Nivel.Info, "Caso que recebe as cargas lançadas na aba Cargas."); ch.Margin = new Thickness(6, 0, 0, 0); linha.Children.Add(ch); }
+                if (i == m.CasoAtivo) { var ch = UiPlaca.Chip("ativo", UiPlaca.Nivel.Info, "Caso que recebe as cargas lançadas na aba Ações."); ch.Margin = new Thickness(6, 0, 0, 0); linha.Children.Add(ch); }
                 corpo.Children.Add(linha);
                 lc.Add((nome, tipo, pp));
             }
@@ -283,7 +283,7 @@ namespace NovoFtool
             corpo.Children.Add(new Border { Height = 1, Background = TemaPlant.BBordaSutil, Margin = new Thickness(0, 0, 0, 14) });
 
             corpo.Children.Add(UiPlaca.TituloSecao("Combinações", null, 4));
-            corpo.Children.Add(Ajuda("Fator de cada caso em cada combinação. \"Gerar\" cria as combinações normais da NBR 8681/8800 (γg 1,4 ou 1,0 favorável; sobrecarga 1,5 e ψ0 0,5; vento 1,4 e ψ0 0,6; ELS quase permanente e frequentes). Confira os fatores para o seu caso. Com cargas majoradas (ELU), ajuste a \"Segurança\" da aba Análise (ex.: 1,1 = γa1)."));
+            corpo.Children.Add(Ajuda("Fator de cada caso em cada combinação. \"Gerar\" cria as combinações normais da NBR 8681/8800 (γg 1,4 ou 1,0 favorável; sobrecarga 1,5 e ψ0 0,5; vento 1,4 e ψ0 0,6; ELS quase permanente e frequentes). Confira os fatores para o seu caso. Com cargas majoradas (ELU), ajuste a \"Segurança\" da aba Dimensionamento (ex.: 1,1 = γa1)."));
             var cab = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0), Visibility = m.Combinacoes.Count == 0 ? Visibility.Collapsed : Visibility.Visible };
             cab.Children.Add(Cab("Nome", 246)); cab.Children.Add(Cab("Tipo", 86));
             foreach (CasoCarga c in m.Casos) cab.Children.Add(Cab(c.Nome, 86));

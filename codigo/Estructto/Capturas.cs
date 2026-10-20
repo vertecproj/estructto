@@ -321,7 +321,7 @@ namespace NovoFtool
 
                 // 02) Modelo aberto
                 w.MostrarDiagrama(Diagrama.Nenhum);
-                w.Faixa.SelectedTabItem = w.abaInicio;
+                w.Faixa.SelectedTabItem = w.abaModelo;
                 CapturarPrincipal(w, "02-modelo");
 
                 // 03) Deformada
@@ -351,7 +351,7 @@ namespace NovoFtool
 
                 // 08) Ferramenta Medir com uma medida feita entre 2 nos
                 w.MostrarDiagrama(Diagrama.Nenhum);
-                w.Faixa.SelectedTabItem = w.abaInicio;
+                w.Faixa.SelectedTabItem = w.abaModelo;
                 No nMedA = w.M.NoPorId(4) ?? w.M.Nos.FirstOrDefault();
                 No nMedB = w.M.NoPorId(3) ?? w.M.Nos.LastOrDefault();
                 CapturarPrincipal(w, "08-medir", () =>
@@ -367,7 +367,7 @@ namespace NovoFtool
 
                 // 35) HUD da vista (momento) + recorte do cartao; 36) mapa de calor; 37) inspecao com o mouse; 38) toast; 39) historico aberto
                 w.MostrarDiagrama(Diagrama.Momento);
-                w.Faixa.SelectedTabItem = w.abaResultados;
+                w.Faixa.SelectedTabItem = w.abaAnalise;
                 CapturarPrincipal(w, "35-hud");
                 {
                     w.Hud.Measure(new Size(600, 300)); w.Hud.Arrange(new Rect(0, 0, w.Hud.DesiredSize.Width, w.Hud.DesiredSize.Height)); w.Hud.UpdateLayout();
@@ -449,7 +449,7 @@ namespace NovoFtool
                 }
 
                 w.Vista.Selecionar(new object[0]);
-                w.Faixa.SelectedTabItem = w.abaInicio;
+                w.Faixa.SelectedTabItem = w.abaModelo;
                 EsperarIdle();
 
                 // 10) Menu de contexto

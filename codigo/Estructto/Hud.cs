@@ -50,7 +50,7 @@ namespace NovoFtool
             Adicionar(fila, "N", Diagrama.Normal, false, "Esforço normal N (kN): azul tração, vermelho compressão.");
             Adicionar(fila, "V", Diagrama.Cortante, false, "Esforço cortante V (kN).");
             Adicionar(fila, "M", Diagrama.Momento, false, "Momento fletor M (kN·m), do lado tracionado.");
-            Adicionar(fila, "% Aprov.", Diagrama.Verificacao, true, "Mapa de calor do aproveitamento: verde até 75%, ciano até 90%, âmbar até 100%, vermelho acima.");
+            Adicionar(fila, "% Aprov.", Diagrama.Verificacao, true, "Mapa de aproveitamento: verde até 75%, ciano até 90%, âmbar até 100%, vermelho acima.");
             seg.Child = fila;
             pilha.Children.Add(seg);
 
