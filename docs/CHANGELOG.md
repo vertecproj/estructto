@@ -2,6 +2,13 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Exportar o modelo 3D para DWG, DXF e STEP (branch wt-export)
+
+- Arquivo › Exportar (DWG…, DXF…, STEP…) e paleta (Ctrl+K), para o modelo espacial e o 2D. DWG/DXF AC1032 em mm com ACadSharp 3.8.0:
+  uma POLYFACE MESH por barra na camada da seção (`ACO_`/`CONCRETO_`) + linhas na camada `ANALITICO`. STEP AP214 escrito à mão:
+  um PRODUCT por barra (FACETED_BREP de faces planas) numa montagem. Perfis = os do modo Realista (cópia em `GeometriaPerfis.cs`).
+- Testes `Estructto.exe --testes-exportar <pasta>` (38 asserções, guincho + edifício). Detalhe: [docs/v3/EXPORTAR.md](v3/EXPORTAR.md).
+
 ## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
 
 - Modelo › Planos: **Nível ▾** (ativa e isola o andar em planta, resto em fantasma), **Elevação X/Y ▾**, **3D completo**, painel

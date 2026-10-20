@@ -24,6 +24,15 @@ namespace NovoFtool
                 System.IO.File.WriteAllText(e.Args[1], r);
                 System.Environment.Exit(r.Contains("TODOS PASSARAM") ? 0 : 1);
             }
+            // Estructto.exe --testes-exportar <pasta> [raiz do repo] : DWG/DXF/STEP do guincho e do edifício (Exportar.cs)
+            if (e.Args.Length >= 2 && e.Args[0] == "--testes-exportar")
+            {
+                string r;
+                try { r = TestesExportar.Rodar(e.Args[1], e.Args.Length >= 3 ? e.Args[2] : System.IO.Directory.GetCurrentDirectory()); }
+                catch (System.Exception ex) { r = "ERRO: " + ex; }
+                System.IO.File.WriteAllText(System.IO.Path.Combine(e.Args[1], "testes-exportar.txt"), r);
+                System.Environment.Exit(r.Contains("TODOS PASSARAM") ? 0 : 1);
+            }
             DispatcherUnhandledException += (s, ex) =>
             {
                 if (Capturas.Ativo) { Capturas.GravarErro(ex.Exception); ex.Handled = true; System.Environment.Exit(1); }

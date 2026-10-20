@@ -598,6 +598,7 @@ namespace NovoFtool
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Importar .ftl do Ftool...", null, ImportarDialogo, "Importa a geometria, seções, materiais e casos de carga de um arquivo .ftl do Ftool original."));
             BsAbas.Items.Add(BotaoBs("Importar/comparar CYPE...", null, () => ComandosAnalise.AbrirCype(this), "Importa um modelo do CYPE 3D (.ed3) ou compara os resultados com os do CYPE (motor Python)."));
+            BsAbas.Items.Add(TabExportar());   // Exportar.cs: DWG, DXF, STEP
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Ajuda e atalhos", "F1", MostrarAjuda, "Abre a janela de ajuda com o passo a passo, convenções de sinais e lista de atalhos."));
             BsAbas.Items.Add(BotaoBs("Sair", "Alt+F4", Close, "Fecha o programa (pergunta antes caso existam alterações não salvas)."));
