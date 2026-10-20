@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Estructto: clone do Ftool (PUC-Rio) em C# + WPF, com interface no estilo do AutoCAD Plant 3D.
+       O motor de calculo e as tabelas de perfis sao os do Portico (../portico), compartilhados por link. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>Estructto</AssemblyName>
+    <RootNamespace>NovoFtool</RootNamespace>
+    <ApplicationIcon>estructto.ico</ApplicationIcon>
+    <NoWarn>CS0649;CS0169;CA1416;WFAC010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\portico\src\Nucleo.cs" Link="Nucleo.cs" />
+    <EmbeddedResource Include="..\portico\perfis-gerdau.csv" LogicalName="perfis-gerdau.csv" />
+    <EmbeddedResource Include="..\portico\perfis-outros.csv" LogicalName="perfis-outros.csv" />
+    <EmbeddedResource Include="..\portico\chumbadores.csv" LogicalName="chumbadores.csv" />
+    <EmbeddedResource Include="..\portico\fixacoes.csv" LogicalName="fixacoes.csv" />
+    <EmbeddedResource Include="..\portico\fixacoes-pares.csv" LogicalName="fixacoes-pares.csv" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="estructto.ico" />
+    <Resource Include="estructto.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dirkster.AvalonDock" Version="4.72.1" />
+    <PackageReference Include="Dirkster.AvalonDock.Themes.VS2013" Version="4.72.1" />
+    <PackageReference Include="Fluent.Ribbon" Version="11.0.2" />
+    <PackageReference Include="WpfMath" Version="2.1.0" />
+  </ItemGroup>
+
+</Project>

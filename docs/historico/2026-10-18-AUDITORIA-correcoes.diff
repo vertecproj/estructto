@@ -1,0 +1,1183 @@
+--- a/portico/src/Nucleo.cs
++++ b/portico/src/Nucleo.cs
+@@ -346,6 +346,10 @@
+         [Category("3. Cargas no nó"), DisplayName("Fy (kN)"), Description("Positivo para cima. Carga de gravidade = negativo.")] public double Fy { get; set; }
+         [Category("3. Cargas no nó"), DisplayName("Mz (kN.m)"), Description("Positivo anti-horário.")] public double Mz { get; set; }
+ 
++        [Category("3. Cargas no nó"), DisplayName("Carga giratória (guincho)"), TypeConverter(typeof(SimNao)),
++         Description("Sim = o equipamento gira em torno da coluna: além da posição lançada, calcula a posição a 180° (Fx e Mz deste nó com o sinal trocado, em todos os casos) e verifica a envoltória das duas.")]
++        public bool Rotativa { get; set; }
++
+         [Browsable(false)] public PlacaBase Placa { get; set; }
+ 
+         // Cargas dos outros casos de carga (as do caso ativo ficam em Fx, Fy, Mz).
+@@ -435,6 +439,11 @@
+          Description("Não = perfil em pé (usa Ix). Sim = perfil deitado (usa Iy).")]
+         public bool EixoFraco { get; set; }
+ 
++        [Category("2. Seção"), DisplayName("Travamento fora do plano (nós)"),
++         Description("Nós em que a barra é travada na direção perpendicular ao pórtico (ex.: \"2, 5\"), \"pontas\" ou \"todos\". Vazio = nenhum: só os apoios travam, e o comprimento de flambagem fora do plano é o da barra contínua inteira (lado seguro).")]
++        public string TravFora { get; set; }
++        public bool ShouldSerializeTravFora() { return !string.IsNullOrEmpty(TravFora); }
++
+         [Category("3. Rótulas"), DisplayName("Rótula no início"), TypeConverter(typeof(SimNao))] public bool RotulaInicio { get; set; }
+         [Category("3. Rótulas"), DisplayName("Rótula no fim"), TypeConverter(typeof(SimNao))] public bool RotulaFim { get; set; }
+ 
+@@ -548,6 +557,27 @@
+         [Browsable(false)] public double LimiteFlecha { get; set; }    // flecha admissivel = L / este numero
+         [Browsable(false)] public string Eletrodo { get; set; }        // eletrodo das soldas de filete ("E70"; vazio = E70)
+ 
++        [Category("Cálculo"), DisplayName("Coef. dinâmico ψ já incluído nas cargas"),
++         Description("Só informativo: o ψ (NBR 8400, içamento) que o projetista JÁ multiplicou nas cargas do equipamento. 0 = não informado (o relatório avisa quando há carga giratória). O programa não aplica ψ de novo.")]
++        public double Psi { get; set; }
++        public bool ShouldSerializePsi() { return Psi != 0; }
++
++        [Browsable(false), XmlIgnore] public bool TemRotativa { get { return Nos.Any(n => n.Rotativa); } }
++
++        // Posicao oposta do equipamento giratorio (180 graus): Fx e Mz dos nos giratorios trocam de sinal em todos os casos.
++        // Fy (peso) nao muda. Hipotese de portico plano: as posicoes a 90/270 graus (momento fora do plano) nao sao analisadas.
++        public Modelo PosicaoOposta()
++        {
++            Modelo c = DeXml(ParaXml());
++            foreach (No n in c.Nos)
++            {
++                if (!n.Rotativa) continue;
++                n.Fx = -n.Fx; n.Mz = -n.Mz;
++                if (n.OutrasCargas != null) foreach (CargaNoCaso q in n.OutrasCargas) { q.Fx = -q.Fx; q.Mz = -q.Mz; }
++            }
++            return c;
++        }
++
+         [Category("Grade"), DisplayName("Mostrar grade"), TypeConverter(typeof(SimNao))] public bool MostrarGrade { get; set; }
+         [Category("Grade"), DisplayName("Atrair para a grade"), TypeConverter(typeof(SimNao)),
+          Description("Só afeta o clique do mouse. Medidas digitadas nunca são arredondadas.")]
+@@ -880,6 +910,20 @@
+             W("Walsywa WB", "3/4\"", 19.05, 19.05, 78, 3901, 9691); W("Walsywa WB", "3/4\"", 19.05, 19.05, 128, 5606, 9691); W("Walsywa WB", "3/4\"", 19.05, 19.05, 185, 7708, 9691);
+         }
+ 
++        // Tipo de carga -> faixa do coeficiente de seguranca recomendada pela Walsywa (minimo, maximo)
++        public static readonly string[] Tipos = { "estatica", "variavel", "dinamica", "choque" };
++        public static readonly string[] NomesTipos = { "estática", "variável", "dinâmica", "choque" };
++        public static readonly double[] CoefMin = { 3, 4, 7, 5 }, CoefMax = { 5, 5, 15, 10 };
++
++        // Tipo efetivo: o escolhido; vazio = automatico (dinamica se ha carga giratoria/equipamento, senao variavel; nunca estatica por omissao)
++        public static int TipoEfetivo(Modelo m, PlacaBase p, out bool automatico)
++        {
++            int i = p == null || string.IsNullOrEmpty(p.TipoCarga) ? -1 : Array.IndexOf(Tipos, p.TipoCarga.Trim().ToLowerInvariant());
++            automatico = i < 0;
++            if (i < 0) i = m != null && m.TemRotativa ? 2 : 1;
++            return i;
++        }
++
+         public static Chumbador Achar(string nome) { return Lista.FirstOrDefault(c => c.Nome == nome); }
+         public static List<Chumbador> DaLinha(string linha) { return Lista.Where(c => c.Linha == linha).ToList(); }
+         public static List<string> Linhas() { return Lista.Select(c => c.Linha).Distinct().ToList(); }
+@@ -895,7 +939,8 @@
+     public class PlacaBase
+     {
+         public string Chumbador { get; set; }    // nome do chumbador do catalogo; vazio = parafuso (tabela metrica)
+-        public double CoefChumbador { get; set; }   // coeficiente de seguranca do chumbador (0 = 3, carga estatica de baixo risco)
++        public double CoefChumbador { get; set; }   // coeficiente de seguranca do chumbador (0 = o minimo da faixa do tipo de carga)
++        public string TipoCarga { get; set; }       // estatica | variavel | dinamica | choque (vazio = automatico: dinamica com carga giratoria, senao variavel)
+         public bool PeloPerfil { get; set; }     // medidas = perfil do pilar + sobra de cada lado
+         public double Sobra { get; set; }        // mm
+         public double H { get; set; }            // mm, no plano do portico (direcao do momento)
+@@ -923,7 +968,15 @@
+         public bool Deitado;
+         public bool Espelhar;                    // o eixo y local do pilar aponta para a esquerda no desenho
+         public double RefIn, RefOut, H, B;       // mm
+-        public double N, V, M;                   // na base do pilar: N tracao +, kN e kN.m
++        public double N, V, M;                   // nos eixos da PLACA (horizontal, normal = Y global): N tracao nas fixacoes +, V cortante no plano da placa, kN e kN.m
++        public double Rx, Ry, Rm;                // reacao do no (apoio sobre a estrutura), de onde N/V/M saem: N = -Ry, V = |Rx|, M = -Rm
++        public double NBarra, VBarra, MBarra;    // os mesmos esforcos nos eixos locais da barra (so informativo)
++        public double NormX, NormY;              // normal da placa (eixo global), apontando para a barra
++        public double AngNormal;                 // angulo entre o eixo da barra e a normal da placa, graus (0 = barra perpendicular a placa)
++        public bool Inclinada;                   // barra inclinada sobre a placa: chapa e solda nao sao verificadas para esse caso
++        public int TipoCarga; public bool TipoAuto;   // tipo de carga do chumbador (indice em Chumbadores.Tipos) e se foi o automatico
++        public string AvisoCoef = "";            // coeficiente do chumbador abaixo da faixa do tipo de carga
++        public double EspNecT, CConc, BracoC, EspNecC;   // chapa: t pelo lado tracionado; reacao do concreto (kN), braco (mm) e t pelo lado comprimido
+         public List<double[]> Paraf = new List<double[]>();   // y (mm, eixo local y do pilar), z (mm), tracao (kN)
+         public string Modelo = "";
+         public double PivoY = double.NaN;        // mm
+@@ -934,7 +987,7 @@
+         public double Dia;                       // diametro do parafuso / rosca do chumbador, mm
+         public double EspacMin;                  // menor distancia entre furos da placa, mm
+         public string Aviso = "";
+-        public bool Passa { get { return Erro == "" && NComb >= NExig; } }
++        public bool Passa { get { return Erro == "" && NComb >= NExig && !Inclinada; } }
+         public string Fixacao { get { return Ch != null ? Ch.Nome : "M" + Dia.ToString("0"); } }
+     }
+ 
+@@ -964,8 +1017,16 @@
+             if (pilar == null) return r;
+             r.Deitado = pilar.EixoFraco;
+             No n1 = m.NoPorId(pilar.N1), n2 = m.NoPorId(pilar.N2);
+-            double yx = -(n2.Y - n1.Y), yy = n2.X - n1.X;   // direcao global do eixo y local
++            // Eixos da PLACA: a placa fica no plano do apoio (piso, teto ou parede), com a normal no eixo global (Y ou X)
++            // mais proximo da barra, apontando para a barra. y da placa = normal girada +90 graus (no piso: -X global,
++            // o mesmo do eixo y local de um pilar vertical que sobe). Barra fora da normal = inclinada sobre a placa.
++            No outro = pilar.N1 == n.Id ? n2 : n1;
++            double ex = outro.X - n.X, ey = outro.Y - n.Y, lb = Math.Sqrt(ex * ex + ey * ey);
++            if (Math.Abs(ey) >= Math.Abs(ex)) { r.NormX = 0; r.NormY = ey >= 0 ? 1 : -1; } else { r.NormX = ex >= 0 ? 1 : -1; r.NormY = 0; }
++            double yx = -r.NormY, yy = r.NormX;
+             r.Espelhar = yx < -1e-9 || (Math.Abs(yx) <= 1e-9 && yy < 0);
++            r.AngNormal = lb > 0 ? Math.Acos(Math.Min(1, Math.Abs(ex * r.NormX + ey * r.NormY) / lb)) * 180 / Math.PI : 0;
++            r.Inclinada = r.AngNormal > 2;
+             r.H = p.PeloPerfil ? Math.Ceiling((r.RefIn + 2 * p.Sobra) / 10) * 10 : p.H;
+             r.B = p.PeloPerfil ? Math.Ceiling((r.RefOut + 2 * p.Sobra) / 10) * 10 : p.B;
+             int nf = Math.Max(1, p.Fileiras), np = Math.Max(1, p.PorFileira);
+@@ -975,7 +1036,11 @@
+             int id = Array.IndexOf(Parafusos.D, p.Diametro), ic = Array.IndexOf(Parafusos.Classes, p.Classe);
+             if (r.Ch == null && (id < 0 || ic < 0)) { r.Erro = "Parafuso ou classe fora da tabela."; return r; }
+             r.Dia = r.Ch != null ? r.Ch.Rosca : p.Diametro;
+-            r.NExig = r.Ch != null ? (p.CoefChumbador > 0 ? p.CoefChumbador : 3) : m.Seguranca;
++            r.TipoCarga = Chumbadores.TipoEfetivo(m, p, out r.TipoAuto);
++            r.NExig = r.Ch != null ? (p.CoefChumbador > 0 ? p.CoefChumbador : Chumbadores.CoefMin[r.TipoCarga]) : m.Seguranca;
++            if (r.Ch != null && r.NExig < Chumbadores.CoefMin[r.TipoCarga] - 1e-9)
++                r.AvisoCoef = "Coeficiente do chumbador n = " + Num.Fmt(r.NExig, 1) + " abaixo da faixa recomendada para carga " + Chumbadores.NomesTipos[r.TipoCarga] +
++                              " (" + Num.Fmt(Chumbadores.CoefMin[r.TipoCarga], 0) + " a " + Num.Fmt(Chumbadores.CoefMax[r.TipoCarga], 0) + ", Walsywa).";
+ 
+             // parafusos no contorno da placa
+             for (int i = 0; i < nf; i++)
+@@ -1007,8 +1072,22 @@
+ 
+             if (pilar.Res == null) { r.Erro = "Sem esforços: a estrutura ainda não foi calculada."; return r; }
+             double x = pilar.N1 == n.Id ? 0 : pilar.Res.L;
+-            r.N = pilar.Res.N(x); r.V = Math.Abs(pilar.Res.Q(x)); r.M = pilar.Res.M(x);
++            r.NBarra = pilar.Res.N(x); r.VBarra = Math.Abs(pilar.Res.Q(x)); r.MBarra = pilar.Res.M(x);
++            // Reacao do no = forca do no sobre a barra na ponta da placa, levada aos eixos globais (o no so tem esta barra).
++            // Os chumbadores sentem a reacao inteira nos eixos da placa: N = -Ry (tracao +), V = |Rx|, M = -Rm.
++            ResBarra rb = pilar.Res;
++            int k0 = pilar.N1 == n.Id ? 0 : 3;
++            r.Rx = rb.C * rb.F[k0] - rb.S * rb.F[k0 + 1];
++            r.Ry = rb.S * rb.F[k0] + rb.C * rb.F[k0 + 1];
++            r.Rm = rb.F[k0 + 2];
++            // forca da estrutura sobre a placa = -R: tracao = (-R).normal, corte = (-R).y_placa, momento = -Rm
++            r.N = -(r.Rx * r.NormX + r.Ry * r.NormY); r.V = Math.Abs(r.Rx * yx + r.Ry * yy); r.M = -r.Rm;
+             r.TemEsforcos = true;
++            bool cargaNoNo = n.TemCarga || (n.OutrasCargas != null && n.OutrasCargas.Any(c => !c.Vazia));
++            if (cargaNoNo) r.Aviso = (r.Aviso != "" ? r.Aviso + " " : "") + "Há carga aplicada no próprio nó da placa: ela vai direto ao apoio e NÃO entra nas forças das fixações calculadas aqui.";
++            if (r.Inclinada)
++                r.Aviso = (r.Aviso != "" ? r.Aviso + " " : "") + "Barra inclinada " + Num.Fmt(r.AngNormal, 1) + "° em relação à normal da placa: as fixações foram calculadas com a reação do nó nos eixos da placa, mas a espessura da chapa e a solda (modelo do perfil perpendicular à placa) NÃO valem para barra inclinada. Placa não aprovada: detalhar a ligação (gusset/cantoneira) à parte.";
++            if (r.AvisoCoef != "") r.Aviso = (r.Aviso != "" ? r.Aviso + " " : "") + r.AvisoCoef;
+ 
+             // u = distancia ao centro, positiva para o lado tracionado pelo momento (m).
+             // M > 0 traciona a fibra do lado -y local do pilar.
+@@ -1073,6 +1152,20 @@
+                 double esp = Math.Sqrt(6 * l.Value[0] * 1000 * braco * m.Seguranca / (larg * r.FyChapa));
+                 if (esp > r.EspNec) { r.EspNec = esp; r.TLinha = l.Value[0]; r.Braco = braco; r.LargEf = larg; }
+             }
++            r.EspNecT = r.EspNec;
++            // Lado comprimido: o modelo de placa rigida concentra a reacao do concreto C = soma(T) - N na linha de giro.
++            // Essa faixa (da linha de giro ate a face do perfil) tambem trabalha em balanco: t = raiz(6.C.e.n/(B.fy)).
++            if (!double.IsNaN(r.PivoY))
++            {
++                double somaT = 0; foreach (double[] b in r.Paraf) somaT += b[2];
++                r.CConc = somaT - r.N;
++                r.BracoC = Math.Abs(r.PivoY) - r.RefIn / 2;
++                if (r.CConc > 1e-9 && r.BracoC > 0)
++                {
++                    r.EspNecC = Math.Sqrt(6 * r.CConc * 1000 * r.BracoC * m.Seguranca / (r.B * r.FyChapa));
++                    if (r.EspNecC > r.EspNec) r.EspNec = r.EspNecC;
++                }
++            }
+             return r;
+         }
+ 
+@@ -1097,15 +1190,310 @@
+     {
+         public bool Aplicavel;
+         public string Motivo = "";
+-        public double Sigma, SigmaAdm, Tau, TauAdm, Flecha, FlechaAdm, Nc, Ncr, Esbeltez;   // MPa, MPa, m, kN
+-        public double ApTensao, ApCorte, ApFlecha, ApFlamb, Ap;                           // aproveitamento: 1 = no limite
++        public double Sigma, SigmaAdm, Tau, TauAdm, Flecha, FlechaAdm, Nc, Ncr, Esbeltez;   // MPa, MPa, m, kN (Ncr e Esbeltez: plano que governa)
++        public double ApTensao, ApCorte, ApFlecha, ApFlamb, ApEsbeltez, Ap;               // aproveitamento: 1 = no limite
+         public string Critico = "";
+-        public double K = 1;   // coeficiente de flambagem usado
++        public double K = 1;   // coeficiente de flambagem do plano que governa
+         public string Aviso = "";
++        public string AvisoInversao = "";   // barra sem compressao: a flambagem nao foi verificada neste resultado
+         public bool Balanco;// flecha medida na ponta solta (deslocamento relativo a tangente no engaste)
++        public double Nt;                    // maior tracao, kN
++        public double LimEsbeltez;           // 200 (comprimida) ou 300 (so tracionada); 0 = sem esforco normal
++        public double ApInteracao, BAmp = 1, NeNoPlano, Mmax;   // interacao N + M com amplificacao B = 1/(1 - n.Nc/Ne)
++        public Flamb NoPlano, ForaPlano;     // flambagem nos dois planos (sempre calculada, mesmo sem compressao)
+         public bool Passa { get { return Aplicavel && Ap <= 1.0; } }
+     }
+ 
++    // Flambagem de uma barra continua num plano. "No plano" = plano do portico (usa o eixo que esta no plano, Ix ou Iy
++    // conforme "Fletir no eixo fraco"); "fora do plano" = perpendicular, usa o outro eixo.
++    public class Flamb
++    {
++        public string Plano = "", Eixo = "";
++        public double I, R, Ncr, Le, Lref, K, Lambda, Scr, Ap;   // m4, m, kN, m, m, -, -, MPa
++        public double LDestr, LambdaT;                           // maior trecho sem travamento (m) e L/r (regra de tracao)
++        public bool Euler, Instavel;
++        public string Travas = "";                               // descricao dos pontos travados e das condicoes
++        public string Molas = "";                                // travamentos elasticos (outras barras): no, rigidez
++        public bool KMinimo; public double KTeorico, NcrElastico;                                    // K teorico < 1 elevado a 1 (nao se conta com engaste perfeito)
++    }
++
++    // ---------- flambagem por barra continua (independe da divisao em trechos) ----------
++    // A barra continua (ou a barra isolada) e discretizada internamente em ~24 elementos de viga, com os travamentos
++    // laterais de cada plano, e resolve-se o autovalor K.phi = Ncr.Kg.phi (Kg = matriz geometrica para N = 1 kN uniforme).
++    // Como a compressao e tomada uniforme e igual a maior da barra, o resultado e conservador.
++    //   No plano: trava rigida = apoio que impede o deslocamento perpendicular a barra; trava elastica = mola de apoio e
++    //             rigidez do RESTO da estrutura (as outras barras ligadas no no, sem esta barra), calculada pelo Solver.
++    //   Fora do plano: trava rigida = apoio (qualquer translacao travada) e os nos declarados em "Travamento fora do plano".
++    //   Giro preso: apoio com giro travado, nos dois planos (hipotese). Rotulas da barra valem nos dois planos (lado seguro).
++    public static class Flambagem
++    {
++        public const int Elementos = 24;
++        static readonly Dictionary<string, double[]> cache = new Dictionary<string, double[]>();
++
++        class Ponto { public double S, Mola, MolaGiro; public bool Rigido, GiroFixo, Rotula; public int No; }
++
++        // Trechos da barra continua em ordem, e os nos ao longo dela (n+1 nos).
++        public static List<Barra> Cadeia(Modelo m, Barra b, out List<int> nos)
++        {
++            List<Barra> bs = b.Membro != 0 ? m.Trechos(b.Membro) : new List<Barra> { b };
++            nos = new List<int>();
++            if (bs.Count <= 1) { nos.Add(b.N1); nos.Add(b.N2); return new List<Barra> { b }; }
++            Dictionary<int, int> grau = new Dictionary<int, int>();
++            foreach (Barra t in bs) { grau[t.N1] = (grau.ContainsKey(t.N1) ? grau[t.N1] : 0) + 1; grau[t.N2] = (grau.ContainsKey(t.N2) ? grau[t.N2] : 0) + 1; }
++            int ini = bs[0].N1;
++            foreach (KeyValuePair<int, int> g in grau) if (g.Value == 1) { ini = g.Key; break; }
++            List<Barra> ord = new List<Barra>(); HashSet<Barra> usadas = new HashSet<Barra>();
++            int atual = ini; nos.Add(atual);
++            while (ord.Count < bs.Count)
++            {
++                Barra prox = bs.FirstOrDefault(t => !usadas.Contains(t) && (t.N1 == atual || t.N2 == atual));
++                if (prox == null) break;
++                usadas.Add(prox); ord.Add(prox);
++                atual = prox.N1 == atual ? prox.N2 : prox.N1; nos.Add(atual);
++            }
++            if (ord.Count != bs.Count) { nos = new List<int> { b.N1, b.N2 }; return new List<Barra> { b }; }   // nao e uma linha: trata o trecho sozinho
++            return ord;
++        }
++
++        static HashSet<int> NosTravFora(List<Barra> cad, List<int> nos)
++        {
++            HashSet<int> r = new HashSet<int>();
++            foreach (Barra t in cad)
++            {
++                string s = (t.TravFora ?? "").Trim().ToLowerInvariant();
++                if (s == "") continue;
++                if (s == "todos") { foreach (int id in nos) r.Add(id); continue; }
++                if (s == "pontas") { r.Add(nos[0]); r.Add(nos[nos.Count - 1]); continue; }
++                foreach (string p in s.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
++                { int id; if (int.TryParse(p.Trim().TrimStart('n'), out id)) r.Add(id); }
++            }
++            return r;
++        }
++
++        static string Assinatura(Modelo m)
++        {
++            StringBuilder sb = new StringBuilder();
++            foreach (No n in m.Nos) sb.Append(n.Id).Append(':').Append(n.X.ToString("R")).Append(',').Append(n.Y.ToString("R")).Append(n.ApoioX ? 'x' : '-').Append(n.ApoioY ? 'y' : '-').Append(n.ApoioGiro ? 'g' : '-')
++                    .Append(n.MolaX.ToString("R")).Append('/').Append(n.MolaY.ToString("R")).Append('/').Append(n.MolaGiro.ToString("R")).Append(';');
++            foreach (Barra b in m.Barras) sb.Append(b.Id).Append(':').Append(b.N1).Append('-').Append(b.N2).Append(b.Secao).Append('|').Append(b.Material).Append(b.EixoFraco ? 'f' : 'F')
++                    .Append(b.RotulaInicio ? 'r' : '-').Append(b.RotulaFim ? 'r' : '-').Append(b.Membro).Append('|').Append(b.TravFora).Append(';');
++            return sb.ToString();
++        }
++
++        // Rigidez (kN/m) que o resto da estrutura (sem as barras da peca) oferece ao no na direcao (px, py). 0 = nenhuma.
++        static double RigidezResto(Modelo m, HashSet<int> peca, int no, double px, double py)
++        {
++            Modelo c = Modelo.DeXml(m.ParaXml());
++            c.Barras.RemoveAll(t => peca.Contains(t.Id));
++            if (c.Barras.Count == 0) return 0;
++            c.PesoProprio = false;
++            foreach (No n in c.Nos) { n.Fx = n.Fy = n.Mz = 0; n.RecalqueX = n.RecalqueY = 0; }
++            foreach (Barra t in c.Barras) { t.QGlobalX = t.QGlobalY = t.QLocalIni = t.QLocalFim = 0; }
++            No alvo = c.NoPorId(no);
++            if (alvo == null || !c.Barras.Any(t => t.N1 == no || t.N2 == no)) return 0;
++            alvo.Fx = px; alvo.Fy = py;
++            // a propria peca segura o no na direcao do seu eixo (rigidez axial): biela rigida temporaria nessa direcao,
++            // senao uma escora sozinha viraria um balanco solto e a trava sairia ~0
++            int idn = c.Nos.Max(q => q.Id) + 1, idb = c.Barras.Max(q => q.Id) + 1;
++            No fixo = new No { Id = idn, X = alvo.X + py, Y = alvo.Y - px, ApoioX = true, ApoioY = true };
++            c.Nos.Add(fixo);
++            c.Barras.Add(new Barra { Id = idb, N1 = idn, N2 = no, Secao = "A=1000 I=1", Material = "E=200000", RotulaInicio = true, RotulaFim = true, Dono = c });
++            Resultado r = Solver.Resolver(c);
++            if (!r.Ok || alvo.Res == null) return 0;
++            double d = alvo.Res[0] * px + alvo.Res[1] * py;
++            return d > 1e-15 ? 1 / d : 0;
++        }
++
++        // Calcula os dois planos para a barra continua de b, com o perfil sec (pode ser outro que nao o da barra).
++        public static void Calcular(Modelo m, Barra b, Secao sec, Material mat, Verif v)
++        {
++            List<int> nos;
++            List<Barra> cad = Cadeia(m, b, out nos);
++            HashSet<int> ids = new HashSet<int>(cad.Select(t => t.Id));
++            double E = mat.E * 1000;   // kN/m2
++            bool cant = sec.Forma == "L";
++            double iPl = b.EixoFraco ? sec.Iy : sec.Ix, iFo = b.EixoFraco ? sec.Ix : sec.Iy;
++            if (cant) { iPl = iFo = 0.39 * Math.Min(sec.Ix, sec.Iy); }   // cantoneira: flamba no eixo principal menor nos dois planos
++            string ePl = cant ? "z (principal menor, 0,39·Imín)" : b.EixoFraco ? "y (fraco)" : "x (forte)";
++            string eFo = cant ? "z (principal menor, 0,39·Imín)" : b.EixoFraco ? "x (forte)" : "y (fraco)";
++
++            // posicoes ao longo da peca e direcao de cada trecho
++            List<double> s = new List<double> { 0 };
++            List<double[]> dir = new List<double[]>();
++            for (int i = 0; i < cad.Count; i++)
++            {
++                No a = m.NoPorId(nos[i]), c = m.NoPorId(nos[i + 1]);
++                double dx = c.X - a.X, dy = c.Y - a.Y, l = Math.Sqrt(dx * dx + dy * dy);
++                s.Add(s[i] + l); dir.Add(new[] { dx / l, dy / l });
++            }
++            double Lt = s[s.Count - 1];
++            HashSet<int> trav = NosTravFora(cad, nos);
++            string chave = Assinatura(m) + "#" + string.Join(",", cad.Select(t => t.Id.ToString()).ToArray());
++
++            for (int plano = 0; plano < 2; plano++)
++            {
++                List<Ponto> pts = new List<Ponto>();
++                Flamb f = new Flamb { Plano = plano == 0 ? "no plano do pórtico" : "fora do plano", Eixo = plano == 0 ? ePl : eFo, I = plano == 0 ? iPl : iFo };
++                List<string> desc = new List<string>(), molas = new List<string>();
++                for (int j = 0; j < nos.Count; j++)
++                {
++                    No no = m.NoPorId(nos[j]);
++                    double[] d = dir[Math.Min(j, dir.Count - 1)];
++                    double px = -d[1], py = d[0];   // perpendicular a barra, no plano
++                    Ponto p = new Ponto { S = s[j], No = no.Id };
++                    // rotula de algum trecho neste no
++                    if (j > 0) { Barra t = cad[j - 1]; if (t.N2 == no.Id ? t.RotulaFim : t.RotulaInicio) p.Rotula = true; }
++                    if (j < cad.Count) { Barra t = cad[j]; if (t.N1 == no.Id ? t.RotulaInicio : t.RotulaFim) p.Rotula = true; }
++                    bool apoio = no.ApoioX || no.ApoioY;
++                    if (plano == 0)
++                    {
++                        p.Rigido = (no.ApoioX && Math.Abs(px) > 0.1) || (no.ApoioY && Math.Abs(py) > 0.1);
++                        if (!p.Rigido)
++                        {
++                            p.Mola = no.MolaX * px * px + no.MolaY * py * py;
++                            if (m.Barras.Any(t => !ids.Contains(t.Id) && (t.N1 == no.Id || t.N2 == no.Id)))
++                            {
++                                string k = chave + "@" + no.Id;
++                                double[] kr;
++                                if (!cache.TryGetValue(k, out kr)) { kr = new[] { RigidezResto(m, ids, no.Id, px, py) }; Guardar(k, kr); }
++                                if (kr[0] > 0) molas.Add("nó " + no.Id + ": k = " + Num.Fmt(kr[0], 0) + " kN/m (outras barras)");
++                                p.Mola += kr[0];
++                            }
++                            else if (p.Mola > 0) molas.Add("nó " + no.Id + ": mola k = " + Num.Fmt(p.Mola, 0) + " kN/m");
++                        }
++                        p.GiroFixo = no.ApoioGiro && !p.Rotula;
++                        p.MolaGiro = p.GiroFixo || p.Rotula ? 0 : no.MolaGiro;
++                    }
++                    else
++                    {
++                        p.Rigido = apoio || trav.Contains(no.Id);
++                        p.GiroFixo = no.ApoioGiro && !p.Rotula && apoio;
++                    }
++                    if (p.Rigido) desc.Add("nó " + no.Id + (p.GiroFixo ? " (travado, giro preso)" : " (travado)"));
++                    pts.Add(p);
++                }
++                f.Travas = desc.Count > 0 ? string.Join(", ", desc.ToArray()) : "nenhum ponto travado";
++                f.Molas = string.Join("; ", molas.ToArray());
++
++                // maior trecho sem travamento (rigido ou elastico), contando as pontas da peca
++                List<double> marcos = pts.Where(p => p.Rigido || p.Mola > 0).Select(p => p.S).ToList();
++                marcos.Add(0); marcos.Add(Lt); marcos.Sort();
++                f.LDestr = 0; for (int i = 1; i < marcos.Count; i++) f.LDestr = Math.Max(f.LDestr, marcos[i] - marcos[i - 1]);
++                f.Lref = f.LDestr;
++                f.R = Math.Sqrt(f.I / sec.A);
++                f.LambdaT = f.LDestr / f.R;
++
++                string k2 = chave + "|" + plano + "|" + f.I.ToString("R") + "|" + mat.E.ToString("R");
++                double[] res;
++                if (!cache.TryGetValue(k2, out res)) { res = new[] { Autovalor(Lt, E * f.I, pts) }; Guardar(k2, res); }
++                double ncr = res[0];
++                if (ncr <= 0 || double.IsNaN(ncr) || double.IsInfinity(ncr)) { f.Instavel = true; f.Le = double.PositiveInfinity; f.K = double.PositiveInfinity; f.Lambda = double.PositiveInfinity; }
++                else
++                {
++                    f.Le = Math.PI * Math.Sqrt(E * f.I / ncr);
++                    f.KTeorico = f.Le / f.Lref; f.NcrElastico = ncr;
++                    if (f.Le < f.Lref) { f.Le = f.Lref; f.KMinimo = true; }   // nao se conta com engaste perfeito: K >= 1 no maior trecho
++                    f.K = f.Le / f.Lref;
++                    f.Lambda = f.Le / f.R;
++                }
++                if (plano == 0) v.NoPlano = f; else v.ForaPlano = f;
++            }
++        }
++
++        static void Guardar(string k, double[] v) { if (cache.Count > 20000) cache.Clear(); cache[k] = v; }
++
++        // Menor carga critica (kN) da peca com compressao uniforme. EI em kN.m2. 0 = mecanismo (sem travamento suficiente).
++        static double Autovalor(double Lt, double EI, List<Ponto> pts)
++        {
++            // pontos que importam: pontas e pontos com alguma condicao (independe da malha do usuario)
++            List<Ponto> marcos = pts.Where((p, i) => i == 0 || i == pts.Count - 1 || p.Rigido || p.Mola > 0 || p.GiroFixo || p.MolaGiro > 0 || p.Rotula).ToList();
++            // malha interna
++            List<Ponto> nos = new List<Ponto>();
++            for (int i = 0; i < marcos.Count; i++)
++            {
++                if (i > 0)
++                {
++                    double a = marcos[i - 1].S, c = marcos[i].S;
++                    int ne = Math.Max(2, (int)Math.Ceiling(Elementos * (c - a) / Lt - 1e-9));
++                    for (int k = 1; k < ne; k++) nos.Add(new Ponto { S = a + (c - a) * k / ne });
++                }
++                nos.Add(marcos[i]);
++            }
++            int nn = nos.Count;
++            // graus de liberdade: v por no; giro por no (dois na rotula: esquerda e direita)
++            int[] gv = new int[nn], gl = new int[nn], gr = new int[nn];
++            int nd = 0;
++            for (int i = 0; i < nn; i++) { gv[i] = nd++; gl[i] = nd++; gr[i] = nos[i].Rotula && i > 0 && i < nn - 1 ? nd++ : gl[i]; }
++            double[,] K = new double[nd, nd], G = new double[nd, nd];
++            for (int e = 0; e < nn - 1; e++)
++            {
++                double L = nos[e + 1].S - nos[e].S;
++                if (L <= 1e-12) continue;
++                int[] g = { gv[e], gr[e], gv[e + 1], gl[e + 1] };
++                double f = EI / (L * L * L), q = 1 / (30 * L);
++                double[,] ke = { { 12 * f, 6 * L * f, -12 * f, 6 * L * f }, { 6 * L * f, 4 * L * L * f, -6 * L * f, 2 * L * L * f }, { -12 * f, -6 * L * f, 12 * f, -6 * L * f }, { 6 * L * f, 2 * L * L * f, -6 * L * f, 4 * L * L * f } };
++                double[,] kg = { { 36 * q, 3 * L * q, -36 * q, 3 * L * q }, { 3 * L * q, 4 * L * L * q, -3 * L * q, -L * L * q }, { -36 * q, -3 * L * q, 36 * q, -3 * L * q }, { 3 * L * q, -L * L * q, -3 * L * q, 4 * L * L * q } };
++                for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) { K[g[i], g[j]] += ke[i, j]; G[g[i], g[j]] += kg[i, j]; }
++            }
++            bool[] preso = new bool[nd];
++            for (int i = 0; i < nn; i++)
++            {
++                Ponto p = nos[i];
++                if (p.Rigido) preso[gv[i]] = true; else K[gv[i], gv[i]] += p.Mola;
++                if (p.GiroFixo) { preso[gl[i]] = true; preso[gr[i]] = true; }
++                else if (p.MolaGiro > 0) { K[gl[i], gl[i]] += p.MolaGiro; }
++            }
++            List<int> liv = new List<int>();
++            for (int i = 0; i < nd; i++) if (!preso[i]) liv.Add(i);
++            int n = liv.Count;
++            if (n == 0) return 0;
++            double[,] A = new double[n, n], B = new double[n, n];
++            double kmax = 0;
++            for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) { A[i, j] = K[liv[i], liv[j]]; B[i, j] = G[liv[i], liv[j]]; kmax = Math.Max(kmax, Math.Abs(A[i, j])); }
++            // LU com pivotamento parcial
++            int[] pv = new int[n];
++            for (int c = 0; c < n; c++)
++            {
++                int pi = c;
++                for (int i = c + 1; i < n; i++) if (Math.Abs(A[i, c]) > Math.Abs(A[pi, c])) pi = i;
++                if (Math.Abs(A[pi, c]) < 1e-10 * kmax) return 0;   // matriz singular: mecanismo, a peca nao e estavel
++                pv[c] = pi;
++                if (pi != c) for (int j = 0; j < n; j++) { double t = A[c, j]; A[c, j] = A[pi, j]; A[pi, j] = t; }
++                for (int i = c + 1; i < n; i++) { A[i, c] /= A[c, c]; for (int j = c + 1; j < n; j++) A[i, j] -= A[i, c] * A[c, j]; }
++            }
++            Func<double[], double[]> resolver = rhs =>
++            {
++                double[] y = (double[])rhs.Clone();
++                for (int c = 0; c < n; c++) { if (pv[c] != c) { double t = y[c]; y[c] = y[pv[c]]; y[pv[c]] = t; } }
++                for (int i = 0; i < n; i++) for (int j = 0; j < i; j++) y[i] -= A[i, j] * y[j];
++                for (int i = n - 1; i >= 0; i--) { for (int j = i + 1; j < n; j++) y[i] -= A[i, j] * y[j]; y[i] /= A[i, i]; }
++                return y;
++            };
++            // iteracao inversa: converge para o menor Ncr
++            double[] x = new double[n];
++            for (int i = 0; i < n; i++) x[i] = 1 + 0.37 * Math.Sin(1.3 * i + 0.4);
++            double lam = 0, ant = double.MaxValue;
++            for (int it = 0; it < 3000; it++)
++            {
++                double[] y = new double[n];
++                for (int i = 0; i < n; i++) { double t = 0; for (int j = 0; j < n; j++) t += B[i, j] * x[j]; y[i] = t; }
++                double[] z = resolver(y);
++                double num = 0, den = 0;
++                for (int i = 0; i < n; i++) { num += z[i] * y[i]; }
++                double[] bz = new double[n];
++                for (int i = 0; i < n; i++) { double t = 0; for (int j = 0; j < n; j++) t += B[i, j] * z[j]; bz[i] = t; den += z[i] * t; }
++                // Rayleigh: lam = zT K z / zT B z, com K z = y  =>  zT y / zT B z
++                lam = den > 0 ? num / den : 0;
++                double nz = 0; for (int i = 0; i < n; i++) nz += z[i] * z[i]; nz = Math.Sqrt(nz);
++                if (nz <= 0) return 0;
++                for (int i = 0; i < n; i++) x[i] = z[i] / nz;
++                if (Math.Abs(lam - ant) <= 1e-13 * Math.Abs(lam)) break;
++                ant = lam;
++            }
++            return lam;
++        }
++    }
++
+     public static class Verificador
+     {
+         // 1 = ponta inicial solta, 2 = final solta, 0 = nenhuma (ou as duas)
+@@ -1176,27 +1564,63 @@
+             v.ApFlecha = v.Flecha / v.FlechaAdm;
+ 
+             v.Nc = -nmin;
++            foreach (double x in xs) v.Nt = Math.Max(v.Nt, r.N(x));
++            // Flambagem nos DOIS planos, pela barra continua inteira (Flambagem.Calcular). Cantoneira: eixo principal
++            // menor (Iz ~ 0,39.Imin) nos dois planos. Euler/Johnson com lambda = Le/r de cada plano; governa o pior.
++            Flambagem.Calcular(m, b, sec, mat, v);
++            double l1 = Math.Sqrt(2 * Math.PI * Math.PI * E / fy);
++            Flamb gov = null;
++            foreach (Flamb f in new[] { v.NoPlano, v.ForaPlano })
++            {
++                if (f.Instavel) { f.Ncr = 0; f.Scr = 0; f.Ap = v.Nc > 1e-6 ? 99.99 : 0; }
++                else
++                {
++                    f.Euler = f.Lambda > l1;
++                    f.Scr = f.Euler ? Math.PI * Math.PI * E / (f.Lambda * f.Lambda) : fy - Math.Pow(fy * f.Lambda / (2 * Math.PI), 2) / E;   // MPa
++                    f.Ncr = f.Scr * 1000 * sec.A;
++                    f.Ap = v.Nc > 1e-6 ? v.Nc * n / f.Ncr : 0;
++                }
++                if (gov == null || f.Instavel && !gov.Instavel || (f.Instavel == gov.Instavel && f.Lambda > gov.Lambda)) gov = f;
++            }
++            v.K = gov.K; v.Esbeltez = gov.Lambda; v.Ncr = gov.Ncr;
++            if (v.Nc > 1e-6) v.ApFlamb = Math.Max(v.NoPlano.Ap, v.ForaPlano.Ap);
++            // Esbeltez limite (NBR 8800, 5.2.8 e 5.3.4): comprimida KL/r <= 200; so tracionada L/r <= 300 (L = maior trecho sem travamento)
++            if (v.Nc > 1e-6) { v.LimEsbeltez = 200; v.ApEsbeltez = Math.Min(99.99, v.Esbeltez / 200); }
++            else if (v.Nt > 1e-6)
++            {
++                v.LimEsbeltez = 300;
++                double lt = Math.Max(v.NoPlano.LambdaT, v.ForaPlano.LambdaT);
++                v.ApEsbeltez = lt / 300;
++                // nao ha compressao NESTE resultado: a flambagem nao foi verificada (passaria por omissao)
++                if (m.TemRotativa || m.Combinacoes == null || m.Combinacoes.Count == 0)
++                    v.AvisoInversao = "barra sem compressão neste resultado: flambagem não verificada; confirme se o esforço pode inverter" +
++                                      (m.TemRotativa ? " (há carga giratória: confira a envoltória das posições 0° e 180°)" : " (o modelo não tem combinações)");
++            }
++            // Interacao flexo-compressao com estabilidade (forma ASD/AISC H1 simplificada, Cm = 1 a favor da seguranca):
++            //   n.Nc/Ncr + B.n.|M|max/(W.fy) <= 1,  B = 1/(1 - n.Nc/Ne),  Ne = pi2.E.I/Le2 elastica NO PLANO (onde ha momento)
+             if (v.Nc > 1e-6)
+             {
+-                // Cantoneira: flamba no eixo principal menor (z), nao em x ou y. Para abas iguais Iz ~ 0,39.Ix
+-                // (catalogo Gerdau: rz/rx entre 0,62 e 0,64); usar min(Ix,Iy) superestimava Ncr em ~2,5x.
+-                double imin = sec.Forma == "L" ? 0.39 * Math.Min(sec.Ix, sec.Iy) : Math.Min(sec.Ix, sec.Iy);
+-                double rg = Math.Sqrt(imin / sec.A);
+-                v.K = v.Balanco ? 2 : 1;   // balanco: engaste e ponta livre, comprimento de flambagem 2L
+-                v.Esbeltez = v.K * r.L / rg;
+-                double l1 = Math.Sqrt(2 * Math.PI * Math.PI * E / fy);
+-                double scr = v.Esbeltez > l1 ? Math.PI * Math.PI * E / (v.Esbeltez * v.Esbeltez)
+-                                            : fy - Math.Pow(fy * v.Esbeltez / (2 * Math.PI), 2) / E;   // MPa
+-                v.Ncr = scr * 1000 * sec.A;
+-                v.ApFlamb = v.Nc * n / v.Ncr;
++                double mmax = 0; foreach (double x in xs) mmax = Math.Max(mmax, Math.Abs(r.M(x)));
++                v.Mmax = mmax;
++                double ncrMin = Math.Min(v.NoPlano.Ncr, v.ForaPlano.Ncr);
++                v.NeNoPlano = v.NoPlano.Instavel ? 0 : Math.PI * Math.PI * E * 1000 * v.NoPlano.I / (v.NoPlano.Le * v.NoPlano.Le);
++                double razao = v.NeNoPlano > 0 ? n * v.Nc / v.NeNoPlano : double.PositiveInfinity;
++                v.BAmp = razao < 1 ? 1 / (1 - razao) : double.PositiveInfinity;
++                double parcN = ncrMin > 0 ? n * v.Nc / ncrMin : double.PositiveInfinity, parcM = mmax > 0 ? v.BAmp * n * mmax / (W * fy * 1000) : 0;
++                v.ApInteracao = double.IsInfinity(parcN) || double.IsInfinity(parcM) || double.IsNaN(parcM) ? 99.99 : Math.Min(99.99, parcN + parcM);
+             }
+             v.Ap = v.ApTensao; v.Critico = "tensão";
++            if (v.ApInteracao > v.Ap) { v.Ap = v.ApInteracao; v.Critico = "interação N + M (flambagem)"; }
+             if (v.ApCorte > v.Ap) { v.Ap = v.ApCorte; v.Critico = "corte"; }
+             if (v.ApFlecha > v.Ap) { v.Ap = v.ApFlecha; v.Critico = "flecha"; }
+-            if (v.ApFlamb > v.Ap) { v.Ap = v.ApFlamb; v.Critico = "flambagem"; }
++            if (v.ApFlamb > v.Ap) { v.Ap = v.ApFlamb; v.Critico = "flambagem " + (gov == v.ForaPlano ? "fora do plano" : "no plano"); }
++            if (v.ApEsbeltez > v.Ap) { v.Ap = v.ApEsbeltez; v.Critico = "esbeltez " + (v.LimEsbeltez == 200 ? "KL/r > 200" : "L/r > 300"); }
+ 
+-            // NBR 8800: peca comprimida com esbeltez KL/r acima de 200 nao e permitida
+-            if (v.Nc > 1e-6 && v.Esbeltez > 200) v.Aviso = "esbeltez KL/r = " + v.Esbeltez.ToString("0") + " > 200 (limite da NBR 8800 para peças comprimidas)";
++            if (v.Nc > 1e-6 && (gov.Instavel || v.Esbeltez > 200))
++                v.Aviso = gov.Instavel ? "flambagem " + gov.Plano + ": sem travamento suficiente (mecanismo) — declare o travamento fora do plano ou apoie a barra"
++                                       : "esbeltez KL/r = " + v.Esbeltez.ToString("0") + " > 200 " + gov.Plano + " (limite da NBR 8800 para peças comprimidas)";
++            else if (v.Nc <= 1e-6 && v.Nt > 1e-6 && v.ApEsbeltez > 1)
++                v.Aviso = "esbeltez L/r = " + (v.ApEsbeltez * 300).ToString("0") + " > 300 (limite da NBR 8800 para peças tracionadas)";
+             // parede fina: a verificacao nao cobre flambagem local; avisa quando passa dos limites da NBR 8800
+             double esp = sec.Tw > 0 ? sec.Tw : 0;
+             if (sec.Forma == "TC" && esp > 0)
+--- a/portico/src/Testes.cs
++++ b/portico/src/Testes.cs
+@@ -1,6 +1,7 @@
+ // Confere o motor de calculo contra solucoes classicas de tabela.
+ using System;
+ using System.Collections.Generic;
++using System.Linq;
+ 
+ namespace Portico
+ {
+@@ -184,7 +185,9 @@
+             rp = PlacaCalc.Calcular(m, m.Nos[0]);
+             double braco = 150 - 203 / 2.0, largEf = 2 * (2 * braco + 16);
+             Conf("chapa: braco = furo ate a face do perfil", rp.Braco, braco);
+-            Conf("chapa: t = raiz(6.T.e.n / (b.fy))", rp.EspNec, Math.Sqrt(6 * 84000 * braco * 2 / (largEf * 250)));
++            Conf("chapa, lado tracionado: t = raiz(6.T.e.n / (b.fy))", rp.EspNecT, Math.Sqrt(6 * 84000 * braco * 2 / (largEf * 250)));
++            Conf("chapa, lado comprimido: C = soma T - N no giro, e = H/2 - d/2, largura B", rp.EspNecC, Math.Sqrt(6 * (rp.Paraf.Sum(pq => pq[2]) - rp.N) * 1000 * (200 - 203 / 2.0) * 2 / (300 * 250)));
++            Conf("chapa: t necessaria = max(tracionado, comprimido)", rp.EspNec, Math.Max(rp.EspNecT, rp.EspNecC));
+             Conf("parafuso M12 com os mesmos esforcos: seguranca menor que a do M16", PlacaCalc.SegurancaCom(rp, m.Nos[0].Placa, 2, 3) < rp.NComb ? 1 : 0, 1);
+             Secao w200 = Biblioteca.AcharSecao("W 200 x 46,1");
+             Verif vb = Verificador.Barra(m, b, w200);
+@@ -271,11 +274,197 @@
+             Conf("tubo 50x50x2 em A36: sem aviso de parede", vb.Aviso.Contains("parede") ? 0 : 1, 1);
+             Conf("pilar em balanco com KL/r = 306: avisa limite de 200", vb.Aviso.Contains("200") ? 1 : 0, 1);
+ 
++            Guincho();
++
+             Console.WriteLine();
+             Console.WriteLine(falhas == 0 ? "TODOS OS " + total + " TESTES PASSARAM" : falhas + " de " + total + " FALHARAM");
+             return falhas;
+         }
+ 
++        static void Sim(string nome, bool cond) { Conf(nome, cond ? 1 : 0, 1); }
++
++        const string A36 = "Aço ASTM A36";
++        const string COL = "Tubo Ø114,3x7,30", ESC = "Tubo 50x30x2,00", A572 = "Aço ASTM A572 Gr.50";
++
++        // guincho de coluna escorada (exemplo guincho-coluna-escorada.estructto): coluna engastada 5 m, escora do no 4
++        // (-2,5; 0) ao no 2 (0; 4), carga do guincho no topo Fy = -4,95 kN e Mz = -4,95 kN.m. divCol = trechos da coluna
++        // entre a base e o no 2 (o trecho 2-3 sempre existe).
++        static Modelo ModeloGuincho(int divCol = 1)
++        {
++            Modelo m = new Modelo();
++            No n1 = new No { Id = 1, X = 0, Y = 0 }, n2 = new No { Id = 2, X = 0, Y = 4 }, n3 = new No { Id = 3, X = 0, Y = 5, Fy = -4.95, Mz = -4.95, Rotativa = true }, n4 = new No { Id = 4, X = -2.5, Y = 0 };
++            Engaste(n1); Engaste(n4);
++            m.Nos.AddRange(new[] { n1, n2, n3, n4 });
++            n4.Placa = new PlacaBase { Chumbador = "Parabolt PB 1/4\" hef 35 mm", PeloPerfil = true, Sobra = 100, Esp = 19, Fileiras = 2, PorFileira = 2, Borda = 50, Diametro = 16, Classe = "8.8" };
++            int idb = 1, idn = 5; int ant = 1;
++            for (int k = 1; k < divCol; k++) { No x = new No { Id = idn++, X = 0, Y = 4.0 * k / divCol }; m.Nos.Add(x); m.Barras.Add(new Barra { Id = idb++, N1 = ant, N2 = x.Id, Membro = 1, Secao = COL, Material = A572, Dono = m }); ant = x.Id; }
++            m.Barras.Add(new Barra { Id = idb++, N1 = ant, N2 = 2, Membro = 1, Secao = COL, Material = A572, Dono = m });
++            m.Barras.Add(new Barra { Id = idb++, N1 = 2, N2 = 3, Membro = 1, Secao = COL, Material = A572, Dono = m });
++            m.Barras.Add(new Barra { Id = 99, N1 = 4, N2 = 2, Secao = ESC, Material = A572, Dono = m });
++            m.PesoProprio = true; m.Seguranca = 1.5; m.LimiteFlecha = 400;
++            return m;
++        }
++
++        static void Guincho()
++        {
++            Console.WriteLine("-- guincho de coluna escorada: flambagem fora do plano, eixo fraco, inversao, placa inclinada, malha");
++            Modelo m = ModeloGuincho();
++            Resultado r = Solver.Resolver(m);
++            Sim("modelo do guincho resolve", r.Ok);
++            Barra col = m.Barras[0], esc = m.Barras.First(b => b.Id == 99);
++            Secao sc = Biblioteca.AcharSecao(COL), se = Biblioteca.AcharSecao(ESC);
++            No n4 = m.NoPorId(4);
++            Console.WriteLine("   escora N = {0:0.000} kN; reacao no 4: Rx = {1:0.000}, Ry = {2:0.000}, M = {3:0.000}", esc.Res.N(0), n4.Res[3], n4.Res[4], n4.Res[5]);
++
++            // P1: coluna sem travamento fora do plano = engastada-livre em 5 m
++            Verif vc = Verificador.Barra(m, col, sc);
++            Conf("P1 coluna fora do plano: K = 2 (balanco de 5 m)", vc.ForaPlano.K, 2, 1e-4);
++            Conf("P1 coluna fora do plano: lambda = 2.5000/37,92 = 263,7", vc.ForaPlano.Lambda, 2 * 5 / Math.Sqrt(sc.Iy / sc.A), 1e-4);
++            Sim("P1 coluna: KL/r > 200 -> NAO PASSA", !vc.Passa && vc.Critico.Contains("esbeltez"));
++            Sim("P1 coluna: os dois planos foram calculados", vc.NoPlano != null && vc.ForaPlano != null && vc.NoPlano.Lambda < vc.ForaPlano.Lambda);
++            // P6: no 2 travado no plano pela escora (elastico), nao por apoio
++            Console.WriteLine("   coluna no plano: " + vc.NoPlano.Molas + " / Le = " + vc.NoPlano.Le + " Kteo " + vc.NoPlano.KTeorico + " Lref " + vc.NoPlano.Lref);
++            Sim("P6 coluna no plano: no 2 e travamento elastico (mola da escora), nao rigido", vc.NoPlano.Molas.Contains("nó 2") && !vc.NoPlano.Travas.Contains("nó 2"));
++
++            // P2: escora com o eixo certo em cada plano
++            Verif ve = Verificador.Barra(m, esc, se);
++            Conf("P2 escora: inercia no plano = Ix (97480 mm4)", ve.NoPlano.I * 1e12, 97480, 1e-6);
++            Conf("P2 escora: inercia fora do plano = Iy (43680 mm4)", ve.ForaPlano.I * 1e12, 43680, 1e-6);
++            Sim("P3 escora tracionada na posicao lancada (0 graus)", ve.Nc < 1e-6 && ve.Nt > 0);
++            Sim("P3 escora so tracionada com carga giratoria: aviso de inversao", ve.AvisoInversao != "");
++            Sim("P3 escora tracionada: L/r = 4717/12,1 = 389 > 300 -> NAO PASSA", !ve.Passa && ve.LimEsbeltez == 300);
++
++            // P3: posicao oposta (180 graus): a escora comprime
++            Modelo m2 = m.PosicaoOposta();
++            Solver.Resolver(m2);
++            Barra esc2 = m2.Barras.First(b => b.Id == 99);
++            Verif ve2 = Verificador.Barra(m2, esc2, se);
++            Sim("P3 posicao 180 graus: Mz do topo trocou de sinal", m2.NoPorId(3).Mz == 4.95 && m2.NoPorId(3).Fy == -4.95);
++            Sim("P3 posicao 180 graus: escora comprimida", ve2.Nc > 1);
++            Conf("P3 escora comprimida, sem travamento: fora do plano K = 2", ve2.ForaPlano.K, 2, 1e-4);
++            Sim("P3 escora comprimida: NAO PASSA (KL/r > 200)", !ve2.Passa && ve2.Esbeltez > 200);
++            esc2.TravFora = "2";
++            Verif ve3 = Verificador.Barra(m2, esc2, se);
++            double ry = Math.Sqrt(se.Iy / se.A);
++            Conf("P2 escora travada no no 2: lambda = L/ry (Imin) = 4717/12,1", ve3.ForaPlano.Lambda, Math.Sqrt(2.5 * 2.5 + 16) / ry, 1e-4);
++            Sim("P2 escora travada: lambda entre 370 e 400 (conta a mao: 383) -> NAO PASSA", ve3.ForaPlano.Lambda > 370 && ve3.ForaPlano.Lambda < 400 && !ve3.Passa);
++            Sim("P3 escora comprimida: sem aviso de inversao", ve2.AvisoInversao == "");
++
++            // P4: placa do no 4 nos eixos da placa = reacao do no
++            ResPlaca rp = PlacaCalc.Calcular(m, n4);
++            Conf("P4 placa no 4: V = |Rx| da reacao (nao o cortante local da barra)", rp.V, Math.Abs(n4.Res[3]), 1e-6);
++            Conf("P4 placa no 4: N = -Ry", rp.N, -n4.Res[4], 1e-6);
++            Conf("P4 placa no 4: M = -Rm", rp.M, -n4.Res[5], 1e-6);
++            Sim("P4 placa no 4: V > 1 kN (antes saia 0,01)", rp.V > 1 && rp.VBarra < 0.1);
++            Conf("P4/11 placa no 4: soma dos cortes nas fixacoes = |Rx|", rp.Fv * rp.Paraf.Count, Math.Abs(n4.Res[3]), 1e-6);
++            double somaT = 0; foreach (double[] pf in rp.Paraf) somaT += pf[2];
++            if (rp.Modelo.StartsWith("Todos")) Conf("P4/11 placa no 4: soma das tracoes = N (todas tracionadas)", somaT, rp.N, 1e-6);
++            else Sim("P4/11 placa no 4: soma das tracoes >= N (o resto e compressao no concreto)", somaT >= rp.N - 1e-9);
++            Sim("P4 barra inclinada sobre a placa: chapa/solda nao aprovadas", rp.Inclinada && !rp.Passa && rp.Aviso.Contains("inclinada"));
++            // pilar vertical: o mesmo resultado de antes (eixos da placa = eixos locais)
++            ResPlaca rp1; { Modelo mv = ModeloGuincho(); mv.NoPorId(1).Placa = n4.Placa.Copiar(); mv.NoPorId(4).Placa = null; Solver.Resolver(mv); rp1 = PlacaCalc.Calcular(mv, mv.NoPorId(1)); }
++            Sim("P4 pilar vertical: eixos da placa = eixos locais (N, V, M iguais)", Math.Abs(rp1.N - rp1.NBarra) < 1e-9 && Math.Abs(rp1.V - rp1.VBarra) < 1e-9 && Math.Abs(rp1.M - rp1.MBarra) < 1e-9 && !rp1.Inclinada);
++
++            // placa na parede (generico): barra horizontal saindo de um apoio lateral
++            { Modelo mw = new Modelo(); mw.Nos.Add(new No { Id = 1, X = 0, Y = 0 }); mw.Nos.Add(new No { Id = 2, X = 2, Y = 0, Fy = -3 }); Engaste(mw.Nos[0]);
++              mw.Barras.Add(new Barra { Id = 1, N1 = 1, N2 = 2, Secao = "Tubo 50x50x2,00", Material = A36, Dono = mw });
++              mw.Nos[0].Placa = n4.Placa.Copiar(); Solver.Resolver(mw); ResPlaca rw = PlacaCalc.Calcular(mw, mw.Nos[0]);
++              Sim("placa na parede: barra horizontal nao e inclinada; N = -Rx, V = |Ry| = 3", !rw.Inclinada && Math.Abs(rw.N + mw.Nos[0].Res[3]) < 1e-9 && Math.Abs(rw.V - 3) < 1e-6); }
++
++            // P7: coeficiente do chumbador pelo tipo de carga
++            Sim("P7 tipo automatico com carga giratoria = dinamica, n = 7", rp.TipoAuto && rp.TipoCarga == 2 && rp.NExig == 7);
++            n4.Placa.CoefChumbador = 3; n4.Placa.TipoCarga = "dinamica";
++            rp = PlacaCalc.Calcular(m, n4);
++            Sim("P7 n = 3 com carga dinamica: aviso de faixa (7 a 15)", rp.AvisoCoef != "" && rp.NExig == 3);
++            n4.Placa.CoefChumbador = 0; n4.Placa.TipoCarga = "";
++
++            // P5: a divisao da coluna nao muda flambagem nem flecha
++            double[] lp = new double[3], lf = new double[3], top = new double[3], ap = new double[3];
++            int[] divs = { 1, 2, 5 };
++            for (int i = 0; i < 3; i++)
++            {
++                Modelo md = ModeloGuincho(divs[i]); Solver.Resolver(md);
++                Barra b0 = md.Barras[0];
++                Verif vd = Verificador.Barra(md, b0, sc);
++                lp[i] = vd.NoPlano.Lambda; lf[i] = vd.ForaPlano.Lambda; top[i] = md.NoPorId(3).Res[0];
++                ap[i] = md.Barras.Where(b => b.Membro == 1).Max(b => Verificador.Barra(md, b, sc).ApFlamb + Verificador.Barra(md, b, sc).ApEsbeltez);
++            }
++            for (int i = 1; i < 3; i++)
++            {
++                Conf("P5 coluna em " + divs[i] + " trechos: lambda no plano igual", lp[i], lp[0], 1e-9);
++                Conf("P5 coluna em " + divs[i] + " trechos: lambda fora do plano igual", lf[i], lf[0], 1e-9);
++                Conf("P5 coluna em " + divs[i] + " trechos: deslocamento do topo igual", top[i], top[0], 1e-9);
++                Conf("P5 coluna em " + divs[i] + " trechos: aproveitamento de flambagem igual", ap[i], ap[0], 1e-9);
++            }
++            // pilar simples em balanco, 1/2/5/10 trechos
++            double l0 = 0;
++            foreach (int nd in new[] { 1, 2, 5, 10 })
++            {
++                Modelo mb = new Modelo();
++                for (int k = 0; k <= nd; k++) mb.Nos.Add(new No { Id = k + 1, X = 0, Y = 3.0 * k / nd });
++                Engaste(mb.Nos[0]); mb.Nos[nd].Fy = -5;
++                for (int k = 0; k < nd; k++) mb.Barras.Add(new Barra { Id = k + 1, N1 = k + 1, N2 = k + 2, Membro = nd > 1 ? 1 : 0, Secao = "Tubo 50x50x2,00", Material = "Aço ASTM A36", Dono = mb });
++                Solver.Resolver(mb);
++                Verif vb = Verificador.Barra(mb, mb.Barras[nd - 1], Biblioteca.AcharSecao("Tubo 50x50x2,00"));
++                if (nd == 1) l0 = vb.Esbeltez; else Conf("P5 balanco em " + nd + " trechos: KL/r igual ao de 1 trecho", vb.Esbeltez, l0, 1e-9);
++            }
++
++            // K teoricos classicos (autovalor) e minimo K = 1 entre travamentos
++            Func<bool, bool, bool, bool, Flamb> classico = (g0, r1, g1, l1) =>
++            {
++                Modelo mk = new Modelo();
++                mk.Nos.Add(new No { Id = 1, X = 0, Y = 0, ApoioX = true, ApoioY = true, ApoioGiro = g0 });
++                mk.Nos.Add(new No { Id = 2, X = 0, Y = 3, ApoioX = r1, ApoioGiro = g1, Fy = -1 });
++                mk.Barras.Add(new Barra { Id = 1, N1 = 1, N2 = 2, Secao = "Tubo 50x50x2,00", Material = "Aço ASTM A36", Dono = mk });
++                Solver.Resolver(mk);
++                return Verificador.Barra(mk, mk.Barras[0], Biblioteca.AcharSecao("Tubo 50x50x2,00")).NoPlano;
++            };
++            Conf("autovalor: biarticulada K = 1", classico(false, true, false, false).KTeorico, 1, 1e-5);
++            Conf("autovalor: engastada-livre K = 2", classico(true, false, false, false).KTeorico, 2, 1e-5);
++            Conf("autovalor: engastada-articulada K = 0,699", classico(true, true, false, false).KTeorico, 0.69915, 1e-4);
++            Conf("autovalor: biengastada K = 0,5", classico(true, true, true, false).KTeorico, 0.5, 1e-5);
++            Conf("biengastada: K adotado = 1 (nao conta com engaste perfeito)", classico(true, true, true, false).K, 1, 1e-9);
++
++            // P3: modelo sem compressao com carga giratoria -> aviso
++            Modelo mt = new Modelo();
++            mt.Nos.Add(new No { Id = 1, X = 0, Y = 3 }); mt.Nos.Add(new No { Id = 2, X = 0, Y = 0, Fy = -5, Rotativa = true });
++            Engaste(mt.Nos[0]);
++            mt.Barras.Add(new Barra { Id = 1, N1 = 1, N2 = 2, Secao = "Tubo 50x50x2,00", Material = "Aço ASTM A36", Dono = mt });
++            Solver.Resolver(mt);
++            Verif vt = Verificador.Barra(mt, mt.Barras[0], Biblioteca.AcharSecao("Tubo 50x50x2,00"));
++            Sim("P3 barra pendurada com carga giratoria: aviso de inversao", vt.Nc < 1e-6 && vt.AvisoInversao.Contains("inverter"));
++
++            // 10: KL/r > 200 agora reprova no motor (antes so o selo do memorial reprovava)
++            Modelo me = new Modelo();
++            me.Nos.Add(new No { Id = 1, X = 0, Y = 0 }); me.Nos.Add(new No { Id = 2, X = 0, Y = 6, Fy = -0.1 });
++            Engaste(me.Nos[0]);
++            me.Barras.Add(new Barra { Id = 1, N1 = 1, N2 = 2, Secao = "Tubo 50x50x2,00", Material = "Aço ASTM A36", Dono = me });
++            Solver.Resolver(me);
++            Verif vE = Verificador.Barra(me, me.Barras[0], Biblioteca.AcharSecao("Tubo 50x50x2,00"));
++            Sim("10 KL/r > 200 com aproveitamento baixo: motor NAO PASSA", vE.ApFlamb < 1 && !vE.Passa);
++
++            // solda: perna minima normativa pela parte mais fina (tubo 7,3 mm, chapa 8 mm -> 5 mm)
++            Conf("solda: perna minima NBR 8800 Tab.10 (t = 7,3 mm) = 5 mm", NovoFtool.Solda.PernaMinimaNorma(7.3), 5);
++            var sd3 = NovoFtool.Solda.Calcular(sc, false, -8.87, 0.5, 2.32, 3, "E70", 8);
++            Sim("solda: perna 3 mm em tubo 7,3 / chapa 8 -> abaixo do minimo, NAO PASSA mesmo com tensao baixa", sd3.Ap < 1 && sd3.AbaixoMinimo && !sd3.Passa);
++            Sim("solda: Minima() nunca devolve perna abaixo da normativa", NovoFtool.Solda.Minima(sc, false, -8.87, 0.5, 2.32, "E70", 8) >= 5);
++            Conf("solda: n equivalente = 0,577.FEXX/tau (E70: FEXX = 145/0,30)", sd3.NEquiv, 0.577 * (145 / 0.30) / sd3.Tau, 1e-9);
++            // 7: interacao N + M com amplificacao
++            Modelo m3 = m.PosicaoOposta(); Solver.Resolver(m3);
++            Verif vi = Verificador.Barra(m3, m3.Barras[0], sc);
++            Sim("7 interacao: B = 1/(1 - n.Nc/Ne) > 1 e parcela de momento amplificada", vi.Nc > 0 && vi.BAmp > 1 && vi.ApInteracao > vi.ApFlamb);
++            Conf("7 interacao: valor = n.Nc/Ncr,min + B.n.Mmax/(W.fy)", vi.ApInteracao, 1.5 * vi.Nc / Math.Min(vi.NoPlano.Ncr, vi.ForaPlano.Ncr) + vi.BAmp * 1.5 * vi.Mmax / (sc.Wx * 345 * 1000), 1e-9);
++
++            // 11: equilibrio local do no 2 (soma das forcas das barras sobre o no = 0, sem carga no no)
++            double fx = 0, fy = 0, mz = 0;
++            foreach (Barra b in m.Barras.Where(b => b.N1 == 2 || b.N2 == 2))
++            {
++                int k0 = b.N1 == 2 ? 0 : 3; ResBarra rb = b.Res;
++                fx += rb.C * rb.F[k0] - rb.S * rb.F[k0 + 1]; fy += rb.S * rb.F[k0] + rb.C * rb.F[k0 + 1]; mz += rb.F[k0 + 2];
++            }
++            Conf("11 equilibrio do no 2: soma Fx = 0", fx, 0, 1e-6); Conf("11 equilibrio do no 2: soma Fy = 0", fy, 0, 1e-6); Conf("11 equilibrio do no 2: soma M = 0", mz, 0, 1e-6);
++        }
++
+         static double MaxM(Barra b)
+         {
+             double mn, mx;
+--- a/Estructto/RelatorioMemorial.cs
++++ b/Estructto/RelatorioMemorial.cs
+@@ -82,7 +82,21 @@
+         {
+             doc.Blocks.Add(Titulo("9. Memorial de cálculo"));
+             doc.Blocks.Add(Texto("Cada verificação mostra a fórmula, os valores substituídos e o resultado. Nas contas de tensão, as forças vão em N e as medidas em mm, de modo que N/mm² = MPa. " +
+-                                 "Coeficiente de segurança das barras e da chapa: n = " + Fm(M.Seguranca) + ". Flecha limite: L/" + Fm(M.LimiteFlecha, 0) + ". Resultado: " + NomeResultado() + "."));
++                                 "Coeficiente de segurança das barras e da chapa: n = " + Fm(M.Seguranca) + ". Flecha limite: L/" + Fm(M.LimiteFlecha, 0) + ". Resultado: " + NomeResultado() +
++                                 (resCasos != null && resCasos.Rotativa ? " — com carga giratória: cada resultado nas posições 0° e 180° (envoltória)" : "") + "."));
++            var rot = M.Nos.Where(x => x.Rotativa).ToList();
++            if (rot.Count > 0 || M.Psi > 0)
++            {
++                var dd = new Bloco("Dados do equipamento");
++                dd.Tab(Dados(new[]
++                {
++                    new[] { "Nós com carga giratória", "—", rot.Count > 0 ? string.Join(", ", rot.Select(x => x.Id)) : "nenhum", "", "\"Carga giratória (guincho)\" no nó" },
++                    new[] { "Posições analisadas", "—", rot.Count > 0 ? "0° e 180° (Fx e Mz com sinal trocado)" : "—", "", "pórtico plano: 90°/270° (momento fora do plano) não analisadas" },
++                    new[] { "Coef. dinâmico já incluído nas cargas", "ψ", M.Psi > 0 ? Fm(M.Psi, 2) : "NÃO INFORMADO", "—", M.Psi > 0 ? "NBR 8400 (içamento), declarado pelo usuário; o programa não multiplica de novo" : "confirme se a carga do equipamento já inclui ψ (NBR 8400)" },
++                }));
++                if (M.Psi <= 0 && rot.Count > 0) { dd.Nota("⚠ Há carga giratória, mas o coeficiente dinâmico ψ não foi declarado: o memorial não sabe se a carga lançada já está majorada."); dd.S.BorderBrush = Brushes.DarkGoldenrod; }
++                doc.Blocks.Add(dd.S);
++            }
+ 
+             MemorialAnalise(doc);
+             doc.Blocks.Add(Secao2("9.3 Verificação das barras"));
+@@ -92,6 +106,17 @@
+                 doc.Blocks.Add(Secao2("9.4 Placas de base"));
+                 foreach (No n in placas) MemorialPlaca(doc, n);
+             }
++            doc.Blocks.Add(Secao2("9.5 Limitações (o que este memorial NÃO verifica)"));
++            foreach (string lim in new[]
++            {
++                "Verificação simplificada em tensões admissíveis; não substitui a NBR 8800 (estados-limite).",
++                "Pórtico plano: cargas, momentos e vento fora do plano não são analisados; equipamento giratório só nas posições 0° e 180°.",
++                "Flambagem por barra contínua nos dois planos, com compressão uniforme igual à maior da barra (conservador). Fora do plano só travam os apoios e os nós declarados. Apoio do pórtico considerado igual nos dois planos (giro preso nos dois).",
++                "Sem análise de 2ª ordem global (P-Δ); só a amplificação local B = 1/(1 − nN/Ne) na interação N + M, com Cm = 1.",
++                "Sem flambagem lateral com torção (FLT), sem torção e sem flambagem local calculada (parede esbelta só avisada).",
++                "Placa no plano do apoio (piso, teto ou parede: o eixo global mais próximo da barra); barra inclinada sobre a placa: chapa e solda não verificadas. Pressão no concreto, punção da laje e distância do chumbador à borda do concreto não verificadas.",
++                "Cargas de chumbador = cargas últimas médias de ensaio do fabricante; coeficiente pelo tipo de carga (Walsywa: estática 3–5, variável 4–5, dinâmica 7–15, choque 5–10).",
++            }) doc.Blocks.Add(Texto("• " + lim));
+         }
+ 
+         // 9.1 e 9.2: metodo da rigidez, coeficientes de cada barra, esforcos nas pontas e equilibrio global
+@@ -208,7 +233,11 @@
+             {
+                 new[] { "Comprimento", "L", Fm(r.L * 1000, 0), "mm", "geometria" },
+                 new[] { "Área", "A", Fm(s.A * 1e6, 0), "mm²", "catálogo" },
+-                new[] { "Momento de inércia" + (fraco ? " (eixo fraco)" : ""), "I", Fm(I * 1e12, 0), "mm⁴", "catálogo" },
++                new[] { "Orientação da seção", "—", fraco ? "eixo y (fraco) no plano" : "eixo x (forte) no plano", "", "\"Fletir no eixo fraco\" = " + (fraco ? "Sim" : "Não") },
++                new[] { "Inércia eixo x (forte)", "Ix", Fm(s.Ix * 1e12, 0), "mm⁴", "catálogo · " + (fraco ? "flambagem fora do plano" : "flexão e flambagem no plano") },
++                new[] { "Inércia eixo y (fraco)", "Iy", Fm(s.Iy * 1e12, 0), "mm⁴", "catálogo · " + (fraco ? "flexão e flambagem no plano" : "flambagem fora do plano") },
++                new[] { "Raio de giração x / y", "rx / ry", Fm(Math.Sqrt(s.Ix / s.A) * 1000) + " / " + Fm(Math.Sqrt(s.Iy / s.A) * 1000), "mm", "√(I/A)" },
++                new[] { "Inércia usada na tensão e na flecha", "I", Fm(I * 1e12, 0), "mm⁴", fraco ? "Iy (eixo no plano)" : "Ix (eixo no plano)" },
+                 new[] { "Distância à fibra mais afastada", "c", Fm(c * 1000, 1), "mm", "geometria da seção" },
+                 new[] { "Módulo resistente", "W = I/c", Fm(W * 1e9, 0), "mm³", Fm(I * 1e12, 0) + " / " + Fm(c * 1000, 1) },
+                 new[] { "Área de cisalhamento", "As", Fm(As * 1e6, 0), "mm²", s.Forma == "TC" ? "A/2 (tubo redondo)" : "alma" },
+@@ -267,40 +296,87 @@
+             f.Resultado("Aproveitamento = " + Fm(v.Flecha * 1000, 2) + " / " + Fm(v.FlechaAdm * 1000, 2) + " = " + Pct(v.ApFlecha), v.ApFlecha <= 1);
+             f.Selo(v.ApFlecha <= 1); doc.Blocks.Add(f.S);
+ 
+-            var k = new Bloco("4) Flambagem por compressão");
++            // 4a / 4b) flambagem nos dois planos, pela barra continua inteira (mesmo calculo do Verificador)
++            doc.Blocks.Add(BlocoFlamb("4a) Flambagem no plano do pórtico", v.NoPlano, v, s, b, E, fy, n).S);
++            doc.Blocks.Add(BlocoFlamb("4b) Flambagem fora do plano", v.ForaPlano, v, s, b, E, fy, n).S);
++
++            // 5) interacao N + M com estabilidade (so com compressao)
++            var it = new Bloco("5) Interação flexo-compressão com flambagem");
+             if (v.Nc > 1e-6)
+             {
+-                double imin = s.Forma == "L" ? 0.39 * Math.Min(s.Ix, s.Iy) : Math.Min(s.Ix, s.Iy), rg = Math.Sqrt(imin / s.A), l1 = Math.Sqrt(2 * Math.PI * Math.PI * E / fy);
+-                bool euler = v.Esbeltez > l1;
+-                double scr = v.Ncr / (1000 * s.A);
+-                k.Nota("Compressão máxima Nc = " + Fm(v.Nc) + " kN · K = " + Fm(v.K, 0) + (v.Balanco ? " (balanço: engaste e ponta livre)" : " (pontas travadas lateralmente)") + (s.Forma == "L" ? " · cantoneira: Imín = 0,39·I (eixo principal menor)" : ""));
+-                k.Eq("r = \\sqrt{\\frac{I_{min}}{A}} = \\sqrt{\\frac{" + L(imin * 1e12, 0) + "}{" + L(s.A * 1e6, 0) + "}} = " + L(rg * 1000) + Un("mm") +
+-                     " \\;\\;\\;\\;\\;\\; \\lambda = \\frac{K L}{r} = \\frac{" + L(v.K, 0) + " \\cdot " + L(r.L * 1000, 0) + "}{" + L(rg * 1000) + "} = " + L(v.Esbeltez, 1));
+-                k.Eq("\\lambda_1 = \\sqrt{\\frac{2 \\pi^2 E}{f_y}} = \\sqrt{\\frac{2 \\pi^2 \\cdot " + L(E, 0) + "}{" + L(fy, 0) + "}} = " + L(l1, 1));
+-                if (euler)
+-                {
+-                    k.Nota("λ > λ₁: flambagem elástica (Euler).");
+-                    k.Eq("\\sigma_{cr} = \\frac{\\pi^2 E}{\\lambda^2} = \\frac{\\pi^2 \\cdot " + L(E, 0) + "}{" + L(v.Esbeltez, 1) + "^2} = " + L(scr, 1) + Un("MPa"));
+-                }
+-                else
+-                {
+-                    k.Nota("λ ≤ λ₁: flambagem inelástica (parábola de Johnson).");
+-                    k.Eq("\\sigma_{cr} = f_y - \\frac{1}{E}\\left(\\frac{f_y \\lambda}{2\\pi}\\right)^2 = " + L(fy, 0) + " - \\frac{1}{" + L(E, 0) + "}\\left(\\frac{" + L(fy, 0) + " \\cdot " + L(v.Esbeltez, 1) + "}{2\\pi}\\right)^2 = " + L(scr, 1) + Un("MPa"));
+-                }
+-                k.Eq("N_{cr} = \\sigma_{cr} A = \\frac{" + L(scr, 1) + " \\cdot " + L(s.A * 1e6, 0) + "}{1000} = " + L(v.Ncr, 1) + Un("kN") +
+-                     " \\;\\;\\;\\;\\;\\; n \\, N_c = " + L(n) + " \\cdot " + L(v.Nc) + " = " + L(n * v.Nc) + Un("kN") + " \\leq N_{cr}");
+-                k.Resultado("Aproveitamento = " + Fm(n * v.Nc, 2) + " / " + Fm(v.Ncr, 1) + " = " + Pct(v.ApFlamb) + (v.Esbeltez > 200 ? "   ·   KL/r = " + Fm(v.Esbeltez, 0) + " > 200 (fora da NBR 8800)" : "   ·   KL/r ≤ 200 ✓"), v.ApFlamb <= 1 && v.Esbeltez <= 200);
+-                k.Selo(v.ApFlamb <= 1 && v.Esbeltez <= 200);
++                double ncrMin = Math.Min(v.NoPlano.Ncr, v.ForaPlano.Ncr);
++                it.Nota("A tensão do item 1 compara N/A com fy/n; aqui a parcela axial é comparada com a resistência à flambagem do pior plano e o momento é amplificado pelo efeito P-δ da própria barra (Cm = 1, a favor da segurança).");
++                it.Eq("\\frac{n \\, N_c}{N_{cr,min}} + B \\, \\frac{n \\, |M|_{max}}{W f_y} \\leq 1 \\;\\;\\;\\;\\;\\; B = \\frac{1}{1 - n N_c / N_e} \\;\\;\\;\\;\\;\\; N_e = \\frac{\\pi^2 E I}{L_e^2}\\;(\\mathrm{no\\;plano})");
++                if (v.NeNoPlano > 0)
++                    it.Eq("N_e = \\frac{\\pi^2 \\cdot " + L(E, 0) + " \\cdot " + L(v.NoPlano.I * 1e12, 0) + "}{" + L(v.NoPlano.Le * 1000, 0) + "^2} = " + L(v.NeNoPlano, 1) + Un("kN") +
++                         " \\;\\;\\;\\;\\;\\; B = \\frac{1}{1 - " + L(n) + " \\cdot " + L(v.Nc) + " / " + L(v.NeNoPlano, 1) + "} = " + L(v.BAmp, 3));
++                it.Eq("\\frac{" + L(n * v.Nc) + "}{" + L(ncrMin, 2) + "} + " + L(v.BAmp, 3) + " \\cdot \\frac{" + L(n * v.Mmax * 1e6, 0) + "}{" + L(W * 1e9, 0) + " \\cdot " + L(fy, 0) + "} = " + L(v.ApInteracao, 3));
++                it.Resultado("Aproveitamento = " + Pct(v.ApInteracao), v.ApInteracao <= 1);
++                it.Selo(v.ApInteracao <= 1);
++            }
++            else it.Nota("Sem compressão neste resultado: a interação com flambagem não se aplica" + (v.AvisoInversao != "" ? " — ⚠ " + v.AvisoInversao + "." : "."));
++            doc.Blocks.Add(it.S);
++
++            if (v.Aviso != "" || v.AvisoInversao != "")
++            {
++                var a = new Bloco("⚠ Atenção");
++                if (v.Aviso != "") a.Nota(v.Aviso);
++                if (v.AvisoInversao != "") a.Nota(v.AvisoInversao + ".");
++                a.S.BorderBrush = Brushes.DarkGoldenrod; doc.Blocks.Add(a.S);
+             }
+-            else k.Nota("A barra não tem compressão neste resultado: não há flambagem.");
+-            doc.Blocks.Add(k.S);
+-
+-            if (v.Aviso != "") { var a = new Bloco("⚠ Atenção"); a.Nota(v.Aviso); a.S.BorderBrush = Brushes.DarkGoldenrod; doc.Blocks.Add(a.S); }
+ 
+             var res = new Bloco("Resultado da barra " + b.Id);
+-            res.Tab(Tabela(new[] { "Tensão", "Cisalhamento", "Flecha", "Flambagem", "Governa", "Situação" },
+-                new[] { new[] { Pct(v.ApTensao), Pct(v.ApCorte), Pct(v.ApFlecha), v.Nc > 1e-6 ? Pct(v.ApFlamb) : "—", v.Critico + " (" + Pct(v.Ap) + ")", v.Passa ? "passa" : "NÃO PASSA" } }));
+-            res.Selo(v.Passa && v.Aviso == ""); doc.Blocks.Add(res.S);
++            res.Tab(Tabela(new[] { "Tensão", "Cisalhamento", "Flecha", "Flamb. no plano", "Flamb. fora", "Esbeltez", "N + M", "Governa", "Situação" },
++                new[] { new[] { Pct(v.ApTensao), Pct(v.ApCorte), Pct(v.ApFlecha), v.Nc > 1e-6 ? Pct(v.NoPlano.Ap) : "—", v.Nc > 1e-6 ? Pct(v.ForaPlano.Ap) : "—",
++                                v.LimEsbeltez > 0 ? Pct(v.ApEsbeltez) + " (≤" + Fm(v.LimEsbeltez, 0) + ")" : "—", v.Nc > 1e-6 ? Pct(v.ApInteracao) : "—",
++                                v.Critico + " (" + Pct(v.Ap) + ")", v.Passa ? (v.AvisoInversao != "" ? "passa com ⚠" : "passa") : "NÃO PASSA" } }));
++            res.Selo(v.Passa && v.Aviso == "" && v.AvisoInversao == "", v.Passa && v.AvisoInversao != "" ? "⚠ PASSA COM AVISO" : null); doc.Blocks.Add(res.S);
++        }
++
++        // bloco de flambagem de um plano: travamentos, autovalor da barra continua, K, r, lambda, Euler/Johnson, Ncr, KL/r
++        Bloco BlocoFlamb(string titulo, Flamb f, Verif v, Secao s, Barra b, double E, double fy, double n)
++        {
++            var k = new Bloco(titulo + " — eixo " + f.Eixo);
++            List<int> nos; var cad = Flambagem.Cadeia(M, b, out nos);
++            k.Nota("Calculada para a " + (cad.Count > 1 ? "barra contínua B" + b.Membro + " inteira (" + cad.Count + " trechos, nós " + string.Join("–", nos) + ")" : "barra inteira (nós " + string.Join("–", nos) + ")") +
++                   ", por análise de flambagem (autovalor) com compressão uniforme igual à maior da barra: o resultado não depende de como a barra foi dividida.");
++            k.Nota("Pontos travados: " + f.Travas + (f.Molas != "" ? " · travamentos elásticos: " + f.Molas : "") + "." +
++                   (f.Plano.StartsWith("fora") ? " Fora do plano só travam os apoios e os nós declarados em \"Travamento fora do plano\" (" + (string.IsNullOrEmpty(b.TravFora) ? "nenhum declarado" : b.TravFora) + ")." :
++                                                 " Nó travado por outra barra é elástico (deslocável): entra com a rigidez do resto da estrutura; não há análise de 2ª ordem global (P-Δ)."));
++            double l1 = Math.Sqrt(2 * Math.PI * Math.PI * E / fy);
++            k.Eq("r = \\sqrt{\\frac{I}{A}} = \\sqrt{\\frac{" + L(f.I * 1e12, 0) + "}{" + L(s.A * 1e6, 0) + "}} = " + L(f.R * 1000) + Un("mm"));
++            if (f.Instavel)
++            {
++                k.Nota("Sem travamento suficiente neste plano: a barra é um mecanismo (pode se deslocar sem resistência). Comprimento de flambagem infinito.");
++                k.Resultado(v.Nc > 1e-6 ? "Não verificável: NÃO PASSA até declarar travamento ou apoio" : "Sem compressão neste resultado: L/r de tração = " + Fm(f.LambdaT, 0), v.Nc > 1e-6 ? false : (bool?)null);
++                if (v.Nc > 1e-6) k.Selo(false);
++                return k;
++            }
++            k.Eq("L_e = \\pi \\sqrt{\\frac{E I}{N_{cr,el}}} = " + L(f.Le * 1000, 0) + Un("mm") + " \\;\\;\\;\\;\\;\\; K = \\frac{L_e}{L} = \\frac{" + L(f.Le * 1000, 0) + "}{" + L(f.Lref * 1000, 0) + "} = " + L(f.K, 2) +
++                 " \\;\\;\\;\\;\\;\\; \\lambda = \\frac{K L}{r} = \\frac{" + L(f.Le * 1000, 0) + "}{" + L(f.R * 1000) + "} = " + L(f.Lambda, 1));
++            k.Nota("L = maior trecho entre pontos travados (rígidos ou elásticos) = " + Fm(f.Lref * 1000, 0) + " mm; K teórico do autovalor = " + Fm(f.KTeorico, 3) +
++                   (f.KMinimo ? " < 1: adotado K = 1 (não se conta com engaste perfeito entre travamentos)." : "."));
++            if (v.Nc > 1e-6)
++            {
++                k.Eq("\\lambda_1 = \\sqrt{\\frac{2 \\pi^2 E}{f_y}} = \\sqrt{\\frac{2 \\pi^2 \\cdot " + L(E, 0) + "}{" + L(fy, 0) + "}} = " + L(l1, 1));
++                if (f.Euler) k.Eq("\\lambda > \\lambda_1 \\;(\\mathrm{Euler}): \\;\\; \\sigma_{cr} = \\frac{\\pi^2 E}{\\lambda^2} = \\frac{\\pi^2 \\cdot " + L(E, 0) + "}{" + L(f.Lambda, 1) + "^2} = " + L(f.Scr, 1) + Un("MPa"));
++                else k.Eq("\\lambda \\leq \\lambda_1 \\;(\\mathrm{Johnson}): \\;\\; \\sigma_{cr} = f_y - \\frac{1}{E}\\left(\\frac{f_y \\lambda}{2\\pi}\\right)^2 = " + L(fy, 0) + " - \\frac{1}{" + L(E, 0) + "}\\left(\\frac{" + L(fy, 0) + " \\cdot " + L(f.Lambda, 1) + "}{2\\pi}\\right)^2 = " + L(f.Scr, 1) + Un("MPa"));
++                k.Eq("N_{cr} = \\sigma_{cr} A = \\frac{" + L(f.Scr, 1) + " \\cdot " + L(s.A * 1e6, 0) + "}{1000} = " + L(f.Ncr, 2) + Un("kN") +
++                     " \\;\\;\\;\\;\\;\\; n \\, N_c = " + L(n) + " \\cdot " + L(v.Nc) + " = " + L(n * v.Nc) + Un("kN") + " \\leq N_{cr}");
++                bool ok = f.Ap <= 1 && f.Lambda <= 200;
++                k.Resultado("Aproveitamento = " + Fm(n * v.Nc, 2) + " / " + Fm(f.Ncr, 2) + " = " + Pct(f.Ap) + (f.Lambda > 200 ? "   ·   KL/r = " + Fm(f.Lambda, 0) + " > 200 (NBR 8800)" : "   ·   KL/r ≤ 200 ✓"), ok);
++                k.Selo(ok);
++            }
++            else if (v.Nt > 1e-6)
++            {
++                bool ok = f.LambdaT <= 300;
++                k.Nota("Sem compressão neste resultado: Ncr não foi comparado com esforço nenhum (flambagem NÃO verificada)." + (v.AvisoInversao != "" ? " ⚠ " + v.AvisoInversao + "." : ""));
++                k.Eq("\\frac{L}{r} = \\frac{" + L(f.LDestr * 1000, 0) + "}{" + L(f.R * 1000) + "} = " + L(f.LambdaT, 1) + " \\;\\leq\\; 300 \\;\\;(\\mathrm{tracao,\\;NBR\\;8800})");
++                k.Resultado("Esbeltez de tração: " + Fm(f.LambdaT, 0) + (ok ? " ≤ 300" : " > 300"), ok);
++                k.Selo(ok, ok ? "⚠ SÓ TRAÇÃO" : null);
++            }
++            else k.Nota("Sem esforço normal neste resultado.");
++            return k;
+         }
+ 
+         void MemorialPlaca(FlowDocument doc, No n)
+@@ -314,13 +390,19 @@
+             var d = new Bloco("Dados");
+             var linhas = new List<string[]>
+             {
+-                new[] { "Esforços no pé do pilar", "N / V / M", Fm(r.N) + " / " + Fm(r.V) + " / " + Fm(r.M), "kN / kN / kN·m", "análise (N + tração)" },
++                new[] { "Reação do nó " + n.Id, "Rx / Ry / M", Fm(r.Rx) + " / " + Fm(r.Ry) + " / " + Fm(r.Rm), "kN / kN / kN·m", "análise (eixos globais)" },
++                new[] { "Esforços nos eixos da PLACA", "N / V / M", Fm(r.N) + " / " + Fm(r.V) + " / " + Fm(r.M), "kN / kN / kN·m", (r.NormY != 0 ? "placa no piso/teto: N = " + (r.NormY > 0 ? "−Ry" : "+Ry") + ", V = |Rx|" : "placa na parede: N = " + (r.NormX > 0 ? "−Rx" : "+Rx") + ", V = |Ry|") + ", M = −M" },
++                new[] { "Mesmos esforços nos eixos da barra", "N / V / M", Fm(r.NBarra) + " / " + Fm(r.VBarra) + " / " + Fm(r.MBarra), "kN / kN / kN·m", r.Inclinada ? "só informativo (barra a " + Fm(r.AngNormal, 1) + "° da normal)" : "iguais (barra perpendicular à placa)" },
+                 new[] { "Placa", "H × B × t", Fm(r.H, 0) + " × " + Fm(r.B, 0) + " × " + Fm(p.Esp, 1), "mm", p.PeloPerfil ? "perfil + " + Fm(p.Sobra, 0) + " mm de cada lado" : "digitado" },
+                 new[] { "Aço da chapa", "fy", Fm(r.FyChapa, 0), "MPa", "" },
+                 new[] { "Fixações", "nb", nb + " (" + p.Fileiras + " fileiras × " + p.PorFileira + ")", "—", "borda " + Fm(p.Borda, 0) + " mm" },
+             };
+             if (r.Ch != null)
++            {
+                 linhas.Add(new[] { "Chumbador", "", r.Ch.Nome, "", r.Ch.Fabricante + ", concreto " + Fm(r.Ch.Fck, 0) + " MPa" });
++                linhas.Add(new[] { "Tipo de carga do chumbador", "", Chumbadores.NomesTipos[r.TipoCarga], "", r.TipoAuto ? "automático (" + (M.TemRotativa ? "há carga giratória" : "nenhum escolhido; nunca estática por omissão") + ")" : "escolhido pelo usuário" });
++                linhas.Add(new[] { "Coef. de segurança do chumbador", "n", Fm(r.NExig, 1), "—", (p.CoefChumbador > 0 ? "digitado" : "mínimo da faixa do tipo") + " · Walsywa: " + Fm(Chumbadores.CoefMin[r.TipoCarga], 0) + " a " + Fm(Chumbadores.CoefMax[r.TipoCarga], 0) });
++            }
+             else
+                 linhas.Add(new[] { "Parafuso", "d / classe", "M" + Fm(p.Diametro, 0) + " / " + p.Classe, "", "At = " + Fm(r.At, 1) + " mm², Sp = " + Fm(r.Sp, 0) + " MPa" });
+             d.Tab(Dados(linhas)); doc.Blocks.Add(d.S);
+@@ -366,33 +448,52 @@
+             fx.Selo(r.NComb >= r.NExig); doc.Blocks.Add(fx.S);
+ 
+             var ch = new Bloco("3) Espessura da chapa");
+-            if (r.EspNec > 0)
++            if (r.Inclinada)
++            {
++                ch.Nota("⚠ Barra inclinada " + Fm(r.AngNormal, 1) + "° em relação à normal da placa: o modelo de faixa em balanço até a face do perfil supõe o perfil perpendicular à placa e NÃO vale aqui. Chapa não verificada.");
++                ch.Selo(false, "⚠ NÃO VERIFICADO");
++            }
++            else if (r.EspNecT > 0 || r.EspNecC > 0)
+             {
+-                ch.Nota("A faixa de chapa entre a fileira tracionada e a face do perfil trabalha em balanço: M = T·e e σ = 6M/(b·t²) ≤ fy/n.");
+-                ch.Eq("t = \\sqrt{\\frac{6 \\, T \\, e \\, n}{b \\, f_y}} = \\sqrt{\\frac{6 \\cdot " + L(r.TLinha * 1000, 0) + " \\cdot " + L(r.Braco, 0) + " \\cdot " + L(M.Seguranca) + "}{" + L(r.LargEf, 0) + " \\cdot " + L(r.FyChapa, 0) + "}} = " + L(r.EspNec) + Un("mm"));
+-                ch.Nota("T = tração da fileira crítica; e = distância da fileira à face do perfil; b = largura efetiva = nº de fixações × (2e + d), limitada à largura da placa.");
+-                ch.Resultado("t necessária " + Fm(r.EspNec, 2) + " mm  ≤  t adotada " + Fm(p.Esp, 1) + " mm", r.EspNec <= p.Esp);
++                if (r.EspNecT > 0)
++                {
++                    ch.Nota("Lado tracionado: a faixa de chapa entre a fileira tracionada e a face do perfil trabalha em balanço: M = T·e e σ = 6M/(b·t²) ≤ fy/n.");
++                    ch.Eq("t_T = \\sqrt{\\frac{6 \\, T \\, e \\, n}{b \\, f_y}} = \\sqrt{\\frac{6 \\cdot " + L(r.TLinha * 1000, 0) + " \\cdot " + L(r.Braco, 0) + " \\cdot " + L(M.Seguranca) + "}{" + L(r.LargEf, 0) + " \\cdot " + L(r.FyChapa, 0) + "}} = " + L(r.EspNecT) + Un("mm"));
++                    ch.Nota("T = tração da fileira crítica; e = distância da fileira à face do perfil; b = largura efetiva = nº de fixações × (2e + d), limitada à largura da placa.");
++                }
++                if (r.EspNecC > 0)
++                {
++                    ch.Nota("Lado comprimido: o modelo de placa rígida concentra a reação do concreto C = ΣT − N na linha de giro; a faixa da linha de giro até a face do perfil também trabalha em balanço (largura B da placa).");
++                    ch.Eq("C = \\sum T_i - N = " + L(r.CConc + r.N, 3) + " - (" + L(r.N, 3) + ") = " + L(r.CConc, 3) + Un("kN") + " \\;\\;\\;\\;\\;\\; e_c = |y_0| - \\frac{d}{2} = " + L(Math.Abs(r.PivoY), 0) + " - " + L(r.RefIn / 2, 1) + " = " + L(r.BracoC, 1) + Un("mm"));
++                    ch.Eq("t_C = \\sqrt{\\frac{6 \\, C \\, e_c \\, n}{B \\, f_y}} = \\sqrt{\\frac{6 \\cdot " + L(r.CConc * 1000, 0) + " \\cdot " + L(r.BracoC, 1) + " \\cdot " + L(M.Seguranca) + "}{" + L(r.B, 0) + " \\cdot " + L(r.FyChapa, 0) + "}} = " + L(r.EspNecC) + Un("mm"));
++                    ch.Nota("Se a chapa não tiver essa rigidez, a reação se espalha (a placa não é rígida) e as trações dos chumbadores ficam maiores que as do item 1: use t ≥ t_C ou nervuras. A pressão no concreto não é verificada.");
++                }
++                ch.Resultado("t necessária = máx(t_T, t_C) = " + Fm(r.EspNec, 2) + " mm  " + (r.EspNec <= p.Esp ? "≤" : ">") + "  t adotada " + Fm(p.Esp, 1) + " mm", r.EspNec <= p.Esp);
+                 ch.Selo(r.EspNec <= p.Esp);
+             }
+-            else ch.Nota("Sem fixação tracionada fora da projeção do perfil: a chapa não trabalha à flexão neste modelo.");
++            else ch.Nota("Sem fixação tracionada fora da projeção do perfil e sem reação concentrada do concreto: a chapa não trabalha à flexão neste modelo.");
+             doc.Blocks.Add(ch.S);
+ 
+             if (r.Sec != null)
+             {
+-                double h = p.Solda > 0 ? p.Solda : Solda.Minima(r.Sec, r.Deitado, r.N, r.V, r.M, p.Eletrodo);
++                double h = p.Solda > 0 ? p.Solda : Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, p.Eletrodo, p.Esp);
+                 if (h <= 0) h = 25;
+-                ResSolda sd = Solda.Calcular(r.Sec, r.Deitado, r.N, r.V, r.M, h, p.Eletrodo);
++                ResSolda sd = Solda.Calcular(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, h, p.Eletrodo, p.Esp);
+                 var so = new Bloco("4) Solda de filete pilar–placa (" + sd.Grupo + ")");
+-                if (sd.Erro == "")
++                if (r.Inclinada) { so.Nota("⚠ Barra inclinada sobre a placa: o grupo de solda abaixo supõe o perfil perpendicular à chapa (cordão plano). Para barra inclinada o cordão é chanfrado e o cálculo não vale: solda NÃO verificada."); so.Selo(false, "⚠ NÃO VERIFICADO"); }
++                else if (sd.Erro == "")
+                 {
++                    so.Nota("Esforços da solda nos eixos da barra (N = " + Fm(r.NBarra) + " kN, V = " + Fm(r.VBarra) + " kN, M = " + Fm(r.MBarra) + " kN·m). N e M dão tensão na mesma direção (normal ao plano da garganta, ao longo do eixo da barra); somam-se na fibra mais afastada, que é o ponto crítico do contorno.");
+                     so.Eq("a = 0{,}707 \\, h = 0{,}707 \\cdot " + L(h, 0) + " = " + L(0.707 * h) + Un("mm") + " \\;\\;\\;\\;\\;\\; A = a \\, L_c = " + L(0.707 * h) + " \\cdot " + L(sd.L, 0) + " = " + L(sd.A, 0) + Un("mm^2") + " \\;\\;\\;\\;\\;\\; I = a \\, I_u = " + L(sd.I, 0) + Un("mm^4"));
+-                    so.Eq("\\tau' = \\frac{V}{A} = \\frac{" + L(r.V * 1000, 0) + "}{" + L(sd.A, 0) + "} = " + L(sd.Tau1) + Un("MPa"));
+-                    double tN = Math.Abs(r.N) * 1000 / sd.A, tM = sd.Tau2 - tN, cS = tM > 1e-9 ? tM * sd.I / (Math.Abs(r.M) * 1e6) : 0;
+-                    so.Eq("\\tau'' = \\frac{N}{A} + \\frac{M \\, c}{I} = \\frac{" + L(Math.Abs(r.N) * 1000, 0) + "}{" + L(sd.A, 0) + "} + \\frac{" + L(Math.Abs(r.M) * 1e6, 0) + " \\cdot " + L(cS, 1) + "}{" + L(sd.I, 0) + "} = " + L(tN) + " + " + L(tM) + " = " + L(sd.Tau2) + Un("MPa"));
+-                    so.Eq("\\tau = \\sqrt{\\tau'^2 + \\tau''^2} = \\sqrt{" + L(sd.Tau1) + "^2 + " + L(sd.Tau2) + "^2} = " + L(sd.Tau) + Un("MPa") + " \\;\\leq\\; \\tau_{adm} = " + L(sd.TauAdm, 0) + Un("MPa"));
+-                    so.Nota("Eletrodo " + (string.IsNullOrEmpty(p.Eletrodo) ? "E70" : p.Eletrodo) + "XX. Lc = comprimento do cordão; Iu = inércia do contorno da solda como linha; c = distância à fibra mais afastada.");
+-                    so.Resultado("Aproveitamento = " + Pct(sd.Ap) + "   ·   comprimento necessário ≈ L·τ/τadm = " + Fm(sd.LNec, 0) + " mm de " + Fm(sd.L, 0) + " mm", sd.Passa);
+-                    if (sd.Espessura > 0 && h > sd.Espessura) so.Nota("⚠ Perna maior que a parede do perfil (" + Fm(sd.Espessura, 1) + " mm).");
++                    so.Eq("\\tau' = \\frac{V}{A} = \\frac{" + L(r.VBarra * 1000, 0) + "}{" + L(sd.A, 0) + "} = " + L(sd.Tau1) + Un("MPa"));
++                    double tN = Math.Abs(r.NBarra) * 1000 / sd.A, tM = sd.Tau2 - tN, cS = tM > 1e-9 ? tM * sd.I / (Math.Abs(r.MBarra) * 1e6) : 0;
++                    so.Eq("\\tau'' = \\frac{N}{A} + \\frac{M \\, c}{I} = \\frac{" + L(Math.Abs(r.NBarra) * 1000, 0) + "}{" + L(sd.A, 0) + "} + \\frac{" + L(Math.Abs(r.MBarra) * 1e6, 0) + " \\cdot " + L(cS, 1) + "}{" + L(sd.I, 0) + "} = " + L(tN) + " + " + L(tM) + " = " + L(sd.Tau2) + Un("MPa"));
++                    so.Eq("\\tau = \\sqrt{\\tau'^2 + \\tau''^2} = \\sqrt{" + L(sd.Tau1) + "^2 + " + L(sd.Tau2) + "^2} = " + L(sd.Tau) + Un("MPa") + " \\;\\leq\\; \\tau_{adm} = 0{,}30 \\, F_{EXX} = " + L(sd.TauAdm, 0) + Un("MPa"));
++                    so.Eq("n_{equiv} = \\frac{0{,}577 \\, F_{EXX}}{\\tau} = \\frac{0{,}577 \\cdot " + L(sd.TauAdm / 0.30, 0) + "}{" + L(sd.Tau) + "} = " + L(sd.NEquiv) + " \\;\\;(\\mathrm{von\\;Mises})");
++                    so.Nota("Eletrodo " + (string.IsNullOrEmpty(p.Eletrodo) ? "E70" : p.Eletrodo) + "XX. τadm = 0,30·FEXX (AISC, tensões admissíveis) já embute a segurança; n_equiv é o fator equivalente pelo critério de von Mises sobre a resistência do eletrodo. Lc = comprimento do cordão; Iu = inércia do contorno como linha; c = fibra mais afastada.");
++                    so.Eq("h \\geq h_{min} = " + L(sd.HMinNorma, 0) + Un("mm") + " \\;\\;(\\mathrm{NBR\\;8800\\;Tab.\\;10,\\;parte\\;mais\\;fina:\\;} t = " + L(Math.Min(sd.Espessura > 0 ? sd.Espessura : 1e9, p.Esp > 0 ? p.Esp : 1e9), 1) + Un("mm") + ")");
++                    so.Resultado("Aproveitamento = " + Pct(sd.Ap) + "   ·   perna " + Fm(h, 0) + " mm " + (sd.AbaixoMinimo ? "< mínima " + Fm(sd.HMinNorma, 0) + " mm (NÃO PASSA)" : "≥ mínima " + Fm(sd.HMinNorma, 0) + " mm") + "   ·   comprimento necessário ≈ " + Fm(sd.LNec, 0) + " mm de " + Fm(sd.L, 0) + " mm", sd.Passa);
++                    if (sd.MaiorQueParede) so.Nota("⚠ Perna maior que a parede do perfil (" + Fm(sd.Espessura, 1) + " mm): NÃO PASSA.");
+                     so.Selo(sd.Passa);
+                 }
+                 else so.Nota(sd.Erro);
+--- a/Estructto/Analise.cs
++++ b/Estructto/Analise.cs
+@@ -13,6 +13,10 @@
+         public string Erro = "";
+         public List<Dictionary<int, ResBarra>> Barras = new List<Dictionary<int, ResBarra>>();   // por caso: Id da barra -> resultado
+         public List<Dictionary<int, double[]>> Nos = new List<Dictionary<int, double[]>>();      // por caso: Id do no -> ux, uy, giro, Rx, Ry, Rm
++        // carga giratoria: os mesmos casos com o equipamento na posicao oposta (180 graus); vazio se nao ha carga giratoria
++        public List<Dictionary<int, ResBarra>> Barras180 = new List<Dictionary<int, ResBarra>>();
++        public List<Dictionary<int, double[]>> Nos180 = new List<Dictionary<int, double[]>>();
++        public bool Rotativa { get { return Barras180.Count > 0; } }
+     }
+ 
+     public static class Analise
+@@ -34,6 +38,15 @@
+                 }
+                 r.Barras.Add(c.Barras.ToDictionary(b => b.Id, b => b.Res));
+                 r.Nos.Add(c.Nos.ToDictionary(n => n.Id, n => n.Res));
++                if (m.TemRotativa)
++                {
++                    Modelo o = c.PosicaoOposta();
++                    o.PesoProprio = c.PesoProprio;
++                    Resultado ro = Solver.Resolver(o);
++                    if (!string.IsNullOrEmpty(ro.Erro)) { r.Erro = "Posição 180° do equipamento: " + ro.Erro; return r; }
++                    r.Barras180.Add(o.Barras.ToDictionary(b => b.Id, b => b.Res));
++                    r.Nos180.Add(o.Nos.ToDictionary(n => n.Id, n => n.Res));
++                }
+             }
+             return r;
+         }
+--- a/Estructto/Casos.cs
++++ b/Estructto/Casos.cs
+@@ -54,12 +54,21 @@
+                 Log("Não há combinações " + resSel.Substring(4) + ": crie em Cargas → Casos e combinações. Mostrando o caso ativo.");
+                 resSel = "ativo";
+             }
+-            if (resSel.StartsWith("env:"))
++            bool rot = resCasos.Rotativa;
++            if (resSel.StartsWith("env:") || rot)
+             {
+-                var combs = CombinacoesDaEnvoltoria();
+-                Vista.Envoltoria = M.Barras.ToDictionary(b => b, b => { var pc = PorCaso(b); return combs.Select(c => Analise.Combinar(pc, c.Fatores)).ToList(); });
+-                Vista.EnvNos = M.Nos.ToDictionary(n => n, n => { var pc = PorCaso(n); return combs.Select(c => Analise.CombinarNo(pc, c.Fatores)).ToList(); });
+-                Vista.NomesEnv = combs.Select(c => c.Nome).ToList();
++                // envoltoria das combinacoes; com carga giratoria, cada resultado nas posicoes 0 e 180 graus
++                var itens = resSel.StartsWith("env:") ? CombinacoesDaEnvoltoria().Select(c => (c.Nome, (IList<double>)c.Fatores)).ToList()
++                                                      : new List<(string, IList<double>)> { (NomeResultado(), FatoresAtuais()) };
++                var nomes = new List<string>(); var fats = new List<IList<double>>(); var pos = new List<bool>();
++                foreach (var it in itens)
++                {
++                    nomes.Add(rot ? it.Item1 + " (0°)" : it.Item1); fats.Add(it.Item2); pos.Add(false);
++                    if (rot) { nomes.Add(it.Item1 + " (180°)"); fats.Add(it.Item2); pos.Add(true); }
++                }
++                Vista.Envoltoria = M.Barras.ToDictionary(b => b, b => { var pc = PorCaso(b); var p180 = rot ? resCasos.Barras180.Select(d => d[b.Id]).ToList() : null; return fats.Select((f, i) => Analise.Combinar(pos[i] ? p180 : pc, f)).ToList(); });
++                Vista.EnvNos = M.Nos.ToDictionary(n => n, n => { var pc = PorCaso(n); var p180 = rot ? resCasos.Nos180.Select(d => d[n.Id]).ToList() : null; return fats.Select((f, i) => Analise.CombinarNo(pos[i] ? p180 : pc, f)).ToList(); });
++                Vista.NomesEnv = nomes;
+                 foreach (Barra b in M.Barras) b.Res = Vista.Envoltoria[b][0];
+                 foreach (No n in M.Nos) n.Res = Vista.EnvNos[n][0];
+             }
+@@ -117,6 +126,9 @@
+                 i++;
+             }
+             b.Res = orig;
++            // o aviso de inversao so vale se NENHUMA combinacao/posicao comprime a barra
++            if (pior != null && pior.AvisoInversao != "" && Vista.Envoltoria[b].Any(r => { double mn, mx; r.Extremos(0, out mn, out mx); return mn < -1e-6; }))
++                pior.AvisoInversao = "";
+             if (pior != null && pior.Aplicavel && Vista.NomesEnv != null) pior.Critico += " (" + Vista.NomesEnv[ip] + ")";
+             return pior ?? Verificador.Barra(M, b, sec);
+         }
+--- a/Estructto/Janelas.cs
++++ b/Estructto/Janelas.cs
+@@ -423,6 +423,13 @@
+         public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext c) { return new StandardValuesCollection(Chumbadores.CoefSugeridos.Select(x => Num.Fmt(x, 0)).ToList()); }
+     }
+ 
++    public class ListaTipoCarga : StringConverter
++    {
++        public override bool GetStandardValuesSupported(ITypeDescriptorContext c) { return true; }
++        public override bool GetStandardValuesExclusive(ITypeDescriptorContext c) { return true; }
++        public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext c) { return new StandardValuesCollection(new[] { "automático" }.Concat(Chumbadores.NomesTipos).ToList()); }
++    }
++
+     // Fachada da PlacaBase com nomes e unidades para a grade de propriedades
+     public class PlacaEdit
+     {
+@@ -464,8 +471,15 @@
+          Description("Divide a carga de ruptura do catálogo. Walsywa recomenda: estática 3 (baixo risco) a 5 (alto); variável 4 a 5; dinâmica 7 a 15; choque 5 a 10.")]
+         public string CoefChumb
+         {
+-            get { return Num.Fmt(P.CoefChumbador > 0 ? P.CoefChumbador : 3, 1); }
+-            set { double v; if (Num.Ler(value, out v) && v > 0) P.CoefChumbador = v; }
++            get { return P.CoefChumbador > 0 ? Num.Fmt(P.CoefChumbador, 1) : "0 (pelo tipo de carga)"; }
++            set { double v; if (Num.Ler(value, out v) && v >= 0) P.CoefChumbador = v; }
++        }
++        [Category("2. Parafusos"), DisplayName("Tipo de carga (chumbador)"), TypeConverter(typeof(ListaTipoCarga)),
++         Description("Define o coeficiente do chumbador quando o campo do coeficiente é 0: estática 3, variável 4, dinâmica 7, choque 5 (mínimos da faixa Walsywa). Automático = dinâmica se houver carga giratória, senão variável.")]
++        public string TipoCarga
++        {
++            get { int i = Array.IndexOf(Chumbadores.Tipos, (P.TipoCarga ?? "").ToLowerInvariant()); return i < 0 ? "automático" : Chumbadores.NomesTipos[i]; }
++            set { int i = Array.IndexOf(Chumbadores.NomesTipos, value); P.TipoCarga = i < 0 ? "" : Chumbadores.Tipos[i]; }
+         }
+         [Category("1. Medidas"), DisplayName("Medir pelo perfil"), TypeConverter(typeof(SimNao)), Description("Sim = perfil do pilar + sobra de cada lado (arredonda de 10 em 10 mm). Não = medidas digitadas.")]
+         public bool PeloPerfil { get { return P.PeloPerfil; } set { P.PeloPerfil = value; } }
+@@ -599,9 +613,9 @@
+         ResSolda SoldaPilar(ResPlaca r)
+         {
+             if (!r.TemEsforcos || r.Sec == null) return null;
+-            double h = edit.Solda > 0 ? edit.Solda : Solda.Minima(r.Sec, r.Deitado, r.N, r.V, r.M, edit.Eletrodo);
++            double h = edit.Solda > 0 ? edit.Solda : Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, edit.Eletrodo, edit.Esp);
+             if (h <= 0) h = 25;
+-            return Solda.Calcular(r.Sec, r.Deitado, r.N, r.V, r.M, h, edit.Eletrodo);
++            return Solda.Calcular(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, h, edit.Eletrodo, edit.Esp);
+         }
+ 
+         // Menor parafuso (mesma classe; se nenhum passar, classes mais fortes), menor chapa comercial e perna minima de solda.
+@@ -632,7 +646,7 @@
+             r = PlacaCalc.Calcular(m, n);
+             double ch = PlacaCalc.Chapas.FirstOrDefault(e => e >= r.EspNec - 1e-9);
+             if (ch > 0) edit.Esp = ch;
+-            if (r.Sec != null) { double h = Solda.Minima(r.Sec, r.Deitado, r.N, r.V, r.M, edit.Eletrodo); edit.Solda = h > 0 ? h : 25; }
++            if (r.Sec != null) { double h = Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, edit.Eletrodo, edit.Esp); edit.Solda = h > 0 ? h : 25; }
+         }
+ 
+         public JanelaPlaca(Modelo m, No n)

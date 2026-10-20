@@ -1,0 +1,12 @@
+# material de terceiros e com direito autoral (aulas, catálogos): não vai para o repositório público
+_terceiros/
+referencias/
+
+# binários: o Estructto.exe sai na aba Releases do GitHub (comando de publicação no README)
+*.exe
+bin/
+obj/
+
+# Google Drive / Windows
+desktop.ini
+Thumbs.db

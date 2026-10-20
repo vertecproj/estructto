@@ -1,0 +1,58 @@
+# Changelog do projeto
+
+Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+
+## 19/10/2026 — Bruno
+
+- **Função "Comparar fixações" ([TAREFA-COMPARAR-FIXACOES.md](TAREFA-COMPARAR-FIXACOES.md)):**
+  - **Dados embutidos:** `codigo/portico/fixacoes.csv` (12 linhas de produto: 9 calculáveis de `chumbadores.csv` + 3 informativas `Walsywa WLT`, `Walsywa Golpe de Metal`, `Walsywa PU 500`, com atributos da tabela 5.1 e textos da seção 2 de [FIXACOES-GUIA.md](FIXACOES-GUIA.md)) e `codigo/portico/fixacoes-pares.csv` (11 pares comparativos da seção 5.2). Embutidos em `Estructto.csproj` e `compilar.ps1`.
+  - **Motor (`codigo/portico/src/Nucleo.cs`):** acrescentadas no fim do arquivo as classes `FixacaoLinha`, `ParFixacao`, `ColunaComparacao` e `Fixacoes`, reutilizando `Biblioteca.Linhas` e `PlacaCalc.CandidatoChumbador` (sem alterar nada existente).
+  - **Interface (`codigo/Estructto/JanelaComparar.cs`):** nova janela `JanelaComparar : JanelaEscura` com construtor `JanelaComparar(Modelo m, No n, ResPlaca r, PlacaBase p, IEnumerable<string> iniciais)`, busca, filtros, lista de todas as linhas, colunas lado a lado com rolagem horizontal, barras "Capacidade usada", textos de uso/limitações, comparativo de pares (5.2) e avisos obrigatórios (5.3). `Janelas.cs` e `Acoes.cs` não foram editados (edição concorrente; botão "Comparar…" será ligado em `JanelaPlaca`).
+  - **Testes (`codigo/portico/src/Testes.cs`):** 26 verificações novas (total: 196 testes passando em `compilar.ps1 -Testes`; `dotnet build` com 0 erros e 0 avisos).
+  - Botão "Comparar…" ligado no cartão do chumbador da `JanelaPlaca` (abre com o chumbador atual + o menor de outra linha que passa).
+- **Janela da placa refeita** (`Janelas.cs`, classes `JanelaPlaca`/`PlanoPlaca`): resposta pronta ao abrir, cartões Fixação
+  (chumbador ou parafuso), Chapa e Solda com − / + e régua; "Trocar chumbador" agrupado; cotas editáveis no desenho; vista 3D
+  com o ângulo real da barra; "Ver cálculo" em tabela; dicas no mouse.
+- **Coeficiente de segurança por placa** (`PlacaBase.Seguranca`, 0 = o do modelo) + "Melhores opções com esses coeficientes".
+- **Outras fixações:** mostra cada pé de pilar com esta placa na sua pior combinação, aponta o pior caso, "Dimensionar pelo
+  pior caso" e copia a placa para os nós marcados ao Aplicar (`Acoes.AbrirPlaca` passa `AvaliarEm`/`Candidatos`).
+- **Ajustar tamanho da chapa:** borda ≥ 1,5·d, passo ≥ 3·d (chumbador também ≥ 6·d; opcional ≥ 3·hef), furo até o perfil
+  ≥ 1,5·d + 10 mm. Os slides não trazem passo/margem (só porca 2·d entre quinas e arruela 1,5·d, Aula 2 págs. 18 e 49):
+  1,5·d e 3·d são prática usual adotada.
+- **Correção no motor:** `Chumbadores.Achar("")` devolvia um chumbador sem código (agora null = parafuso).
+- **Ferramenta Medir** (Ctrl+M / botão na aba Início) e dicas no mouse em todo o programa (feitos pelo agy, conferidos).
+- **Repositório git** criado em `ftool/` (sem `referencias/`, `_terceiros/` nem `.exe`; ver `.gitignore`).
+
+## 19/10/2026 — Gabriel
+
+- **Catálogo único de chumbadores** (`codigo/portico/chumbadores.csv`, 76 itens): Walsywa mecânico (CB, CBPL, CBE, CBEPL, WB),
+  Walsywa químico (WQA, WQI 44, WQE 500 com barra roscada) e Indufix. Estructto embute o CSV; planilha sincroniza por
+  `sincronizar-planilha.ps1`. Detalhe: [CHUMBADORES.md](CHUMBADORES.md).
+- **Químicos** com critério decidido pelo Gabriel: ruptura ÷ tabela (WQI/WQE), recomendada com n = 1 (WQA), corte só no aço
+  da barra quando o catálogo não traz, ψc = √(fck/fck ensaio), aço da barra por von Mises (classe própria, padrão 4.6).
+- **Estructto:** campos novos na placa (fck do concreto, classe da barra roscada); memorial mostra origem da carga, ψc e aço.
+  170 testes passam (inclui testes "= planilha"). Estructto.exe recompilado; antigo em `C:\dev\build\Estructto\Estructto-antes-2026-10-19.exe`.
+  .NET 8 SDK instalado no PC do Gabriel.
+- **Planilha:** aba CHUMBADORES gerada do CSV; aba de cálculo com Tref/Vref, ψc, n,ref, aço da barra e distâncias do
+  catálogo; MEMORIAL atualizado. Resultados dos mecânicos atuais idênticos aos de antes.
+  Backup: `PLANILHA DE CÁLCULO - backup 2026-10-19 antes catalogo unico.xlsx`.
+- **Fluxo com Antigravity:** [DELEGAR-AGY.md](DELEGAR-AGY.md) (vale para Gabriel e Bruno).
+- **Guia de escolha de fixações:** [FIXACOES-GUIA.md](FIXACOES-GUIA.md) — tipo, uso recomendado pelo fabricante, usos típicos,
+  limitações, tabela comparativa e roteiro "como escolher" para cada linha Walsywa (citações conferidas com os PDFs).
+  Base para uma ajuda de escolha dentro do Estructto. Seção 5 (diferenças entre fixações): atributos padronizados,
+  11 comparações em pares e regras para comparar no software.
+- **Organização:** documentação movida para `docs/` (antes na raiz e em `codigo/Estructto/`); índice no `README.md`.
+
+**Pendente**
+- Planilha: cones sobrepostos (ψ) como no Estructto, em vez de reprovar direto com s < s,min.
+- Placa de base atual não passa (base n = 3,79, pé 0° n = 7,86 contra 15; chapa 106%).
+- Decidir se a ampola WQA (n = 1 sobre a recomendada) é aceitável para o guincho.
+- Testar pela interface do Estructto uma placa com chumbador químico.
+- **Função "Comparar fixações" no Estructto:** implementada em `JanelaComparar.cs`, `fixacoes.csv`, `fixacoes-pares.csv` e `Nucleo.cs` ([TAREFA-COMPARAR-FIXACOES.md](TAREFA-COMPARAR-FIXACOES.md)); falta apenas ligar o botão "Comparar…" em `Janelas.cs` e incluir o PDF do catálogo Indufix quando disponível.
+- Levar o guia de fixações para o Estructto (ajuda na escolha do chumbador) e incluir o Indufix (falta o PDF do catálogo).
+
+## 18/10/2026
+
+- Auditoria do motor de verificação (13 itens, 7 críticos) e correções: [historico/2026-10-18-AUDITORIA-VERIFICACAO.md](historico/2026-10-18-AUDITORIA-VERIFICACAO.md).
+- Padrão do memorial: [PADRAO-MEMORIAL.md](PADRAO-MEMORIAL.md). Prompt de correção da planilha: [historico/2026-10-18-PROMPT-memorial-excel.md](historico/2026-10-18-PROMPT-memorial-excel.md).
+- Análise do catálogo Walsywa (coeficiente baixo/alto risco, cones sobrepostos): [CHUMBADORES.md](CHUMBADORES.md).

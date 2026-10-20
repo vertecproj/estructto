@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Modelo>
+  <Nos>
+    <No><Id>1</Id><X>0</X><Y>0</Y><ApoioX>true</ApoioX><ApoioY>true</ApoioY><ApoioGiro>true</ApoioGiro>
+      <Placa><PeloPerfil>true</PeloPerfil><Sobra>100</Sobra><H>0</H><B>0</B><Esp>19</Esp><Fileiras>2</Fileiras><PorFileira>2</PorFileira><Borda>50</Borda><Diametro>16</Diametro><Classe>8.8</Classe><RoscaNoCorte>true</RoscaNoCorte><PivoNaMesa>false</PivoNaMesa></Placa>
+    </No>
+    <No><Id>2</Id><X>0</X><Y>4</Y><Fx>20</Fx></No>
+    <No><Id>3</Id><X>6</X><Y>4</Y></No>
+    <No><Id>4</Id><X>6</X><Y>0</Y><ApoioX>true</ApoioX><ApoioY>true</ApoioY></No>
+  </Nos>
+  <Barras>
+    <Barra><Id>5</Id><N1>1</N1><N2>2</N2><Secao>W 200 x 46,1</Secao><Material>Aço ASTM A572 Gr.50</Material></Barra>
+    <Barra><Id>6</Id><N1>2</N1><N2>3</N2><Secao>W 310 x 38,7</Secao><Material>Aço ASTM A572 Gr.50</Material><QGlobalY>-15</QGlobalY></Barra>
+    <Barra><Id>7</Id><N1>3</N1><N2>4</N2><Secao>W 200 x 46,1</Secao><Material>Aço ASTM A572 Gr.50</Material></Barra>
+  </Barras>
+  <ProxId>8</ProxId>
+  <PesoProprio>false</PesoProprio>
+  <Timoshenko>false</Timoshenko>
+  <MostrarGrade>true</MostrarGrade>
+  <AtrairGrade>true</AtrairGrade>
+  <Grade>0.5</Grade>
+</Modelo>
