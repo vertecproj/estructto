@@ -68,7 +68,7 @@ namespace NovoFtool
         [System.ComponentModel.Browsable(false)] public System.Windows.Media.Brush SitBd { get; set; } = TemaPlant.BBordaSutil;
     }
 
-    public partial class DocumentoEspacial
+    public partial class DocumentoEspacial   // partial: desenho com o mouse em Vista3D.cs (DesenharBarras, Vazio)
     {
         public JsonObject Json;              // modelo do motor (cópia do último GET /api/modelo)
         public string Arquivo, Titulo;       // Arquivo: .json do motor (null = ainda não salvo)

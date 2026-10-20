@@ -8,7 +8,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -19,6 +21,7 @@ using System.Windows.Threading;
 using System.Text.Json.Nodes;
 using Portico;
 using Material = System.Windows.Media.Media3D.Material;
+using F = Fluent;
 
 namespace NovoFtool
 {
@@ -149,6 +152,37 @@ namespace NovoFtool
         }
     }
 
+    // Ferramentas de entrada da Vista3D (docs/MODELO-ESPACIAL.md, "Desenhar no 3D"). Navegar = clique escolhe, arrastar orbita.
+    public enum Ferramenta3D { Navegar, Selecionar, Barra, Pilar }
+
+    // Plano de trabalho: horizontal (Normal 'Z', z = Valor) ou vertical (Normal 'X' ou 'Y'). U e W são os eixos do plano
+    // (ortogonal e ângulo da entrada dinâmica: ângulo medido de U para W).
+    public sealed class PlanoTrabalho
+    {
+        public readonly char Normal; public readonly double Valor; public readonly string Nome;
+        public PlanoTrabalho(char normal, double valor, string nome = null)
+        {
+            Normal = char.ToUpperInvariant(normal);
+            if (Normal != 'X' && Normal != 'Y' && Normal != 'Z') throw new ArgumentException("normal: X, Y ou Z");
+            Valor = valor; Nome = nome ?? Normal.ToString().ToLowerInvariant() + " = " + Num.Fmt(valor, 2) + " m";
+        }
+        public static PlanoTrabalho Horizontal(double z, string nome = null) => new PlanoTrabalho('Z', z, nome);
+        public static PlanoTrabalho EmX(double x, string nome = null) => new PlanoTrabalho('X', x, nome);
+        public static PlanoTrabalho EmY(double y, string nome = null) => new PlanoTrabalho('Y', y, nome);
+        public Vector3D N => Normal == 'X' ? new Vector3D(1, 0, 0) : Normal == 'Y' ? new Vector3D(0, 1, 0) : new Vector3D(0, 0, 1);
+        public Vector3D U => Normal == 'X' ? new Vector3D(0, 1, 0) : new Vector3D(1, 0, 0);
+        public Vector3D W => Normal == 'Z' ? new Vector3D(0, 1, 0) : new Vector3D(0, 0, 1);
+        public Point3D Projetar(Point3D p) => p - N * (Vector3D.DotProduct((Vector3D)p, N) - Valor);
+        public Point3D Ponto(double u, double w) => (Point3D)(N * Valor + U * u + W * w);
+    }
+
+    // Seleção múltipla da Vista3D: ids do motor (RefMotor.Id) ou, no modelo 2D, o Id do nó/barra em texto.
+    public sealed class Selecao3D
+    {
+        public readonly HashSet<string> Nos = new HashSet<string>(), Barras = new HashSet<string>();
+        public int Count => Nos.Count + Barras.Count;
+    }
+
     public enum Diagrama3D { Nenhum, N, V, M }
     public enum VistaPadrao { Topo, Frente, Lado, Iso }
 
@@ -195,6 +229,8 @@ namespace NovoFtool
             Children.Add(vp);
             sobre = new Sobre(this) { IsHitTestVisible = false };
             Children.Add(sobre);
+            marca = new MarcaSnap { IsHitTestVisible = false, Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, RenderTransform = posMarca };
+            Children.Add(marca);
 
             // seletor de vistas (canto superior direito; o HUD dos diagramas fica no esquerdo)
             var barra = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 0, 12) };
@@ -235,6 +271,10 @@ namespace NovoFtool
             nosPorId = new Dictionary<int, No3D>();
             foreach (No3D n in mod.Nos) if (!nosPorId.ContainsKey(n.Id)) nosPorId[n.Id] = n;
             if (Selecionado != null && !mod.Nos.Any(n => n.Origem == Selecionado || n == Selecionado) && !mod.Barras.Any(b => b.Origem == Selecionado || b == Selecionado)) Selecionado = null;
+            // seleção múltipla: some o que deixou de existir (apagado, desfeito)
+            int antes = Selecao.Nos.Count + Selecao.Barras.Count;
+            Selecao.Nos.IntersectWith(mod.Nos.Select(Chave)); Selecao.Barras.IntersectWith(mod.Barras.Select(Chave));
+            if (Selecao.Nos.Count + Selecao.Barras.Count != antes) SelecaoMudou?.Invoke();
             Reconstruir();
             if (enquadrar) Enquadrar(false);
         }
@@ -314,7 +354,11 @@ namespace NovoFtool
         }
 
         // sem seleção nada está escolhido (Origem null == Selecionado null pintava tudo)
-        bool EhSel(object o, object origem) { return Selecionado != null && (origem == Selecionado || o == Selecionado); }
+        bool EhSel(object o, object origem)
+        {
+            if (Selecionado != null && (origem == Selecionado || o == Selecionado)) return true;
+            return o is No3D n ? Selecao.Nos.Contains(Chave(n)) : o is Barra3D b && Selecao.Barras.Contains(Chave(b));
+        }
 
         public void Reconstruir()
         {
@@ -875,13 +919,19 @@ namespace NovoFtool
             Point p = e.GetPosition(this);
             if (e.ChangedButton == MouseButton.Middle && e.ClickCount == 2) { Enquadrar(); return; }
             bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-            if ((e.ChangedButton == MouseButton.Middle && shift) || e.ChangedButton == MouseButton.Left) { Parar(); orbIni = p; cliqueIni = e.ChangedButton == MouseButton.Left ? p : (Point?)null; moveu = false; CaptureMouse(); }
+            if (e.ChangedButton == MouseButton.Left && ferr == Ferramenta3D.Selecionar) { Parar(); caixaIni = p; moveu = false; CaptureMouse(); }   // janela/cruzamento
+            else if ((e.ChangedButton == MouseButton.Middle && shift) || e.ChangedButton == MouseButton.Left) { Parar(); orbIni = p; cliqueIni = e.ChangedButton == MouseButton.Left ? p : (Point?)null; moveu = false; CaptureMouse(); }
             else if (e.ChangedButton == MouseButton.Middle || e.ChangedButton == MouseButton.Right) { Parar(); panIni = p; moveu = false; CaptureMouse(); }
         }
+
+        protected override void OnMouseLeave(MouseEventArgs e) { mouseDentro = false; marca.Visibility = Visibility.Collapsed; sobre.InvalidateVisual(); }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             Point p = e.GetPosition(this);
+            mouseTela = p; mouseDentro = true;
+            if (caixaIni != null) { if ((p - caixaIni.Value).Length > 4) moveu = true; sobre.InvalidateVisual(); return; }
+            if (orbIni == null && panIni == null && Desenhando) { AtualizarCursor(); return; }
             if (orbIni != null)
             {
                 Vector dv = p - orbIni.Value;
@@ -903,10 +953,21 @@ namespace NovoFtool
         protected override void OnMouseUp(MouseButtonEventArgs e)
         {
             Point p = e.GetPosition(this);
+            if (caixaIni != null && e.ChangedButton == MouseButton.Left)
+            {
+                Point a = caixaIni.Value; caixaIni = null; ReleaseMouseCapture();
+                if (moveu) SelecionarCaixa(a, p, Keyboard.Modifiers); else SelecionarClique(p, Keyboard.Modifiers);
+                sobre.InvalidateVisual();
+                return;
+            }
             bool clique = cliqueIni != null && !moveu && e.ChangedButton == MouseButton.Left;
+            bool direito = panIni != null && !moveu && e.ChangedButton == MouseButton.Right;
             orbIni = null; panIni = null; cliqueIni = null;
             ReleaseMouseCapture();
-            if (clique) Escolher(Acertar(p));
+            if (direito && inicio != null) { inicio = null; DinLimpar(); AtualizarCursor(); }   // botão direito termina a corrente (igual ao 2D)
+            if (!clique) return;
+            if (Desenhando) _ = ClicarTela(p);
+            else Escolher(Acertar(p));
         }
 
         public object Acertar(Point p)
@@ -945,7 +1006,7 @@ namespace NovoFtool
         }
 
         // ponto 3D -> pixel da vista (câmera ortográfica)
-        Point Tela(Point3D q)
+        public Point Tela(Point3D q)
         {
             Direcoes(out _, out Vector3D cima, out Vector3D dir);
             Vector3D r = q - alvo;
@@ -963,7 +1024,438 @@ namespace NovoFtool
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if (e.Key == Key.F4) { Enquadrar(); e.Handled = true; }
+            else if (Tecla(e.Key)) e.Handled = true;
             base.OnKeyDown(e);
+        }
+
+        protected override void OnTextInput(TextCompositionEventArgs e)
+        {
+            if (Digitar(e.Text)) e.Handled = true;
+            base.OnTextInput(e);
+        }
+
+        // ================= entrada: plano de trabalho, desenho e seleção =================
+        // Igual à vista 2D (Vista.cs): atração a nó / meio / grade, ortogonal (F8 ou Shift) e polar 0/90 nos eixos do plano,
+        // entrada dinâmica (comprimento, ângulo ou x,y,z digitados) junto ao cursor, Esc em cascata.
+        // A criação vai para quem liga CriarBarras (MainWindow: lote do motor, um passo de desfazer por clique).
+
+        public event Action<PlanoTrabalho> PlanoMudou;
+        public event Action FerramentaMudou;
+        public event Action SelecaoMudou;
+        public Selecao3D Selecao { get; } = new Selecao3D();
+        public Func<IList<(Point3D A, Point3D B)>, Task> CriarBarras;   // null = vista só de leitura (modelo 2D)
+        public Func<double, double> AlturaAndar;                         // z da base -> altura do pilar (null = 3 m)
+        public double PassoGrade = 1;                                    // m
+        public bool Orto;                                                // F8; Shift força na hora
+
+        PlanoTrabalho plano = PlanoTrabalho.Horizontal(0);
+        public PlanoTrabalho PlanoAtual
+        {
+            get => plano;
+            set { plano = value ?? PlanoTrabalho.Horizontal(0); AtualizarCursor(); PlanoMudou?.Invoke(plano); }
+        }
+
+        Ferramenta3D ferr;
+        public Ferramenta3D Ferramenta
+        {
+            get => ferr;
+            set
+            {
+                ferr = value; inicio = null; DinLimpar(); coord = "";
+                Cursor = Desenhando ? Cursors.Cross : null;
+                AtualizarCursor();
+                FerramentaMudou?.Invoke();
+            }
+        }
+        public bool Desenhando => ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar;
+        public Point3D? InicioCorrente => inicio;   // 1º ponto da barra em andamento (null = nenhuma)
+        public Point3D? PontoCursor => cursor3;    // ponto atraído sob o cursor (null = fora do plano)
+        public string TipoAtracao => tipoSnap;      // "Nó", "Meio", "Grade", "Ortogonal", "Polar", "Plano"
+
+        Point3D? inicio, cursor3; string tipoSnap, tipoMarcado;
+        Point mouseTela; bool mouseDentro;
+        Point? caixaIni;
+        readonly string[] din = { "", "" }; int dinCampo; string coord = "";
+        readonly MarcaSnap marca; readonly TranslateTransform posMarca = new TranslateTransform();
+
+        static string Chave(No3D n) => (n.Origem as RefMotor)?.Id ?? n.Id.ToString(CultureInfo.InvariantCulture);
+        static string Chave(Barra3D b) => (b.Origem as RefMotor)?.Id ?? b.Id.ToString(CultureInfo.InvariantCulture);
+
+        // Raio da câmera (ortográfica) pelo pixel até o plano. null = plano de perfil nesta vista.
+        public Point3D? NoPlano(Point tela, PlanoTrabalho pl = null)
+        {
+            pl = pl ?? plano;
+            Direcoes(out Vector3D d, out Vector3D cima, out Vector3D dir);
+            Point3D o = alvo + dir * (tela.X - ActualWidth / 2) * Escala + cima * (ActualHeight / 2 - tela.Y) * Escala;
+            double nd = Vector3D.DotProduct(pl.N, d);
+            if (Math.Abs(nd) < 0.02) return null;
+            return o - d * ((Vector3D.DotProduct(pl.N, (Vector3D)o) - pl.Valor) / nd);
+        }
+
+        // Ponto atraído sob o pixel: nó (10 px) > meio de barra > ortogonal/polar a partir do 1º ponto > grade do plano > plano.
+        (Point3D? P, string Tipo) Atrair(Point tela)
+        {
+            double dm = 10; Point3D? r = null; string t = null;
+            foreach (No3D n in mod.Nos) { double dd = (Tela(P(n)) - tela).Length; if (dd < dm) { dm = dd; r = P(n); t = "Nó"; } }
+            if (r == null)
+                foreach (Barra3D b in mod.Barras)
+                {
+                    No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); if (a == null || c == null) continue;
+                    Point3D m = P(a) + (P(c) - P(a)) / 2; double dd = (Tela(m) - tela).Length;
+                    if (dd < dm) { dm = dd; r = m; t = "Meio"; }
+                }
+            if (r != null) return (r, t);
+            Point3D? q = NoPlano(tela);
+            if (q == null) return (null, null);
+            Vector3D U = plano.U, W = plano.W;
+            double Grade(double x) => Math.Round(x / PassoGrade) * PassoGrade;
+            if (inicio != null)
+            {
+                Point3D b = plano.Projetar(inicio.Value); Vector3D dv = q.Value - b;
+                double du = Vector3D.DotProduct(dv, U), dw = Vector3D.DotProduct(dv, W);
+                double ang = Math.Abs(Math.Atan2(dw, du) * 180 / Math.PI) % 90, desvio = Math.Min(ang, 90 - ang);
+                bool forcar = Orto || Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+                if (forcar || desvio < 3.5)
+                {
+                    bool emU = Math.Abs(du) >= Math.Abs(dw); double v = emU ? du : dw;
+                    Point3D p = b + (emU ? U : W) * v, pg = b + (emU ? U : W) * Grade(v);
+                    return (Tela(pg) - tela).Length < 10 ? (pg, forcar ? "Ortogonal" : "Polar") : (p, forcar ? "Ortogonal" : "Polar");
+                }
+            }
+            Vector3D rv = (Vector3D)q.Value;
+            Point3D g = plano.Ponto(Grade(Vector3D.DotProduct(rv, U)), Grade(Vector3D.DotProduct(rv, W)));
+            return (Tela(g) - tela).Length < 10 ? (g, "Grade") : (q, "Plano");
+        }
+
+        static bool Ler(string t, out double v) => double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out v) && double.IsFinite(v);
+        bool DinTravado => inicio != null && (din[0] != "" || din[1] != "");
+        void DinLimpar() { din[0] = din[1] = ""; dinCampo = 0; }
+
+        // Ponto final: o do mouse, com comprimento/ângulo digitados no plano (o que não está travado vem do mouse).
+        Point3D? PontoFinal()
+        {
+            if (!DinTravado || cursor3 == null) return cursor3;
+            Point3D a = inicio.Value; Vector3D dv = cursor3.Value - a;
+            double du = Vector3D.DotProduct(dv, plano.U), dw = Vector3D.DotProduct(dv, plano.W), dm = Math.Sqrt(du * du + dw * dw);
+            double angM = dm < 1e-9 ? 0 : Math.Atan2(dw, du);
+            bool tl = Ler(din[0], out double l), tg = Ler(din[1], out double g);
+            double ang = tg ? g * Math.PI / 180 : angM, len = tl ? l : dm * Math.Max(0, Math.Cos(angM - ang));
+            return a + plano.U * len * Math.Cos(ang) + plano.W * len * Math.Sin(ang);
+        }
+
+        // "x,y,z" absoluto, "@dx,dy,dz" relativo ao 1º ponto; com 2 valores, coordenadas (u, w) no plano.
+        Point3D? PontoDigitado()
+        {
+            string s = coord.Trim(); bool rel = s.StartsWith("@"); if (rel) s = s.Substring(1);
+            var v = s.Split(new[] { ',', ';' }).Select(x => Ler(x.Trim(), out double d) ? d : double.NaN).ToArray();
+            if (v.Any(double.IsNaN) || (v.Length != 2 && v.Length != 3)) return null;
+            Vector3D d3 = v.Length == 3 ? new Vector3D(v[0], v[1], v[2]) : plano.U * v[0] + plano.W * v[1];
+            if (rel) return (inicio ?? (v.Length == 3 ? new Point3D() : plano.Ponto(0, 0))) + d3;
+            return v.Length == 3 ? (Point3D)d3 : plano.Ponto(v[0], v[1]);
+        }
+
+        void AtualizarCursor()
+        {
+            if (!Desenhando || !mouseDentro) { cursor3 = null; tipoSnap = null; }
+            else (cursor3, tipoSnap) = Atrair(mouseTela);
+            Point3D? pf = PontoFinal();
+            if (pf != null && tipoSnap != null)
+            {
+                Point s = Tela(pf.Value);
+                marca.Tipo = DinTravado ? "Plano" : tipoSnap;
+                posMarca.X = s.X; posMarca.Y = s.Y;
+                marca.Visibility = Visibility.Visible;
+                if (marca.Tipo != tipoMarcado) { tipoMarcado = marca.Tipo; marca.InvalidateVisual(); Anim.Entrar(marca, 0, Anim.Rapido); }   // aparece a cada troca de atração
+            }
+            else { marca.Visibility = Visibility.Collapsed; tipoMarcado = null; }
+            sobre.InvalidateVisual();
+        }
+
+        // Mouse parado neste pixel (capturas de teste: elástico, atração e entrada dinâmica sem mouse de verdade).
+        public void MoverTela(Point tela) { mouseTela = tela; mouseDentro = true; AtualizarCursor(); }
+
+        // Clique na tela com a ferramenta atual (o mouse e as capturas de teste passam por aqui).
+        public async Task ClicarTela(Point tela, ModifierKeys mods = ModifierKeys.None)
+        {
+            mouseTela = tela; mouseDentro = true;
+            if (ferr == Ferramenta3D.Selecionar) { SelecionarClique(tela, mods); return; }
+            if (ferr == Ferramenta3D.Navegar) { Escolher(Acertar(tela)); return; }
+            AtualizarCursor();
+            await Ponto(PontoFinal());
+        }
+
+        // Ponto confirmado (clique, Enter na entrada dinâmica ou coordenada digitada).
+        async Task Ponto(Point3D? p)
+        {
+            if (p == null) { Aviso = "O plano de trabalho está de perfil nesta vista: gire a vista (Iso ou Topo)."; sobre.InvalidateVisual(); return; }
+            Aviso = null;
+            DinLimpar(); coord = "";
+            var segs = new List<(Point3D, Point3D)>();
+            if (ferr == Ferramenta3D.Pilar)
+            {
+                double h = AlturaAndar?.Invoke(p.Value.Z) ?? 3;
+                segs.Add((p.Value, p.Value + new Vector3D(0, 0, h > 1e-6 ? h : 3)));
+            }
+            else if (inicio == null) { inicio = p; AtualizarCursor(); return; }
+            else
+            {
+                if ((p.Value - inicio.Value).Length < 1e-6) return;
+                segs.Add((inicio.Value, p.Value));
+                inicio = p;   // a corrente segue do último ponto
+            }
+            AtualizarCursor();
+            if (CriarBarras != null) await CriarBarras(segs);
+        }
+
+        public string Aviso;   // mensagem da ferramenta (plano de perfil...) na etiqueta
+
+        // Teclas da ferramenta. Devolve true se consumiu. A janela chama antes dos atalhos dela quando o documento é espacial.
+        public bool Tecla(Key k)
+        {
+            switch (k)
+            {
+                case Key.Escape:   // cascata: digitado > barra em andamento > ferramenta > seleção
+                    if (coord != "") coord = "";
+                    else if (DinTravado) DinLimpar();
+                    else if (inicio != null) inicio = null;
+                    else if (Desenhando) { Ferramenta = Ferramenta3D.Selecionar; return true; }
+                    else if (Selecao.Count > 0 || Selecionado != null) { LimparSelecao(); Escolher(null); }
+                    else return false;
+                    AtualizarCursor();
+                    return true;
+                case Key.Enter:
+                    if (!Desenhando) return false;
+                    if (coord != "") { Point3D? p = PontoDigitado(); if (p == null) { Aviso = "Coordenada inválida: use x,y,z  @dx,dy,dz  ou u,w no plano."; coord = ""; sobre.InvalidateVisual(); } else _ = Ponto(p); }
+                    else if (DinTravado) _ = Ponto(PontoFinal());
+                    else if (inicio != null) { inicio = null; AtualizarCursor(); }   // Enter sem nada digitado termina a corrente
+                    return true;
+                case Key.Tab:
+                    if (!Desenhando || inicio == null) return false;
+                    dinCampo = 1 - dinCampo; AtualizarCursor(); return true;
+                case Key.Back:
+                    if (coord != "") coord = coord.Substring(0, coord.Length - 1);
+                    else if (Desenhando && din[dinCampo] != "") din[dinCampo] = din[dinCampo].Substring(0, din[dinCampo].Length - 1);
+                    else return false;
+                    AtualizarCursor(); return true;
+                case Key.F8:
+                    Orto = !Orto; Aviso = "Ortogonal " + (Orto ? "ligado" : "desligado") + " (F8)."; AtualizarCursor(); return true;
+            }
+            return false;
+        }
+
+        // Dígitos: comprimento/ângulo da entrada dinâmica; vírgula, ';' ou '@' passam a coordenada.
+        public bool Digitar(string texto)
+        {
+            if (!Desenhando || string.IsNullOrEmpty(texto)) return false;
+            char c = texto[0];
+            if (!(char.IsDigit(c) || c == '.' || c == '-' || c == ',' || c == ';' || c == '@')) return false;
+            if (coord != "" || inicio == null || ferr == Ferramenta3D.Pilar || c == ',' || c == ';' || c == '@')
+            {
+                if (coord == "" && din[dinCampo] != "" && (c == ',' || c == ';')) { coord = din[dinCampo]; DinLimpar(); }
+                if (coord.Length < 40) coord += c;
+            }
+            else if (din[dinCampo].Length < 9 && !(c == '.' && din[dinCampo].Contains(".")) && !(c == '-' && din[dinCampo] != "")) din[dinCampo] += c;
+            Aviso = null;
+            AtualizarCursor();
+            return true;
+        }
+
+        // ---------- seleção ----------
+
+        public void LimparSelecao()
+        {
+            if (Selecao.Count == 0) return;
+            Selecao.Nos.Clear(); Selecao.Barras.Clear();
+            Reconstruir(); SelecaoMudou?.Invoke();
+        }
+
+        // Troca (ou soma/tira) a seleção por ids. Para a edição (EdicaoEspacial.cs) e para a árvore.
+        public void Selecionar(IEnumerable<string> nos, IEnumerable<string> barras, ModifierKeys mods = ModifierKeys.None)
+        {
+            bool tirar = mods.HasFlag(ModifierKeys.Control), somar = mods.HasFlag(ModifierKeys.Shift);
+            if (!tirar && !somar) { Selecao.Nos.Clear(); Selecao.Barras.Clear(); }
+            foreach (string n in nos ?? new string[0]) { if (tirar) Selecao.Nos.Remove(n); else Selecao.Nos.Add(n); }
+            foreach (string b in barras ?? new string[0]) { if (tirar) Selecao.Barras.Remove(b); else Selecao.Barras.Add(b); }
+            Reconstruir(); SelecaoMudou?.Invoke();
+        }
+
+        void SelecionarClique(Point tela, ModifierKeys mods)
+        {
+            object o = Acertar(tela);
+            var nos = o is No3D n ? new[] { Chave(n) } : new string[0];
+            var bs = o is Barra3D b ? new[] { Chave(b) } : new string[0];
+            if (o == null && mods != ModifierKeys.None) return;   // Ctrl/Shift no vazio não limpa
+            Selecionar(nos, bs, mods);
+            if (mods == ModifierKeys.None) Escolher(o);           // um só: Propriedades mostra o objeto
+        }
+
+        // Esquerda -> direita = janela (só o que está inteiro dentro); direita -> esquerda = cruzamento (o que tocar).
+        public void SelecionarCaixa(Point a, Point b, ModifierKeys mods = ModifierKeys.None)
+        {
+            var r = new Rect(a, b); bool cruz = b.X < a.X;
+            var nos = mod.Nos.Where(n => r.Contains(Tela(P(n)))).Select(Chave).ToList();
+            var bs = new List<string>();
+            foreach (Barra3D x in mod.Barras)
+            {
+                No3D na = NoPorId(x.Ni), nc = NoPorId(x.Nj); if (na == null || nc == null) continue;
+                Point p = Tela(P(na)), q = Tela(P(nc));
+                if (r.Contains(p) && r.Contains(q) || cruz && (r.Contains(p) || r.Contains(q) || Corta(p, q, r))) bs.Add(Chave(x));
+            }
+            Selecionar(nos, bs, mods);
+        }
+
+        static bool Corta(Point p, Point q, Rect r)
+        {
+            Point[] c = { r.TopLeft, r.TopRight, r.BottomRight, r.BottomLeft };
+            for (int i = 0; i < 4; i++) if (Segs(p, q, c[i], c[(i + 1) % 4])) return true;
+            return false;
+        }
+        static bool Segs(Point a, Point b, Point c, Point d)
+        {
+            double Cr(Point o, Point x, Point y) => (x.X - o.X) * (y.Y - o.Y) - (x.Y - o.Y) * (y.X - o.X);
+            return Cr(a, b, c) * Cr(a, b, d) <= 0 && Cr(c, d, a) * Cr(c, d, b) <= 0;
+        }
+
+        // ---------- desenho da entrada (sobreposição 2D) ----------
+
+        static Pen Caneta(Brush b, double l, double[] traco = null)
+        {
+            var p = new Pen(b, l); if (traco != null) p.DashStyle = new DashStyle(traco, 0); p.Freeze(); return p;
+        }
+        static readonly Pen PGrade = Caneta(new SolidColorBrush(Color.FromArgb(0x70, 0x4A, 0x58, 0x6E)), 1);
+        static readonly Pen PEixoPlano = Caneta(TemaPlant.BBordaFoco, 1, new double[] { 6, 4 });
+        static readonly Pen PElastico = Caneta(TemaPlant.BMarcaSnap, 1.6);
+        static readonly Typeface TfEntrada = new Typeface(TemaPlant.Fonte, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        static readonly Pen PGuia3 =Caneta(TemaPlant.BGuiaSnap, 1, new double[] { 2, 3 });
+
+        void DesenharEntrada(DrawingContext dc, FrameworkElement alvoTxt)
+        {
+            FormattedText Ft(string s, Brush b, double tam) => new FormattedText(s, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, TfEntrada, tam, b, 1.0);
+            if (Desenhando) DesenharGrade(dc);
+
+            if (caixaIni != null && moveu)
+            {
+                Rect r = new Rect(caixaIni.Value, mouseTela); bool cruz = mouseTela.X < caixaIni.Value.X;
+                dc.DrawRectangle(cruz ? TemaPlant.BCruzSelArea : TemaPlant.BJanelaSelArea, cruz ? Caneta(TemaPlant.BCruzSel, 1, new double[] { 4, 3 }) : Caneta(TemaPlant.BJanelaSel, 1), r);
+            }
+
+            Point3D? pf = PontoFinal();
+            if (Desenhando && mouseDentro && pf != null)
+            {
+                Point s = Tela(pf.Value);
+                if (inicio != null)   // elástico + medidas junto ao cursor
+                {
+                    Point a = Tela(inicio.Value);
+                    if (cursor3 != null && DinTravado) dc.DrawLine(PGuia3, a, Tela(cursor3.Value));
+                    dc.DrawLine(PElastico, a, s);
+                    CaixasDinamicas(dc, inicio.Value, pf.Value, s, Ft);
+                }
+                else if (ferr == Ferramenta3D.Pilar)
+                {
+                    double h = AlturaAndar?.Invoke(pf.Value.Z) ?? 3;
+                    Point t = Tela(pf.Value + new Vector3D(0, 0, h));
+                    dc.DrawLine(PElastico, s, t);
+                    var ft = Ft("h = " + Num.Fmt(h, 2) + " m", TemaPlant.BTexto1, 11);
+                    dc.DrawRoundedRectangle(TemaPlant.BCaixaHud, null, new Rect(t.X + 10, t.Y - 4, ft.Width + 10, ft.Height + 4), 4, 4);
+                    dc.DrawText(ft, new Point(t.X + 15, t.Y - 2));
+                }
+                if (tipoSnap != null && !DinTravado)
+                {
+                    var ft = Ft(tipoSnap + "  " + Coords(pf.Value), TemaPlant.BMarcaSnap, 10);
+                    dc.DrawText(ft, new Point(s.X + 10, s.Y - 22));
+                }
+            }
+            if (coord != "")
+            {
+                Point s = mouseDentro ? mouseTela : new Point(ActualWidth / 2, ActualHeight / 2);
+                var ft = Ft("Coordenada: " + coord + "|", TemaPlant.BTexto1, 11.5);
+                var r = new Rect(s.X + 18, s.Y + 22, Math.Max(168, ft.Width + 16), 22);
+                dc.DrawRoundedRectangle(TemaPlant.BAcentoSutil, Caneta(TemaPlant.BBordaFoco, 1.5), r, 4, 4);
+                dc.DrawText(ft, new Point(r.X + 8, r.Y + (r.Height - ft.Height) / 2));
+            }
+
+            // etiqueta da ferramenta (topo, centro)
+            string et = Aviso;
+            if (et == null && Desenhando)
+                et = (ferr == Ferramenta3D.Barra ? (inicio == null ? "BARRA — clique o 1º ponto" : "BARRA — próximo ponto (Esc ou botão direito termina)")
+                                                 : "PILAR — clique a base (h do pavimento)")
+                     + " · plano " + plano.Nome + (Orto ? " · ORTO" : "") + " · digite x,y,z ou @dx,dy,dz";
+            else if (et == null && ferr == Ferramenta3D.Selecionar)
+                et = Selecao.Count > 0 ? "SELECIONAR — " + Pl.N(Selecao.Nos.Count, "nó", "nós") + " · " + Pl.N(Selecao.Barras.Count, "barra", "barras") + " · Shift soma, Ctrl tira, Esc limpa"
+                                       : "SELECIONAR — arraste: esq.→dir. janela, dir.→esq. cruzamento · Shift soma, Ctrl tira";
+            if (et != null)
+            {
+                var ft = Ft(et, TemaPlant.BTexto1, 11.5);
+                var r = new Rect(Math.Max(100, (ActualWidth - ft.Width) / 2 - 10), ActualHeight - ft.Height - 22, ft.Width + 20, ft.Height + 8);   // embaixo: o HUD e o seletor de vistas ocupam o topo
+                dc.DrawRoundedRectangle(TemaPlant.BCaixaHud, new Pen(TemaPlant.BBordaSutil, 1), r, 6, 6);
+                dc.DrawText(ft, new Point(r.X + 10, r.Y + 4));
+            }
+        }
+
+        static string Coords(Point3D p) => "(" + Num.Fmt(p.X, 2) + "; " + Num.Fmt(p.Y, 2) + "; " + Num.Fmt(p.Z, 2) + ")";
+
+        void CaixasDinamicas(DrawingContext dc, Point3D a, Point3D f, Point pc, Func<string, Brush, double, FormattedText> Ft)
+        {
+            Vector3D dv = f - a;
+            double du = Vector3D.DotProduct(dv, plano.U), dw = Vector3D.DotProduct(dv, plano.W);
+            string[] rot = { "Comprimento", "Ângulo" }, un = { "m", "°" };
+            string[] val = { Num.Fmt(dv.Length, 3), Num.Fmt(Math.Atan2(dw, du) * 180 / Math.PI, 1) };
+            double x0 = pc.X + 18, y0 = pc.Y + 22, w = 168, h = 22;
+            if (x0 + w > ActualWidth - 4) x0 = pc.X - 18 - w;
+            if (y0 + 2 * h + 22 > ActualHeight - 4) y0 = pc.Y - 22 - 2 * h - 20;
+            for (int i = 0; i < 2; i++)
+            {
+                bool travado = din[i] != "", ativo = dinCampo == i;
+                Rect r = new Rect(x0, y0 + i * (h + 2), w, h);
+                dc.DrawRoundedRectangle(travado ? TemaPlant.BAcentoSutil : TemaPlant.BCaixaHud, Caneta(ativo ? TemaPlant.BBordaFoco : TemaPlant.BBordaSutil, ativo ? 1.5 : 1), r, 4, 4);
+                var fr = Ft(rot[i], TemaPlant.BTexto2, 10.5);
+                dc.DrawText(fr, new Point(r.X + 8, r.Y + (h - fr.Height) / 2));
+                var fv = Ft(travado ? din[i] + (ativo ? "|" : "") : val[i], travado ? TemaPlant.BTexto1 : TemaPlant.BTexto2, 11.5);
+                var fu = Ft(un[i], TemaPlant.BTexto2, 10.5);
+                dc.DrawText(fu, new Point(r.Right - 8 - fu.Width, r.Y + (h - fu.Height) / 2));
+                dc.DrawText(fv, new Point(r.Right - 12 - fu.Width - fv.Width, r.Y + (h - fv.Height) / 2));
+            }
+            var fd = Ft("Tab alterna · Enter confirma · Esc cancela", TemaPlant.BTexto2, 10);
+            dc.DrawRectangle(TemaPlant.BCaixaHud, null, new Rect(x0, y0 + 2 * (h + 2), fd.Width + 8, fd.Height + 2));
+            dc.DrawText(fd, new Point(x0 + 4, y0 + 2 * (h + 2) + 1));
+        }
+
+        // Grade do plano de trabalho na faixa do modelo (+ margem), eixos do plano tracejados.
+        void DesenharGrade(DrawingContext dc)
+        {
+            Vector3D U = plano.U, W = plano.W;
+            double u0 = -5, u1 = 5, w0 = -5, w1 = 5;
+            foreach (No3D n in mod.Nos)
+            {
+                double u = Vector3D.DotProduct((Vector3D)P(n), U), w = Vector3D.DotProduct((Vector3D)P(n), W);
+                u0 = Math.Min(u0, u); u1 = Math.Max(u1, u); w0 = Math.Min(w0, w); w1 = Math.Max(w1, w);
+            }
+            double passo = PassoGrade; while ((u1 - u0) / passo > 120 || (w1 - w0) / passo > 120) passo *= 2;   // ponytail: grade grossa em modelos enormes
+            u0 = Math.Floor(u0 / passo - 2) * passo; u1 = Math.Ceiling(u1 / passo + 2) * passo;
+            w0 = Math.Floor(w0 / passo - 2) * passo; w1 = Math.Ceiling(w1 / passo + 2) * passo;
+            for (double u = u0; u <= u1 + 1e-9; u += passo) dc.DrawLine(Math.Abs(u) < 1e-9 ? PEixoPlano : PGrade, Tela(plano.Ponto(u, w0)), Tela(plano.Ponto(u, w1)));
+            for (double w = w0; w <= w1 + 1e-9; w += passo) dc.DrawLine(Math.Abs(w) < 1e-9 ? PEixoPlano : PGrade, Tela(plano.Ponto(u0, w)), Tela(plano.Ponto(u1, w)));
+        }
+
+        // Marcador de atração (quadrado = nó, triângulo = meio, cruz = grade, x = plano/ortogonal), com fade ao trocar.
+        sealed class MarcaSnap : FrameworkElement
+        {
+            public string Tipo;
+            static readonly Pen Pm = Caneta(TemaPlant.BMarcaSnap, 2);
+            protected override void OnRender(DrawingContext dc)
+            {
+                const double r = 6;
+                switch (Tipo)
+                {
+                    case "Nó": dc.DrawRectangle(null, Pm, new Rect(-r, -r, 2 * r, 2 * r)); break;
+                    case "Meio":
+                        var g = new StreamGeometry();
+                        using (var c = g.Open()) { c.BeginFigure(new Point(0, -r), false, true); c.LineTo(new Point(r, r * 0.8), true, false); c.LineTo(new Point(-r, r * 0.8), true, false); }
+                        dc.DrawGeometry(null, Pm, g); break;
+                    case "Grade": dc.DrawLine(Pm, new Point(-r, 0), new Point(r, 0)); dc.DrawLine(Pm, new Point(0, -r), new Point(0, r)); break;
+                    default: dc.DrawLine(Pm, new Point(-4, -4), new Point(4, 4)); dc.DrawLine(Pm, new Point(-4, 4), new Point(4, -4)); break;
+                }
+            }
         }
 
         // ================= sobreposição 2D: gizmo dos eixos e legenda do aproveitamento =================
@@ -978,6 +1470,7 @@ namespace NovoFtool
 
             protected override void OnRender(DrawingContext dc)
             {
+                v.DesenharEntrada(dc, this);   // plano, corrente, caixa de seleção, entrada dinâmica
                 v.Direcoes(out Vector3D d, out Vector3D cima, out Vector3D dir);
                 // gizmo: canto inferior esquerdo
                 Point o = new Point(50, ActualHeight - 50);
@@ -1008,9 +1501,9 @@ namespace NovoFtool
                         dc.DrawText(Txt(itens[i].Item2, TemaPlant.BTexto1, 11), new Point(x + 36, yy - 1));
                     }
                 }
-                if (v.mod.Nos.Count == 0)
+                if (v.mod.Nos.Count == 0 && !v.Desenhando)
                 {
-                    var ft = Txt("Modelo vazio: desenhe barras na vista 2D.", TemaPlant.BTexto3, 12);
+                    var ft = Txt(v.CriarBarras != null ? "Modelo vazio: Modelo › Desenhar 3D › Barra ou Pilar." : "Modelo vazio: desenhe barras na vista 2D.", TemaPlant.BTexto3, 12);
                     dc.DrawText(ft, new Point((ActualWidth - ft.Width) / 2, ActualHeight / 2));
                 }
             }
@@ -1044,6 +1537,7 @@ namespace NovoFtool
 
         public void MostrarVista3D(bool ligar)
         {
+            AtualizarFaixa3D();
             if (ligar && vista3D == null)
             {
                 vista3D = new Vista3D { Visibility = Visibility.Collapsed, MostrarLegenda = false, Realista = Config.Realista3D, Perfil = PerfilDaSecao };
@@ -1056,6 +1550,7 @@ namespace NovoFtool
                     if (alvo != null) Vista.Sel.Add(alvo);
                     SelecaoMudou();
                 };
+                LigarDesenho3D();
             }
             if (vista3D == null || (!ligar && Esp != null)) return;   // modelo espacial: sempre 3D
             bool primeira = ligar && vista3D.Visibility != Visibility.Visible;
@@ -1077,5 +1572,138 @@ namespace NovoFtool
             vista3D.Selecionado = Vista.Sel.Count == 1 ? Vista.Sel[0] : null;
             vista3D.Carregar(Modelo3D.De(M, Vista.Resolvido ? Vista.Verificar : null), enquadrar);
         }
+
+        // ================= desenhar no modelo espacial (Modelo › Desenhar 3D) =================
+
+        F.RibbonGroupBox grpDesenho3D, grpDesenho2D;
+        readonly Dictionary<Ferramenta3D, F.ToggleButton> btnFerr3D = new Dictionary<Ferramenta3D, F.ToggleButton>();
+
+        // Chamado uma vez ao montar a faixa: grupo "Desenhar 3D" ao lado do "Desenhar" 2D (só um dos dois aparece) e a paleta.
+        internal void MontarDesenho3D()
+        {
+            grpDesenho2D = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Desenhar");
+            grpDesenho3D = new F.RibbonGroupBox { Header = "Desenhar 3D", Visibility = Visibility.Collapsed };
+            foreach (var (f, ic, txt, nome, dica, atalho) in new[]
+            {
+                (Ferramenta3D.Selecionar, "sel", "Selecionar", "Selecionar 3D", "Clique escolhe; arraste da esquerda p/ direita = janela, da direita p/ esquerda = cruzamento. Shift soma, Ctrl tira, Esc limpa.", "Esc"),
+                (Ferramenta3D.Barra, "barra", "Barra", "Barra 3D", "Clique os pontos em sequência no plano de trabalho (atrai nós, meios e grade; F8/Shift ortogonal). Digite o comprimento, Tab o ângulo, ou x,y,z / @dx,dy,dz. Esc ou botão direito termina.", null),
+                (Ferramenta3D.Pilar, "3d", "Pilar", "Pilar 3D", "Clique a base no plano de trabalho: cria a barra vertical de z até z + altura do pavimento (3 m sem pavimentos).", null),
+            })
+            {
+                var b = new F.ToggleButton { Header = txt, LargeIcon = Icone(ic, 32), Icon = Icone(ic, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(nome, dica, atalho) };
+                Tamanho(b, false);
+                b.Click += (s, e) => UsarFerramenta3D(f);
+                Reg(ic, nome, atalho, dica, () => UsarFerramenta3D(f));
+                btnFerr3D[f] = b; grpDesenho3D.Items.Add(b);
+            }
+            int i = grpDesenho2D != null ? abaModelo.Groups.IndexOf(grpDesenho2D) + 1 : 1;
+            abaModelo.Groups.Insert(Math.Min(i, abaModelo.Groups.Count), grpDesenho3D);
+            var gerar = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Gerar");
+            gerar?.Items.Add(Botao("3d", "Modelo 3D vazio", NovoEspacialVazio, "Modelo espacial em branco no motor Python, para desenhar com Barra e Pilar (Desenhar 3D).", null, true));
+        }
+
+        internal void NovoEspacialVazio() => _ = AbrirEspacial(() => DocumentoEspacial.Vazio("Modelo 3D"), "criando modelo vazio");
+
+        internal void UsarFerramenta3D(Ferramenta3D f)
+        {
+            if (Esp == null || vista3D == null) { MostrarToast("Desenhar 3D vale no modelo espacial: Modelo › Gerar 3D ou Modelo 3D vazio.", true); SincronizarFerr3D(); return; }
+            vista3D.Ferramenta = vista3D.Ferramenta == f && f != Ferramenta3D.Selecionar ? Ferramenta3D.Navegar : f;
+            vista3D.Focus();
+        }
+
+        void SincronizarFerr3D()
+        {
+            foreach (var kv in btnFerr3D) kv.Value.IsChecked = vista3D != null && Esp != null && vista3D.Ferramenta == kv.Key;
+        }
+
+        void AtualizarFaixa3D()
+        {
+            if (grpDesenho3D == null) return;
+            bool esp = Esp != null;
+            grpDesenho3D.Visibility = esp ? Visibility.Visible : Visibility.Collapsed;
+            if (grpDesenho2D != null) grpDesenho2D.Visibility = esp ? Visibility.Collapsed : Visibility.Visible;
+            if (!esp && vista3D != null && vista3D.Ferramenta != Ferramenta3D.Navegar) vista3D.Ferramenta = Ferramenta3D.Navegar;   // 2D: vista 3D só de leitura
+            SincronizarFerr3D();
+        }
+
+        void LigarDesenho3D()
+        {
+            vista3D.CriarBarras = DesenharEsp;
+            vista3D.AlturaAndar = AlturaAndarEsp;
+            vista3D.FerramentaMudou += SincronizarFerr3D;
+        }
+
+        // Teclas da ferramenta 3D antes dos atalhos da janela (Esc, Enter, Tab, Backspace, F8). Acoes.cs › Tecla.
+        internal bool Tecla3D(Key k) => Esp != null && vista3D != null && vista3D.IsVisible && vista3D.Tecla(k);
+
+        async Task DesenharEsp(IList<(Point3D A, Point3D B)> segs)
+        {
+            var d = Esp;
+            if (d == null) return;
+            try
+            {
+                var ids = await d.DesenharBarras(segs);
+                if (Esp == d) DepoisDeMudarEspacial(ids.Count == 1 ? "Barra " + ids[0] + " desenhada." : Pl.N(ids.Count, "barra desenhada", "barras desenhadas") + ".");
+            }
+            catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
+            AvisarHistorico(d);
+        }
+
+        // Altura do pilar com base em z: até o próximo pavimento acima (0 conta como base); no topo, a do último andar; sem pavimentos, 3 m.
+        double AlturaAndarEsp(double z)
+        {
+            var pv = Esp?.Json?["pavimentos"];
+            IEnumerable<JsonNode> itens = pv is JsonObject o ? o.Select(kv => kv.Value) : pv as JsonArray ?? (IEnumerable<JsonNode>)new JsonNode[0];
+            var zs = new List<double> { 0 };
+            foreach (var p in itens) if (p?["z"] is JsonValue v && v.TryGetValue(out double zz)) zs.Add(zz);
+            zs = zs.Distinct().OrderBy(x => x).ToList();
+            double acima = zs.Where(x => x > z + 1e-6).DefaultIfEmpty(double.NaN).First();
+            if (!double.IsNaN(acima)) return acima - z;
+            return zs.Count >= 2 ? zs[zs.Count - 1] - zs[zs.Count - 2] : 3;
+        }
+    }
+
+    public partial class DocumentoEspacial
+    {
+        // Modelo espacial em branco (para desenhar na Vista3D).
+        public static Task<DocumentoEspacial> Vazio(string titulo) => Criar(() => Motor.Post("/api/modelo/novo", new JsonObject { ["nome"] = titulo }), titulo, null);
+
+        // Barras desenhadas na Vista3D: um POST /api/modelo/lote (atômico, um passo de desfazer). Ponta a até 1 mm de um nó
+        // existente reaproveita o nó. Seção e material = os da última barra do modelo (igual ao painel); modelo sem seção ou
+        // material recebe W310x38.7 e A-572 GR.50 no mesmo lote. Devolve os ids das barras criadas.
+        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs) => Motor.Exclusivo(async () =>
+        {
+            await Garantir();
+            var nos = Json["nos"].AsObject();
+            var itens = new JsonArray(); var novos = new List<(string Id, Point3D P)>();
+            var ult = (Json["barras"] as JsonObject)?.LastOrDefault().Value;
+            string secao = (string)ult?["secao"] ?? (Json["secoes"] as JsonObject)?.Select(x => x.Key).FirstOrDefault();
+            string material = (string)ult?["material"] ?? (Json["materiais"] as JsonObject)?.Select(x => x.Key).FirstOrDefault();
+            if (secao == null) { secao = "W310x38.7"; itens.Add(new JsonObject { ["tipo"] = "secao", ["dados"] = new JsonObject { ["perfil"] = secao } }); }
+            if (material == null) { material = "A-572 GR.50"; itens.Add(new JsonObject { ["tipo"] = "material", ["dados"] = new JsonObject { ["aco"] = material } }); }
+            int k = 0;
+            string No(Point3D p)
+            {
+                p = new Point3D(Math.Round(p.X, 6), Math.Round(p.Y, 6), Math.Round(p.Z, 6));
+                foreach (var kv in nos)
+                    if (Math.Abs((double)kv.Value["x"] - p.X) < 1e-3 && Math.Abs((double)kv.Value["y"] - p.Y) < 1e-3 && Math.Abs((double)kv.Value["z"] - p.Z) < 1e-3) return kv.Key;
+                foreach (var (id, q) in novos) if ((q - p).Length < 1e-3) return id;
+                string nid;
+                do nid = "n" + (nos.Count + ++k); while (nos.ContainsKey(nid));
+                itens.Add(new JsonObject { ["tipo"] = "no", ["dados"] = new JsonObject { ["id"] = nid, ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z } });
+                novos.Add((nid, p));
+                return nid;
+            }
+            foreach (var (a, b) in segs)
+            {
+                string ni = No(a), nj = No(b);
+                if (ni == nj) continue;
+                itens.Add(new JsonObject { ["tipo"] = "barra", ["dados"] = new JsonObject { ["ni"] = ni, ["nj"] = nj, ["secao"] = secao, ["material"] = material } });
+            }
+            var r = await Motor.Post("/api/modelo/lote", new JsonObject { ["itens"] = itens });
+            TemHistorico = true;
+            await Recarregar();
+            return r?["criados"]?.AsArray().Where(c => (string)c["tipo"] == "barra").Select(c => (string)c["id"]).ToList() ?? new List<string>();
+        });
     }
 }

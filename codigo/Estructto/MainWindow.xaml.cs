@@ -357,6 +357,7 @@ namespace NovoFtool
             abaModelo.Groups.Insert(1, GrupoPlanos());   // níveis e planos de trabalho do modelo espacial (PlanosTrabalho.cs)
             MontarEdicao3D(abaModelo.Groups.First(g => (string)g.Header == "Modificar"));   // só no modelo espacial (EdicaoEspacial.cs)
             abaModelo.ToolTip = "Gerar e desenhar a estrutura, modificar, apoios e rótulas, seções e materiais, barras contínuas.";
+            MontarDesenho3D();   // Desenhar 3D (modelo espacial), Vista3D.cs
 
             // ACOES (antes "Cargas"): casos de carga (inseridos por MontarCasosNaFaixa), cargas no no e na barra, peso proprio
             cFx = Campo("Fx (kN)", "0", "Positivo para a direita."); cFy = Campo("Fy (kN)", "0", "Positivo para cima. Gravidade = negativo."); cMz = Campo("Mz (kN·m)", "0", "Positivo anti-horário.");

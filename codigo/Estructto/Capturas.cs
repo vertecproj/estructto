@@ -341,6 +341,87 @@ namespace NovoFtool
             EsperarIdle();
         }
 
+        // 43) Desenhar no 3D (Vista3D.cs, docs/MODELO-ESPACIAL.md): pórtico de 2 vãos desenhado com cliques na tela
+        // (ferramenta Barra no plano y = 0, comprimento digitado, coordenada @dx,dy,dz, Pilar no plano z = 0),
+        // seleção por janela e cruzamento, desfazer pelo motor. Só elas: ESTRUCTTO_CAPTURAS=desenho3d.
+        static void CapturasDesenho3D(MainWindow w)
+        {
+            void Falha(string s) => throw new InvalidOperationException("Desenho 3D: " + s + " | " + w.StatusMsg.Text);
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Vazio("Pórtico desenhado"), "modelo vazio"));
+            var d = w.EspacialAtivo ?? throw new InvalidOperationException("Desenho 3D: modelo vazio não abriu");
+            w.Faixa.SelectedTabItem = w.abaModelo;
+            EsperarIdle();
+            var v = w.vista3D;
+            v.MostrarVista(VistaPadrao.Iso, false);
+            v.ZoomFator(0.75);
+            int Nos() => d.Json["nos"].AsObject().Count;
+            int Barras() => d.Json["barras"].AsObject().Count;
+            Point T(double x, double y, double z) => v.Tela(new System.Windows.Media.Media3D.Point3D(x, y, z));
+            void Clicar(double x, double y, double z) { Esperar(v.ClicarTela(T(x, y, z))); EsperarIdle(); }
+
+            w.UsarFerramenta3D(Ferramenta3D.Barra);
+            v.PlanoAtual = PlanoTrabalho.EmY(0);   // pórtico no plano XZ
+            if (v.Ferramenta != Ferramenta3D.Barra) Falha("ferramenta Barra não ligou");
+            v.MoverTela(T(0, 0, 0));
+            EsperarIdle();
+            CapturarPrincipal(w, "43-desenho3d-plano");
+            Clicar(0, 0, 0); Clicar(0, 0, 3); Clicar(6, 0, 3); Clicar(12, 0, 3);
+            if (Barras() != 3 || Nos() != 4) Falha("corrente de 3 barras: " + Barras() + " barras, " + Nos() + " nós");
+            // último pilar pelo comprimento digitado: mouse para baixo, "3" + Enter
+            v.MoverTela(T(12, 0, 1.2));
+            if (v.TipoAtracao != "Polar" && v.TipoAtracao != "Ortogonal") Falha("polar na vertical do plano não atraiu: " + v.TipoAtracao);
+            v.Digitar("3");
+            EsperarIdle();
+            CapturarPrincipal(w, "43-desenho3d-elastico");
+            v.Tecla(System.Windows.Input.Key.Enter);
+            EsperarAte(() => Barras() == 4);
+            v.Tecla(System.Windows.Input.Key.Escape);
+            if (v.InicioCorrente != null) Falha("Esc não terminou a corrente");
+            if (!d.Json["nos"].AsObject().Any(kv => Math.Abs((double)kv.Value["x"] - 12) < 1e-6 && Math.Abs((double)kv.Value["z"]) < 1e-6)) Falha("comprimento digitado não chegou a (12; 0; 0)");
+            // diagonal por coordenada relativa digitada
+            Clicar(0, 0, 0);
+            foreach (char c in "@6,0,3") v.Digitar(c.ToString());
+            v.Tecla(System.Windows.Input.Key.Enter);
+            EsperarAte(() => Barras() == 5);
+            v.Tecla(System.Windows.Input.Key.Escape);
+            if (Nos() != 5) Falha("diagonal deveria reaproveitar o nó (6; 0; 3): " + Nos() + " nós");
+
+            // pilar central no plano z = 0: base clicada, topo reaproveita o nó (6; 0; 3)
+            w.UsarFerramenta3D(Ferramenta3D.Pilar);
+            v.PlanoAtual = PlanoTrabalho.Horizontal(0);
+            v.MoverTela(T(6, 0, 0));
+            EsperarIdle();
+            CapturarPrincipal(w, "43-desenho3d-pilar");
+            Clicar(6, 0, 0);
+            if (Barras() != 6 || Nos() != 6) Falha("pilar: " + Barras() + " barras, " + Nos() + " nós");
+            v.Tecla(System.Windows.Input.Key.Escape);   // sai do Pilar -> Selecionar
+            if (v.Ferramenta != Ferramenta3D.Selecionar) Falha("Esc não trocou para Selecionar");
+            CapturarPrincipal(w, "43-desenho3d-portico", () => v.MostrarVista(VistaPadrao.Iso, false));   // enquadra no tamanho da captura
+
+            // janela (esq -> dir): só o que está inteiro dentro; cruzamento (dir -> esq): o que tocar. Vista de frente: caixa = retângulo em XZ.
+            int selMudou = 0; v.SelecaoMudou += () => selMudou++;
+            int janela = 0, cruz = 0;
+            Rect Caixa() { v.MostrarVista(VistaPadrao.Frente, false); return new Rect(T(-0.5, 0, -0.5), T(6.5, 0, 3.5)); }
+            CapturarPrincipal(w, "43-desenho3d-selecao-janela", () => { Rect r = Caixa(); v.SelecionarCaixa(r.TopLeft, r.BottomRight); janela = v.Selecao.Barras.Count; });
+            CapturarPrincipal(w, "43-desenho3d-selecao-cruzamento", () => { Rect r = Caixa(); v.SelecionarCaixa(r.BottomRight, r.TopLeft); cruz = v.Selecao.Barras.Count; });
+            if (janela != 4 || cruz != 5 || selMudou < 2) Falha("janela " + janela + " / cruzamento " + cruz + " barras (esperado 4 / 5), eventos " + selMudou);
+            v.Tecla(System.Windows.Input.Key.Escape);
+            if (v.Selecao.Count != 0) Falha("Esc não limpou a seleção");
+
+            Esperar(w.DesfazerEspacial());
+            if (Barras() != 5) Falha("desfazer não tirou o pilar: " + Barras() + " barras");
+            File.AppendAllText(Path.Combine(pastaSaida, "43-desenho3d.txt"), "ok: 6 barras desenhadas, janela " + janela + ", cruzamento " + cruz + ", desfazer -> " + Barras() + Environment.NewLine);
+            w.FecharEspaciaisSemPerguntar();
+            EsperarIdle();
+        }
+
+        static void EsperarAte(Func<bool> cond)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (!cond()) { if (sw.ElapsedMilliseconds > 20000) throw new TimeoutException("Desenho 3D: motor não respondeu"); EsperarIdle(); System.Threading.Thread.Sleep(20); }
+            EsperarIdle();
+        }
+
         static void CapturasEspacial(MainWindow w)
         {
             var jg = new JanelaGerar3D("edificio");
@@ -684,6 +765,13 @@ namespace NovoFtool
                     string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
                     if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
                     CapturasPlanos(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "desenho3d")   // só as capturas 43) do desenho no 3D
+                {
+                    CapturasDesenho3D(w);
                     w.alterado = false;
                     w.Close();
                     Environment.Exit(0);
@@ -1205,6 +1293,8 @@ namespace NovoFtool
                 CapturasPlanos(w);   // 43) níveis e planos de trabalho
                 // 48) Edição em lote do modelo espacial (EdicaoEspacial.cs): pórtico copiado 3×, espelhado e rotacionado
                 CapturasEdicao(w);
+                // 43) Desenhar no 3D com o mouse
+                CapturasDesenho3D(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
