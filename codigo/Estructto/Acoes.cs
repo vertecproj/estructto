@@ -202,6 +202,7 @@ namespace NovoFtool
             AtualizarLegenda();
             if (avisar) Vista.EnquadrarLivre();
             Vista.InvalidateVisual();
+            Atualizar3D();
         }
 
         internal void MostrarDiagrama(Diagrama d, bool calor = false)
@@ -220,6 +221,7 @@ namespace NovoFtool
             if (Vista.Diag == Diagrama.Deformada) Vista.EscalaDef *= f; else Vista.EscalaDiag *= f;
             AtualizarLegenda();
             Vista.InvalidateVisual();
+            Atualizar3D();
         }
 
         // A legenda agora vive no HUD da vista (Hud.cs).

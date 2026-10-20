@@ -120,7 +120,7 @@ namespace NovoFtool
         static readonly Pen POk = Caneta(TemaPlant.BSucesso, 5), PAtencao = Caneta(TemaPlant.BAlerta, 5), PFalha = Caneta(TemaPlant.BErro, 5), PSemVer = Caneta(TemaPlant.BTexto3, 4);
         // mapa de calor: verde <= 75%, ciano 75-90%, ambar 90-100%, vermelho > 100%
         static readonly Pen[] PCalor = { Caneta(TemaPlant.B(TemaPlant.CorCalor1), 6), Caneta(TemaPlant.B(TemaPlant.CorCalor2), 6), Caneta(TemaPlant.B(TemaPlant.CorCalor3), 6), Caneta(TemaPlant.B(TemaPlant.CorCalor4), 6) };
-        static int FaixaCalor(double ap) { return ap > 1 ? 3 : ap > 0.9 ? 2 : ap > 0.75 ? 1 : 0; }
+        internal static int FaixaCalor(double ap) { return ap > 1 ? 3 : ap > 0.9 ? 2 : ap > 0.75 ? 1 : 0; }
         static readonly Typeface Fonte = new Typeface("Segoe UI"), FonteNum = new Typeface("Cascadia Mono, Consolas, Segoe UI");
 
         public Vista()
