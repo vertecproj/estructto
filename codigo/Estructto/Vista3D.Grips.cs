@@ -135,25 +135,28 @@ namespace NovoFtool
 
         Func<Point3D, Task<bool>> pedePonto;                         // true = continua pedindo (o ponto vira a base do próximo)
         Func<object, Point3D?, ModifierKeys, Task<bool>> pedeObjeto;   // true = continua pedindo
-        Action aoCancelarPedido;
+        Action aoCancelarPedido, aoTerminarPedido;
+        bool manterBase;
         public bool Pedindo => pedePonto != null || pedeObjeto != null;
 
         // Pede um ponto na vista (com atração e entrada dinâmica). base_ = 1º ponto do elástico (null = nenhum).
-        public void PedirPonto(string prompt, Point3D? base_, Func<Point3D, Task<bool>> ao, Action cancelar = null)
+        // manter = true: depois de cada ponto a base continua a mesma (COPIAR múltiplo); false: o ponto vira a base.
+        public void PedirPonto(string prompt, Point3D? base_, Func<Point3D, Task<bool>> ao, Action cancelar = null, bool manter = false)
         {
             LimparPedido(false);
             if (ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar) Ferramenta = Ferramenta3D.Selecionar;
-            pedePonto = ao; aoCancelarPedido = cancelar; Prompt = prompt; inicio = base_; DinLimpar(); coord = "";
+            pedePonto = ao; aoCancelarPedido = cancelar; manterBase = manter; Prompt = prompt; inicio = base_; DinLimpar(); coord = "";
             Cursor = Cursors.Cross;
             AtualizarCursor();
         }
 
         // Pede um objeto (nó ou barra) por clique; ao recebe (objeto ou null, ponto 3D clicado no plano, modificadores).
-        public void PedirObjeto(string prompt, Func<object, Point3D?, ModifierKeys, Task<bool>> ao, Action cancelar = null)
+        // terminar: chamado no Enter/botão direito (fim normal); cancelar: no Esc.
+        public void PedirObjeto(string prompt, Func<object, Point3D?, ModifierKeys, Task<bool>> ao, Action cancelar = null, Action terminar = null)
         {
             LimparPedido(false);
             if (ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar) Ferramenta = Ferramenta3D.Selecionar;
-            pedeObjeto = ao; aoCancelarPedido = cancelar; Prompt = prompt;
+            pedeObjeto = ao; aoCancelarPedido = cancelar; aoTerminarPedido = terminar; Prompt = prompt;
             Cursor = Cursors.Hand;
             sobre.InvalidateVisual();
         }
@@ -165,9 +168,17 @@ namespace NovoFtool
         {
             var c = aoCancelarPedido;
             bool havia = Pedindo;
-            pedePonto = null; pedeObjeto = null; aoCancelarPedido = null;
+            pedePonto = null; pedeObjeto = null; aoCancelarPedido = null; aoTerminarPedido = null;
             if (havia) { Prompt = null; inicio = null; DinLimpar(); coord = ""; Cursor = CursorFerramenta; AtualizarCursor(); }
             if (havia && avisar) c?.Invoke();
+        }
+
+        // Enter/botão direito com objeto pedido: fim normal (o comando segue, ex.: seleção terminada).
+        void TerminarPedido()
+        {
+            var t = aoTerminarPedido;
+            LimparPedido(false);
+            t?.Invoke();
         }
 
         async Task PontoPedido(Point3D p)
@@ -175,20 +186,43 @@ namespace NovoFtool
             var f = pedePonto;
             bool mais = await f(p);
             if (pedePonto != f) return;   // o callback já trocou de pedido
-            if (mais) { inicio = p; DinLimpar(); coord = ""; AtualizarCursor(); }
+            if (mais) { if (!manterBase) inicio = p; DinLimpar(); coord = ""; AtualizarCursor(); }
             else LimparPedido(false);
         }
+
+        // Texto da linha de comando com a ferramenta/pedido em curso: x,y,z  @dx,dy,dz  u,w  ou só o comprimento (direção do cursor).
+        public void EntrarTexto(string t)
+        {
+            t = (t ?? "").Trim(); if (t == "") return;
+            bool numero = double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
+            DinLimpar(); coord = "";
+            if (numero && inicio != null && ferr != Ferramenta3D.Pilar) { din[0] = t; dinCampo = 0; } else coord = t;
+            Tecla(Key.Enter);
+        }
+
+        public event Action<Point3D?> CursorMudou;   // coordenadas na barra de status
 
         async Task EscolherPedido(Point tela, ModifierKeys mods)
         {
             var f = pedeObjeto;
             object o = Acertar(tela);
-            bool mais = await f(o, NoPlano(tela), mods);
+            Point3D? q = NoPlano(tela);
+            if (o is Barra3D b && NoPorId(b.Ni) is No3D a && NoPorId(b.Nj) is No3D c)   // barra: o ponto dela sob o clique (pela tela)
+            {
+                Point sa = Tela(P(a)), sc = Tela(P(c)); Vector ab = sc - sa;
+                double t = ab.LengthSquared < 1e-9 ? 0.5 : Math.Max(0, Math.Min(1, Vector.Multiply(tela - sa, ab) / ab.LengthSquared));
+                q = P(a) + (P(c) - P(a)) * t;
+            }
+            bool mais = await f(o, q, mods);
             if (pedeObjeto == f && !mais) LimparPedido(false);
         }
 
         // Objeto pelo código (capturas/testes): o mesmo caminho do clique.
-        public Task EscolherPorCodigo(object o, ModifierKeys mods = ModifierKeys.None) => pedeObjeto?.Invoke(o, null, mods) ?? Task.CompletedTask;
+        public async Task EscolherPorCodigo(object o, Point3D? p = null, ModifierKeys mods = ModifierKeys.None)
+        {
+            var f = pedeObjeto; if (f == null) return;
+            if (!await f(o, p, mods) && pedeObjeto == f) LimparPedido(false);
+        }
 
         // Barra/nó do Modelo3D pelo id do motor (capturas/testes).
         public object ObjetoPorId(string tipo, string id) =>

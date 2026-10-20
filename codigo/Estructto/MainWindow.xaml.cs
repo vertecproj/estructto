@@ -72,7 +72,7 @@ namespace NovoFtool
             Vista.SizeChanged += (s, e) => Hud.Compacto = Vista.ActualHeight < 340;
             HistBtn.Click += (s, e) => { bool abrir = HistoricoCaixa.Visibility != Visibility.Visible; HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed; HistBtn.Content = abrir ? "▾" : "▴"; Comando.Focus(); };
             NovoModelo(new Modelo(), null);
-            Loaded += (s, e) => { Vista.ZoomTudo(); Vista.Focus(); if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-motor="))) OferecerRecuperacao(); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
+            Loaded += (s, e) => { Vista.ZoomTudo(); FocarVista(); if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-motor="))) OferecerRecuperacao(); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
             Log("Bem-vindo. Escolha uma ferramenta na faixa, use Modelo › Gerar estrutura ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
@@ -218,7 +218,7 @@ namespace NovoFtool
             };
             Tamanho(b, pequeno);
             if (keytip != null) F.KeyTip.SetKeys(b, keytip);
-            b.Click += (s, e) => { acao(); Vista.Focus(); };
+            b.Click += (s, e) => { acao(); FocarVista(); };
             Reg(icone, texto, atalho, dica, acao);
             return b;
         }
@@ -231,7 +231,7 @@ namespace NovoFtool
                 Size = pequeno ? F.RibbonControlSize.Middle : F.RibbonControlSize.Large, ToolTip = Dica(texto, dica)
             };
             Tamanho(b, pequeno);
-            b.Click += (s, e) => { acao(b.IsChecked == true); Vista.Focus(); };
+            b.Click += (s, e) => { acao(b.IsChecked == true); FocarVista(); };
             Reg(icone, texto, null, dica, () => { b.IsChecked = !(b.IsChecked == true); acao(b.IsChecked == true); });
             return b;
         }
@@ -244,7 +244,7 @@ namespace NovoFtool
                 Size = pequeno ? F.RibbonControlSize.Middle : F.RibbonControlSize.Large, ToolTip = Dica(texto, dica, atalho)
             };
             Tamanho(b, pequeno);
-            b.Click += (s, e) => { AcionarFerramenta(f); Vista.Focus(); };
+            b.Click += (s, e) => { AcionarFerramenta(f); FocarVista(); };
             Reg(icone, texto, atalho, dica, () => AcionarFerramenta(f));
             if (!btnFerr.ContainsKey(f)) btnFerr[f] = new List<F.ToggleButton>();
             btnFerr[f].Add(b);
@@ -254,7 +254,7 @@ namespace NovoFtool
         F.ToggleButton BotaoDiagrama(string icone, string texto, Diagrama d, string dica, string atalho)
         {
             var b = new F.ToggleButton { Header = texto, LargeIcon = Icone(icone, 32), Icon = Icone(icone, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(texto, dica, atalho) };
-            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? d : Diagrama.Nenhum); Vista.Focus(); };
+            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? d : Diagrama.Nenhum); FocarVista(); };
             Reg(icone, texto, atalho, dica, () => AlternarDiagrama(d));
             btnDiag[d] = b;
             return b;
@@ -264,7 +264,7 @@ namespace NovoFtool
         {
             var b = new F.ToggleButton { Header = "Mapa de aproveitamento", LargeIcon = Icone("verif", 32), Icon = Icone("verif", 16), Size = F.RibbonControlSize.Middle, ToolTip = Dica("Mapa de aproveitamento", "Colore as barras pelo aproveitamento: verde até 75%, ciano até 90%, âmbar até 100%, vermelho acima, com selo ⚠/✕ nas críticas.", "V ou CALOR + Enter") };
             Tamanho(b, true);
-            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? Diagrama.Verificacao : Diagrama.Nenhum, b.IsChecked == true); Vista.Focus(); };
+            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? Diagrama.Verificacao : Diagrama.Nenhum, b.IsChecked == true); FocarVista(); };
             Reg("verif", "Mapa de aproveitamento", "V + Enter", "Colore as barras pelo aproveitamento.", () => Executar("CALOR"));
             return b;
         }
@@ -648,18 +648,19 @@ namespace NovoFtool
 
         void MontarStatus()
         {
+            // estados do desenho na Vista3D (docs/v3/PESQUISA-PLANT.md 3.6); a Vista3D lê os mesmos valores (Comandos3D.LigarComandos3D)
             NovoBloco();
-            stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade (F9)", v => M.AtrairGrade = v);
-            stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade (F7)", v => { M.MostrarGrade = v; Vista.InvalidateVisual(); });
+            stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade do plano de trabalho (F9)", v => V3(x => x.AtrairGrade = v)); stAtrair.IsChecked = true;
+            stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade do plano de trabalho ao desenhar (F7)", v => V3(x => x.MostrarGradePlano = v)); stGrade.IsChecked = true;
             NovoBloco();
-            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só horizontal/vertical (F8, ou segure Shift)", v => Vista.Orto = v);
-            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => Vista.Polar = v); stPolar.IsChecked = true;
-            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3) — botão direito escolhe: nó, meio, interseção, perpendicular, sobre a barra, extensão", v => Vista.AtrairObjetos = v); stObj.IsChecked = true;
-            stObj.ContextMenu = MenuSnaps();
-            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — passe o mouse num nó e afaste: aparecem linhas alinhadas com ele (horizontal/vertical)", v => { Vista.Rastrear = v; if (!v) Vista.LimparRastreio(); }); stRastro.IsChecked = true;
+            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => V3(x => x.Orto = v));
+            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => V3(x => x.Polar = v)); stPolar.IsChecked = true;
+            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => V3(x => x.AtrairObjetos = v)); stObj.IsChecked = true;
+            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => V3(x => x.Rastrear = v)); stRastro.IsChecked = true;
+            stDin = StatusBtn("M2,6 H18 V14 H2 Z M5,10 H9 M12,8 V12", "Dinâmica — caixas de comprimento e ângulo junto ao cursor (F12)", v => V3(x => x.EntradaDinamica = v)); stDin.IsChecked = true;
             NovoBloco();
-            var tela = new Button { Content = IconeStatus("M2,7 V2 H7 M13,2 H18 V7 M18,13 V18 H13 M7,18 H2 V13"), ToolTip = "Enquadrar o modelo (F4)", Style = EstiloBotaoStatus() };
-            tela.Click += (s, e) => Vista.ZoomTudo();
+            var tela = new Button { Content = IconeStatus("M2,7 V2 H7 M13,2 H18 V7 M18,13 V18 H13 M7,18 H2 V13"), ToolTip = "Enquadrar o modelo (Z + Enter, duplo clique na roda)", Style = EstiloBotaoStatus() };
+            tela.Click += (s, e) => vista3D?.Enquadrar();
             blocoStatus.Children.Add(tela);
         }
 
@@ -697,26 +698,7 @@ namespace NovoFtool
             return estiloStatus;
         }
 
-        System.Windows.Controls.Primitives.ToggleButton stRastro;
-
-        // modos de atracao a objetos, um a um (como o menu do OSNAP)
-        ContextMenu MenuSnaps()
-        {
-            var cm = new ContextMenu();
-            void Item(string nome, string dica, Func<bool> ler, Action<bool> por)
-            {
-                var mi = new MenuItem { Header = nome, ToolTip = dica, IsCheckable = true, IsChecked = ler(), StaysOpenOnClick = true };
-                mi.Click += (s, e) => { por(mi.IsChecked); Vista.InvalidateVisual(); };
-                cm.Items.Add(mi);
-            }
-            Item("Nó (extremidade)", "Encaixa o cursor nos nós existentes nas extremidades das barras.", () => Vista.SnapNo, v => Vista.SnapNo = v);
-            Item("Meio da barra", "Encaixa o cursor exatamente no ponto médio de uma barra.", () => Vista.SnapMeio, v => Vista.SnapMeio = v);
-            Item("Interseção", "Encaixa o cursor no ponto de cruzamento geométrico entre duas barras.", () => Vista.SnapIntersecao, v => Vista.SnapIntersecao = v);
-            Item("Perpendicular", "Ao desenhar ou medir a partir de um ponto, encaixa no pé da perpendicular sobre outra barra.", () => Vista.SnapPerpendicular, v => Vista.SnapPerpendicular = v);
-            Item("Sobre a barra (mais próximo)", "Encaixa o cursor no ponto mais próximo ao longo do eixo de uma barra.", () => Vista.SnapProximo, v => Vista.SnapProximo = v);
-            Item("Extensão", "Encaixa o cursor na linha de prolongamento além da extremidade de uma barra.", () => Vista.SnapExtensao, v => Vista.SnapExtensao = v);
-            return cm;
-        }
+        System.Windows.Controls.Primitives.ToggleButton stRastro, stDin;
 
         // Pilula alternavel do rodape: icone + nome; ligada = fundo de acento suave, borda e texto de destaque.
         static Style estiloPilula;
@@ -756,7 +738,7 @@ namespace NovoFtool
             System.Windows.Automation.AutomationProperties.SetName(b, nome);
             void Cor() { var c = b.IsChecked == true ? TemaPlant.BRealce : TemaPlant.BTexto2; ic.Stroke = c; tx.Foreground = c; }
             b.Checked += (s, e) => Cor(); b.Unchecked += (s, e) => Cor(); Cor();
-            b.Click += (s, e) => { acao(b.IsChecked == true); Vista.Focus(); };
+            b.Click += (s, e) => { acao(b.IsChecked == true); FocarVista(); };
             blocoStatus.Children.Add(b);
             return b;
         }

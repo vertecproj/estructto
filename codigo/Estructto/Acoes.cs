@@ -787,14 +787,11 @@ namespace NovoFtool
 
         // ================= teclado e linha de comando =================
 
-        static readonly string[] Comandos = { "BARRA", "NO", "MEDIR", "DI", "DIST", "SEL", "APAGAR", "DIVIDIR", "ZE", "DESFAZER", "REFAZER", "CALC", "NOVO", "ABRIR", "SALVAR",
-            "UNIR", "TIRAR", "SEPARAR", "SELMEMBRO", "DEF", "NORMAL", "CORTANTE", "MOMENTO", "CALOR", "MOVER", "COPIAR", "ESPELHAR", "QD", "FN", "SELNOS", "SELBASE", "SELTODAS", "REAC", "GRADE", "ORTO", "POLAR", "ENGASTE", "FIXO", "MOVEL", "ROTULA", "CARGA", "ASSISTENTE", "TABELAS", "CSV", "AJUDA", "ABA", "CASOS", "CASO", "NOVOCASO", "GERARCOMB", "RESULTADO", "RELATORIO" };
-
         void MostrarSugestao()
         {
             string t = Comando.Text.Trim().ToUpperInvariant();
             if (t.Length == 0 || t.Any(c => char.IsDigit(c) || c == ',' || c == '@' || c == '<' || c == ' ')) { Sugestao.Text = ""; return; }
-            string s = Comandos.FirstOrDefault(c => c.StartsWith(t));
+            string s = Comandos.Where(c => c.StartsWith(t)).OrderBy(c => c.Length).FirstOrDefault();
             Sugestao.Text = s != null ? new string(' ', Comando.Text.Length) + s.Substring(t.Length) + "   (Tab completa)" : "";
         }
 
@@ -804,23 +801,16 @@ namespace NovoFtool
                 || (Keyboard.FocusedElement is FrameworkElement fe && fe.TemplatedParent is ComboBox);
         }
 
-        // Digitar com o mouse no desenho manda o texto para a linha de comando (como no AutoCAD).
+        // Digitar com o mouse no desenho manda o texto para a linha de comando (como no AutoCAD). Com uma ferramenta ou pedido
+        // de ponto em curso, dígitos, vírgula, ponto e @ vão para a entrada dinâmica da Vista3D (Vista3D.Digitar).
         void TextoDigitado(object s, TextCompositionEventArgs e)
         {
             if (Editando() || Comando.IsKeyboardFocusWithin || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
-            if (!(Keyboard.FocusedElement == Vista || Vista.IsMouseOver)) return;
+            if (vista3D == null || !(vista3D.IsKeyboardFocusWithin || vista3D.IsMouseOver || Keyboard.FocusedElement == null || Keyboard.FocusedElement is Window)) return;
             char c = e.Text[0];
-            // Entrada dinamica (barra/medir em andamento): digitos vao para a caixinha do campo ativo.
-            if (Vista.DinAtivo)
-            {
-                if (Vista.DinTecla(e.Text, Key.None)) { e.Handled = true; return; }
-                // virgula/ponto-e-virgula/< viram coordenadas na linha de comando: leva junto o que ja foi digitado
-                string pend = Vista.Din[Vista.DinCampo];
-                if (pend != "" && (c == ',' || c == ';' || c == '<')) { Vista.DinLimpar(); Comando.Focus(); Comando.Text = pend + e.Text; Comando.CaretIndex = Comando.Text.Length; e.Handled = true; return; }
-            }
-            // Como no AutoCAD: tudo o que se digita vai para a linha de comando e so executa no Enter/Espaco.
-            // Assim "MOVEL" nao dispara "M" (momento) no meio da palavra. Atalhos de uma letra: B, M, Q, N, D, V + Enter.
-            if (char.IsLetterOrDigit(c) || c == '@' || c == '-' || c == ',' || c == '.' || c == ';' || c == '<')
+            bool numerico = char.IsDigit(c) || c == '.' || c == '-' || c == ',' || c == ';' || c == '@';
+            if (vista3D.Desenhando && numeroPendente == null && numerico && vista3D.IsKeyboardFocusWithin) return;   // Vista3D.OnTextInput
+            if (char.IsLetterOrDigit(c) || numerico || c == '<' || c == '#' || c == '?')
             {
                 Comando.Focus();
                 Comando.Text += e.Text; Comando.CaretIndex = Comando.Text.Length;
@@ -831,68 +821,16 @@ namespace NovoFtool
         // Diagrama pelo teclado: o mesmo comando liga e, repetido, desliga (igual ao botao da faixa).
         void AlternarDiagrama(Diagrama d) { MostrarDiagrama(Vista.Diag == d ? Diagrama.Nenhum : d); }
 
-        // Enter na entrada dinamica: fecha o ponto com o comprimento/angulo digitados (e o que faltar vem do mouse, com snap/orto).
-        internal void ConfirmarDinamica()
-        {
-            Point pd = Vista.PontoDinamico();
-            bool medir = Vista.Ferr == Ferramenta.Medir;
-            Vista.DinLimpar(); Vista.Focus();
-            if (medir) PontoMedida(pd.X, pd.Y); else PontoBarra(pd.X, pd.Y);
-            Vista.InvalidateVisual();
-        }
-
         void Tecla(object s, KeyEventArgs e)
         {
             bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control), shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
             bool editando = Editando();
             Key k = e.Key == Key.System ? e.SystemKey : e.Key;
-            if (!editando && !ctrl && Comando.Text == "" && Tecla3D(k)) { e.Handled = true; return; }   // ferramentas da Vista3D (modelo espacial)
-            if (!editando && !ctrl && Vista.DinAtivo && Comando.Text == "" && (k == Key.Tab || k == Key.Back || ((k == Key.Enter || k == Key.Return) && Vista.DinTravado)))
-            {
-                if (k == Key.Enter || k == Key.Return)
-                {
-                    ConfirmarDinamica(); e.Handled = true;
-                }
-                else if (Vista.DinTecla(null, k)) { Vista.Focus(); e.Handled = true; }
-            }
-            else if (ctrl && k == Key.K) { AbrirPaleta(); e.Handled = true; }
-            else if (ctrl && k == Key.Z && !editando) { Desfazer(); e.Handled = true; }
-            else if (ctrl && k == Key.Y && !editando) { Refazer(); e.Handled = true; }
-            else if (ctrl && shift && k == Key.S) { Salvar(true); e.Handled = true; }
-            else if (ctrl && k == Key.S) { Salvar(false); e.Handled = true; }
-            else if (ctrl && k == Key.O) { AbrirDialogo(); e.Handled = true; }
-            else if (ctrl && k == Key.N) { Novo(); e.Handled = true; }
-            else if (ctrl && k == Key.Tab && docs.Count > 1) { TrocarDoc((docAtivo + (shift ? docs.Count - 1 : 1)) % docs.Count); e.Handled = true; }
-            else if (ctrl && k == Key.F4) { FecharDoc(docAtivo); e.Handled = true; }
-            else if (ctrl && k == Key.E) { ExportarCsv(); e.Handled = true; }
-            else if (ctrl && k == Key.P) { AbrirRelatorio(); e.Handled = true; }
-            else if (ctrl && k == Key.M && !editando) { AcionarFerramenta(Ferramenta.Medir); e.Handled = true; }
-            else if (ctrl && k == Key.A && !editando) { Vista.Selecionar(M.Barras.Cast<object>()); e.Handled = true; }
-            else if (k == Key.F1) { MostrarAjuda(); e.Handled = true; }
-            else if (k == Key.F2) { MostrarHistorico(); e.Handled = true; }
-            else if (k == Key.F3) { AlternarStatus(stObj, v => Vista.AtrairObjetos = v, "Atração a objetos"); e.Handled = true; }
-            else if (k == Key.F11) { AlternarStatus(stRastro, v => { Vista.Rastrear = v; if (!v) Vista.LimparRastreio(); }, "Rastreamento"); e.Handled = true; }
-            else if (k == Key.F4) { Vista.ZoomTudo(); e.Handled = true; }
-            else if (k == Key.F5) { Calcular(); e.Handled = true; }
-            else if (k == Key.F7) { AlternarStatus(stGrade, v => { M.MostrarGrade = v; Vista.InvalidateVisual(); }, "Grade"); e.Handled = true; }
-            else if (k == Key.F8) { AlternarStatus(stOrto, v => Vista.Orto = v, "ORTO"); e.Handled = true; }
-            else if (k == Key.F9) { AlternarStatus(stAtrair, v => M.AtrairGrade = v, "SNAP na grade"); e.Handled = true; }
-            else if (k == Key.F10) { AlternarStatus(stPolar, v => Vista.Polar = v, "Polar"); e.Handled = true; }
-            else if (k == Key.Escape)
-            {
-                // cancela em cascata: texto digitado > barra/medida em andamento > ferramenta > selecao
-                if (Comando.Text != "") Comando.Text = "";
-                else if (Vista.DinTravado) Vista.DinLimpar();
-                else if (Vista.InicioBarra != null) { Vista.InicioBarra = null; Log("Barra terminada."); }
-                else if (Vista.MedidaIni != null) { Vista.MedidaIni = null; Vista.MedidaFim = null; Vista.Etiqueta = "MEDIR — clique o 1º ponto (ou digite x,y).   Botão direito ou Esc encerra."; Log("Medida cancelada."); }
-                else if (Vista.Ferr != Ferramenta.Selecionar) UsarFerramenta(Ferramenta.Selecionar);
-                else if (Vista.Sel.Count > 0) { Vista.Sel.Clear(); SelecaoMudou(); }
-                Vista.InvalidateVisual(); Vista.Focus();
-                e.Handled = true;
-            }
-            else if (k == Key.Delete && !editando && Comando.Text == "") { Apagar(); e.Handled = true; }
-            else if ((k == Key.Add || k == Key.OemPlus) && !editando && Comando.Text == "" && !Comando.IsKeyboardFocusWithin) { Escala(1.4); e.Handled = true; }
-            else if ((k == Key.Subtract || k == Key.OemMinus) && !editando && Comando.Text == "" && !Comando.IsKeyboardFocusWithin && !(Vista.Ferr == Ferramenta.Barra && Vista.InicioBarra != null)) { Escala(1 / 1.4); e.Handled = true; }
+            // ferramenta/pedido em curso na Vista3D: Esc em cascata, Enter/Espaço, Tab, Backspace (Vista3D.Tecla)
+            if (!editando && !ctrl && Comando.Text == "" && (k == Key.Escape || k == Key.Enter || k == Key.Return || k == Key.Space || k == Key.Tab || k == Key.Back) && Tecla3D(k))
+            { e.Handled = true; return; }
+            if ((editando || Comando.Text != "") && !ctrl && k != Key.Escape && !(k >= Key.F1 && k <= Key.F12)) return;   // digitando: a caixa trata
+            if (TeclaGlobal3D(k, ctrl, shift, editando)) e.Handled = true;   // Comandos3D.cs
         }
 
         void ComandoTecla(object s, KeyEventArgs e)
@@ -900,292 +838,32 @@ namespace NovoFtool
             if (e.Key == Key.Tab)
             {
                 string t0 = Comando.Text.Trim().ToUpperInvariant();
-                string c = Comandos.FirstOrDefault(x => t0.Length > 0 && x.StartsWith(t0));
+                string c = Comandos.Where(x => t0.Length > 0 && x.StartsWith(t0)).OrderBy(x => x.Length).FirstOrDefault();
                 if (c != null) { Comando.Text = c; Comando.CaretIndex = c.Length; }
                 e.Handled = true;
                 return;
             }
             if (e.Key != Key.Enter && e.Key != Key.Space) return;
             string t = Comando.Text.Trim();
-            if (e.Key == Key.Space && (t.Length == 0 || char.IsDigit(t[0]) || t[0] == '-' || t[0] == '@' || t.Contains(",") || t.Contains(";"))) return;
+            if (e.Key == Key.Space && t.Length > 0 && PareceCoordenada(t)) return;   // espaço dentro de coordenada/expressão
             e.Handled = true;
             Comando.Text = "";
-            Vista.Focus();
-            if (t == "")
-            {
-                if (Vista.Ferr == Ferramenta.Barra && Vista.InicioBarra != null) { Vista.InicioBarra = null; Log("Barra terminada."); Vista.InvalidateVisual(); }
-                return;
-            }
+            FocarVista();
+            if (t == "") { RepetirUltimo(); return; }
             Log("» " + t);
-            Executar(t);
+            ExecutarComando(t);
         }
 
-        bool LerPonto(string t, out Point p)
-        {
-            p = new Point();
-            bool rel = t.StartsWith("@");
-            if (rel) t = t.Substring(1);
-            Point? iniAtivo = Vista.Ferr == Ferramenta.Medir && Vista.MedidaFim == null ? Vista.MedidaIni : Vista.InicioBarra;
-            Point base0 = iniAtivo ?? new Point(0, 0);
-            double l, ang;
-            if (t.Contains("<"))
-            {
-                string[] pr = t.Split('<');
-                if (pr.Length != 2 || !Num.Ler(pr[0], out l) || !Num.Ler(pr[1], out ang)) return false;
-                double r = ang * Math.PI / 180;
-                Point o = rel ? base0 : new Point(0, 0);   // como no AutoCAD: L<ang sem @ e a partir da origem
-                p = new Point(o.X + l * Math.Cos(r), o.Y + l * Math.Sin(r));
-                return double.IsFinite(p.X) && double.IsFinite(p.Y);
-            }
-            // so um numero: comprimento na direcao do mouse (entrada direta de distancia)
-            // (decimal com ponto; a virgula separa x,y como no AutoCAD; com ";" a virgula volta a ser decimal: 2,5;3)
-            if (!rel && iniAtivo != null && !t.Contains(",") && !t.Contains(";") && !t.Contains(" ") && Num.Ler(t, out l))
-            {
-                Point m = Vista.PontoMouse;
-                Vector d = new Vector(m.X - base0.X, m.Y - base0.Y);
-                if (d.Length < 1e-9) d = new Vector(1, 0);
-                d.Normalize();
-                p = new Point(base0.X + l * d.X, base0.Y + l * d.Y);
-                return double.IsFinite(p.X) && double.IsFinite(p.Y);
-            }
-            string[] c2 = t.Contains(";") ? t.Split(';') : t.Contains(" ") ? t.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries) : t.Split(',');
-            if (c2.Length != 2) return false;
-            double x, y;
-            if (!Num.Ler(c2[0], out x) || !Num.Ler(c2[1], out y)) return false;
-            p = rel ? new Point(base0.X + x, base0.Y + y) : new Point(x, y);
-            return double.IsFinite(p.X) && double.IsFinite(p.Y);
-        }
+        void Executar(string t) => ExecutarComando(t);   // faixa, paleta, --cmd (Comandos3D.cs)
 
-        void Executar(string t)
-        {
-            t = (t ?? "").Trim();
-            if (t == "") { if (Vista.InicioBarra != null) { Vista.InicioBarra = null; Log("Barra terminada."); Vista.InvalidateVisual(); } return; }
-            Point p;
-            if (LerPonto(t, out p))
-            {
-                if (Vista.Ferr == Ferramenta.Medir) { PontoMedida(Math.Round(p.X, 9), Math.Round(p.Y, 9)); return; }
-                if (Vista.Ferr != Ferramenta.Barra) UsarFerramenta(Ferramenta.Barra);
-                PontoBarra(Math.Round(p.X, 9), Math.Round(p.Y, 9));
-                return;
-            }
-            string[] w = t.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            switch (w[0].ToUpperInvariant())
-            {
-                case "B": case "BARRA": case "L": case "LINE": UsarFerramenta(Ferramenta.Barra); break;
-                case "MEDIR": case "DI": case "DIST": UsarFerramenta(Ferramenta.Medir); break;
-                case "S": case "SEL": UsarFerramenta(Ferramenta.Selecionar); break;
-                case "NO": case "NÓ": UsarFerramenta(Ferramenta.No); break;
-                case "ZE": case "Z": case "ZOOM": Vista.ZoomTudo(); break;
-                case "APAGAR": case "E": case "ERASE": Apagar(); break;
-                case "DIVIDIR": DividirSelecao(); break;
-                case "UNIR": UnirMembro(); break;
-                case "TIRAR": TirarTrecho(); break;
-                case "SEPARAR": SepararMembro(); break;
-                case "SELMEMBRO": SelecionarMembro(); break;
-                case "U": case "DESFAZER": Desfazer(); break;
-                case "REFAZER": Refazer(); break;
-                case "CALC": case "CALCULAR": Calcular(); break;
-                case "NOVO": Novo(); break;
-                case "ABRIR": AbrirDialogo(); break;
-                case "SALVAR": Salvar(false); break;
-                case "N": case "NORMAL": AlternarDiagrama(Diagrama.Normal); break;
-                case "Q": case "CORTANTE": AlternarDiagrama(Diagrama.Cortante); break;
-                case "M": case "MOMENTO": AlternarDiagrama(Diagrama.Momento); break;
-                case "D": case "DEF": case "DEFORMADA": AlternarDiagrama(Diagrama.Deformada); break;
-                case "V": case "VERIFICAR": case "CALOR": case "MAPA": MostrarDiagrama(Vista.Diag == Diagrama.Verificacao && Vista.MapaCalor ? Diagrama.Nenhum : Diagrama.Verificacao, true); break;
-                case "COMPARAR": AbrirVerificacao(null); break;
-                case "DIMENSIONAR": DimensionarPerfis(false); break;
-                case "DIMSEL": DimensionarPerfis(true); break;
-                case "ELETRODO":
-                    if (w.Length > 1 && Array.IndexOf(Solda.Eletrodos, w[1].ToUpperInvariant().Replace("XX", "")) >= 0) { M.Eletrodo = w[1].ToUpperInvariant().Replace("XX", ""); Confirmar("Eletrodo das soldas: " + M.Eletrodo + "XX."); }
-                    else Log("Uso: ELETRODO E60 | E70 | E80 | E90 | E100 | E110 | E120");
-                    break;
-                case "SOLDAS": PainelTabelas.Show(); AbaSoldas.IsSelected = true; break;
-                case "PLACA": AbrirPlaca(null); break;
-                case "MOVER": case "MOVE": case "MV": Transformar("mover", w); break;
-                case "COPIAR": case "COPY": case "CP": Transformar("copiar", w); break;
-                case "ESPELHAR": case "MIRROR": case "MI": Transformar("espelhar", w); break;
-                case "QD":
-                {
-                    // QD qy [qx]: carga distribuida nas barras selecionadas
-                    double qy, qx = 0;
-                    if (w.Length < 2 || !Num.Ler(w[1], out qy) || (w.Length > 2 && !Num.Ler(w[2], out qx))) { Log("Uso: QD qy [qx]   (kN/m; ex.: QD -15)"); break; }
-                    var bs = Vista.Sel.OfType<Barra>().ToList();
-                    if (bs.Count == 0) { Log("Selecione as barras antes (clique ou janela) e repita QD."); break; }
-                    foreach (Barra b in bs) { b.QGlobalY = qy; b.QGlobalX = qx; }
-                    Confirmar("Carga qy = " + Num.Fmt(qy, 2) + (qx != 0 ? ", qx = " + Num.Fmt(qx, 2) : "") + " kN/m em " + Pl.N(bs.Count, "barra", "barras") + ".");
-                    break;
-                }
-                case "FN":
-                {
-                    // FN fx fy [mz]: carga nos nos selecionados
-                    double fx, fy, mz = 0;
-                    if (w.Length < 3 || !Num.Ler(w[1], out fx) || !Num.Ler(w[2], out fy) || (w.Length > 3 && !Num.Ler(w[3], out mz))) { Log("Uso: FN fx fy [mz]   (kN, kN·m; ex.: FN 10 0)"); break; }
-                    var ns = Vista.Sel.OfType<No>().ToList();
-                    if (ns.Count == 0) { Log("Selecione os nós antes e repita FN."); break; }
-                    foreach (No n in ns) { n.Fx = fx; n.Fy = fy; n.Mz = mz; }
-                    Confirmar("Carga aplicada em " + Pl.N(ns.Count, "nó", "nós") + ".");
-                    break;
-                }
-                case "REAC": tgReac.IsChecked = !tgReac.IsChecked; Vista.MostrarReacoes = tgReac.IsChecked == true; Resolver(false); break;
-                case "ENGASTE": AcionarFerramenta(Ferramenta.ApoioEngaste); break;
-                case "FIXO": AcionarFerramenta(Ferramenta.ApoioRotula); break;
-                case "MOVEL": case "MÓVEL": AcionarFerramenta(Ferramenta.ApoioRoloV); break;
-                case "ROTULA": case "RÓTULA": AcionarFerramenta(Ferramenta.Rotula); break;
-                case "CARGA": AcionarFerramenta(Ferramenta.CargaNo); break;
-                case "ASSISTENTE": AbrirAssistente(w.Length > 1 ? w[1].ToLowerInvariant() : null); break;
-                case "TABELAS": PainelTabelas.Show(); break;
-                case "CSV": ExportarCsv(); break;
-                case "GRADE":
-                    if (w.Length > 1) { cGrade.Text = w[1]; MudarGrade(w[1]); }
-                    else AlternarStatus(stGrade, v => { M.MostrarGrade = v; Vista.InvalidateVisual(); }, "Grade");
-                    break;
-                case "ORTO": AlternarStatus(stOrto, v => Vista.Orto = v, "ORTO"); break;
-                case "POLAR": AlternarStatus(stPolar, v => Vista.Polar = v, "Polar"); break;
-                case "ABA":
-                    foreach (var tab in Faixa.Tabs) if (w.Length > 1 && (tab.Header as string ?? "").StartsWith(w[1], StringComparison.OrdinalIgnoreCase)) Faixa.SelectedTabItem = tab;
-                    break;
-                case "SELTODAS": Vista.Selecionar(M.Barras.Cast<object>()); break;
-                case "CASOS": AbrirCasosConforme(); break;
-                case "RELATORIO": case "RELATÓRIO": AbrirRelatorio(); break;
-                case "RELPNG": if (w.Length > 1) SalvarRelatorioPng(string.Join(" ", w.Skip(1))); else Log("Uso: RELPNG pasta"); break;
-                case "NOVOCASO":
-                {
-                    // NOVOCASO tipo nome...   (tipo G, Q, V ou E) — cria o caso e o deixa ativo
-                    string tp = w.Length > 1 ? w[1].ToUpperInvariant() : "Q";
-                    if (!new[] { "G", "Q", "V", "E" }.Contains(tp)) { Log("Uso: NOVOCASO G|Q|V|E nome"); break; }
-                    M.AdicionarCaso(new CasoCarga { Nome = w.Length > 2 ? string.Join(" ", w.Skip(2)) : tp + M.Casos.Count, Tipo = tp });
-                    M.AtivarCaso(M.Casos.Count - 1);
-                    Confirmar("Caso \"" + M.Casos[M.CasoAtivo].Nome + "\" criado e ativo.");
-                    break;
-                }
-                case "CASO":
-                {
-                    int ci;
-                    if (w.Length > 1 && int.TryParse(w[1], out ci) && ci >= 1 && ci <= M.Casos.Count) { M.AtivarCaso(ci - 1); Confirmar("Caso ativo: " + M.Casos[M.CasoAtivo].Nome + "."); }
-                    else Log("Uso: CASO número (1 a " + M.Casos.Count + ").");
-                    break;
-                }
-                case "GERARCOMB": M.Combinacoes = Analise.GerarNbr(M.Casos); Confirmar(M.Combinacoes.Count + " combinações NBR 8681/8800 geradas."); break;
-                case "RESULTADO":
-                    if (w.Length > 1) EscolherResultado(w[1].ToLowerInvariant().Replace("elu", "ELU").Replace("els", "ELS"));
-                    else Log("Uso: RESULTADO ativo | caso:N | comb:N | env:ELU | env:ELS  (N a partir de 0)");
-                    break;
-                case "SELNOS": Vista.Selecionar(M.Nos.Cast<object>()); Log(M.Nos.Count + " nós selecionados."); break;
-                case "SELBASE": { var b0 = M.Nos.Count == 0 ? new List<object>() : M.Nos.Where(n => Math.Abs(n.Y - M.Nos.Min(x => x.Y)) < 1e-6).Cast<object>().ToList(); Vista.Selecionar(b0); Log(Pl.N(b0.Count, "nó da base selecionado", "nós da base selecionados") + "."); break; }
-                case "SELNO":
-                {
-                    int id; var n = w.Length > 1 && int.TryParse(w[1], out id) ? M.NoPorId(id) : null;
-                    if (n != null) { Vista.Selecionar(new object[] { n }); Log("Nó " + n.Id + " selecionado."); }
-                    else Log("⛔ Nó não encontrado. Nós existentes: " + string.Join(", ", M.Nos.Select(x => x.Id)) + ".");
-                    break;
-                }
-                case "SELBARRA":
-                {
-                    int id; var b = w.Length > 1 && int.TryParse(w[1], out id) ? M.Barras.FirstOrDefault(x => x.Id == id) : null;
-                    if (b != null) { Vista.Selecionar(new object[] { b }); Log("Barra " + b.Id + " selecionada."); }
-                    else Log("⛔ Barra não encontrada. Barras existentes: " + string.Join(", ", M.Barras.Select(x => x.Id)) + ".");
-                    break;
-                }
-                case "AJUDA": case "?":
-                    Log("Comandos: " + string.Join(", ", Comandos) + ". Pontos: x,y  @dx,dy  @L<ângulo  ou só o comprimento.");
-                    break;
-                default:
-                    double num;
-                    if (Num.Ler(t, out num)) Log("Um número sozinho é o comprimento da barra: comece uma barra (B + Enter, clique o 1º ponto) e então digite " + t + ".");
-                    else Log("Comando desconhecido: " + t + " — digite AJUDA ou tecle F1.");
-                    break;
-            }
-        }
-
-        // ---------- MOVER / COPIAR / ESPELHAR (sobre a selecao) ----------
-        // MOVER dx dy · COPIAR dx dy [vezes] · ESPELHAR X valor | Y valor   (tambem aceita "dx,dy" e "@dx,dy")
+        // Botões Mover/Copiar/Espelhar da faixa: no 3D, como os comandos M, CO, MI.
         void Transformar(string modo, string[] w)
         {
-            if (Esp != null) { AbrirEdicaoEsp(modo); return; }   // modelo espacial: EdicaoEspacial.cs
-            var barras = Vista.Sel.OfType<Barra>().ToList();
-            var nos = Vista.Sel.OfType<No>().ToList();
-            if (barras.Count == 0 && (modo != "mover" || nos.Count == 0)) { Log("Selecione as barras" + (modo == "mover" ? " ou nós" : "") + " antes (clique, janela ou Ctrl+A) e repita."); return; }
-            string args = string.Join(" ", w.Skip(1)).Replace("@", "").Trim();
-            if (args == "")
-            {
-                string dica = modo == "espelhar" ? "Eixo do espelho: \"X 6\" (reta vertical x = 6) ou \"Y 0\" (horizontal y = 0)."
-                            : modo == "copiar" ? "Deslocamento e número de cópias: \"dx dy vezes\" (m). Ex.: 6 0 2" : "Deslocamento \"dx dy\" (m). Ex.: 0 0,5";
-                args = Pergunta.Mostrar(this, modo == "mover" ? "Mover" : modo == "copiar" ? "Copiar" : "Espelhar", dica, modo == "espelhar" ? "X 0" : modo == "copiar" ? "0 0 1" : "0 0");
-                if (args == null) return;
-            }
-            string[] a = args.Replace(";", " ").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            if (a.Length == 1 && a[0].Contains(",") && modo != "espelhar") a = a[0].Split(',');   // "dx,dy"
-
-            if (modo == "espelhar")
-            {
-                double v;
-                if (a.Length < 2 || !(a[0].ToUpperInvariant() == "X" || a[0].ToUpperInvariant() == "Y") || !Num.Ler(a[1], out v)) { Log("Uso: ESPELHAR X valor  ou  ESPELHAR Y valor"); return; }
-                bool emX = a[0].ToUpperInvariant() == "X";
-                int qt = CopiarBarras(barras, p => emX ? new Point(2 * v - p.X, p.Y) : new Point(p.X, 2 * v - p.Y), true);
-                Confirmar(Pl.N(qt, "barra espelhada", "barras espelhadas") + " em " + (emX ? "x" : "y") + " = " + Num.Fmt(v, 3) + ".");
-                return;
-            }
-            double dx, dy;
-            if (a.Length < 2 || !Num.Ler(a[0], out dx) || !Num.Ler(a[1], out dy)) { Log("Uso: " + modo.ToUpperInvariant() + " dx dy" + (modo == "copiar" ? " [vezes]" : "")); return; }
-            if (modo == "mover")
-            {
-                var alvo = new HashSet<No>(nos);
-                foreach (Barra b in barras) { alvo.Add(M.NoPorId(b.N1)); alvo.Add(M.NoPorId(b.N2)); }
-                foreach (No n in alvo) { n.X = Math.Round(n.X + dx, 9); n.Y = Math.Round(n.Y + dy, 9); }
-                var sobrepostos = M.Nos.Where(n => !alvo.Contains(n) && alvo.Any(o => Math.Abs(o.X - n.X) < 1e-6 && Math.Abs(o.Y - n.Y) < 1e-6)).ToList();
-                Confirmar(Pl.N(alvo.Count, "nó movido", "nós movidos") + " (" + Num.Fmt(dx, 3) + "; " + Num.Fmt(dy, 3) + ")." + (sobrepostos.Count > 0 ? " ⚠ Há nós sobrepostos: não foram fundidos." : ""));
-                return;
-            }
-            int vezes = 1;
-            if (a.Length > 2 && (!int.TryParse(a[2], out vezes) || vezes < 1 || vezes > 200)) { Log("Número de cópias: 1 a 200."); return; }
-            int total = 0;
-            for (int k = 1; k <= vezes; k++) { int kk = k; total += CopiarBarras(barras, p => new Point(p.X + kk * dx, p.Y + kk * dy), true); }
-            Confirmar(Pl.N(total, "barra criada", "barras criadas") + " em " + Pl.N(vezes, "cópia", "cópias") + ".");
-            Vista.ZoomTudo();
+            if (modo == "mover") ExecutarComando("MOVER");
+            else if (modo == "copiar") ExecutarComando("COPIAR");
+            else ExecutarComando("ESPELHAR");
         }
 
-        // Copia barras (secao, material, cargas, rotulas) e os atributos dos nos novos (apoio, carga, molas).
-        int CopiarBarras(List<Barra> barras, Func<Point, Point> f, bool copiarNos)
-        {
-            int criadas = 0;
-            var novoMembro = new Dictionary<int, int>();   // a copia de uma barra continua vira outra barra continua
-            int baseMembro = M.ProxMembro();
-            foreach (Barra b in barras.ToList())
-            {
-                No a = M.NoPorId(b.N1), c = M.NoPorId(b.N2);
-                if (a == null || c == null) continue;
-                Point pa = f(new Point(a.X, a.Y)), pc = f(new Point(c.X, c.Y));
-                No na = NoNovoOuExistente(pa, a, copiarNos), nc = NoNovoOuExistente(pc, c, copiarNos);
-                int antes = M.Barras.Count;
-                M.AddBarra(na, nc, 1e-6);
-                for (int i = antes; i < M.Barras.Count; i++)
-                {
-                    Barra nb = M.Barras[i];
-                    nb.Secao = b.Secao; nb.Material = b.Material; nb.EixoFraco = b.EixoFraco;
-                    nb.QGlobalX = b.QGlobalX; nb.QGlobalY = b.QGlobalY; nb.QLocalIni = b.QLocalIni; nb.QLocalFim = b.QLocalFim;
-                    nb.RotulaInicio = b.RotulaInicio; nb.RotulaFim = b.RotulaFim;
-                    if (b.Membro != 0) { if (!novoMembro.ContainsKey(b.Membro)) novoMembro[b.Membro] = baseMembro + novoMembro.Count; nb.Membro = novoMembro[b.Membro]; }
-                    criadas++;
-                }
-            }
-            return criadas;
-        }
-
-        No NoNovoOuExistente(Point p, No modelo, bool copiar)
-        {
-            bool existia = M.Nos.Any(n => Math.Abs(n.X - p.X) <= 1e-6 && Math.Abs(n.Y - p.Y) <= 1e-6);
-            No n2 = M.ObterNo(Math.Round(p.X, 9), Math.Round(p.Y, 9), 1e-6);
-            if (!existia && copiar)
-            {
-                n2.ApoioX = modelo.ApoioX; n2.ApoioY = modelo.ApoioY; n2.ApoioGiro = modelo.ApoioGiro;
-                n2.MolaX = modelo.MolaX; n2.MolaY = modelo.MolaY; n2.MolaGiro = modelo.MolaGiro;
-                n2.Fx = modelo.Fx; n2.Fy = modelo.Fy; n2.Mz = modelo.Mz;
-            }
-            return n2;
-        }
-
-        // F2: historico completo da linha de comando (como a janela de texto do AutoCAD)
         void MostrarHistorico()
         {
             var j = new JanelaEscura { Title = "Histórico de comandos (F2)", Width = 760, Height = 480, Owner = this, ShowInTaskbar = false };

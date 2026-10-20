@@ -593,6 +593,7 @@ namespace NovoFtool
             MontarPainelEspacial();
             AtualizarListasCasos(); AtualizarArvore(); AtualizarTabelas(); Diagnosticar();   // versões espaciais (Paineis.cs, Casos.cs)
             ListarSecoes3D();
+            AplicarGradeNaVista();   // eixos da grade estrutural do documento (Comandos3D.cs)
             SincronizarEsp();
         }
 

@@ -1239,9 +1239,9 @@ namespace NovoFtool
                         CapturarPrincipal(w, par[1], null, pv, () => new Point(Math.Max(10, (w.Width - pv.Width) / 2), 96));
                     }
 
-                    w.PrepararCapturaDinamica();
-                    CapturarPrincipal(w, "39-entrada-dinamica", () => w.AjustarCapturaDinamica());
-                    w.EncerrarCapturaDinamica();
+
+
+
                     EsperarIdle();
                 }
 

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -131,35 +132,21 @@ namespace NovoFtool
             cmds.Add(new ItemPaleta { Tipo = TipoItem.Comando, Nome = nome, Cmd = cmd, Icone = icone, Atalho = atalho, Sinonimos = sin, Detalhe = dica, Chave = nome, Acao = acao });
         }
 
-        // Comandos que a faixa nao tem (so teclado/linha de comando). "Preenche" abre a linha de comando para digitar os argumentos.
+        // Comandos que a faixa nao tem (so teclado/linha de comando): todos os da linha de comando 3D (Comandos3D.cs) entram aqui.
         void RegistrarExtras()
         {
             if (extrasRegistrados) return;
             extrasRegistrados = true;
             RegistrarExportar();   // Exportar.cs
-            Action<string> run = c => Executar(c);
-            Action<string> preenche = c => { Comando.Focus(); Comando.Text = c + " "; Comando.CaretIndex = Comando.Text.Length; };
-            Extra("Selecionar tudo", "SELTODAS", "sel", "Ctrl+A", "todas barras", "Seleciona todas as barras.", () => run("SELTODAS"));
-            Extra("Selecionar todos os nós", "SELNOS", "no", null, "todos nos", "Seleciona todos os nós.", () => run("SELNOS"));
-            Extra("Selecionar nós da base", "SELBASE", "no", null, "pe apoios base", "Seleciona os nós da cota mais baixa.", () => run("SELBASE"));
             Extra("Histórico de ações", null, "info", "F2", "log mensagens", "Mostra as últimas mensagens do programa.", MostrarHistorico);
-            Extra("Alternar grade", "GRADE", "grade", "F7", "malha mostrar ocultar", "Liga/desliga a grade de desenho.", () => run("GRADE"));
-            Extra("Alternar ortogonal", "ORTO", "ortho", "F8", "ortho horizontal vertical", "Força o desenho na horizontal/vertical.", () => run("ORTO"));
-            Extra("Alternar polar", "POLAR", "polar", "F10", "angulo guia", "Guia de ângulos ao desenhar.", () => run("POLAR"));
-            Extra("Alternar snap na grade", null, "snap", "F9", "atrair grade", "Encaixa os pontos na grade.", () => AlternarStatus(stAtrair, v => M.AtrairGrade = v, "SNAP na grade"));
-            Extra("Alternar atração a objetos", null, "objsnap", "F3", "osnap nos pontos medios", "Encaixa em nós, meios e interseções.", () => AlternarStatus(stObj, v => Vista.AtrairObjetos = v, "Atração a objetos"));
-            Extra("Alternar rastreamento", null, "rastro", "F11", "tracking guias", "Guias de rastreamento a partir dos pontos.", () => AlternarStatus(stRastro, v => { Vista.Rastrear = v; if (!v) Vista.LimparRastreio(); }, "Rastreamento"));
-            Extra("Carga distribuída (QD)", "QD", "cargadist", "QD qy", "uniforme kn/m", "Aplica qy [qx] nas barras selecionadas.", () => preenche("QD"));
-            Extra("Força no nó (FN)", "FN", "cargano", "FN fx fy", "carga concentrada", "Aplica fx fy [mz] nos nós selecionados.", () => preenche("FN"));
-            Extra("Casos de carga", "CASOS", "tabela", null, "permanente acidental vento", "Abre a janela de casos de carga e combinações.", () => run("CASOS"));
-            Extra("Ativar caso de carga", "CASO", "tabela", "CASO n", "caso ativo", "Torna ativo o caso de carga de número n.", () => preenche("CASO"));
-            Extra("Novo caso de carga", "NOVOCASO", "mais", "NOVOCASO tipo", "criar adicionar", "Cria um caso G, Q, V ou E.", () => preenche("NOVOCASO"));
-            Extra("Gerar combinações NBR", "GERARCOMB", "calc", null, "nbr 8681 elu els", "Gera as combinações NBR 8681/8800.", () => run("GERARCOMB"));
-            Extra("Resultado a exibir", "RESULTADO", "valores", "RESULTADO ...", "envoltoria elu els comb", "Escolhe caso, combinação ou envoltória mostrada.", () => preenche("RESULTADO"));
-            Extra("Tirar trecho da barra contínua", "TIRAR", "tirar", null, "membro remover trecho", "Tira os trechos selecionados da barra contínua.", () => run("TIRAR"));
-            Extra("Selecionar a barra contínua", "SELMEMBRO", "selmembro", null, "membro trechos", "Seleciona todos os trechos da barra contínua.", () => run("SELMEMBRO"));
-            Extra("Ir para aba da faixa", "ABA", "painel", "ABA nome", "ribbon", "Muda a aba ativa da faixa de opções.", () => preenche("ABA"));
             Extra("Ajuda: lista de comandos", null, "ajuda", "F1", "atalhos como usar", "Abre a ajuda com atalhos.", MostrarAjuda);
+            var tem = new HashSet<string>(cmds.Where(c => c.Cmd != null).Select(c => c.Cmd));
+            foreach (var c in Cmds3D.Where(c => !tem.Contains(c.Nome)))
+            {
+                var cc = c;
+                string nome = c.Nome.Substring(0, 1) + c.Nome.Substring(1).ToLowerInvariant();
+                Extra(cmds.Any(x => x.Chave == nome) ? nome + " (" + c.Nome + ")" : nome, c.Nome, "sel", c.Alias.FirstOrDefault(), string.Join(" ", c.Alias).ToLowerInvariant(), c.Desc, () => ExecutarComando(cc.Nome));
+            }
         }
 
         // Todos os comandos digitaveis precisam existir na paleta (verificado no modo --capturas).
@@ -194,33 +181,24 @@ namespace NovoFtool
                 return res;
             }
 
-            // objetos do modelo: "nó 3", "barra 2", "b2", "n 3"
+            // objetos do modelo: "nó 3", "barra 2", "b2", "n 3" (ids do motor: n3, B12…)
             var mo = Regex.Match(BuscaPaleta.Norm(q), @"^(n|no|nos|b|barra|barras)\s*(\d*)$");
             var objetos = new List<ItemPaleta>();
-            if (mo.Success)
+            if (mo.Success && Esp != null)
             {
                 bool eNo = mo.Groups[1].Value.StartsWith("n");
                 string dig = mo.Groups[2].Value;
-                if (eNo)
-                    foreach (No n in M.Nos.Where(x => dig == "" || x.Id.ToString().StartsWith(dig)).Take(6))
+                string Num0(string id) => new string(id.SkipWhile(ch => !char.IsDigit(ch)).ToArray());
+                foreach (var kv in (Esp.Json[eNo ? "nos" : "barras"] as JsonObject ?? new JsonObject()).Where(kv => dig == "" || Num0(kv.Key).StartsWith(dig)).Take(6))
+                {
+                    string id = kv.Key; var v = kv.Value;
+                    objetos.Add(new ItemPaleta
                     {
-                        No nn = n;
-                        objetos.Add(new ItemPaleta
-                        {
-                            Tipo = TipoItem.Objeto, Nome = "Nó " + n.Id, Detalhe = "(" + Num.Fmt(n.X, 2) + "; " + Num.Fmt(n.Y, 2) + ") m" + (n.TemApoio ? " · apoio" : ""),
-                            Icone = "no", Chave = "no" + n.Id, Acao = () => IrParaObjeto(nn)
-                        });
-                    }
-                else
-                    foreach (Barra b in M.Barras.Where(x => dig == "" || x.Id.ToString().StartsWith(dig)).Take(6))
-                    {
-                        Barra bb = b;
-                        objetos.Add(new ItemPaleta
-                        {
-                            Tipo = TipoItem.Objeto, Nome = "Barra " + b.Id, Detalhe = b.Secao + " · nós " + b.N1 + "–" + b.N2,
-                            Icone = "barra", Chave = "barra" + b.Id, Acao = () => IrParaObjeto(bb)
-                        });
-                    }
+                        Tipo = TipoItem.Objeto, Nome = (eNo ? "Nó " : "Barra ") + id, Icone = eNo ? "no" : "barra", Chave = (eNo ? "no" : "barra") + id,
+                        Detalhe = eNo ? "(" + Num.Fmt((double)v["x"], 2) + "; " + Num.Fmt((double)v["y"], 2) + "; " + Num.Fmt((double)v["z"], 2) + ") m" : (string)v["secao"] + " · " + (string)v["ni"] + " → " + (string)v["nj"],
+                        Acao = () => IrParaObjeto(eNo ? "no" : "barra", id)
+                    });
+                }
                 if (dig != "") res.AddRange(objetos);
             }
 
@@ -234,21 +212,18 @@ namespace NovoFtool
             res.AddRange(achados.OrderByDescending(a => a.Pontos).ThenBy(a => a.Nome).Take(8));
             if (mo.Success && mo.Groups[2].Value == "") res.AddRange(objetos);
 
-            // perfis da biblioteca: "W 200", "tubo 100"
+            // perfis do catálogo do motor: "W 200", "tubo 100" -> seção das próximas barras (Configurações)
             if (q.Length >= 2 && termos.Any(t => t.Any(char.IsDigit) || t.Length >= 3))
             {
+                if (catalogoEsp == null && Esp != null) _ = CarregarCatalogoEsp();
                 int n = 0;
-                foreach (Secao s in Biblioteca.Perfis)
+                foreach (string s in catalogoEsp ?? new List<string>())
                 {
-                    string alvo = BuscaPaleta.Norm(s.Nome + " " + s.Familia);
-                    if (termos.All(t => alvo.Contains(t)))
+                    string alvo = BuscaPaleta.Norm(s);
+                    if (termos.All(t => alvo.Replace(" ", "").Contains(t.Replace(" ", ""))))
                     {
-                        string nome = s.Nome;
-                        res.Add(new ItemPaleta
-                        {
-                            Tipo = TipoItem.Perfil, Nome = s.Nome, Detalhe = "perfil · " + s.Familia + " — aplicar", Icone = "pincel", Chave = "perfil:" + s.Nome,
-                            Acao = () => { cbSecao.Text = nome; AplicarSecao(false); }
-                        });
+                        string nome = s;
+                        res.Add(new ItemPaleta { Tipo = TipoItem.Perfil, Nome = s, Detalhe = "perfil do catálogo — seção das próximas barras", Icone = "pincel", Chave = "perfil:" + s, Acao = () => _ = UsarSecao3D(nome) });
                         if (++n >= 5) break;
                     }
                 }
@@ -256,21 +231,12 @@ namespace NovoFtool
             return res;
         }
 
-        void IrParaObjeto(object o)
+        void IrParaObjeto(string tipo, string id)
         {
-            Vista.Selecionar(new[] { o });
-            var pts = new List<Point>();
-            var n = o as No;
-            if (n != null) pts.Add(new Point(n.X, n.Y));
-            var b = o as Barra;
-            if (b != null)
-            {
-                No a = M.NoPorId(b.N1), c = M.NoPorId(b.N2);
-                if (a != null) pts.Add(new Point(a.X, a.Y));
-                if (c != null) pts.Add(new Point(c.X, c.Y));
-            }
-            Vista.EnquadrarPontos(pts);
-            Log((n != null ? "Nó " + n.Id : "Barra " + b.Id) + " selecionado.");
+            if (vista3D == null) return;
+            vista3D.Selecionar(tipo == "no" ? new[] { id } : null, tipo == "barra" ? new[] { id } : null);
+            vista3D.EnquadrarSelecao();
+            Log((tipo == "no" ? "Nó " : "Barra ") + id + " selecionado.");
         }
 
         internal void ExecutarItemPaleta(ItemPaleta it)
@@ -288,7 +254,8 @@ namespace NovoFtool
 
         internal bool PaletaSemPersistir;
 
-        // Testes do modo --capturas: paleta (busca e execucao) e entrada dinamica (comprimento + angulo). Devolve o numero de falhas.
+        // Testes do modo --capturas: paleta (busca e execução) e linha de comando 3D (aliases, repetir, Esc). Devolve o nº de falhas.
+        // Precisa de um documento 3D aberto com barras (o guincho convertido).
         internal int TestesPaletaEDinamica(StringBuilder log)
         {
             int falhas = 0;
@@ -301,114 +268,45 @@ namespace NovoFtool
 
             var pv = new PaletaVisual(this);
             Func<string, string> topo = q => { pv.Caixa.Text = q; var s = pv.Selecionado; return s == null ? "(nada)" : s.Nome; };
-
             string t = topo("momen");
-            ok(t == "Momento", "\"momen\" acha: " + t);
-            ExecutarItemPaleta(pv.Selecionado);
-            ok(Vista.Diag == Diagrama.Momento, "Enter em \"Momento\" liga o diagrama de momento (Diag = " + Vista.Diag + ")");
-            MostrarDiagrama(Diagrama.Nenhum);
-
-            ok(topo("calcr") == "Calcular", "busca difusa \"calcr\" acha: " + topo("calcr"));
-            ok(topo("verificacao") == "Verificação de barras", "sem acento \"verificacao\" acha: " + topo("verificacao"));
-            ok(topo("apagar") == "Apagar", "\"apagar\" acha: " + topo("apagar"));
-
-            int idNo = M.NoPorId(3) != null ? 3 : (M.Nos.Count > 0 ? M.Nos[0].Id : -1);
-            if (idNo >= 0)
-            {
-                Vista.Selecionar(new object[0]);
-                t = topo("nó " + idNo);
-                ok(t == "Nó " + idNo, "\"nó " + idNo + "\" acha: " + t);
-                ExecutarItemPaleta(pv.Selecionado);
-                ok(Vista.Sel.OfType<No>().Any(n => n.Id == idNo), "Enter em \"Nó " + idNo + "\" seleciona o nó " + idNo);
-            }
-            var b1 = M.Barras.FirstOrDefault();
+            ok(t == "Momento", "'momen' acha: " + t);
+            ok(topo("calcr") == "Calcular", "busca difusa 'calcr' acha: " + topo("calcr"));
+            ok(topo("verificacao") == "Verificação de barras", "sem acento 'verificacao' acha: " + topo("verificacao"));
+            ok(topo("aparar") == "Aparar", "'aparar' acha: " + topo("aparar"));
+            string b1 = Esp?.Json["barras"].AsObject().Select(kv => kv.Key).FirstOrDefault();
             if (b1 != null)
             {
-                Vista.Selecionar(new object[0]);
-                t = topo("barra " + b1.Id);
-                ok(t == "Barra " + b1.Id, "\"barra " + b1.Id + "\" acha: " + t);
+                vista3D.LimparSelecao();
+                t = topo("barra " + new string(b1.SkipWhile(ch => !char.IsDigit(ch)).ToArray()));
+                ok(t == "Barra " + b1, "'barra N' acha: " + t);
                 ExecutarItemPaleta(pv.Selecionado);
-                ok(Vista.Sel.OfType<Barra>().Any(b => b.Id == b1.Id), "Enter em \"Barra " + b1.Id + "\" seleciona a barra");
+                ok(vista3D.Selecao.Barras.Contains(b1), "Enter em 'Barra " + b1 + "' seleciona a barra");
+                vista3D.LimparSelecao();
             }
-            Vista.Selecionar(new object[0]);
-
-            string secaoAntes = cbSecao.Text;
-            topo("w 200");
-            var perfil = pv.Itens.FirstOrDefault(i => i.Tipo == TipoItem.Perfil);
-            ok(perfil != null && perfil.Nome.StartsWith("W 200"), "\"w 200\" lista perfil: " + (perfil == null ? "(nenhum)" : perfil.Nome));
-            if (perfil != null) { ExecutarItemPaleta(perfil); ok(cbSecao.Text == perfil.Nome, "Enter no perfil define a seção: " + cbSecao.Text); }
-            topo("tubo 100");
-            var tubo = pv.Itens.FirstOrDefault(i => i.Tipo == TipoItem.Perfil);
-            ok(tubo != null, "\"tubo 100\" lista perfil: " + (tubo == null ? "(nenhum)" : tubo.Nome));
-            cbSecao.Text = secaoAntes;
             pv.Caixa.Text = "";
             ok(pv.Itens.Count > 0, "paleta vazia mostra recentes/comandos (" + pv.Itens.Count + " itens)");
 
-            // ---- entrada dinamica ----
-            int barras0 = M.Barras.Count;
-            UsarFerramenta(Ferramenta.Barra);
-            PontoBarra(100, 100);
-            Vista.SimularMouse(new Point(300, 200));
-            Vista.DinTecla("3", Key.None); Vista.DinTecla(null, Key.Tab); Vista.DinTecla("3", Key.None); Vista.DinTecla("0", Key.None);
-            ok(Vista.Din[0] == "3" && Vista.Din[1] == "30" && Vista.DinCampo == 1, "digitar 3, Tab, 30 trava comprimento 3 e ângulo 30");
-            Point pd = Vista.PontoDinamico();
-            double ex = 100 + 3 * Math.Cos(Math.PI / 6), ey = 100 + 3 * Math.Sin(Math.PI / 6);
-            ok(Math.Abs(pd.X - ex) < 1e-6 && Math.Abs(pd.Y - ey) < 1e-6, "ponto dinâmico = (" + Num.Fmt(pd.X, 4) + "; " + Num.Fmt(pd.Y, 4) + "), esperado (" + Num.Fmt(ex, 4) + "; " + Num.Fmt(ey, 4) + ")");
-            ConfirmarDinamica();
-            ok(M.Barras.Count == barras0 + 1, "Enter cria 1 barra (" + barras0 + " -> " + M.Barras.Count + ")");
-            if (M.Barras.Count == barras0 + 1)
-            {
-                Barra nb = M.Barras[M.Barras.Count - 1];
-                No a = M.NoPorId(nb.N1), c = M.NoPorId(nb.N2);
-                double comp = Math.Sqrt((c.X - a.X) * (c.X - a.X) + (c.Y - a.Y) * (c.Y - a.Y)), ang = Math.Atan2(c.Y - a.Y, c.X - a.X) * 180 / Math.PI;
-                ok(Math.Abs(comp - 3) < 1e-6 && Math.Abs(ang - 30) < 1e-6, "barra criada: comprimento " + Num.Fmt(comp, 4) + " m, ângulo " + Num.Fmt(ang, 3) + "°");
-            }
-            ok(Vista.Din[0] == "" && Vista.Din[1] == "", "valores travados são limpos após confirmar");
-            // so comprimento travado: a direcao vem do mouse
-            Vista.SimularMouse(Vista.Tela(100 + 3 * Math.Cos(Math.PI / 6), 100 + 3 * Math.Sin(Math.PI / 6) + 5));
-            Vista.DinTecla("2", Key.None); Vista.DinTecla(".", Key.None); Vista.DinTecla("5", Key.None);
-            Point p2 = Vista.PontoDinamico(); Point ini = Vista.InicioBarra.Value;
-            ok(Math.Abs(Math.Sqrt((p2.X - ini.X) * (p2.X - ini.X) + (p2.Y - ini.Y) * (p2.Y - ini.Y)) - 2.5) < 1e-6, "só comprimento 2.5 travado: distância = 2,5 m na direção do mouse");
-            Vista.DinLimpar();
-            UsarFerramenta(Ferramenta.Selecionar);
-            for (int i = 0; i < 4 && M.Barras.Count > barras0; i++) Desfazer();
-            ok(M.Barras.Count == barras0, "teste desfeito (barras = " + M.Barras.Count + ")");
-
-            // medir com entrada dinamica
-            UsarFerramenta(Ferramenta.Medir);
-            PontoMedida(0, 0);
-            Vista.SimularMouse(new Point(250, 250));
-            Vista.DinTecla("4", Key.None); Vista.DinTecla(null, Key.Tab); Vista.DinTecla("9", Key.None); Vista.DinTecla("0", Key.None);
-            ConfirmarDinamica();
-            ok(Vista.MedidaFim != null && Math.Abs(Vista.MedidaFim.Value.X) < 1e-6 && Math.Abs(Vista.MedidaFim.Value.Y - 4) < 1e-6, "medir: 4 m a 90° termina em (0; 4)" + (Vista.MedidaFim != null ? " -> (" + Num.Fmt(Vista.MedidaFim.Value.X, 3) + "; " + Num.Fmt(Vista.MedidaFim.Value.Y, 3) + ")" : ""));
-            Vista.MedidaIni = null; Vista.MedidaFim = null;
-            UsarFerramenta(Ferramenta.Selecionar);
+            // linha de comando: aliases do AutoCAD, Enter vazio repete, Esc em cascata
+            ExecutarComando("L");
+            ok(vista3D.Ferramenta == Ferramenta3D.Barra, "L liga a Barra");
+            vista3D.Tecla(Key.Escape);
+            ok(vista3D.Ferramenta == Ferramenta3D.Selecionar, "Esc encerra a Barra (volta a Selecionar)");
+            RepetirUltimo();
+            ok(vista3D.Ferramenta == Ferramenta3D.Barra, "Enter/Espaço com a linha vazia repete L");
+            vista3D.Tecla(Key.Escape);
+            ExecutarComando("PI");
+            ok(vista3D.Ferramenta == Ferramenta3D.Pilar, "PI liga o Pilar");
+            vista3D.Tecla(Key.Escape);
+            ExecutarComando("TR");
+            ok(vista3D.Pedindo, "TR pede a barra limite");
+            vista3D.Tecla(Key.Escape);
+            ok(!vista3D.Pedindo, "Esc cancela o TR");
+            ok(Cmds3D.All(c => c.Alias.All(a => Cmds3D.Count(x => x.Nome == a || x.Alias.Contains(a)) == 1)), "nenhum alias repetido entre comandos");
+            foreach (string a in new[] { "L", "PI", "M", "CO", "MI", "RO", "AR", "TR", "EX", "DI", "ME", "Z", "U", "E", "GR", "MA", "PR" })
+                ok(Cmds3D.Any(c => c.Nome == a || c.Alias.Contains(a)), "alias " + a + " existe");
             PaletaSemPersistir = false;
             log.AppendLine(falhas == 0 ? "TUDO OK" : Pl.N(falhas, "FALHA", "FALHAS"));
             return falhas;
-        }
-
-        // Estado para a captura 39-entrada-dinamica: barra em andamento com comprimento 3 travado e o angulo 30 sendo digitado.
-        internal void PrepararCapturaDinamica()
-        {
-            UsarFerramenta(Ferramenta.Barra);
-            No n0 = M.Nos.OrderBy(x => x.Y).ThenBy(x => x.X).First();
-            Vista.InicioBarra = new Point(n0.X, n0.Y);
-        }
-
-        internal void AjustarCapturaDinamica()
-        {
-            var ini = Vista.InicioBarra.Value;
-            Point t0 = Vista.Tela(ini.X, ini.Y);
-            Vista.SimularMouse(new Point(t0.X + 190, t0.Y - 110));
-            Vista.DinLimpar();
-            Vista.DinTecla("3", Key.None); Vista.DinTecla(null, Key.Tab); Vista.DinTecla("3", Key.None); Vista.DinTecla("0", Key.None);
-        }
-
-        internal void EncerrarCapturaDinamica()
-        {
-            Vista.DinLimpar(); Vista.InicioBarra = null; Vista.SimularMouse(null);
-            UsarFerramenta(Ferramenta.Selecionar);
         }
 
         PaletaJanela paletaAberta;

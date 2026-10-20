@@ -66,7 +66,7 @@ namespace NovoFtool
             bool primeira = ligar && vista3D.Visibility != Visibility.Visible;
             vista3D.Visibility = Visibility.Visible;
             Vista.Visibility = Visibility.Hidden;   // o controle 2D (Vista.cs) fica só como guarda do estado do HUD (diagrama e escala)
-            if (ligar) { Atualizar3D(primeira); vista3D.Focus(); } else Vista.Focus();
+            Atualizar3D(primeira); vista3D.Focus();
         }
 
         // Recarrega a vista 3D a partir do modelo 2D e do diagrama ativo (chamado depois de cada cálculo).
@@ -142,6 +142,7 @@ namespace NovoFtool
             vista3D.CriarBarras = DesenharEsp;
             vista3D.AlturaAndar = AlturaAndarEsp;
             vista3D.FerramentaMudou += SincronizarFerr3D;
+            LigarComandos3D();   // grips, coordenadas, estados da barra de status (Comandos3D.cs)
         }
 
         // Teclas da ferramenta 3D antes dos atalhos da janela (Esc, Enter, Tab, Backspace, F8). Acoes.cs › Tecla.

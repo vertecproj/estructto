@@ -1025,6 +1025,7 @@ namespace NovoFtool
                 if (marca.Tipo != tipoMarcado) { tipoMarcado = marca.Tipo; marca.InvalidateVisual(); Anim.Entrar(marca, 0, Anim.Rapido); }   // aparece a cada troca de atração
             }
             else { marca.Visibility = Visibility.Collapsed; tipoMarcado = null; }
+            CursorMudou?.Invoke(pf);
             sobre.InvalidateVisual();
         }
 
@@ -1086,7 +1087,7 @@ namespace NovoFtool
                     AtualizarCursor();
                     return true;
                 case Key.Enter: case Key.Space:   // Espaço = Enter (AutoCAD)
-                    if (pedeObjeto != null) { LimparPedido(); return true; }
+                    if (pedeObjeto != null) { TerminarPedido(); return true; }
                     if (!Desenhando) return false;   // nada em curso: a janela repete o último comando
                     if (coord != "") { Point3D? p = PontoDigitado(); if (p == null) { Aviso = "Coordenada inválida: use x,y,z  @dx,dy,dz  ou u,w no plano."; coord = ""; sobre.InvalidateVisual(); } else _ = Ponto(p); }
                     else if (DinTravado) _ = Ponto(PontoFinal());
