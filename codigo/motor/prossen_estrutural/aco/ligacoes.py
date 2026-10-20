@@ -239,6 +239,7 @@ def tipos_ligacao():
             campos.append(c)
         out.append(dict(tipo=tipo, descricao=t["descricao"], campos=campos,
                         esforcos=[dict(nome=n, unidade=u) for n, u, _ in t["esforcos"]]))
+    out += __import__(__package__ + ".ligacoes_rigidas", fromlist=["esquema"]).esquema()  # LIGACOES-CONTRATO
     return out
 
 

@@ -211,7 +211,7 @@ class TestTipologias(unittest.TestCase):
 class TestContrato(unittest.TestCase):
     def test_tipos(self):
         tipos = {t["tipo"]: t for t in lg.tipos_ligacao()}
-        self.assertEqual(set(tipos), {"parafuso", "solda_filete", "chapa_simples", "ligacao_tracao"})
+        self.assertLessEqual({"parafuso", "solda_filete", "chapa_simples", "ligacao_tracao"}, set(tipos))
         for t in tipos.values():
             self.assertTrue(t["descricao"])
             for c in t["campos"]:
