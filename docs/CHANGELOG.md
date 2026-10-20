@@ -2,6 +2,14 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Grupos de ligações: a pior do grupo dimensiona todas (branch wt-grupos)
+
+- Motor `aco/ligacoes_modelo.py`: identifica as ligações nos nós (base, viga–pilar mesa/alma, viga–viga, emenda, gusset, nó de
+  treliça), agrupa por assinatura, edições do usuário (renomear, travar, mover, dividir, unir, projeto) que sobrevivem à
+  re-identificação, dimensiona o grupo pela pior ligação em todas as combinações ELU. JSON: chave `ligacoes` (`versao_formato` 2 só com grupos).
+  Exposto em `projeto.py`, rotas `/api/ligacoes/...` e 4 ferramentas MCP. Interface: **Ligações e bases › Gerenciar ligações**
+  (`JanelaLigacoesGrupos.cs`), placa de base do grupo abre na JanelaPlaca com a pior base. Detalhe: [v3/LIGACOES-GRUPOS.md](v3/LIGACOES-GRUPOS.md). Capturas `49-*`.
+
 ## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
 
 - Modelo › Planos: **Nível ▾** (ativa e isola o andar em planta, resto em fantasma), **Elevação X/Y ▾**, **3D completo**, painel

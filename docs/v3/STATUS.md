@@ -40,7 +40,8 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 ### Fase 3 — ligações (paralelo: motor Python + UI)
 - [ ] L1 Motor: tipos de ligação (cantoneira dupla, chapa de extremidade, chapa simples/shear tab, emendas, flange plate, gusset de contraventamento,
       base articulada/engastada, ligação de terça, mísula) com verificações NBR 8800 cap. 6; testes com exemplos dos livros
-- [ ] L2 Agrupamento: identificar ligações iguais (perfis, ângulos, tipo), grupos editáveis, pior do grupo, aplicar
+- [x] L2 Agrupamento: identificar ligações iguais (perfis, ângulos, tipo), grupos editáveis, pior do grupo, aplicar
+      (branch `wt-grupos`, [LIGACOES-GRUPOS.md](LIGACOES-GRUPOS.md); tipos novos do L1 entram em `VERIFICADORES`)
 - [ ] L3 UI: biblioteca de ligações (cards com desenho), janela de dimensionamento estilo placa de base (3 passos, desenho ao vivo)
 - [ ] L4 3D: ligação e recortes aparecem no Realista
 

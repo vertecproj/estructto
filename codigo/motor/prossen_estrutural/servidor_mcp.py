@@ -638,6 +638,52 @@ def ligacao_verificar(
     return projeto.verificar_ligacao(tipo, dados, esforcos)
 
 
+@_ferramenta(muta=False, idem=True)
+def ligacoes_identificar() -> dict[str, Any]:
+    """Identifica as ligações nos nós (base, viga–pilar mesa/alma, viga–viga, emenda, gusset, nó de treliça) e agrupa
+    as iguais (tipo + seções + ângulo + rótula + material) em modelo.ligacoes, guardando as edições anteriores
+    (grupos travados/manuais). Não descarta o cálculo. Devolve {grupos, membros, novos}. Depois: ligacoes_grupos."""
+    return projeto.ligacoes_identificar(_modelo())
+
+
+@_ferramenta(ro=True, idem=True)
+def ligacoes_grupos(limite: Limite = 200, deslocamento: Deslocamento = 0) -> dict[str, Any]:
+    """Grupos de ligações do modelo: id, nome, tipo, assinatura, travado, projeto {tipo_ligacao, dados} e membros
+    {no, barra, ponta}. Com cálculo (projeto_calcular), cada grupo vem dimensionado: taxa por membro, governante
+    (pior membro e combinação) e taxa_max. Rode ligacoes_identificar antes."""
+    return _pagina(projeto.ligacoes_grupos(_modelo(), _estado["calculo"]), limite, deslocamento)
+
+
+@_ferramenta(muta=False)
+def ligacoes_grupo_editar(
+        acao: Annotated[Literal["renomear", "travar", "projeto", "mover", "dividir", "unir"],
+                        Field(description="o que fazer com os grupos")],
+        grupo: Annotated[str | None, Field(description="id do grupo (renomear, travar, projeto, dividir)")] = None,
+        nome: Annotated[str | None, Field(description="novo nome (renomear)")] = None,
+        travado: Annotated[bool | None, Field(description="travar/destravar (travar)")] = None,
+        tipo_ligacao: Annotated[str | None, Field(description="projeto: placa_base ou um tipo de ligacao_tipos; vazio = sem projeto")] = None,
+        dados: Annotated[dict[str, Any] | None, Field(description="projeto: campos do tipo de ligação (m, mm em *_mm)")] = None,
+        membros: Annotated[list[dict[str, str]] | None, Field(description="mover/dividir: [{no, barra, ponta: i|j}]")] = None,
+        destino: Annotated[str | None, Field(description="mover: grupo de destino; vazio = grupo novo")] = None,
+        grupos: Annotated[list[str] | None, Field(description="unir: ids (todos vão para o primeiro)")] = None,
+        ) -> dict[str, Any]:
+    """Edita os grupos de ligações (o usuário manda): renomear, travar, escolher o projeto (tipo_ligacao + dados),
+    mover membros entre grupos, dividir (membros vão para um grupo novo) ou unir grupos. Grupo travado não aceita
+    mover/unir. Edições sobrevivem a ligacoes_identificar. Exemplo: ligacoes_grupo_editar(acao="renomear",
+    grupo="G2", nome="Cobertura")."""
+    return projeto.ligacoes_editar(_modelo(), _dados(acao=acao, grupo=grupo, nome=nome, travado=travado,
+                                                     tipo_ligacao=tipo_ligacao, dados=dados, membros=membros,
+                                                     destino=destino, grupos=grupos))
+
+
+@_ferramenta(ro=True, idem=True)
+def ligacoes_grupo_dimensionar(grupo: Annotated[str, Field(description="id do grupo, ex. 'G1'")]) -> dict[str, Any]:
+    """Dimensiona o grupo pela pior ligação: verifica o projeto do grupo com os esforços de cada membro em todas as
+    combinações ELU (exige projeto_calcular). Devolve membros com taxa e combinação, governante, taxa_max, ok e o
+    resultado completo do governante; o projeto vale para todos os membros. Sem projeto: governante pela demanda."""
+    return projeto.ligacoes_dimensionar(_modelo(), _calculo(), grupo)
+
+
 @_ferramenta(ro=True, idem=True)
 def perfis_listar(
         filtro: Annotated[str, Field(description="trecho do nome, ex. 'W310'; vazio = todos")] = "",
