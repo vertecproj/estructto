@@ -923,6 +923,13 @@ namespace NovoFtool
                     w.Close();
                     Environment.Exit(0);
                 }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "snap")   // só as capturas 50-53) de snap e medir 3D
+                {
+                    CapturasSnap(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "fluxo3d")   // só as capturas 49) do fluxo de modelagem 3D
                 {
                     CapturasFluxo3D(w);
@@ -1455,6 +1462,8 @@ namespace NovoFtool
                 CapturasTrelicas(w);
                 // 49) Gerenciador de ligações (grupos, pior do grupo, placa da pior base)
                 CapturasLigacoes(w);
+                // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
+                CapturasSnap(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
