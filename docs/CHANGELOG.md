@@ -2,6 +2,15 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Modelagem 3D ligada: seleção, planos, cargas e seção (branch wt-ligar3d)
+
+- Edição em lote usa a seleção múltipla da Vista3D (janela, cruzamento, Shift/Ctrl, árvore); nada escolhido = modelo inteiro.
+- Ativar nível/elevação troca o plano de desenho (`Vista3D.PlanoAtual`); fantasmas desenhados pela Vista3D, fora do picking e da
+  atração; Pilar pela altura dos níveis (desce ao nível de baixo).
+- Vista3D desenha as cargas do caso ativo (setas nodais/pontuais, pente q→q2), analítico e Realista, Vista › Mostrar › Cargas.
+- Desenhar 3D › Seção ▾ (modelo + Do catálogo…) e Apoio na base. Captura de ponta a ponta `49-fluxo3d-*`.
+  Detalhe em [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#fluxo-de-modelagem-3d-captura-de-ponta-a-ponta).
+
 ## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
 
 - Modelo › Planos: **Nível ▾** (ativa e isola o andar em planta, resto em fantasma), **Elevação X/Y ▾**, **3D completo**, painel

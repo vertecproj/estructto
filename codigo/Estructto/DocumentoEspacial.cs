@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media.Media3D;
 using Microsoft.Win32;
 using Portico;
 
@@ -317,7 +318,7 @@ namespace NovoFtool
                 r.Nos.Add(new No3D { Id = id, X = (double)n["x"], Y = (double)n["y"], Z = (double)n["z"], Apoios = ap.Length == 6 ? ap : new bool[6], Origem = Ref("no", kv.Key),
                                      Desl = Desl(kv.Key) });
             }
-            int ib = 0;
+            int ib = 0; var idsB = new Dictionary<string, Barra3D>();
             foreach (var kv in Json["barras"].AsObject())
             {
                 var b = kv.Value;
@@ -327,8 +328,31 @@ namespace NovoFtool
                 if (e != null) { b3.N = Vetor(e["N"]); b3.V = Vetor(e["Vz"]); b3.M = Vetor(e["My"]); }
                 if (PiorPorBarra.TryGetValue(kv.Key, out var l) && Taxa(l) >= 0) b3.Aprov = Taxa(l);
                 r.Barras.Add(b3);
+                idsB[kv.Key] = b3;
             }
+            CargasParaVista(r, ids, idsB);
             return r;
+        }
+
+        // Cargas do caso ativo (Ações › Caso ativo) para as setas da Vista3D: nodais (só as forças), pontuais (a em m -> fração
+        // da barra) e distribuídas (q em ni, q2 em nj; sem q2 = uniforme). Tudo global, como no motor.
+        void CargasParaVista(Modelo3D r, Dictionary<string, int> nos, Dictionary<string, Barra3D> barras)
+        {
+            if (CasoAtivo == null) return;
+            IEnumerable<JsonNode> Do(string col) => (Json[col] as JsonArray ?? new JsonArray()).Where(c => (string)c?["caso"] == CasoAtivo);
+            Vector3D V(JsonNode n) { var a = n as JsonArray; return a == null || a.Count < 3 ? new Vector3D() : new Vector3D((double)a[0], (double)a[1], (double)a[2]); }
+            foreach (var c in Do("cargas_nodais"))
+                if (nos.TryGetValue((string)c["no"], out int id)) r.Cargas.Add(new Carga3D { No = id, F = V(c["F"]) });
+            foreach (var c in Do("cargas_pontuais"))
+                if (barras.TryGetValue((string)c["barra"], out var b))
+                {
+                    var a = r.Nos[b.Ni - 1]; var z = r.Nos[b.Nj - 1];
+                    double L = Math.Sqrt((z.X - a.X) * (z.X - a.X) + (z.Y - a.Y) * (z.Y - a.Y) + (z.Z - a.Z) * (z.Z - a.Z));
+                    r.Cargas.Add(new Carga3D { Barra = b.Id, T = L < 1e-9 ? 0 : Math.Max(0, Math.Min(1, (double)(c["a"] ?? 0.0) / L)), F = V(c["F"]) });
+                }
+            foreach (var c in Do("cargas_distribuidas"))
+                if (barras.TryGetValue((string)c["barra"], out var b))
+                    r.Cargas.Add(new Carga3D { Barra = b.Id, Distribuida = true, F = V(c["q"]), F2 = c["q2"] == null ? V(c["q"]) : V(c["q2"]) });
         }
 
         // Combinação: lista. Envoltória {max, min}: em cada ponto o de maior valor absoluto, com o sinal.
@@ -466,7 +490,7 @@ namespace NovoFtool
             if (Esp == null) return;
             selEsp = r; ligarDe = null;
             vista3D.Selecionado = r;
-            vista3D.Reconstruir();
+            vista3D.Selecionar(r?.Tipo == "no" ? new[] { r.Id } : null, r?.Tipo == "barra" ? new[] { r.Id } : null);   // Selecao = a da edição em lote; reconstrói
             MontarPainelEspacial();
             SincronizarEsp();
         }
@@ -490,6 +514,7 @@ namespace NovoFtool
             StatusMsg.Text = d.Resumo();
             MontarPainelEspacial();
             AtualizarListasCasos(); AtualizarArvore(); AtualizarTabelas(); Diagnosticar();   // versões espaciais (Paineis.cs, Casos.cs)
+            ListarSecoes3D();
             SincronizarEsp();
         }
 
@@ -644,7 +669,7 @@ namespace NovoFtool
             {
                 var casos = (d.Json["casos"] as JsonObject)?.Select(x => x.Key).ToList() ?? new List<string>();
                 if (casos.Count == 0) { sp.Children.Add(leitura("O modelo não tem casos de carga.")); return; }
-                linha("Caso", combo(casos, d.CasoAtivo, v => { d.CasoAtivo = v; AtualizarListasCasos(); MontarPainelEspacial(); }));
+                linha("Caso", combo(casos, d.CasoAtivo, v => { d.CasoAtivo = v; AtualizarEspacial3D(false); }));   // refaz listas, painel e setas
             };
             // cargas existentes deste nó/barra (todos os casos), com botão de apagar
             Action<string, string, string, string> cargas = (col, tipo, alvo, id) =>

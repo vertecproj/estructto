@@ -194,9 +194,8 @@ namespace NovoFtool
         internal IPlanoAlvo Plano => plano ??= new PlanoNaVista(this);
         JanelaNiveis janelaNiveis;
 
-        // ponytail: adaptador provisório para a Vista3D desta worktree (sem PlanoAtual): filtra o Modelo3D antes do Carregar,
-        // desenha os fantasmas por fora e move a câmera com MostrarVista. Depois do merge, ligar DefinirPlano/Isolar a
-        // Vista3D.PlanoAtual (e às ferramentas de desenho dele) e apagar FiltrarPlano/Fantasmas daqui.
+        // O plano escolhido vira o plano de desenho da Vista3D (PlanoAtual: Barra e Pilar desenham nele); Isolar filtra o
+        // Modelo3D (FiltrarPlano) e o resto vai em Modelo3D.Fantasmas, que a Vista3D desenha sem picking nem atração.
         sealed class PlanoNaVista : IPlanoAlvo
         {
             readonly MainWindow w;
@@ -205,6 +204,9 @@ namespace NovoFtool
             public void DefinirPlano(char eixo, double valor)
             {
                 w.planoEixo = eixo; w.planoValor = valor; w.planoDoc = w.Esp;
+                string nome = eixo == 'z' ? Niveis.Lista(w.Esp.Json).FirstOrDefault(n => Math.Abs(n.Z - valor) <= Niveis.Tol)?.Nome : null;
+                w.vista3D.PlanoAtual = eixo == 'x' ? PlanoTrabalho.EmX(valor) : eixo == 'y' ? PlanoTrabalho.EmY(valor)
+                    : eixo == 'z' ? PlanoTrabalho.Horizontal(valor, nome == null ? null : nome + " (z = " + Num.Fmt(valor, 2) + " m)") : PlanoTrabalho.Horizontal(0);
                 w.AtualizarEspacial3D(false);
                 w.vista3D.MostrarVista(eixo == 'z' ? VistaPadrao.Topo : eixo == 'x' ? VistaPadrao.Lado : eixo == 'y' ? VistaPadrao.Frente : VistaPadrao.Iso, Anim.Ligado);
             }
@@ -219,7 +221,7 @@ namespace NovoFtool
         // Chamado por AtualizarEspacial3D: o que fica na vista; o resto vira fantasma (linhas claras).
         internal Modelo3D FiltrarPlano(Modelo3D m)
         {
-            if (!PlanoLigado) { Fantasmas(null); return m; }
+            if (!PlanoLigado) return m;
             var nos = m.Nos.ToDictionary(n => n.Id);
             bool Fica(Barra3D b)
             {
@@ -230,8 +232,8 @@ namespace NovoFtool
                 double lo = isoMin ?? double.NegativeInfinity, hi = isoMax ?? double.PositiveInfinity;
                 return Niveis.NoAndar(a.Z, c.Z, lo, hi);
             }
-            var r = new Modelo3D();
-            var fora = new List<(Point3D, Point3D)>();
+            var r = new Modelo3D { Cargas = m.Cargas };   // setas de barras/nós fora da vista: a Vista3D pula
+            var fora = r.Fantasmas;
             foreach (var b in m.Barras)
             {
                 if (Fica(b)) r.Barras.Add(b);
@@ -240,45 +242,11 @@ namespace NovoFtool
             var usados = r.Barras.SelectMany(b => new[] { b.Ni, b.Nj }).ToHashSet();
             r.Nos.AddRange(m.Nos.Where(n => usados.Contains(n.Id)));
             if (r.Barras.Count == 0) { r.Nos.AddRange(m.Nos); fora.Clear(); r.Barras.AddRange(m.Barras); }   // plano vazio: mostra tudo
-            Fantasmas(fora, m);
             return r;
         }
 
-        // Barras fora do plano: prismas finos translúcidos por cima da cena da Vista3D (sem picking: a Vista3D ignora modelos que não são dela).
-        void Fantasmas(List<(Point3D a, Point3D b)> fora, Modelo3D todos = null)
-        {
-            var vp = vista3D?.Children.OfType<Viewport3D>().FirstOrDefault();
-            if (vp == null) return;
-            if (fantasmas != null) { vp.Children.Remove(fantasmas); fantasmas = null; }
-            if (fora == null || fora.Count == 0) return;
-            double tam = Math.Max(1, todos.Nos.Max(n => Math.Max(n.X, Math.Max(n.Y, n.Z))) - todos.Nos.Min(n => Math.Min(n.X, Math.Min(n.Y, n.Z))));
-            double h = tam * 0.0012;
-            var mg = new MeshGeometry3D();
-            foreach (var (a, b) in fora) Prisma(mg, a, b, h);
-            var cor = new SolidColorBrush(Color.FromArgb(0x50, TemaPlant.BTexto3.Color.R, TemaPlant.BTexto3.Color.G, TemaPlant.BTexto3.Color.B));
-            var mat = new MaterialGroup(); mat.Children.Add(new DiffuseMaterial(Brushes.Transparent)); mat.Children.Add(new EmissiveMaterial(cor));
-            fantasmas = new ModelVisual3D { Content = new GeometryModel3D(mg, mat) { BackMaterial = mat } };
-            vp.Children.Add(fantasmas);
-            Anim.Valor(cor, Brush.OpacityProperty, 0, 1, Anim.Espacial);   // entram com fade, junto com a câmera
-        }
-
-        static void Prisma(MeshGeometry3D m, Point3D a, Point3D b, double h)
-        {
-            Vector3D e = b - a; if (e.Length < 1e-12) return; e.Normalize();
-            Vector3D u = Vector3D.CrossProduct(e, Math.Abs(e.Z) > 0.9 ? new Vector3D(1, 0, 0) : new Vector3D(0, 0, 1)); u.Normalize();
-            Vector3D w = Vector3D.CrossProduct(e, u);
-            Vector3D[] cs = { (u + w) * h, (w - u) * h, (-u - w) * h, (u - w) * h };
-            for (int i = 0; i < 4; i++)
-            {
-                int k = m.Positions.Count;
-                Vector3D c1 = cs[i], c2 = cs[(i + 1) % 4];
-                foreach (var p in new[] { a + c1, b + c1, b + c2, a + c2 }) m.Positions.Add(p);
-                foreach (int t in new[] { 0, 1, 2, 0, 2, 3 }) m.TriangleIndices.Add(k + t);
-            }
-        }
-
-        // Ao trocar para um documento 2D: tira os fantasmas.
-        internal void LimparPlano() { planoDoc = null; isoMin = isoMax = null; planoEixo = '\0'; Fantasmas(null); }
+        // Ao trocar para um documento 2D: sem plano isolado, plano de desenho de volta a z = 0.
+        internal void LimparPlano() { planoDoc = null; isoMin = isoMax = null; planoEixo = '\0'; if (vista3D != null) vista3D.PlanoAtual = PlanoTrabalho.Horizontal(0); }
 
         // ---------- ações (faixa, paleta, painel) ----------
 

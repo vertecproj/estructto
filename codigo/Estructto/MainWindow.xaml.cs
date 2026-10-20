@@ -1,4 +1,4 @@
-﻿// Janela principal: monta a faixa (Fluent.Ribbon), os bastidores (menu Arquivo), a barra de status e liga os eventos.
+// Janela principal: monta a faixa (Fluent.Ribbon), os bastidores (menu Arquivo), a barra de status e liga os eventos.
 // A logica fica nos arquivos parciais Acoes.cs (comandos e arquivos) e Paineis.cs (arvore, propriedades, tabelas, avisos).
 using System;
 using System.Collections.Generic;
@@ -433,7 +433,7 @@ namespace NovoFtool
             // VISTA
             tgReac = Alternar("reac", "Reações", v => { Vista.MostrarReacoes = v; Vista.InvalidateVisual(); }, "Mostra as reações de apoio.", true);
             tgValores = Alternar("valores", "Valores", v => { Vista.MostrarValores = v; Vista.InvalidateVisual(); }, "Escreve os valores nos diagramas.", true);
-            tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); }, "Mostra as cargas no desenho.", true);
+            tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); if (vista3D != null) { vista3D.MostrarCargas = v; vista3D.Reconstruir(); } }, "Mostra as cargas no desenho (2D e Vista 3D).", true);
             tgNomes = Alternar("nomes", "Nomes", v => { Vista.MostrarNomes = v; Vista.InvalidateVisual(); }, "Escreve perfil e comprimento ao lado das barras.", true);
             tgValores.IsChecked = true; tgCargas.IsChecked = true; tgReac.IsChecked = true; tgNomes.IsChecked = true;   // tudo visivel por padrao
             cGrade = Campo("Passo da grade (m)", "0,5", "Espaçamento da grade de desenho.", 50);

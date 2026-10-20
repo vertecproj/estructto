@@ -81,8 +81,9 @@ Regras:
 - Cópias levam seção, material, rot, `params` e cargas (sem id: o motor numera). Forças seguem a transformação; momento nodal é
   pseudovetor (no espelho troca o sinal). O giro `rot` da seção não muda no espelho.
 - Nó novo a 1 mm ou menos de um existente funde com ele; barra que repetiria outra (mesmos nós) não é criada. Ids novos: `N<k>`, `B<k>`.
-- Seleção: `IFonteSelecao` (nós e barras por id + `Mudou`). Hoje o adaptador `FonteSelecaoEsp` usa a escolha única do documento;
-  **nada escolhido = modelo inteiro** (o painel diz). Quando a Vista3D tiver seleção múltipla, só o adaptador muda.
+- Seleção: `IFonteSelecao` (nós e barras por id + `Mudou`). `FonteSelecaoEsp` lê a seleção múltipla da Vista3D (`Selecao.Nos`/
+  `.Barras` + `SelecaoMudou`): clique, janela, cruzamento, Shift/Ctrl e também a escolha pela árvore, tabelas e avisos
+  (`SelecionarEsp` passa por `Vista3D.Selecionar`). **Nada escolhido = modelo inteiro** (o painel diz "Seleção: modelo inteiro").
 - Painéis: janelas pequenas não modais (`PainelEdicao : JanelaEscura`, `Anim.Abrir`), ficam abertas para repetir; erro de digitação
   aparece no painel, erro do motor na barra de status.
 - Seções do "Propriedades em lote" = as do modelo (perfil do catálogo entraria por um POST separado, um segundo desfazer).
@@ -112,9 +113,16 @@ Capturas `43-*` (`Capturas.CapturasPlanos`; só elas: `ESTRUCTTO_CAPTURAS=planos
 | **Copiar pavimento para cima** | barras do andar do nível escolhido, nós novos (reaproveita nó que já está na posição) e cargas (nodais dos nós de cima do andar; distribuídas e pontuais das barras) para N andares de altura h. A cota de cada nó é mapeada em escala: o pé vai para o topo da cópia anterior. Cria pavimento em cada cota nova. **Um** `POST /api/modelo/lote`: um Ctrl+Z desfaz tudo |
 | **Gerar pilares entre níveis** | um pilar sob cada nó do nível escolhido até o nível de baixo (nó novo embaixo se faltar; pula se já houver barra ligando os dois). Seção e material do primeiro pilar do modelo |
 
-Plano de trabalho = interface `IPlanoAlvo { DefinirPlano(eixo, valor); Isolar(zMin, zMax); }`. Nesta branch o adaptador
-`PlanoNaVista` (comentário `ponytail:`) filtra o `Modelo3D` antes do `Vista3D.Carregar` e desenha os fantasmas num `ModelVisual3D`
-próprio (a Vista3D ignora no picking os modelos que não são dela). Depois do merge com o `Vista3D.PlanoAtual`, ligar o adaptador nele.
+Plano de trabalho = interface `IPlanoAlvo { DefinirPlano(eixo, valor); Isolar(zMin, zMax); }`, ligada à Vista3D por `PlanoNaVista`:
+
+- `DefinirPlano` troca o `Vista3D.PlanoAtual` (nível → `PlanoTrabalho.Horizontal(z, "P1 (z = 3,00 m)")`, elevação → `EmX`/`EmY`,
+  3D completo → z = 0): ativar um nível faz dele o plano de desenho de Barra e Pilar; a câmera vai para planta/elevação.
+- `Isolar` filtra o `Modelo3D` (`FiltrarPlano`, antes do `Vista3D.Carregar`); o que sai vai em `Modelo3D.Fantasmas`, que a Vista3D
+  desenha (prismas finos translúcidos, fade na entrada) **fora** do picking, da seleção por caixa e da atração do desenho: clicar,
+  selecionar e desenhar só veem o andar/plano isolado.
+- Altura do Pilar pelos níveis (`Niveis.Lista`): clicado num nível que tem outro abaixo, o pilar **desce** até ele (é o andar que a
+  vista isolada mostra); no nível mais baixo, sobe até o próximo; sem níveis, 3 m. A barra sai sempre com ni embaixo.
+- Trocar para um documento 2D (`LimparPlano`) volta o plano de desenho a z = 0.
 
 Limites: em planta os fantasmas ficam embaixo das barras isoladas (aparecem na isométrica); renomear nível = dois passos no desfazer;
 apoios não são copiados (as cópias ficam sobre o andar de baixo).
@@ -145,12 +153,18 @@ Uma chamada `POST /api/modelo/lote` com uma carga distribuída uniforme `(0, 0, 
   inteira; não sabe onde há laje (vão sem laje também carrega); as vigas da outra direção não recebem nada (laje armada em uma
   direção); O(n²) por nível. Laje em duas direções (charneiras/áreas de influência) = trocar `CargaArea`.
 
-### Desenho das cargas na Vista3D (falta; `Vista3D.cs` é de outro agente)
+### Desenho das cargas na Vista3D
 
-A Vista3D não desenha cargas. Precisa: em `Modelo3D`, listas de cargas por caso (nodal: nó + F; distribuída: barra + q, q2;
-pontual: barra + a + F), um filtro de caso (Ações › Caso ativo) e o desenho: seta por força nodal/pontual (comprimento
-proporcional, rótulo kN), "pente" de setas ao longo da barra para distribuída (altura linear de q a q2), escala própria e
-cor de carga do `TemaPlant`. `DocumentoEspacial.ParaVista` só passaria as listas do JSON.
+- `Modelo3D.Cargas` (`Carga3D`): nodal (nó + F), pontual (barra + T = a/L + F) e distribuída (barra + q em ni + q2 em nj; sem q2 =
+  uniforme), em eixos globais. `DocumentoEspacial.ParaVista` só põe as do **caso ativo** (Ações › Caso ativo ou o Caso do painel;
+  trocar o caso redesenha). Momentos nodais não têm seta.
+- Desenho (`Vista3D.DesenharCargas`): seta (haste + ponta piramidal) com a ponta no ponto de aplicação; nodal e pontual com
+  comprimento proporcional ao módulo (a maior força = 11% do tamanho do modelo), distribuída em "pente" de setas ao longo da
+  barra com altura linear de q a q2 (a maior q = 8%) e a linha das caudas. Escala própria (`EscalaCargas`), cor `TemaPlant.CorCarga`.
+  Fora de `mapa`: não atrapalham o clique.
+- Vista › Mostrar › **Cargas** liga/desliga no 2D e na Vista3D. Funciona no analítico e no **Realista** (lá a ponta para na face do
+  perfil, meia largura da seção para fora do eixo). No plano isolado, só as cargas do que está na vista.
+- Sem rótulo de valor (kN) nas setas: os valores ficam no painel Propriedades.
 ## Desenhar no 3D (Modelo › Desenhar 3D)
 
 Código: camada de entrada de `codigo/Estructto/Vista3D.cs` (o host fica no `partial MainWindow` do mesmo arquivo; em
@@ -166,7 +180,7 @@ No documento espacial o grupo **Desenhar 3D** (Selecionar, Barra, Pilar) substit
 | Navegar (nenhuma ligada) | clique escolhe (Propriedades), arrastar com o esquerdo orbita |
 | Selecionar | clique escolhe; arrastar da esquerda p/ direita = janela (só o que está inteiro dentro), da direita p/ esquerda = cruzamento (o que tocar); Shift soma, Ctrl tira, Esc limpa |
 | Barra | cliques em sequência no plano de trabalho; a corrente segue do último ponto; Esc, Enter vazio ou botão direito termina |
-| Pilar | clique a base: barra vertical de z até z + altura do pavimento (próximo `pavimentos[].z` acima; no topo, a do último andar; sem pavimentos, 3 m) |
+| Pilar | clique o ponto: num nível com outro abaixo, desce até ele; no nível mais baixo, sobe até o próximo; no topo sem nível acima, a altura do último andar; sem níveis, 3 m (ver "Níveis e planos") |
 
 - **Plano de trabalho** (`PlanoTrabalho`): horizontal z = c (padrão z = 0) ou vertical x = c / y = c. A grade do plano
   (passo `PassoGrade`, 1 m) aparece enquanto Barra/Pilar estão ligados; o mouse é projetado no plano pelo raio da câmera.
@@ -177,8 +191,14 @@ No documento espacial o grupo **Desenhar 3D** (Selecionar, Barra, Pilar) substit
   número trava o comprimento, Tab o ângulo, Enter confirma. Vírgula, `;` ou `@` passam para coordenada: `x,y,z`, `@dx,dy,dz`
   (relativa ao 1º ponto) ou `u,w` (2 valores = no plano).
 - **Criação**: cada clique = um `POST /api/modelo/lote` dentro de `Motor.Exclusivo` (nós novos + barra; atômico, um passo de
-  `/api/desfazer`). Ponta a até 1 mm de um nó existente reaproveita o nó. Seção e material: os da última barra do modelo (igual
-  ao painel); modelo sem seção/material ganha W310x38.7 e A-572 GR.50 no mesmo lote.
+  `/api/desfazer`). Ponta a até 1 mm de um nó existente reaproveita o nó. Material: o da última barra (modelo sem material ganha
+  A-572 GR.50 no mesmo lote).
+- **Seção** (Desenhar 3D › Seção ▾): seções do modelo + **Do catálogo…** (abre o Catálogo de perfis do motor; "Usar este perfil"
+  põe a seção no modelo com `POST /api/modelo/secao`, um passo de desfazer, e a deixa escolhida). Sem escolha (ou se a escolhida
+  sumiu do modelo): a da última barra; modelo vazio: W310x38.7 no mesmo lote. Limite: o material não segue a seção (perfil de
+  concreto herda o aço da última barra; trocar em Propriedades em lote).
+- **Apoio na base** (botão): nó **novo** na cota do nível mais baixo (`Niveis.Lista`, Térreo z = 0 incluso) nasce engastado
+  (6 GL). Nó que já existia não muda.
 - **Esc em cascata**: texto digitado > comprimento/ângulo travado > barra em andamento > ferramenta (volta a Selecionar) > seleção.
   A janela passa Esc/Enter/Tab/Backspace/F8 para a Vista3D antes dos atalhos dela (`Acoes.cs › Tecla`, `Tecla3D`).
 
@@ -195,12 +215,28 @@ No documento espacial o grupo **Desenhar 3D** (Selecionar, Barra, Pilar) substit
 | `Point3D? NoPlano(Point tela, PlanoTrabalho pl = null)`, `Point Tela(Point3D)` | raio do pixel até o plano; ponto 3D → pixel |
 | `ClicarTela(Point, mods)`, `MoverTela(Point)`, `Tecla(Key)`, `Digitar(string)` | entrada sem mouse (testes/capturas); `InicioCorrente`, `PontoCursor`, `TipoAtracao` para conferir |
 
-`DocumentoEspacial.DesenharBarras(segmentos)` (lote, devolve os ids das barras) e `DocumentoEspacial.Vazio(titulo)`.
+`DocumentoEspacial.DesenharBarras(segmentos, secao, apoioBase)` (lote, devolve os ids das barras) e `DocumentoEspacial.Vazio(titulo)`.
+
+## Fluxo de modelagem 3D (captura de ponta a ponta)
+
+`Capturas.CapturasFluxo3D` (PNGs `49-fluxo3d-*`, resumo `49-fluxo3d.txt`; só ela: `ESTRUCTTO_CAPTURAS=fluxo3d`) faz pelo caminho
+do usuário e confere as contagens em cada passo:
+
+| Passo | Confere |
+|---|---|
+| Modelo 3D vazio | 0 nós, 0 barras |
+| Nível P1 (z = 3) + caso G | 2 níveis (Térreo, P1), caso ativo G |
+| Ativar P1 (plano de desenho z = 3), grade 2×1 vãos (6 m × 5 m) com Barra | 6 nós, 7 vigas, todas em z = 3 |
+| Seção do catálogo (W250…), Apoio na base, Pilar nos 6 nós do P1 | 12 nós, 13 barras, 6 apoios; pilares de z = 0 a 3 com a seção escolhida, vigas W310x38.7 |
+| Copiar pavimento 2× para cima (h = 3 m) | 24 nós, 39 barras, 6 apoios, 4 níveis |
+| Elevação y = 0, janela no pórtico, Espelhar em Y = −2,5 | janela pega 12 nós e 15 barras (a seleção chega ao painel); depois 36 nós, 54 barras, 9 apoios |
+| Carga em área 4 kN/m² no nível 9 (vigas em X) + 1 nodal + 1 pontual | 6 vigas, Σ q·L = 480 kN = p·A; 8 setas do caso G na vista |
+| F5, aproveitamento no analítico e no Realista com as setas | 54 barras verificadas |
 
 ## Falta
 
-- Desenhar as cargas na Vista3D (ver acima).
 - Desenhar max e min juntos na envoltória (hoje uma curva por barra).
 - Pilha de desfazer por documento (o servidor guarda uma só).
-- Desenhar 3D: sem atração a interseção/perpendicular/extensão nem rastreamento (o 2D tem); a seção da barra nova é a da
-  última barra (não há seletor de seção do motor na faixa); nós da base não recebem apoio automático.
+- Desenhar 3D: sem atração a interseção/perpendicular/extensão nem rastreamento (o 2D tem); o material da barra nova não
+  segue a seção escolhida.
+- Setas das cargas sem rótulo de valor; cargas da combinação mostrada (fatoradas) não são desenhadas, só as do caso ativo.
