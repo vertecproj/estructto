@@ -134,6 +134,7 @@ namespace NovoFtool
                 // ---------------- vista ----------------
                 ["zoomtudo"] = C(Du(A, "M11,11 H21 V21 H11 Z"), TB("zoomtudo", L)),
                 ["zoommais"] = TB("zoommais", L, A, 1, 3),
+                ["3d"] = TB("3d", L, A, 1, 4),
                 ["zoommenos"] = TB("zoommenos", L, A, 1, 2),
                 ["painel"] = TB("painel", L),
                 ["aplicar"] = TB("check", A),
@@ -176,7 +177,7 @@ namespace NovoFtool
             "engaste","rotula","rolo","roloh","livre","rotulab","placa","parafuso","solda","eixo","pincel",
             "cargano","cargadist","cargamom","peso","limpar",
             "calc","def","normal","cortante","momento","verif","comparar","reac","valores","unir","tirar","separar","selmembro","nomes","mais","menos",
-            "zoomtudo","zoommais","zoommenos","painel","aplicar","ajuda",
+            "zoomtudo","zoommais","zoommenos","3d","painel","aplicar","ajuda",
             "grade","snap","ortho","polar","objsnap","rastro",
             "busca","fechar","filtro","olho","olhooff","config","setad","setae","setac","setab","maismais","menosmenos","chevb","chevd","aviso","info","ok","erro" };
 

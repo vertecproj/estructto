@@ -12,6 +12,8 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   painéis "Projeto" e "Tabelas". Tirar trecho e Selecionar a barra contínua vão para o menu do botão direito e a paleta Ctrl+K.
   O "n" global continua (sai com o motor). Indicador "Modelo alterado — Calcular (F5)" não feito: hoje o cálculo é refeito a cada alteração.
   Build ok, 200 testes ok, capturas 09-ribbon-* conferidas.
+- Vista 3D (fase 4 de UNIFICACAO.md): `Vista3D.cs` com `Viewport3D` nativo, entrada neutra (nós/barras/esforços/aproveitamento/deslocamentos)
+  e adaptador do modelo 2D. Botão "Vista 3D" na aba Vista. Detalhes e decisão (sem HelixToolkit) em [VISTA3D.md](VISTA3D.md). Capturas 40-vista3d-*.
 
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 

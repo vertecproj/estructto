@@ -735,6 +735,55 @@ namespace NovoFtool
                     EsperarIdle();
                 }
 
+                // 40) Vista 3D: modelo 2D convertido (plano XZ) e um pórtico espacial de entrada neutra
+                var abaVista3 = w.Faixa.Tabs.First(t => (t.Header as string) == "Vista");
+                w.Faixa.SelectedTabItem = abaVista3;
+                w.MostrarDiagrama(Diagrama.Nenhum);
+                w.MostrarVista3D(true);
+                EsperarIdle();
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                CapturarPrincipal(w, "40-vista3d-iso");
+                foreach (var (d, nome) in new[] { (Diagrama.Deformada, "deformada"), (Diagrama.Momento, "momento"), (Diagrama.Normal, "normal"), (Diagrama.Verificacao, "aproveitamento") })
+                {
+                    w.MostrarDiagrama(d, d == Diagrama.Verificacao);
+                    w.Faixa.SelectedTabItem = abaVista3;
+                    EsperarIdle();
+                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                    CapturarPrincipal(w, "40-vista3d-" + nome);
+                }
+                w.MostrarDiagrama(Diagrama.Momento);
+                w.Faixa.SelectedTabItem = abaVista3;
+                foreach (var (v, nome) in new[] { (VistaPadrao.Frente, "frente"), (VistaPadrao.Topo, "topo"), (VistaPadrao.Lado, "lado") })
+                {
+                    w.vista3D.MostrarVista(v, false);
+                    CapturarPrincipal(w, "40-vista3d-" + nome);
+                }
+                // pórtico espacial 2 x 2 vãos, 2 pavimentos, com aproveitamento, deformada e uma barra escolhida
+                var esp = new Modelo3D(); int idn = 0;
+                var rnd = new Random(7);
+                for (int k = 0; k <= 2; k++) for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++)
+                    esp.Nos.Add(new No3D { Id = ++idn, X = i * 6, Y = j * 5, Z = k * 3.5, Apoios = k == 0 ? new[] { true, true, true, true, true, true } : new bool[6],
+                                           Desl = new[] { 0.004 * k, 0.002 * k, -0.001 * k * (i == 1 || j == 1 ? 2 : 1) } });
+                Func<int, int, int, int> nid = (i, j, k) => 1 + i + 3 * j + 9 * k;
+                int idb = 0;
+                for (int k = 0; k < 2; k++) for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++)
+                {
+                    esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k), Nj = nid(i, j, k + 1), Secao = "W 250 x 32,7", Aprov = 0.4 + 0.7 * rnd.NextDouble() });
+                    if (i < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i + 1, j, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
+                    if (j < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i, j + 1, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
+                }
+                w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = true;
+                w.vista3D.Carregar(esp, false);
+                w.vista3D.Escolher(esp.Barras[4]);
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                CapturarPrincipal(w, "40-vista3d-espacial");
+                w.vista3D.MostrarAproveitamento = false; w.vista3D.MostrarDeformada = true; w.vista3D.EscalaDeformada = 1;
+                w.vista3D.Carregar(esp, false);
+                CapturarPrincipal(w, "40-vista3d-espacial-deformada");
+                w.MostrarVista3D(false);
+                w.MostrarDiagrama(Diagrama.Nenhum);
+                EsperarIdle();
+
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
                     "O modelo \"" + Path.GetFileName(caminhoModelo) + "\" tem alterações que ainda não foram salvas.",
