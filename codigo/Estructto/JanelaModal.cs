@@ -65,7 +65,7 @@ namespace NovoFtool
             Montar();
         }
 
-        public void Selecionar(int modo) { sel = Math.Max(0, Math.Min(Per.Length - 1, modo)); Montar(); ModoEscolhido?.Invoke(sel + 1); }
+        public void Selecionar(int modo) { sel = Math.Max(0, Math.Min(Per.Length - 1, modo)); if (grade == null) Montar(); else { grade.Selecionar(sel); MontarPainel(); } ModoEscolhido?.Invoke(sel + 1); }
 
         void Montar()
         {
@@ -76,23 +76,27 @@ namespace NovoFtool
                 new Col("Part. X", 0, true, "Fração da massa mobilizada pelo modo na direção X."), new Col("Part. Y", 0, true), new Col("Part. Z", 0, true),
                 new Col("Σ X", 70, true, "Massa acumulada em X até este modo."), new Col("Σ Y", 70, true, "Massa acumulada em Y até este modo.")
             };
-            var linhas = new List<UIElement[]>();
+            var acum = new double[Per.Length, 2];   // Σ X, Σ Y até o modo i
             double sx = 0, sy = 0;
-            for (int i = 0; i < Per.Length; i++)
+            for (int i = 0; i < Per.Length; i++) { var p = P(i); sx += Nz(p[0]); sy += Nz(p[1]); acum[i, 0] = sx; acum[i, 1] = sy; }
+            UIElement[] Linha(int i)
             {
-                var p = part.Length > i ? part[i] : new[] { double.NaN, double.NaN, double.NaN };
-                sx += Nz(p[0]); sy += Nz(p[1]);
+                var p = P(i);
                 int dom = Dominante(p);
                 var l = new List<UIElement> { Tx((i + 1).ToString(), 12, TemaPlant.BTexto1, FontWeights.SemiBold), Num1(F(Per[i], 3)), Num1(F(f.Length > i ? f[i] : double.NaN, 2)) };
                 for (int k = 0; k < 3; k++) l.Add(CelPart(p[k], k == dom));
-                l.Add(Num1(Pct(sx), sx >= 0.9 ? TemaPlant.BSucesso : TemaPlant.BTexto2));
-                l.Add(Num1(Pct(sy), sy >= 0.9 ? TemaPlant.BSucesso : TemaPlant.BTexto2));
-                linhas.Add(l.ToArray());
+                l.Add(Num1(Pct(acum[i, 0]), acum[i, 0] >= 0.9 ? TemaPlant.BSucesso : TemaPlant.BTexto2));
+                l.Add(Num1(Pct(acum[i, 1]), acum[i, 1] >= 0.9 ? TemaPlant.BSucesso : TemaPlant.BTexto2));
+                return l.ToArray();
             }
-            TrocarTabela(corpoTabela, Grade(cols, linhas, sel, i => Selecionar(i), i => Selecionar(i),
-                dicaLinha: i => "Modo " + (i + 1) + ": T = " + F(Per[i], 3, "s") + ", predominante em " + Dir[Dominante(part[i])] + "."));
+            grade = new GradeVirtual(cols, Per.Length, Linha, sel, i => Selecionar(i), i => Selecionar(i),
+                dicaLinha: i => "Modo " + (i + 1) + ": T = " + F(Per[i], 3, "s") + ", predominante em " + Dir[Dominante(P(i))] + ".");
+            corpoTabela.Child = grade;
             MontarPainel();
         }
+
+        GradeVirtual grade;
+        double[] P(int i) { return part.Length > i ? part[i] : new[] { double.NaN, double.NaN, double.NaN }; }
 
         static double Nz(double v) { return double.IsNaN(v) ? 0 : v; }
         static int Dominante(double[] p) { int k = 0; for (int i = 1; i < 3; i++) if (Nz(p[i]) > Nz(p[k])) k = i; return k; }
@@ -115,7 +119,7 @@ namespace NovoFtool
 
         void MontarPainel()
         {
-            var p = part[sel];
+            var p = P(sel);
             int dom = Dominante(p);
             var sp = new StackPanel();
             var topo = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };

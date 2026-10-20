@@ -1068,6 +1068,43 @@ namespace NovoFtool
             });
             jk.Close();
             EsperarIdle();
+            CapturarVerificacao5000();
         }
+    
+        // 47) Verificação de barras com 5000 linhas sintéticas (prova da virtualização): tempo de abrir, reordenar, filtrar,
+        // buscar e selecionar gravado em tempos-5000.txt na pasta das capturas.
+        static void CapturarVerificacao5000()
+        {
+            var base0 = Amostras.Ler("verificacao").AsArray();
+            var arr = new System.Text.Json.Nodes.JsonArray();
+            var rnd = new Random(42);
+            for (int i = 0; i < 5000; i++)
+            {
+                var n = base0[i % base0.Count].DeepClone();
+                n["barra"] = "B" + (i + 1);
+                double t = Math.Round(rnd.NextDouble() * 1.15, 3);
+                if (S0(n, "criterio") != "nao_verificada") { n["taxa"] = t; n["ok"] = t <= 1.0; }
+                arr.Add(n);
+            }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var log = new StringBuilder().AppendLine("Verificação de barras, 5000 linhas sintéticas (GradeVirtual)");
+            void Marca(string o) { EsperarIdle(); log.AppendLine(o + ": " + sw.ElapsedMilliseconds + " ms"); sw.Restart(); }
+            var j = new JanelaVerificacaoBarras(arr);
+            PrepararDialogoForaDaTela(j);
+            j.Show();
+            Marca("abrir (construir + layout + 1º quadro)");
+            RenderizarJanela(j, (int)j.Width, (int)j.Height, "47-verificacao-5000.png");
+            sw.Restart();
+            j.Ordenar(0, false); Marca("reordenar por barra");
+            j.Filtrar(true, ""); Marca("filtrar só reprovadas");
+            RenderizarJanela(j, (int)j.Width, (int)j.Height, "47-verificacao-5000-reprovadas.png");
+            sw.Restart();
+            j.Filtrar(false, ""); j.Ordenar(6, true); Marca("voltar a todas, por aproveitamento");
+            j.Close();
+            EsperarIdle();
+            File.WriteAllText(Path.Combine(pastaSaida, "tempos-5000.txt"), log.ToString(), new UTF8Encoding(false));
+            Console.WriteLine(log);
+        }
+        static string S0(System.Text.Json.Nodes.JsonNode n, string k) { try { return n?[k]?.GetValue<string>() ?? ""; } catch { return ""; } }
     }
 }
