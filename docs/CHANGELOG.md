@@ -12,6 +12,11 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   painéis "Projeto" e "Tabelas". Tirar trecho e Selecionar a barra contínua vão para o menu do botão direito e a paleta Ctrl+K.
   O "n" global continua (sai com o motor). Indicador "Modelo alterado — Calcular (F5)" não feito: hoje o cálculo é refeito a cada alteração.
   Build ok, 200 testes ok, capturas 09-ribbon-* conferidas.
+- Janelas de análise sobre o motor (REVISAO-TELAS 3.4), cada uma no seu arquivo: Modal (`JanelaModal`, evento ModoEscolhido), Estabilidade
+  (`JanelaEstabilidade`, γz/B2 com régua 1,0–1,4), Verificação de barras (`JanelaVerificacaoBarras`, lista ordenável com filtros e duplo clique),
+  Verificar barra (`JanelaVerificarBarraMotor`, critério × item NBR × combinação × Sd ≤ Rd), Ligação (`JanelaLigacao`, campos de /api/ligacoes/tipos),
+  Comparar/Importar CYPE (`JanelaCype`) e Catálogo de perfis (`JanelaCatalogo`). Abertura por `ComandosAnalise.Abrir...(dono)` (faixa ainda não
+  liga os botões). Capturas 40–46 com JSON reais do motor embutidos (`codigo/Estructto/amostras/`).
 
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 

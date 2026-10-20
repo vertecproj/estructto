@@ -21,6 +21,8 @@
     <EmbeddedResource Include="..\portico\chumbadores.csv" LogicalName="chumbadores.csv" />
     <EmbeddedResource Include="..\portico\fixacoes.csv" LogicalName="fixacoes.csv" />
     <EmbeddedResource Include="..\portico\fixacoes-pares.csv" LogicalName="fixacoes-pares.csv" />
+    <!-- JSON reais do motor para as capturas das janelas de análise (ComandosAnalise.cs, Amostras) -->
+    <EmbeddedResource Include="amostras\*.json" LogicalName="amostra-%(Filename).json" />
   </ItemGroup>
 
   <ItemGroup>

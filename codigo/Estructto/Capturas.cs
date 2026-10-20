@@ -763,6 +763,8 @@ namespace NovoFtool
                 jAjuda.Close();
                 EsperarIdle();
 
+                CapturarAnalise();
+
                 w.alterado = false;
                 w.Close();
                 Environment.Exit(0);
@@ -772,6 +774,93 @@ namespace NovoFtool
                 GravarErro(ex);
                 Environment.Exit(1);
             }
+        }
+
+        // 40–46) Janelas de análise sobre o motor, alimentadas pelos JSON reais embutidos (amostras/*.json).
+        static void CapturarAnalise()
+        {
+            void Cap(Window j, string nome, Action depois = null)
+            {
+                PrepararDialogoForaDaTela(j);
+                j.Show();
+                EsperarIdle();
+                RenderizarJanela(j, (int)j.Width, (int)j.Height, nome + ".png");
+                RenderizarJanela(j, 1280, 720, nome + "-1280x720.png");
+                if (depois != null) { depois(); EsperarIdle(); }
+            }
+
+            var jm = new JanelaModal(Amostras.Ler("modal"));
+            Cap(jm, "40-modal", () => { jm.Selecionar(2); EsperarIdle(); RenderizarJanela(jm, (int)jm.Width, (int)jm.Height, "40-modal-modo3.png"); });
+            jm.Close();
+
+            var je = new JanelaEstabilidade(Amostras.Ler("estabilidade"));
+            Cap(je, "41-estabilidade");
+            je.Close();
+            var est2 = Amostras.Ler("estabilidade");   // variação: γz em Y acima de 1,1 com majoração
+            est2["gama_z"]["Y"]["valor"] = 1.18; est2["gama_z"]["Y"]["classificacao"] = "nos_moveis"; est2["gama_z"]["Y"]["majoracao"] = 1.121; est2["majoracao"]["n_majoradas"] = 1;
+            est2["por_combinacao"] = new System.Text.Json.Nodes.JsonObject { ["ELU Q1 princ. + V+Y"] = new System.Text.Json.Nodes.JsonObject { ["direcao"] = "Y", ["gama_z"] = 1.18, ["B2"] = null, ["instavel"] = false } };
+            var je2 = new JanelaEstabilidade(est2);
+            Cap(je2, "41-estabilidade-majorada");
+            je2.Close();
+
+            var jl = new JanelaVerificacaoBarras(Amostras.Ler("verificacao"));
+            Cap(jl, "42-verificacao-barras", () =>
+            {
+                jl.Filtrar(false, "pff"); EsperarIdle(); RenderizarJanela(jl, (int)jl.Width, (int)jl.Height, "42-verificacao-barras-pff.png");
+                jl.Filtrar(true, ""); EsperarIdle(); RenderizarJanela(jl, (int)jl.Width, (int)jl.Height, "42-verificacao-barras-reprovadas.png");
+                jl.Filtrar(false, ""); jl.Ordenar(0, false); EsperarIdle(); RenderizarJanela(jl, (int)jl.Width, (int)jl.Height, "42-verificacao-barras-por-nome.png");
+            });
+            jl.Close();
+            var vrep = Amostras.Ler("verificacao");   // variação visual: duas barras acima de 100%
+            vrep[0]["taxa"] = 1.08; vrep[0]["ok"] = false; vrep[3]["taxa"] = 0.95;
+            var jl2 = new JanelaVerificacaoBarras(vrep);
+            Cap(jl2, "42-verificacao-barras-com-reprovada");
+            jl2.Close();
+
+            foreach (var nome in new[] { "aco", "concreto" })
+            {
+                var jb = new JanelaVerificarBarraMotor(Amostras.Ler("verificacao-barra-" + nome));
+                Cap(jb, "43-verificar-barra-" + nome);
+                jb.Close();
+            }
+
+            var jg = new JanelaLigacao(Amostras.Ler("tipos-ligacao"), "parafuso", null);
+            Cap(jg, "44-ligacao-vazia");
+            jg.Preencher("parafuso", new System.Text.Json.Nodes.JsonObject { ["d_mm"] = 16, ["t"] = 0.0095, ["lf"] = 0.03 },
+                new System.Text.Json.Nodes.JsonObject { ["Ft"] = 20, ["Fv"] = 35 }, Amostras.Ler("ligacao-parafuso"));
+            EsperarIdle();
+            RenderizarJanela(jg, (int)jg.Width, (int)jg.Height, "44-ligacao-parafuso.png");
+            RenderizarJanela(jg, 1280, 720, "44-ligacao-parafuso-1280x720.png");
+            jg.Preencher("chapa_simples", new System.Text.Json.Nodes.JsonObject(), new System.Text.Json.Nodes.JsonObject(), null);
+            EsperarIdle();
+            RenderizarJanela(jg, (int)jg.Width, (int)jg.Height, "44-ligacao-chapa-simples.png");
+            jg.Close();
+
+            var jc = new JanelaCype(null, null);
+            Cap(jc, "45-cype-vazia", () =>
+            {
+                jc.Mostrar("PIPERACK TESTE 4.ed3", Amostras.Ler("comparar-cype"), null); EsperarIdle();
+                RenderizarJanela(jc, (int)jc.Width, (int)jc.Height, "45-cype-comparar.png");
+                RenderizarJanela(jc, 1280, 720, "45-cype-comparar-1280x720.png");
+                jc.Mostrar("PIPERACK TESTE 4.ed3", null, Amostras.Ler("importar-cype")); EsperarIdle();
+                RenderizarJanela(jc, (int)jc.Width, (int)jc.Height, "45-cype-importar.png");
+            });
+            jc.Close();
+
+            var perfil = Amostras.Ler("perfil"); var perfilUe = Amostras.Ler("perfil-ue");
+            var jk = new JanelaCatalogo(Amostras.Ler("catalogo"), n => System.Threading.Tasks.Task.FromResult(n == "W250x32.7" ? perfil : n == "Ue 127x50x17x2,65" ? perfilUe : null));
+            Cap(jk, "46-catalogo", () =>
+            {
+                jk.Escolher("W250x32.7"); EsperarIdle();
+                RenderizarJanela(jk, (int)jk.Width, (int)jk.Height, "46-catalogo-perfil.png");
+                RenderizarJanela(jk, 1280, 720, "46-catalogo-perfil-1280x720.png");
+                jk.Filtrar("Ue", ""); jk.Escolher("Ue 127x50x17x2,65"); EsperarIdle();
+                RenderizarJanela(jk, (int)jk.Width, (int)jk.Height, "46-catalogo-ue.png");
+                jk.Filtrar("", "zzz"); EsperarIdle();
+                RenderizarJanela(jk, (int)jk.Width, (int)jk.Height, "46-catalogo-vazio.png");
+            });
+            jk.Close();
+            EsperarIdle();
         }
     }
 }
