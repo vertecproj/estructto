@@ -7,6 +7,11 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 - Ponte 2D ↔ motor: vento, sismo, pavimentos e casos do motor agora ficam no documento (`Modelo.MotorExtra`, JSON opaco no `.estructto`), entram no desfazer/modificado e voltam ao motor em cada `MotorModelo.Enviar`. `--teste-motor` não trava mais (diálogo modal de recuperação), motor sem órfãos (Job Object + `--pai`), partida única do motor, `Motor.Exclusivo`, corpo `{}` em vez de `null`. Detalhe: `docs/UNIFICACAO-MOTOR.md` › "Dados só do motor" e "Processo do motor".
 
 - Manual do usuário em [docs/manual/](manual/README.md): 11 páginas (primeiros passos, abas na ordem do fluxo, CYPE, uso por IA/MCP, limitações e ART). Vista "Realista" não existe no código: registrada como ausente.
+- Relatório unificado: com Motor = Python, Relatório abre o relatório NBR do motor num WebView2 (sem script e sem rede), com
+  Salvar PDF/HTML, campo Empresa/autor no carimbo (padrão vazio; parâmetro `empresa` novo no motor, com teste) e o anexo das placas de
+  base/chumbadores/soldas do Estructto no fim. Gancho `RelatorioMotor.Abrir(Window, titulo)` para o documento espacial.
+  Detalhe: [RELATORIO-UNIFICADO.md](RELATORIO-UNIFICADO.md).
+
 - Marca única **Estructto**: relatório (cabeçalho, carimbo, logo `docs/logo-estructto.svg`), servidor MCP `estructto` (+ `codigo/.mcp.json` e teste stdio), CLI/servidor web e textos da interface alinhados às abas novas (Modelo, Ações, Análise, Dimensionamento). Pacote Python segue `prossen_estrutural` (interno).
 - Animações (fase 8 adiantada para a casca atual): helper único `Anim.cs` (120/160 ms UI, 250–400 ms espacial, `CubicEase`, desliga com
   "efeitos de animação" do Windows e no modo `--capturas`). Aplicado em faixa, backstage, painéis, diálogos, tela inicial, HUD, Ctrl+K,

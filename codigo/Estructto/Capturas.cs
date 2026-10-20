@@ -557,6 +557,18 @@ namespace NovoFtool
                         w.MostrarDiagrama(Diagrama.Nenhum);
                         CapturarPrincipal(w, "40-motor-python-reacoes");
                         w.Vista.MostrarReacoes = reac;
+                        // 41) Relatório do motor (WebView2) com o anexo das placas: janela real na tela (o WebView2 não desenha fora dela)
+                        try
+                        {
+                            var jr = RelatorioMotor.Abrir(w, "guincho-com-placa", w.AnexoPlacas);
+                            jr.Left = 0; jr.Top = 0;
+                            Esperar(jr.Pronto);
+                            EsperarIdle(); System.Threading.Thread.Sleep(800); EsperarIdle();
+                            Esperar(jr.SalvarPng(Path.Combine(pastaSaida, "41-relatorio-motor.png")));
+                            Esperar(jr.GravarPdf(Path.Combine(pastaSaida, "41-relatorio-motor.pdf")));
+                            jr.Close();
+                        }
+                        catch (Exception ex) { File.AppendAllText(Path.Combine(pastaSaida, "erros.txt"), "41-relatorio-motor: " + ex.Message + Environment.NewLine); }
                         w.EscolherResultado("ativo");
                     }
                     Motor.Desligar();

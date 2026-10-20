@@ -209,8 +209,8 @@ ROTAS = {
     ("GET", r"/api/catalogo/(?P<nome>[^/]+)"): lambda s, a, q, c: projeto.perfil(a["nome"]),
     ("GET", r"/api/materiais"): lambda s, a, q, c: projeto.materiais_disponiveis(),
     ("GET", r"/api/normas"): lambda s, a, q, c: projeto.normas_implementadas(),
-    ("GET", r"/api/relatorio.html"): lambda s, a, q, c: projeto.relatorio_html(_modelo(s), _calculo(s)),
-    ("POST", r"/api/relatorio"): lambda s, a, q, c: projeto.gerar_relatorio(_modelo(s), _calculo(s), (c or {}).get("formato", "html"), _caminho(s, c)),
+    ("GET", r"/api/relatorio.html"): lambda s, a, q, c: projeto.relatorio_html(_modelo(s), _calculo(s), q.get("empresa", "")),
+    ("POST", r"/api/relatorio"): lambda s, a, q, c: projeto.gerar_relatorio(_modelo(s), _calculo(s), (c or {}).get("formato", "html"), _caminho(s, c), str((c or {}).get("empresa") or "")),
 }
 ROTAS_ED3 = {("POST", r"/api/importar_cype"), ("POST", r"/api/comparar_cype")}  # corpo até LIMITE_CORPO_ED3
 MUTAM = {("PUT", r"/api/modelo"), ("POST", r"/api/importar_cype"), ("POST", r"/api/modelo/lote"), ("POST", r"/api/modelo/(?P<tipo>[a-z_]+)"),

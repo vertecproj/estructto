@@ -15,12 +15,32 @@ namespace NovoFtool
 {
     public partial class MainWindow
     {
-        void AbrirRelatorio()
+        async void AbrirRelatorio()
         {
             if (M.Barras.Count == 0) { Log("Modelo vazio: nada para relatar."); return; }
+            if (MotorAtivo)   // motor Python: relatório NBR do motor + anexo das placas do Estructto (docs/RELATORIO-UNIFICADO.md)
+            {
+                if (!await PrepararMotor(true)) return;
+                RelatorioMotor.Abrir(this, NomeRelatorio(), AnexoPlacas);
+                return;
+            }
             if (!Vista.Resolvido) Log("⚠ Estrutura sem resultados: o relatório sai só com os dados do modelo. Veja o painel Avisos.");
-            var j = new JanelaRelatorio(MontarRelatorio, (arquivo == null ? "modelo" : System.IO.Path.GetFileNameWithoutExtension(arquivo))) { Owner = this };
+            var j = new JanelaRelatorio(MontarRelatorio, NomeRelatorio()) { Owner = this };
             j.Show();
+        }
+
+        string NomeRelatorio() { return arquivo == null ? "modelo" : System.IO.Path.GetFileNameWithoutExtension(arquivo); }
+
+        // Anexo do relatório do motor: tabela e memorial das placas de base (chumbadores e solda), que o motor não calcula.
+        // null = modelo sem placa (o relatório do motor sai sozinho).
+        internal FlowDocument AnexoPlacas()
+        {
+            var placas = M.Nos.Where(n => n.Placa != null).ToList();
+            if (placas.Count == 0) return null;
+            var doc = new FlowDocument { FontFamily = new FontFamily("Segoe UI"), FontSize = 10.5, Foreground = Tinta, Background = Brushes.White };
+            TabelaPlacas(doc, placas, true);
+            foreach (No n in placas) MemorialPlaca(doc, n);
+            return doc;
         }
 
         // Teste/automacao: grava as paginas do relatorio como PNG (A4) na pasta indicada.
@@ -136,20 +156,25 @@ namespace NovoFtool
             if (placas.Count > 0)
             {
                 doc.Blocks.Add(Titulo("8. Placas de base"));
-                doc.Blocks.Add(Tabela(new[] { "Nó", "Placa (mm)", "Parafusos", "N / V / M no pé", "Tração máx. (kN)", "Segurança paraf.", "Esp. necessária", "Situação" },
-                    placas.Select(n =>
-                    {
-                        ResPlaca r = PlacaPior(n);
-                        if (r.Erro != "" && !r.TemEsforcos) return new[] { n.Id.ToString(), "", "", "", "", "", "", r.Erro };
-                        bool ok = r.Passa && r.EspNec <= n.Placa.Esp;
-                        return new[] { n.Id.ToString(), Num.Fmt(r.H, 0) + " × " + Num.Fmt(r.B, 0) + " × " + Num.Fmt(n.Placa.Esp, 1), r.Paraf.Count + " × " + (r.Ch != null ? r.Ch.Nome : "M" + n.Placa.Diametro + " " + n.Placa.Classe),
-                            Num.Fmt(r.N, 1) + " / " + Num.Fmt(r.V, 1) + " / " + Num.Fmt(r.M, 1), Num.Fmt(r.Tmax, 2), double.IsInfinity(r.NComb) ? "∞" : Num.Fmt(r.NComb, 2),
-                            Num.Fmt(r.EspNec, 1) + " mm", ok ? "passa" : "NÃO PASSA" };
-                    })));
-                doc.Blocks.Add(P("Modelo de placa rígida (ver Placa de base no programa). Não verifica pressão no concreto." + (completo ? "" : " O desenvolvimento (parafusos/chumbadores, chapa e solda) está no relatório completo."), Cinza));
+                TabelaPlacas(doc, placas, completo);
             }
             if (completo) Memorial(doc, placas);
             return doc;
+        }
+
+        void TabelaPlacas(FlowDocument doc, List<No> placas, bool completo)
+        {
+            doc.Blocks.Add(Tabela(new[] { "Nó", "Placa (mm)", "Parafusos", "N / V / M no pé", "Tração máx. (kN)", "Segurança paraf.", "Esp. necessária", "Situação" },
+                placas.Select(n =>
+                {
+                    ResPlaca r = PlacaPior(n);
+                    if (r.Erro != "" && !r.TemEsforcos) return new[] { n.Id.ToString(), "", "", "", "", "", "", r.Erro };
+                    bool ok = r.Passa && r.EspNec <= n.Placa.Esp;
+                    return new[] { n.Id.ToString(), Num.Fmt(r.H, 0) + " × " + Num.Fmt(r.B, 0) + " × " + Num.Fmt(n.Placa.Esp, 1), r.Paraf.Count + " × " + (r.Ch != null ? r.Ch.Nome : "M" + n.Placa.Diametro + " " + n.Placa.Classe),
+                        Num.Fmt(r.N, 1) + " / " + Num.Fmt(r.V, 1) + " / " + Num.Fmt(r.M, 1), Num.Fmt(r.Tmax, 2), double.IsInfinity(r.NComb) ? "∞" : Num.Fmt(r.NComb, 2),
+                        Num.Fmt(r.EspNec, 1) + " mm", ok ? "passa" : "NÃO PASSA" };
+                })));
+            doc.Blocks.Add(P("Modelo de placa rígida (ver Placa de base no programa). Não verifica pressão no concreto." + (completo ? "" : " O desenvolvimento (parafusos/chumbadores, chapa e solda) está no relatório completo."), Cinza));
         }
 
         static string TipoCaso(string t) { return t == "G" ? "permanente" : t == "Q" ? "variável" : t == "V" ? "vento" : t == "E" ? "excepcional" : t; }
