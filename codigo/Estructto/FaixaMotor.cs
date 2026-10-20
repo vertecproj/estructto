@@ -46,6 +46,7 @@ namespace NovoFtool
         async void ComMotor(bool calcular, Action<Window> abrir)
         {
             if (Esp != null && !calcular) { JanelaMotorEsp(abrir); return; }   // CargasEspacial.cs: edita o modelo espacial
+            if (Esp != null) { if (await GarantirCalculoEsp()) abrir(this); return; }   // janelas de resultado: o cálculo do documento 3D
             if (await PrepararMotor(calcular)) abrir(this);
         }
 
@@ -76,6 +77,13 @@ namespace NovoFtool
         // Verificar barra: com o motor Python, a verificação NBR 8800 detalhada; no interno, a janela antiga.
         void VerificarBarraConforme(Barra b)
         {
+            if (Esp != null)
+            {
+                string id = vista3D.Selecao.Barras.FirstOrDefault();
+                if (id == null) { MostrarToast("Selecione uma barra (clique nela) e repita."); return; }
+                ComMotor(true, w => ComandosAnalise.AbrirVerificarBarra(w, id));
+                return;
+            }
             if (!MotorAtivo) { AbrirVerificacao(b); return; }
             b ??= Vista.Sel.OfType<Barra>().FirstOrDefault();
             if (b == null) { MostrarToast("Selecione uma barra (clique nela) e repita."); return; }

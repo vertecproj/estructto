@@ -17,6 +17,14 @@ namespace NovoFtool
     {
         async void AbrirRelatorio()
         {
+            if (Esp != null)   // documento 3D: relatório NBR do motor + anexo das placas pela ponte (Legado3D.cs)
+            {
+                if (Esp.Json["barras"].AsObject().Count == 0) { Log("Modelo vazio: nada para relatar."); return; }
+                if (!await GarantirCalculoEsp()) return;
+                var anexo = await AnexoPlacasEsp();
+                RelatorioMotor.Abrir(this, Esp.Arquivo != null ? System.IO.Path.GetFileNameWithoutExtension(Esp.Arquivo) : Esp.Nome, anexo);
+                return;
+            }
             if (M.Barras.Count == 0) { Log("Modelo vazio: nada para relatar."); return; }
             if (MotorAtivo)   // motor Python: relatório NBR do motor + anexo das placas do Estructto (docs/RELATORIO-UNIFICADO.md)
             {
@@ -35,7 +43,11 @@ namespace NovoFtool
         // null = modelo sem placa (o relatório do motor sai sozinho).
         internal FlowDocument AnexoPlacas()
         {
-            var placas = M.Nos.Where(n => n.Placa != null).ToList();
+            return AnexoDe(M.Nos.Where(n => n.Placa != null).ToList());
+        }
+
+        internal FlowDocument AnexoDe(List<No> placas)
+        {
             if (placas.Count == 0) return null;
             var doc = new FlowDocument { FontFamily = new FontFamily("Segoe UI"), FontSize = 10.5, Foreground = Tinta, Background = Brushes.White };
             TabelaPlacas(doc, placas, true);

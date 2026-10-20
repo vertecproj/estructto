@@ -62,10 +62,10 @@ namespace NovoFtool
                 };
                 LigarDesenho3D();
             }
-            if (vista3D == null || (!ligar && Esp != null)) return;   // modelo espacial: sempre 3D
+            if (vista3D == null || !ligar) return;   // não existe mais vista 2D: sempre 3D
             bool primeira = ligar && vista3D.Visibility != Visibility.Visible;
-            vista3D.Visibility = ligar ? Visibility.Visible : Visibility.Collapsed;
-            Vista.Visibility = ligar ? Visibility.Hidden : Visibility.Visible;
+            vista3D.Visibility = Visibility.Visible;
+            Vista.Visibility = Visibility.Hidden;   // o controle 2D (Vista.cs) fica só como guarda do estado do HUD (diagrama e escala)
             if (ligar) { Atualizar3D(primeira); vista3D.Focus(); } else Vista.Focus();
         }
 

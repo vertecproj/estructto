@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -70,7 +71,7 @@ namespace NovoFtool
             PreviewKeyDown += Tecla;
             PreviewTextInput += TextoDigitado;
             Closing += (s, e) => { if (!PodeFecharTudo()) e.Cancel = true; else { Config.ApagarRecuperacao(); foreach (var x in docs) x.Esp?.Descartar(); } };
-            autoSalvar.Tick += (s, e) => { if (alterado) Config.SalvarRecuperacao(atual, arquivo); };   // ultimo estado confirmado (nao a placa em edicao)
+            autoSalvar.Tick += (s, e) => { if (alterado && Esp != null) Config.SalvarRecuperacao(Esp.ParaContainer(), Esp.Arquivo ?? Esp.Origem); };   // contêiner do documento ativo
             autoSalvar.Start();
         }
 
@@ -593,25 +594,20 @@ namespace NovoFtool
 
         bool PodeDescartar()
         {
-            if (!alterado || M.Barras.Count == 0 && arquivo == null) return true;
-            var r = Caixa.SalvarAlteracoes(this, arquivo == null ? "Sem título" : System.IO.Path.GetFileName(arquivo));
+            if (!alterado || Esp == null) return true;
+            if (Esp.Arquivo == null && Esp.Json["barras"].AsObject().Count == 0 && Esp.Json["nos"].AsObject().Count == 0) return true;   // em branco
+            var r = Caixa.SalvarAlteracoes(this, Esp.Nome);
             if (r == MessageBoxResult.Cancel) return false;
             if (r == MessageBoxResult.Yes) return Salvar(false);
             return true;
         }
 
-        void Novo()
-        {
-            GuardarDoc();
-            docs.Add(new Documento());
-            docAtivo = docs.Count - 1;
-            NovoModelo(new Modelo(), null);
-            Log("Novo modelo (aba nova).");
-        }
+        // Todo documento é 3D (docs/MODELO-ESPACIAL.md): Novo = modelo em branco do motor, em planta no térreo.
+        void Novo() { _ = NovoEmBranco(); }
 
         void AbrirDialogo()
         {
-            var d = new OpenFileDialog { Multiselect = true, Filter = "Modelos (*.estructto;*.portico;*.ftl;*.json;*.ed3)|*.estructto;*.portico;*.ftl;*.json;*.ed3|Modelo espacial do motor (*.json)|*.json|Obra do CYPE 3D (*.ed3)|*.ed3|Estructto (*.estructto)|*.estructto|Portico antigo (*.portico)|*.portico|Ftool original (*.ftl)|*.ftl" };
+            var d = new OpenFileDialog { Multiselect = true, Filter = "Modelos (*.estructto;*.portico;*.ftl;*.json;*.ed3)|*.estructto;*.portico;*.ftl;*.json;*.ed3|Estructto (*.estructto)|*.estructto|Modelo do motor (*.json)|*.json|Obra do CYPE 3D (*.ed3)|*.ed3|Portico antigo (*.portico)|*.portico|Ftool original (*.ftl)|*.ftl" };
             if (d.ShowDialog(this) == true) foreach (string f in d.FileNames) Abrir(f);
         }
 
@@ -621,77 +617,37 @@ namespace NovoFtool
             if (d.ShowDialog(this) == true) foreach (string f in d.FileNames) Abrir(f);
         }
 
-        internal void Abrir(string caminho)
+        // Abre qualquer arquivo como documento 3D. Antigos (.estructto XML, .ftl, .portico) são convertidos (DeModelo2D).
+        internal void Abrir(string caminho) { _ = AbrirTarefa(caminho); }
+
+        internal Task AbrirTarefa(string caminho)
         {
-            if (EhEspacial(caminho) && !docs.Any(x => x.Arquivo != null && string.Equals(System.IO.Path.GetFullPath(x.Arquivo), System.IO.Path.GetFullPath(caminho), StringComparison.OrdinalIgnoreCase)))
-            { _ = AbrirEspacialArquivo(caminho); return; }   // .json do motor / .ed3 do CYPE: DocumentoEspacial.cs
-            // ja aberto: so troca para a aba dele
-            GuardarDoc();
-            int ja = docs.FindIndex(x => x.Arquivo != null && string.Equals(System.IO.Path.GetFullPath(x.Arquivo), System.IO.Path.GetFullPath(caminho), StringComparison.OrdinalIgnoreCase));
-            if (ja >= 0) { TrocarDoc(ja); return; }
-            PrepararDocNovo();
-            try
-            {
-                if (caminho.EndsWith(".ftl", StringComparison.OrdinalIgnoreCase))
-                {
-                    string aviso;
-                    Modelo m = Ftl.Importar(caminho, out aviso);
-                    NovoModelo(m, null);
-                    alterado = true; AtualizarTitulo(); Atualizar();
-                    DocModelo.Title = System.IO.Path.GetFileName(caminho) + " (importado) *";
-                    foreach (string linha in aviso.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries)) Log(linha);
-                }
-                else
-                {
-                    NovoModelo(Modelo.DeXml(File.ReadAllText(caminho)), caminho);
-                    Config.AdicionarRecente(caminho);
-                    Log("Aberto: " + caminho);
-                }
-            }
-            catch (Exception ex)
-            {
-                Caixa.Erro(this, "Não foi possível abrir o arquivo", ex.Message);
-            }
+            int ja = docs.FindIndex(x => x.Esp?.Arquivo != null && string.Equals(System.IO.Path.GetFullPath(x.Esp.Arquivo), System.IO.Path.GetFullPath(caminho), StringComparison.OrdinalIgnoreCase));
+            if (ja >= 0) { TrocarDoc(ja); return Task.CompletedTask; }   // já aberto: só troca para a aba dele
+            return AbrirEspacialArquivo(caminho);
         }
 
         bool Salvar(bool como)
         {
             if (Esp != null) return SalvarEspacial(como);
-            string c = arquivo;
-            if (como || c == null)
-            {
-                var d = new SaveFileDialog { Filter = "Estructto (*.estructto)|*.estructto", FileName = c == null ? "modelo.estructto" : System.IO.Path.GetFileNameWithoutExtension(c) + ".estructto" };
-                if (d.ShowDialog(this) != true) return false;
-                c = d.FileName;
-            }
-            try
-            {
-                File.WriteAllText(c, M.ParaXml());
-                arquivo = c; alterado = false;
-                Config.AdicionarRecente(c);
-                Config.ApagarRecuperacao();
-                AtualizarTitulo(); AtualizarArvore();
-                Log("Salvo: " + c);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Caixa.Erro(this, "Não foi possível salvar", ex.Message);
-                return false;
-            }
+            Log("Nada para salvar: crie (Ctrl+N) ou abra (Ctrl+O) um modelo.");
+            return false;
         }
 
         void OferecerRecuperacao()
         {
-            string xml, orig;
-            if (!Config.LerRecuperacao(out xml, out orig)) return;
+            string txt, orig;
+            if (!Config.LerRecuperacao(out txt, out orig)) return;
             var r = Caixa.Mostrar(this, "Recuperar o modelo?", "O Estructto fechou sem salvar da última vez" + (orig != null ? " (" + System.IO.Path.GetFileName(orig) + ")" : "") + ".",
                 "Existe uma cópia salva automaticamente. Recuperar abre essa cópia; descartar apaga a cópia.",
                 new[] { ("Recuperar", MessageBoxResult.Yes, true), ("Descartar", MessageBoxResult.No, false) }, "↺", JanelaEscura.BAzul);
             if (r == MessageBoxResult.Yes)
             {
-                try { NovoModelo(Modelo.DeXml(xml), orig); alterado = true; AtualizarTitulo(); Atualizar(); Log("Modelo recuperado. Salve para não perder."); }
-                catch { Log("Não foi possível recuperar o modelo."); }
+                string titulo = (orig != null ? System.IO.Path.GetFileNameWithoutExtension(orig) : "Modelo") + " (recuperado)";
+                Func<Task<DocumentoEspacial>> criar = txt.TrimStart().StartsWith("<")
+                    ? () => DocumentoEspacial.DeModelo2D(Modelo.DeXml(txt), null, titulo)   // cópia antiga (2D)
+                    : () => DocumentoEspacial.DeTexto(txt, titulo);
+                _ = AbrirEspacial(criar, "recuperando o modelo").ContinueWith(_ => { if (Esp != null) { alterado = true; AtualizarTitulo(); Log("Modelo recuperado. Salve para não perder."); } }, TaskScheduler.FromCurrentSynchronizationContext());
             }
             Config.ApagarRecuperacao();
         }
@@ -752,6 +708,7 @@ namespace NovoFtool
         // Placa: no resultado da tela; na envoltoria, a combinacao com o pior aproveitamento (parafuso ou chapa).
         internal ResPlaca PlacaPior(No n)
         {
+            if (placaPiorDesvio != null) return placaPiorDesvio(n);   // anexo do relatório 3D (Legado3D.cs)
             if (Vista.Envoltoria == null) return PlacaCalc.Calcular(M, n);
             ResPlaca pior = null; double nota = double.MinValue;
             for (int i = 0; i < Vista.NomesEnv.Count; i++)
@@ -775,6 +732,7 @@ namespace NovoFtool
 
         void AbrirPlaca(No n)
         {
+            if (Esp != null) { _ = AbrirPlacaEsp(null); return; }   // documento 3D: ponte do pé de pilar (Legado3D.cs)
             if (n == null) n = Vista.Sel.OfType<No>().FirstOrDefault() ?? M.Nos.FirstOrDefault(x => x.Placa != null);
             if (n == null) { Log("Selecione o nó do pé do pilar e repita."); return; }
             string erro;
@@ -819,14 +777,10 @@ namespace NovoFtool
         void AbrirAssistente(string tipo)
         {
             Bastidor.IsOpen = false;
-            var j = new JanelaAssistente(tipo, cbSecao.Text, cbMaterial.Text) { Owner = this };
-            if (j.ShowDialog() == true && j.Resultado != null)
-            {
-                PrepararDocNovo();
-                NovoModelo(j.Resultado, null);
-                alterado = true; AtualizarTitulo(); Atualizar();
-                Log("Modelo gerado pelo assistente: " + j.Resultado.Barras.Count + " barras. Confira e salve.");
-            }
+            var j = new JanelaAssistente(tipo, "W 200 x 26,6", Biblioteca.Materiais.Count > 0 ? Biblioteca.Materiais[0].Nome : "") { Owner = this };
+            if (j.ShowDialog() == true && j.Resultado != null)   // o assistente desenha no plano XZ; o documento é 3D (mesma conversão dos arquivos antigos)
+                _ = AbrirEspacial(() => DocumentoEspacial.DeModelo2D(j.Resultado, null, "Gerado (" + (tipo ?? "assistente") + ")"), "gerando o modelo")
+                    .ContinueWith(_ => { if (Esp != null) { alterado = true; AtualizarTitulo(); Log("Modelo gerado pelo assistente: " + j.Resultado.Barras.Count + " barras. Confira e salve."); } }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
         void MostrarAjuda() { new JanelaAjuda { Owner = this }.Show(); }

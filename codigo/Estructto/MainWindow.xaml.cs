@@ -76,10 +76,13 @@ namespace NovoFtool
             Log("Bem-vindo. Escolha uma ferramenta na faixa, use Modelo › Gerar estrutura ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
+            Loaded += (s, e) => AplicarModoEspacial();   // só existe vista 3D (docs/MODELO-ESPACIAL.md)
             if (Capturas.Configurar(this, args)) return;
             string arqInicial = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--") && File.Exists(a));
             if (arqInicial != null)
                 Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => Abrir(arqInicial)), System.Windows.Threading.DispatcherPriority.Loaded);
+            else if (!args.Any(a => a.StartsWith("--")))   // como o AutoCAD: abre com um desenho em branco (em planta, no térreo)
+                Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => _ = NovoEmBranco(true)), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             foreach (string a in args)   // --teste-motor=<saida.png>: Verificação de barras ao vivo pelo botão da faixa (FaixaMotor.cs)
                 if (a.StartsWith("--teste-motor=")) Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => TesteMotor(a.Substring(14).Trim('"'))), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             foreach (string a in args)

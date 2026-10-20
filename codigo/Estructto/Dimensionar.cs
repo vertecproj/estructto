@@ -60,6 +60,7 @@ namespace NovoFtool
 
         void DimensionarPerfis(bool soSelecao)
         {
+            if (Esp != null) { _ = DimensionarEspacial(soSelecao); return; }   // documento 3D: iterações no motor (Legado3D.cs)
             if (!Vista.Resolvido) { Log("Calcule a estrutura antes de dimensionar (veja o painel Avisos)."); return; }
             var alvo = soSelecao ? Vista.Sel.OfType<Barra>().ToList() : M.Barras.ToList();
             if (alvo.Count == 0) { Log("Selecione as barras a dimensionar, ou use \"Dimensionar todas\"."); return; }

@@ -1,7 +1,8 @@
-// Documento "Modelo espacial" (docs/MODELO-ESPACIAL.md): a fonte da verdade é o modelo do motor Python (o JSON de
-// codigo/motor, ESPEC §5), não o Modelo 2D do Nucleo.cs. Abre .json do motor, obras .ed3 do CYPE e os exemplos do motor;
-// gera edifício, galpão e pórtico 3D; mostra na Vista3D (sempre 3D); edita nó/barra por PATCH /api/modelo/{tipo}/{id};
-// desfazer/refazer pelo motor; F5 = POST /api/calcular; salva o JSON do motor.
+// Documento do Estructto (docs/MODELO-ESPACIAL.md): o ÚNICO tipo de documento. A fonte da verdade é o modelo do motor Python
+// (o JSON de codigo/motor, ESPEC §5). Abre .estructto (novo: contêiner JSON; antigo: XML 2D, convertido ao abrir), .ftl e
+// .portico (convertidos), .json do motor, obras .ed3 do CYPE e os exemplos do motor; gera edifício, galpão e pórtico 3D;
+// mostra na Vista3D; edita nó/barra por PATCH /api/modelo/{tipo}/{id}; desfazer/refazer pelo motor; F5 = POST /api/calcular.
+// Salva o contêiner .estructto (modelo do motor + placas de base + grade estrutural) ou só o JSON do motor (.json).
 // O servidor guarda um modelo só: antes de cada operação o documento ativo se recoloca lá (Garantir).
 using System;
 using System.Collections.Generic;
@@ -79,6 +80,10 @@ namespace NovoFtool
         public string CasoAtivo;             // caso das cargas lançadas no painel
         public bool TemHistorico, HistoricoPerdido;   // desfazer do motor: só do documento ativo (ver Garantir)
         public JsonArray Validacao = new JsonArray();  // GET /api/validar do último Recarregar
+        // Fora do motor (o motor não guarda): placas de base por nó (JanelaPlaca, Legado3D.cs) e a grade estrutural (GR).
+        public Dictionary<string, PlacaBase> Placas = new Dictionary<string, PlacaBase>();
+        public JsonObject Grade;                       // {"x": [..], "y": [..], "nx": [..], "ny": [..]} em m; null = sem grade
+        public string Origem;                          // arquivo antigo convertido ao abrir (null = nativo)
         public Dictionary<string, JsonNode> PiorPorBarra = new Dictionary<string, JsonNode>();
         JsonObject esforcos, desl;
         readonly Dictionary<string, RefMotor> refs = new Dictionary<string, RefMotor>();
@@ -90,7 +95,7 @@ namespace NovoFtool
         public void Descartar() { try { File.Delete(Troca); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
 
         public bool Calculado => Calculo != null;
-        public string Nome => Arquivo != null ? Path.GetFileName(Arquivo) : Titulo ?? "Modelo espacial";
+        public string Nome => Arquivo != null ? Path.GetFileName(Arquivo) : Titulo ?? "Modelo";
         static string Url(string s) => Uri.EscapeDataString(s);
         static readonly CultureInfo Ci = CultureInfo.InvariantCulture;
 
@@ -146,6 +151,15 @@ namespace NovoFtool
 
         public static async Task<DocumentoEspacial> AbrirArquivo(string caminho)
         {
+            string ext = Path.GetExtension(caminho).ToLowerInvariant();
+            if (ext == ".ftl") return await DeModelo2D(Ftl.Importar(caminho, out _), caminho);
+            if (ext == ".estructto" || ext == ".portico")
+            {
+                string txt = File.ReadAllText(caminho);
+                if (txt.TrimStart().StartsWith("<")) return await DeModelo2D(Modelo.DeXml(txt), caminho);   // formato antigo (XML do Nucleo.cs)
+                var c = (JsonObject)JsonNode.Parse(txt);
+                if (c["modelo"] is JsonObject) return await DoContainer(c, caminho);
+            }
             if (caminho.EndsWith(".ed3", StringComparison.OrdinalIgnoreCase))
             {
                 JsonNode r = null;
@@ -163,6 +177,47 @@ namespace NovoFtool
                 await doc.Recarregar();
             });
             return doc;
+        }
+
+        // ---------- formato do arquivo ----------
+        // .estructto (v3) = {"formato": "estructto", "versao": 3, "modelo": <JSON do motor>, "placas": {nó: PlacaBase}, "grade": {...}}.
+        // O .estructto antigo é XML (Modelo do Nucleo.cs): continua legível e é convertido ao abrir (DeModelo2D).
+        public string ParaContainer()
+        {
+            var placas = new JsonObject();
+            foreach (var kv in Placas) placas[kv.Key] = JsonSerializer.SerializeToNode(kv.Value);
+            var c = new JsonObject { ["formato"] = "estructto", ["versao"] = 3, ["modelo"] = Json.DeepClone(), ["placas"] = placas };
+            if (Grade != null) c["grade"] = Grade.DeepClone();
+            return c.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        }
+
+        static async Task<DocumentoEspacial> DoContainer(JsonObject c, string caminho)
+        {
+            var d = new DocumentoEspacial { Arquivo = caminho, Json = (JsonObject)c["modelo"].DeepClone(), Grade = c["grade"]?.DeepClone() as JsonObject };
+            foreach (var kv in c["placas"] as JsonObject ?? new JsonObject())
+                try { var p = kv.Value.Deserialize<PlacaBase>(); if (p != null) d.Placas[kv.Key] = p; } catch (JsonException) { d.Avisos.Add("placa do nó " + kv.Key + " ilegível: ignorada"); }
+            await Motor.Exclusivo(async () => { await d.Garantir(); await d.Recarregar(); });
+            return d;
+        }
+
+        // Contêiner lido de texto (recuperação automática): sem arquivo, marcado como alterado por quem chama.
+        public static async Task<DocumentoEspacial> DeTexto(string txt, string titulo)
+        {
+            var d = await DoContainer((JsonObject)JsonNode.Parse(txt), null);
+            d.Titulo = titulo;
+            return d;
+        }
+
+        // Modelo 2D antigo (Nucleo.cs: .estructto XML, .ftl, .portico, assistentes) -> documento 3D pela mesma conversão do
+        // motor (MotorModelo.Enviar: X -> X, Y do 2D -> Z, fora do plano travado). As placas de base vêm junto (nó N -> "nN").
+        public static async Task<DocumentoEspacial> DeModelo2D(Modelo m, string origem, string titulo = null)
+        {
+            foreach (Barra b in m.Barras) SecoesExtras.Garantir(b.Secao);
+            titulo ??= origem != null ? Path.GetFileNameWithoutExtension(origem) : "Modelo";
+            var d = await Criar(() => MotorModelo.Enviar(m), titulo, null);
+            d.Origem = origem;
+            foreach (No n in m.Nos) if (n.Placa != null) d.Placas["n" + n.Id] = n.Placa.Copiar();
+            return d;
         }
 
         // Modelo devolvido por POST /api/importar_cype (JanelaCype.Importado): vira um documento novo.
@@ -378,16 +433,20 @@ namespace NovoFtool
         static List<string> catalogoEsp;      // nomes do GET /api/catalogo (uma vez por sessão)
         readonly ContentControl painelEsp = new ContentControl();
 
-        static bool EhEspacial(string caminho) => caminho.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || caminho.EndsWith(".ed3", StringComparison.OrdinalIgnoreCase);
+        static bool avisouConversao;   // o aviso da conversão 2D -> 3D aparece uma vez por sessão
 
-        internal async Task AbrirEspacial(Func<Task<DocumentoEspacial>> criar, string oque, string recente = null)
+        internal async Task AbrirEspacial(Func<Task<DocumentoEspacial>> criar, string oque, string recente = null, bool silencioso = false)
         {
             Bastidor.IsOpen = false;
             StatusMsg.Text = "Motor Python: " + oque + "…";
             var antes = Mouse.OverrideCursor; Mouse.OverrideCursor = Cursors.AppStarting;
             DocumentoEspacial d;
             try { d = await criar(); }
-            catch (Exception ex) { Caixa.Erro(this, "Não foi possível abrir o modelo espacial", ex.Message); StatusMsg.Text = "⚠ " + ex.Message; return; }
+            catch (Exception ex)
+            {
+                if (!silencioso) Caixa.Erro(this, "Não foi possível abrir o modelo", ex.Message);
+                StatusMsg.Text = "⚠ " + ComandosAnalise.MensagemMotor(ex); Log(StatusMsg.Text, false); return;
+            }
             finally { Mouse.OverrideCursor = antes; }
             if (recente != null) Config.AdicionarRecente(recente);
             GuardarDoc();
@@ -398,25 +457,44 @@ namespace NovoFtool
             alterado = d.Arquivo == null;
             AtualizarTitulo();
             AplicarModoEspacial();
-            Log("Modelo espacial: " + d.Nome + " (" + d.Resumo() + ")");
+            Log("Modelo: " + d.Nome + " (" + d.Resumo() + ")", !silencioso);
             foreach (string a in d.Avisos) Log("  aviso: " + a, false);
+            if (d.Origem != null)
+            {
+                Log("Convertido para 3D: " + Path.GetFileName(d.Origem) + " (Y do 2D virou Z; fora do plano travado). Salvar grava o formato novo (.estructto 3D).", false);
+                if (!avisouConversao) { avisouConversao = true; MostrarToast("Modelo 2D convertido para 3D: o Y do desenho virou Z e o que sai do plano ficou travado. Ao salvar, o arquivo vai no formato novo (.estructto 3D); o original não é alterado.", true); }
+            }
         }
 
         internal Task AbrirEspacialArquivo(string caminho) => AbrirEspacial(() => DocumentoEspacial.AbrirArquivo(caminho), "abrindo " + Path.GetFileName(caminho), caminho);
+
+        // Documento em branco: plano de desenho no térreo (z = 0) e vista de topo, como uma folha de CAD — até orbitar (Shift + arrastar).
+        internal async Task NovoEmBranco(bool silencioso = false)
+        {
+            int n = docs.Count(x => x.Esp != null) + 1;
+            await AbrirEspacial(() => DocumentoEspacial.Vazio("Modelo " + n), "criando o modelo em branco", null, silencioso);
+            if (Esp == null || vista3D == null) return;
+            alterado = false; AtualizarTitulo();
+            vista3D.PlanoAtual = PlanoTrabalho.Horizontal(0, "Térreo (z = 0,00 m)");
+            vista3D.MostrarVista(VistaPadrao.Topo, false);
+            vista3D.Ferramenta = Ferramenta3D.Selecionar;
+        }
 
         // Chamado ao trocar de documento: liga ou desliga a vista 3D forçada e o painel de propriedades do motor.
         void AplicarModoEspacial()
         {
             var d = Esp;
-            if (d == null)
+            if (d == null)   // nenhum modelo aberto (tela inicial): a vista continua 3D, vazia; não existe mais vista 2D
             {
-                if (!modoEsp) return;
                 modoEsp = false;
                 LimparPlano();
                 MostrarEdicao3D(false);
                 Vista.ResumoExterno = null;
-                PainelProp.Content = Insp;
-                MostrarVista3D(false);
+                MostrarVista3D(true);
+                vista3D.Ferramenta = Ferramenta3D.Navegar;
+                vista3D.Carregar(new Modelo3D(), true);
+                painelEsp.Content = new TextBlock { Text = "Nenhum modelo aberto. Ctrl+N cria um modelo em branco (em planta, no térreo); Ctrl+O abre um arquivo (.estructto, .json, .ed3, .ftl).", Foreground = TemaPlant.BTexto2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
+                PainelProp.Content = painelEsp;
                 return;
             }
             modoEsp = true;
@@ -567,21 +645,34 @@ namespace NovoFtool
             finally { StatusBotoes.Children.Remove(barra); espRodando = false; }
         }
 
+        // .estructto = contêiner do formato novo (modelo do motor + placas + grade); .json = só o modelo do motor (outros programas).
+        // Documento convertido de um arquivo antigo: "Salvar" pede o nome (sugere "<nome> (3D).estructto") e não sobrescreve o antigo.
         bool SalvarEspacial(bool como)
         {
             var d = Esp;
             string c = d.Arquivo;
             if (como || c == null)
             {
-                var dlg = new SaveFileDialog { Filter = "Modelo do motor (*.json)|*.json", FileName = (c == null ? d.Nome : Path.GetFileNameWithoutExtension(c)) + ".json" };
+                string pasta = d.Origem != null ? Path.GetDirectoryName(d.Origem) : null;
+                string nome = d.Origem != null ? Path.GetFileNameWithoutExtension(d.Origem) + " (3D)" : c == null ? d.Nome : Path.GetFileNameWithoutExtension(c);
+                var dlg = new SaveFileDialog { Filter = "Estructto (*.estructto)|*.estructto|Modelo do motor, sem placas nem grade (*.json)|*.json", FileName = nome + ".estructto", InitialDirectory = pasta ?? "" };
                 if (dlg.ShowDialog(this) != true) return false;
                 c = dlg.FileName;
             }
+            return SalvarEspacialEm(c);
+        }
+
+        internal bool SalvarEspacialEm(string c)
+        {
+            var d = Esp;
             try
             {
-                File.WriteAllText(c, d.JsonFormatado());   // Json = último GET /api/modelo (atualizado depois de cada mudança)
-                d.Arquivo = c; arquivo = c; alterado = false;
+                bool json = c.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+                File.WriteAllText(c, json ? d.JsonFormatado() : d.ParaContainer());   // Json = último GET /api/modelo
+                if (json && (d.Placas.Count > 0 || d.Grade != null)) Log("Aviso: o .json do motor não leva placas de base nem a grade estrutural; use .estructto para guardar tudo.");
+                d.Arquivo = c; d.Origem = null; arquivo = c; alterado = false;
                 Config.AdicionarRecente(c);
+                Config.ApagarRecuperacao();
                 AtualizarTitulo();
                 Log("Salvo: " + c);
                 return true;
@@ -692,7 +783,7 @@ namespace NovoFtool
             {
                 selEsp = null;
                 var j = d.Json;
-                cab((string)j["nome"] is string n && n != "" ? n : d.Nome, "Modelo espacial do motor Python. Clique numa barra ou nó da vista para editar.");
+                cab((string)j["nome"] is string n && n != "" && n != "Estructto" ? n : d.Nome, "Modelo 3D (motor Python). Clique numa barra ou nó da vista para editar.");
                 secao("Modelo");
                 foreach (var (r, k) in new[] { ("Nós", "nos"), ("Barras", "barras"), ("Seções", "secoes"), ("Materiais", "materiais"), ("Casos", "casos"), ("Pavimentos", "pavimentos") })
                     linha(r, leitura((j[k] as JsonObject)?.Count.ToString() ?? "0"));
