@@ -354,6 +354,7 @@ namespace NovoFtool
                     cbFamilia, cbSecao, cbMaterial,
                     Botao("pincel", "Aplicar à seleção", () => AplicarSecao(false), "Aplica seção e material às barras selecionadas (ou, sem seleção, passa a valer para as próximas barras desenhadas).", null, true),
                     Botao("pincel", "Aplicar a todas", () => AplicarSecao(true), "Aplica seção e material a todas as barras.", null, true)));
+            MontarEdicao3D(abaModelo.Groups.First(g => (string)g.Header == "Modificar"));   // só no modelo espacial (EdicaoEspacial.cs)
             abaModelo.ToolTip = "Gerar e desenhar a estrutura, modificar, apoios e rótulas, seções e materiais, barras contínuas.";
 
             // ACOES (antes "Cargas"): casos de carga (inseridos por MontarCasosNaFaixa), cargas no no e na barra, peso proprio

@@ -476,6 +476,7 @@ namespace NovoFtool
 
         void DividirSelecao()
         {
+            if (Esp != null) { AbrirEdicaoEsp("dividir"); return; }
             var bs = Vista.Sel.OfType<Barra>().ToList();
             if (bs.Count == 0) { Log("Selecione as barras a dividir."); return; }
             string r = Pergunta.Mostrar(this, "Dividir barra", "Dividir cada barra selecionada em quantas partes iguais? (2 a 100)", "2");
@@ -1146,6 +1147,7 @@ namespace NovoFtool
         // MOVER dx dy · COPIAR dx dy [vezes] · ESPELHAR X valor | Y valor   (tambem aceita "dx,dy" e "@dx,dy")
         void Transformar(string modo, string[] w)
         {
+            if (Esp != null) { AbrirEdicaoEsp(modo); return; }   // modelo espacial: EdicaoEspacial.cs
             var barras = Vista.Sel.OfType<Barra>().ToList();
             var nos = Vista.Sel.OfType<No>().ToList();
             if (barras.Count == 0 && (modo != "mover" || nos.Count == 0)) { Log("Selecione as barras" + (modo == "mover" ? " ou nós" : "") + " antes (clique, janela ou Ctrl+A) e repita."); return; }

@@ -17,6 +17,13 @@ namespace NovoFtool
                 Motor.Desligar();
                 System.Environment.Exit(cod);
             }
+            // Estructto.exe --testes-edicao <saida.txt> : geometria da edição do modelo espacial (EdicaoEspacial.cs)
+            if (e.Args.Length >= 2 && e.Args[0] == "--testes-edicao")
+            {
+                string r = TestesEdicao.Rodar();
+                System.IO.File.WriteAllText(e.Args[1], r);
+                System.Environment.Exit(r.Contains("TODOS PASSARAM") ? 0 : 1);
+            }
             DispatcherUnhandledException += (s, ex) =>
             {
                 if (Capturas.Ativo) { Capturas.GravarErro(ex.Exception); ex.Handled = true; System.Environment.Exit(1); }

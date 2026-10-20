@@ -56,6 +56,41 @@ Ao ativar a aba, o documento se recoloca no motor na hora. Se ele tinha históri
   `POST /api/modelo/secao {perfil}` antes do PATCH. **Apagar barra**, **carga distribuída** qx, qy, qz (global, kN/m) por caso.
 - Barra nova copia seção, material da última barra do modelo. Caso das cargas = Ações › Caso ativo (mesmo valor).
 
+## Editar a seleção (edição em lote)
+
+Código: `codigo/Estructto/EdicaoEspacial.cs`. Faixa › Modelo › Modificar: Mover, Copiar, Espelhar e Dividir barra (os botões do 2D
+passam para cá no documento espacial) + Rotacionar, Matriz, Unir nós e Propriedades em lote (só aparecem no espacial). Todos também
+na paleta (Ctrl+K).
+
+| Operação | Entrada | Faz |
+|---|---|---|
+| Mover | dx, dy, dz ou ponto base → ponto destino ("x; y; z") | move os nós (e as pontas das barras escolhidas); cargas das barras levadas vão junto |
+| Copiar | o mesmo + N cópias | matriz linear: cópia k em k·(dx, dy, dz) |
+| Espelhar | plano X = a, Y = b ou Z = c | cópia espelhada (o original fica) |
+| Rotacionar | centro (x; y), ângulo (°, anti-horário visto de cima), cópias | eixo vertical; cópias = 0 gira, ≥ 1 cópia polar |
+| Matriz | nx, ny, nz (contando a original) + espaçamentos | nx·ny·nz − 1 cópias |
+| Dividir barra | N partes, ou distância a partir de ni | nós intermediários; cargas distribuídas reinterpoladas (trapezoidal), pontuais no trecho onde caem; `params` terminados em `_i` só no 1º trecho e `_j` só no último |
+| Unir nós | tolerância (mm, padrão 1) | fica o primeiro nó; apoios somam (ou por GL); barras que zeram ou repetem somem com as cargas |
+| Propriedades em lote | seção, material, giro (°), apoio (engaste/articulado/livre) | "(manter)"/vazio não muda; trocar para material com fck vira `tipo` concreto (e volta a aço) |
+
+Regras:
+
+- **Uma operação = um desfazer.** A geometria é feita no WPF sobre a cópia do JSON (`GeometriaEdicao`, pura) e vai inteira num
+  `PUT /api/modelo` (`DocumentoEspacial.Aplicar`, dentro de `Motor.Exclusivo`). PUT está em `MUTAM`: uma entrada na pilha; Ctrl+Z
+  desfaz tudo. Por que não `/api/modelo/lote`: o lote só adiciona; mover, dividir, unir e propriedades precisam mudar/remover.
+- Cópias levam seção, material, rot, `params` e cargas (sem id: o motor numera). Forças seguem a transformação; momento nodal é
+  pseudovetor (no espelho troca o sinal). O giro `rot` da seção não muda no espelho.
+- Nó novo a 1 mm ou menos de um existente funde com ele; barra que repetiria outra (mesmos nós) não é criada. Ids novos: `N<k>`, `B<k>`.
+- Seleção: `IFonteSelecao` (nós e barras por id + `Mudou`). Hoje o adaptador `FonteSelecaoEsp` usa a escolha única do documento;
+  **nada escolhido = modelo inteiro** (o painel diz). Quando a Vista3D tiver seleção múltipla, só o adaptador muda.
+- Painéis: janelas pequenas não modais (`PainelEdicao : JanelaEscura`, `Anim.Abrir`), ficam abertas para repetir; erro de digitação
+  aparece no painel, erro do motor na barra de status.
+- Seções do "Propriedades em lote" = as do modelo (perfil do catálogo entraria por um POST separado, um segundo desfazer).
+
+Testes: `Estructto.exe --testes-edicao <saida.txt>` (23 asserções: espelho, rotação 90°, matriz 2×3×1, cópia 3×, tolerância 0,5 mm × 2 mm,
+fundir ao mover, dividir em 3 e a 1,5 m, unir nós, propriedades). Capturas `48-*`: pórtico plano copiado 3× (e Ctrl+Z/Ctrl+Y conferidos),
+espelhado em Y = −3 e rotacionado 30° em torno de (6; 0), depois calculado.
+
 ## Combinação dos diagramas
 
 Resultados › Mostrar: **Envoltória ELU (motor)** (padrão) ou qualquer combinação do cálculo. Na envoltória, cada ponto do diagrama é o

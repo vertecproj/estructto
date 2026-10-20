@@ -68,7 +68,7 @@ namespace NovoFtool
         [System.ComponentModel.Browsable(false)] public System.Windows.Media.Brush SitBd { get; set; } = TemaPlant.BBordaSutil;
     }
 
-    public class DocumentoEspacial
+    public partial class DocumentoEspacial
     {
         public JsonObject Json;              // modelo do motor (cópia do último GET /api/modelo)
         public string Arquivo, Titulo;       // Arquivo: .json do motor (null = ainda não salvo)
@@ -379,12 +379,14 @@ namespace NovoFtool
             {
                 if (!modoEsp) return;
                 modoEsp = false;
+                MostrarEdicao3D(false);
                 Vista.ResumoExterno = null;
                 PainelProp.Content = Insp;
                 MostrarVista3D(false);
                 return;
             }
             modoEsp = true;
+            MostrarEdicao3D(true);
             Vista.ResumoExterno = ResumoEspacial;
             TelaInicial.Visibility = Visibility.Collapsed;
             MostrarVista3D(true);

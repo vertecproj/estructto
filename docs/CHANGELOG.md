@@ -2,6 +2,14 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Edição em lote do modelo espacial (branch wt-edicao3d)
+
+- Modelo › Modificar no documento espacial: Mover, Copiar (N cópias), Espelhar (X/Y/Z = valor), Rotacionar (eixo vertical, cópias
+  polares), Matriz nx×ny×nz, Dividir barra (N partes ou distância), Unir nós (tolerância) e Propriedades em lote; também na paleta.
+  Cada operação = um `PUT /api/modelo` = um Ctrl+Z. Nós fundem a 1 mm; cópias levam seção, material, params e cargas.
+  Seleção por `IFonteSelecao` (adaptador provisório: escolha única; nada = modelo inteiro). Testes `--testes-edicao`, capturas `48-*`.
+  Detalhe: [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#editar-a-seleção-edição-em-lote).
+
 ## 20/10/2026 — Vista 3D Realista (branch wt-vista3d)
 
 - Botão **Realista** em Vista › Navegar (lembra a escolha): perfis reais extrudados (I, U, L, tubos, caixão, maciços) com as
