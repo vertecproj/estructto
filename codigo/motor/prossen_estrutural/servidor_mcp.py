@@ -1,4 +1,4 @@
-"""Servidor MCP do PROSSEN Estrutural (ESPEC §8): adaptador fino sobre `projeto.py` (zero fórmula aqui).
+"""Servidor MCP do Estructto (ESPEC §8): adaptador fino sobre `projeto.py` (zero fórmula aqui).
 
 Transporte stdio: `python -m prossen_estrutural.servidor_mcp [--pasta <trabalho>]`.
 Estado do processo: um modelo atual e o último cálculo; toda ferramenta que muta o modelo descarta o cálculo.
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 PASTA_PADRAO = Path(__file__).resolve().parent.parent / "trabalho"
 
 INSTRUCOES = """\
-PROSSEN Estrutural: análise e verificação de pórticos espaciais de aço (NBR 8800), perfis formados a frio \
+Estructto: análise e verificação de pórticos espaciais de aço (NBR 8800), perfis formados a frio \
 (NBR 14762) e concreto armado (NBR 6118), com ações de vento (NBR 6123) e sismo (NBR 15421).
 
 Unidades: forças em kN, comprimentos em m, momentos em kN·m, tensões/módulos do modelo em kN/m². Valores em MPa só \
@@ -46,7 +46,7 @@ AVISO: ferramenta de apoio. Todo resultado exige verificação por engenheiro re
 implementadas e suas limitações estão em normas_implementadas.
 """
 
-mcp = MCPServer("prossen-estrutural", instructions=INSTRUCOES)
+mcp = MCPServer("estructto", instructions=INSTRUCOES)
 
 _estado: dict[str, Any] = {"modelo": projeto.novo_modelo(), "calculo": None}
 _pasta: Path = PASTA_PADRAO
@@ -155,7 +155,7 @@ def modelo_novo(nome: Annotated[str, Field(description="nome do projeto (texto l
 @_ferramenta(destrutiva=True, idem=True)
 def modelo_abrir(caminho: Annotated[str, Field(description="arquivo .json dentro da pasta de trabalho, ex. 'galpao.json'")]
                  ) -> dict[str, Any]:
-    """Abre um modelo salvo (.json, formato do PROSSEN) como modelo atual; descarta o atual e o cálculo.
+    """Abre um modelo salvo (.json, formato do Estructto) como modelo atual; descarta o atual e o cálculo.
     Exemplo: modelo_abrir(caminho="meu_projeto.json")."""
     _estado["modelo"] = projeto.carregar(_caminho(caminho))
     return _resumo_atual()
@@ -188,14 +188,14 @@ def modelo_abrir_exemplo(nome: Annotated[str, Field(description="nome do exemplo
 
 @_ferramenta(ro=True, idem=True)
 def modelo_exportar_json() -> dict[str, Any]:
-    """Devolve o modelo atual completo no formato JSON do PROSSEN (versao_formato 1): {"modelo": {...}}.
+    """Devolve o modelo atual completo no formato JSON do Estructto (versao_formato 1): {"modelo": {...}}.
     Unidades do arquivo: kN, m, kN/m² (E, G, fy, fu, fck em kN/m²)."""
     return {"modelo": projeto.para_dict(_modelo())}
 
 
 @_ferramenta(destrutiva=True, idem=True)
 def modelo_importar_json(modelo: Annotated[dict[str, Any], Field(
-        description="modelo no formato JSON do PROSSEN (o mesmo de modelo_exportar_json), unidades kN, m, kN/m²")]
+        description="modelo no formato JSON do Estructto (o mesmo de modelo_exportar_json), unidades kN, m, kN/m²")]
         ) -> dict[str, Any]:
     """Substitui o modelo atual pelo JSON informado; descarta o atual e o cálculo.
     Exemplo: modelo_importar_json(modelo=<conteúdo de modelo_exportar_json>["modelo"])."""
@@ -599,7 +599,7 @@ def cype_comparar(
         limite: Limite = 200,
         deslocamento: Deslocamento = 0
         ) -> dict[str, Any]:
-    """Compara o cálculo do PROSSEN com os resultados gravados pelo CYPE 3D no arquivo .ed3 (diferenças em %).
+    """Compara o cálculo do Estructto com os resultados gravados pelo CYPE 3D no arquivo .ed3 (diferenças em %).
     Devolve a tabela de comparação (deslocamentos, reações, esforços), taxas de aproveitamento e avisos.
     Exemplo: cype_comparar(caminho="obra.ed3")."""
     res = projeto.comparar_cype(caminho, pasta=_pasta)
@@ -685,7 +685,7 @@ def relatorio_gerar(
 
 # ---------------------------------------------------------------- recursos
 
-@mcp.resource("modelo://atual", mime_type="application/json", description="Modelo atual completo (JSON do PROSSEN, kN e m).")
+@mcp.resource("modelo://atual", mime_type="application/json", description="Modelo atual completo (JSON do Estructto, kN e m).")
 def recurso_modelo() -> str:
     return json.dumps(projeto.para_dict(_modelo()), ensure_ascii=False)
 
@@ -702,7 +702,7 @@ def recurso_calculo() -> str:
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="python -m prossen_estrutural.servidor_mcp",
-                                 description="Servidor MCP (stdio) do PROSSEN Estrutural.")
+                                 description="Servidor MCP (stdio) do Estructto.")
     ap.add_argument("--pasta", default=str(PASTA_PADRAO), help="pasta de trabalho para abrir/salvar arquivos")
     args = ap.parse_args(argv)
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

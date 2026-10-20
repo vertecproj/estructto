@@ -1,4 +1,4 @@
-/* PROSSEN Estrutural — relatório impresso (memória de cálculo), A4 retrato.
+/* Estructto — relatório impresso (memória de cálculo), A4 retrato.
    Dono: designer-identidade. Arquivo AUTÔNOMO: não depende de tokens.css em tempo de execução
    (valores copiados do tema Vegetal de tokens.css; sempre claro, porque vai para papel e para a ART).
    relatorio.py pode embutir este arquivo num <style>. As fontes são opcionais: se fontes/ não estiver
@@ -122,7 +122,7 @@
 
 /* impressão: margem de baixo só para a numeração; o carimbo ocupa a reserva da área útil */
 @page { size: A4 portrait; margin: 15mm 15mm 15mm 20mm;
-  @bottom-left { content: "PROSSEN Estrutural, memória de cálculo"; font: 7.5pt "Barlow Semi Condensed", Arial, sans-serif; color: #5a646b; }
+  @bottom-left { content: "Estructto, memória de cálculo"; font: 7.5pt "Barlow Semi Condensed", Arial, sans-serif; color: #5a646b; }
   @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 7.5pt "Barlow Semi Condensed", Arial, sans-serif; color: #5a646b; }
 }
 @media print {

@@ -389,7 +389,7 @@ namespace Portico
         public bool ShouldSerializeMembro() { return Membro != 0; }
 
         [Category("1. Geometria"), DisplayName("Barra contínua"), XmlIgnore,
-         Description("Trechos unidos (Estrutura → Barra contínua → Unir) são uma peça só: mesmo perfil, verificados e dimensionados juntos.")]
+         Description("Trechos unidos (Modelo › Barra contínua › Unir) são uma peça só: mesmo perfil, verificados e dimensionados juntos.")]
         public string MembroTxt
         {
             get

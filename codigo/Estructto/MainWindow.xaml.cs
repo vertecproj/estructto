@@ -67,7 +67,7 @@ namespace NovoFtool
             HistBtn.Click += (s, e) => { bool abrir = HistoricoCaixa.Visibility != Visibility.Visible; HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed; HistBtn.Content = abrir ? "▾" : "▴"; Comando.Focus(); };
             NovoModelo(new Modelo(), null);
             Loaded += (s, e) => { Vista.ZoomTudo(); Vista.Focus(); if (!Capturas.Ativo) OferecerRecuperacao(); };
-            Log("Bem-vindo. Escolha uma ferramenta na faixa, use um assistente ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
+            Log("Bem-vindo. Escolha uma ferramenta na faixa, use Modelo › Gerar estrutura ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
             if (Capturas.Configurar(this, args)) return;

@@ -497,14 +497,14 @@ def html(modelo_d, calculo_d):
                f'<div class="sem-d">{leg("Revisão", "0")}</div>'
                f'<div class="sem-b assinatura">{leg("Responsável técnico (nome e assinatura)", "")}</div>'
                f'<div class="sem-b">{leg("CREA e nº da ART", "")}</div>'
-               f'<div class="sem-b sem-d">{leg("Software", "PROSSEN Estrutural " + meta["versao"])}</div></footer>')
+               f'<div class="sem-b sem-d">{leg("Software", "Estructto " + meta["versao"])}</div></footer>')
     return (f'<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n'
             f'<meta name="viewport" content="width=device-width, initial-scale=1">\n'
             f'<title>Memória de cálculo — {_h(meta["nome"])}</title>\n<style>\n{css}\n</style>\n</head>\n'
             f'<body class="relatorio">\n<article class="folha">\n<table class="paginas" role="presentation"><tbody><tr><td>\n'
             f'<header class="cab">{_ler("icones/logo.svg")}<div><h1>Memória de cálculo estrutural</h1>'
             f'<div class="proj">{_h(meta["nome"])}</div></div>'
-            f'<div class="meta">Calculado em {_h(meta["data_longa"])}<br>PROSSEN Estrutural {_h(meta["versao"])}</div></header>\n'
+            f'<div class="meta">Calculado em {_h(meta["data_longa"])}<br>Estructto {_h(meta["versao"])}</div></header>\n'
             f'<div class="aviso-art"><b>{_h(AVISO_TITULO)}</b> {_h(AVISO)}</div>\n'
             + "\n".join(corpo) + f'\n</td></tr></tbody><tfoot><tr><td><div class="reserva"></div></td></tr></tfoot></table>\n{carimbo}\n</article>\n</body>\n</html>\n')
 
@@ -524,7 +524,7 @@ def markdown(modelo_d, calculo_d):
     """Mesmo conteúdo de `html` em Markdown (tabelas GFM, sem HTML)."""
     meta, blocos = _montar(modelo_d, calculo_d)
     out = ["# Memória de cálculo estrutural", "", f"**Projeto:** {_m(meta['nome'])}  ",
-           f"**Calculado em:** {_m(meta['data_longa'])}  ", f"**Software:** PROSSEN Estrutural {_m(meta['versao'])}  ",
+           f"**Calculado em:** {_m(meta['data_longa'])}  ", f"**Software:** Estructto {_m(meta['versao'])}  ",
            "**Responsável técnico / CREA / ART:** ________________", "", f"> **{AVISO_TITULO}** {AVISO}", ""]
     n2 = n3 = 0
     for b in blocos:

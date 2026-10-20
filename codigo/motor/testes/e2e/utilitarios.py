@@ -258,7 +258,7 @@ def parametros_stdio(pasta, usar_mcp_json=False):
     lê `.mcp.json` da raiz (PYTHONPATH relativo, cwd = raiz) trocando só o executável."""
     from mcp import StdioServerParameters
     if usar_mcp_json:
-        cfg = json.loads((RAIZ / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["prossen-estrutural"]
+        cfg = json.loads((RAIZ / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["estructto"]
         return StdioServerParameters(command=sys.executable, args=[*cfg["args"], "--pasta", str(pasta)],
                                      env={**os.environ, **cfg.get("env", {}), "PYTHONIOENCODING": "utf-8"},
                                      cwd=str(RAIZ))

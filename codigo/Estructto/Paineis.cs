@@ -392,7 +392,7 @@ namespace NovoFtool
         {
             var lista = new List<(string, string, List<object>)>();   // nivel, texto, itens
             if (M.Barras.Count > 0 && !M.Nos.Any(n => n.TemApoio))
-                lista.Add(("erro", "Nenhum apoio. Selecione os nós da base e use Estrutura → Engaste/Fixo/Móvel.", new List<object>()));
+                lista.Add(("erro", "Nenhum apoio. Selecione os nós da base e use Modelo › Engaste/Fixo/Móvel.", new List<object>()));
             foreach (Barra b in M.Barras)
             {
                 if (Biblioteca.AcharSecao(b.Secao) == null) lista.Add(("erro", "Barra " + b.Id + ": seção \"" + b.Secao + "\" não reconhecida.", new List<object> { b }));
@@ -412,7 +412,7 @@ namespace NovoFtool
             if (Vista.Resolvido)
             {
                 var falham = M.Barras.Where(b => { var v = Vista.Verificar(b); return v.Aplicavel && !v.Passa; }).Cast<object>().ToList();
-                if (falham.Count > 0) lista.Add(("aviso", Pl.N(falham.Count, "barra não passa", "barras não passam") + " na verificação. Clique para selecionar; Resultados → Comparar sugere um perfil.", falham));
+                if (falham.Count > 0) lista.Add(("aviso", Pl.N(falham.Count, "barra não passa", "barras não passam") + " na verificação. Clique para selecionar; Dimensionamento › Verificar barra sugere um perfil.", falham));
                 foreach (No n in M.Nos.Where(x => x.Placa != null))
                 {
                     ResPlaca rp = PlacaPior(n);

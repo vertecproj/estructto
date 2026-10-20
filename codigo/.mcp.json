@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "estructto": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "prossen_estrutural.servidor_mcp"],
+      "env": { "PYTHONPATH": "motor" }
+    }
+  }
+}
