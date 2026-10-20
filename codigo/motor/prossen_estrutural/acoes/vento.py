@@ -235,7 +235,7 @@ def casos_vento(cfg, pavimentos, dimensoes=None):
     direcoes (padrão as 4), dimensoes {lx, ly} (m; o argumento `dimensoes` tem prioridade), Ca
     (None → fig. 4), T1_s (opcional, para o aviso de vento dinâmico).
     pavimentos: [(nome, z_m)] — z > 0 acima da base; z ≤ 0 é ignorado (base).
-    Retorna [{"caso": "V+X", "direcao": [1,0,0], "forcas": [{"pavimento","z","F_kN"}],
+    Retorna [{"caso": "V+X", "direcao": [1,0,0], "forcas": [{"pavimento","z","F_kN","S2","Vk_m_s","q_kN_m2"}],
     "parametros": {...}, "avisos": [{nivel, codigo, mensagem, ref}]}]; F_kN ≥ 0 (módulo).
     ValueError com mensagem clara para entrada inválida."""
     cfg = cfg or {}
@@ -272,7 +272,10 @@ def casos_vento(cfg, pavimentos, dimensoes=None):
         Vk = velocidade_caracteristica(V0, S1, cat, classe, h, S3v)
         out.append({
             "caso": f"V{d}", "direcao": [dx, dy, dz],
-            "forcas": [{"pavimento": n, "z": z, "F_kN": F, "F_vet_kN": [F * dx, F * dy, 0.0]}
+            "forcas": [{"pavimento": n, "z": z, "F_kN": F, "F_vet_kN": [F * dx, F * dy, 0.0],
+                        "S2": s2(cat, classe, z),
+                        "Vk_m_s": velocidade_caracteristica(V0, S1, cat, classe, z, S3v),
+                        "q_kN_m2": pressao_dinamica(V0, S1, cat, classe, z, S3v)}
                        for (n, _), (z, F) in zip(pav, fs)],
             "parametros": {"V0": V0, "S1": S1, "S3": S3v, "categoria": cat, "classe": classe, "Ca": Ca,
                            "l1": l1, "l2": l2, "h_topo": h, "h_l1": h / l1, "l1_l2": l1 / l2,

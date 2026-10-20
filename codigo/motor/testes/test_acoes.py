@@ -601,3 +601,36 @@ class TestSismoTab6Drift(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDetalhePorPavimentoECombinacao(unittest.TestCase):
+    def test_s2_vk_q_do_primeiro_pavimento_a_mao(self):
+        # P1 z = 3 m (< 5 m usa 5 m), cat. IV, classe B, V0 = 35: S2 = 0,85·0,98·0,5^0,125 = 0,76386;
+        # Vk = 35·S2 = 26,735 m/s; q = 0,613·Vk²/1000 = 0,43816 kN/m²
+        f = vento.casos_vento(dict(CFG_V, Ca=0.93), PAV, DIM)[0]["forcas"][0]
+        self.assertAlmostEqual(f["S2"], 0.76386, delta=5e-5)
+        self.assertAlmostEqual(f["Vk_m_s"], 26.735, delta=5e-3)
+        self.assertAlmostEqual(f["q_kN_m2"], 0.43816, delta=5e-5)
+
+    def test_gamma_psi_principal_e_secundaria(self):
+        from prossen_estrutural import projeto as P
+        m = P.novo_modelo()
+        for c in (CasoCarga("G", "G"), CasoCarga("T", "Q", "temperatura"), CasoCarga("S", "Q", "cobertura"),
+                  CasoCarga("V+X", "V", "vento")):
+            m.casos[c.nome] = c
+        cb = {c["nome"]: c["detalhe"] for c in P.combinacoes(m)}
+        # ELU vento principal (γ 1,4, ψ 1), temperatura secundária (γ 1,2 · ψ0 0,6 = 0,72)
+        d = cb["ELU V+X princ. + T"]
+        self.assertAlmostEqual(d["V+X"]["gamma"], 1.4); self.assertAlmostEqual(d["V+X"]["psi"], 1.0)
+        self.assertAlmostEqual(d["T"]["gamma"], 1.2); self.assertAlmostEqual(d["T"]["psi"], 0.6)
+        self.assertAlmostEqual(d["T"]["produto"], 0.72)
+        # ambiguidade do 1,2: temperatura principal (1,2·1) x sobrecarga de cobertura secundária (1,4·0,8 = 1,12)
+        # e, em tipo1, γq 1,5·ψ0 0,8 = 1,2: produto 1,2 = γ 1,5 · ψ 0,8, não γ 1,2 · ψ 1
+        m.config = {"tipo_edificacao": "tipo1"}
+        d = {c["nome"]: c["detalhe"] for c in P.combinacoes(m)}["ELU V+X princ. + S"]
+        self.assertAlmostEqual(d["S"]["produto"], 1.2)
+        self.assertAlmostEqual(d["S"]["gamma"], 1.5); self.assertAlmostEqual(d["S"]["psi"], 0.8)
+        # ELS frequente: γ 1, ψ1 na principal, ψ2 na secundária
+        d = {c["nome"]: c["detalhe"] for c in P.combinacoes(m)}["ELS FREQ V+X princ. + S"]
+        self.assertAlmostEqual(d["V+X"]["psi"], 0.3); self.assertAlmostEqual(d["S"]["psi"], 0.6)
+        self.assertEqual(d["S"]["gamma"], 1.0)

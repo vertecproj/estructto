@@ -1260,7 +1260,8 @@ def gerar_acoes(modelo):
         for f in r["forcas"]:
             z = f["z"] + base  # volta à cota absoluta dos nós
             cargas.extend(_cargas_no_pavimento(m, r["caso"], f, z))
-            lista.append({"pavimento": f["pavimento"], "z": z, "F_kN": f["F_kN"], "F_vet_kN": f["F_vet_kN"]})
+            lista.append({"pavimento": f["pavimento"], "z": z, "F_kN": f["F_kN"], "F_vet_kN": f["F_vet_kN"],
+                          **{k: f[k] for k in ("S2", "Vk_m_s", "q_kN_m2") if k in f}})  # z do cálculo = relativo à base
         forcas[r["caso"]] = lista
         params[r["caso"]] = r["parametros"]
 
@@ -1360,6 +1361,25 @@ def gerar_acoes(modelo):
 
 # ================================================================ 16-19: combinações e análises
 
+def _detalhe_fatores(casos, cfg, estado, fatores):
+    """{caso: {gamma, psi, produto}}; fatores = γ·ψ do motor. Q/V: ELU principal ψ=1, secundária ψ0; ELU_EXC ψ2
+    (γ=1); ELS γ=1 e ψ = fator. G, S, E, _TOR: ψ=1."""
+    out = {}
+    for k, f in fatores.items():
+        c = casos.get(k)
+        g, p = f, 1.0
+        if c is not None and c.tipo in ("Q", "V") and estado != "ELU_EXC":
+            if estado == "ELU":
+                gq = _comb._gq(c, "normal", cfg["tipo_edificacao"])
+                g, p = gq, f / gq
+            else:
+                g, p = 1.0, f
+        elif c is not None and c.tipo in ("Q", "V"):
+            g, p = 1.0, f
+        out[k] = {"gamma": g, "psi": p, "produto": f}
+    return out
+
+
 def combinacoes(modelo):
     """#16 Combinações NBR 8681: [{nome, estado, fatores}] (estado ∈ ELU, ELU_EXC, ELS_QP, ELS_FREQ, ELS_RARA)."""
     cfg = _cfg(modelo)
@@ -1367,7 +1387,8 @@ def combinacoes(modelo):
         lista = _comb.gerar_combinacoes(modelo.casos, cfg["tipo_uso"], cfg["variabilidade"], cfg["tipo_edificacao"])
     except ValueError as e:  # subtipo de Q/origem de G inválidos, mais de 12 casos Q: erro de entrada, não bug
         raise ErroEntrada(str(e), "casos") from e
-    return [{"nome": n, "estado": e, "fatores": dict(f)} for n, f, e in lista if f]
+    return [{"nome": n, "estado": e, "fatores": dict(f), "detalhe": _detalhe_fatores(modelo.casos, cfg, e, f)}
+            for n, f, e in lista if f]
 
 
 def _rel(a):
