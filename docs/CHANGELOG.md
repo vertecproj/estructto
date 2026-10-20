@@ -17,6 +17,13 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   Build ok, 200 testes ok, capturas 09-ribbon-* conferidas.
 - Vista 3D (fase 4 de UNIFICACAO.md): `Vista3D.cs` com `Viewport3D` nativo, entrada neutra (nós/barras/esforços/aproveitamento/deslocamentos)
   e adaptador do modelo 2D. Botão "Vista 3D" na aba Vista. Detalhes e decisão (sem HelixToolkit) em [VISTA3D.md](VISTA3D.md). Capturas 40-vista3d-*.
+- Janelas novas da aba Ações (REVISAO-TELAS 3.4), sobre o motor Python: `JanelaVento` (V0, S1, S3, categoria/classe, planta, direções,
+  coeficientes automáticos ou Ca/Cpi manuais; q(z), S2 e força por pavimento), `JanelaSismo` (zona, terreno, categoria, sistema da tabela 6
+  com R/Ω0/Cd, período; Cs, W, H e forças/torção por pavimento), `JanelaPavimentos` (nome/cota/diafragma, detectar pela geometria),
+  `JanelaCasosCarga` (G/Q/V/S/E + subtipo; casos automáticos travados) e `JanelaCombinacoes` (só leitura, filtro ELU/ELS, γ·ψ por caso e
+  γ e ψ separados da combinação selecionada). Entradas em `ComandosAcoes.Abrir*(dono)`, botões da faixa a ligar. Capturas 29 a 33 com
+  amostra real do motor (edificio_concreto). Pendente: espectro desenhado no sismo; q(z) por pavimento é recalculado na janela (cópia da
+  tabela 21) e γ/ψ são deduzidos do produto, até o motor devolver esses valores.
 
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 
