@@ -72,12 +72,11 @@ namespace NovoFtool
         internal DocumentoEspacial EspTrelicas => Esp;
         internal Task RefazerTrelicas() => TrocarEspacial(false);
 
-        // Ids da seleção da Vista3D (seleção múltipla) ou, sem ela, o nó/barra escolhido.
+        // Ids da seleção da Vista3D (clique, janela, árvore e tabelas caem todos nela).
         internal (List<string> Nos, List<string> Barras) SelecaoTrelicas()
         {
             var nos = vista3D?.Selecao.Nos.ToList() ?? new List<string>();
             var barras = vista3D?.Selecao.Barras.ToList() ?? new List<string>();
-            if (nos.Count + barras.Count == 0 && SelEspAtual != null) (SelEspAtual.Tipo == "no" ? nos : barras).Add(SelEspAtual.Id);
             return (nos, barras);
         }
 
