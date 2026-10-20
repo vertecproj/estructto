@@ -277,6 +277,18 @@ class TestModeloAPI(BaseWeb):
         self.assertTrue(cfg["pdelta"])
         self.assertEqual(self.api("PATCH", "/api/config", {"chave_maluca": 1}, status=422)["erro"], "entrada_invalida")
 
+    def test_trelica_previa_e_um_desfazer(self):
+        self.api("POST", "/api/modelo/novo", {})
+        t = {"tipo": "trelica_plana", "material": {"aco": "A-572 GR.50"}, "secoes": {"banzo": "W150x13", "diagonal": "W150x13"},
+             "vao": 12, "altura": 1.5, "paineis": 6}
+        p = self.api("POST", "/api/gerar-estrutura/previa?vazio=1", t)
+        self.assertEqual(len(p["barras"]), 25)
+        self.assertEqual(self.api("GET", "/api/modelo")["nos"], {})  # prévia não muda o modelo
+        self.api("POST", "/api/gerar-estrutura", t)
+        self.assertEqual(len(self.api("GET", "/api/modelo")["barras"]), 25)
+        self.api("POST", "/api/desfazer")
+        self.assertEqual(self.api("GET", "/api/modelo")["barras"], {})
+
     def test_gerar_acoes_igual_ao_projeto(self):
         self.api("POST", "/api/exemplos/edificio_concreto")
         r = self.api("POST", "/api/acoes/gerar")

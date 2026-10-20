@@ -435,8 +435,18 @@ def estrutura_gerar(dados: Annotated[dict[str, Any], Field(description=(
         "origem [x, y, z] (m). portico_plano: vaos_x [m], alturas [m por pavimento, de baixo para cima]. "
         "edificio: vaos_x, vaos_y, alturas (cria pavimentos com diafragma). galpao: vao, altura_pilar, altura_cumeeira, "
         "n_modulos, espacamento (m), secoes pilar/viga/terca; contraventamento (bool, padrão false; "
-        "true exige secoes.terca), secoes.contraventamento (opcional; padrão = terça)"))]) -> dict[str, Any]:
-    """Gera nós, barras e pavimentos de uma tipologia (pórtico plano, edifício ou galpão) no modelo atual e cria os
+        "true exige secoes.terca), secoes.contraventamento (opcional; padrão = terça). "
+        "trelica_plana: modelo pratt|howe|warren|warren_v|k|fink, banzo paralelo|uma_agua|duas_aguas|arco, vao, altura "
+        "(extremos), altura2 (cumeeira/direita/flecha), paineis, secoes {banzo (ou banzo_superior + banzo_inferior), "
+        "diagonal, montante?}, rotulas diagonais|todas|nenhuma, apoios [esq, dir] rotula|movel|engaste|livre, origem, "
+        "eixo x|y ou entre [nóA, nóB] (liga dois nós existentes), travar_plano, prefixo. trelicas_serie: o mesmo + n, "
+        "espacamento, secoes.terca opcional. contraventamento: modelo x|diagonal|k|v|lambda|mao_francesa, painel "
+        "[n1, n2, n3, n4] ou barras [bA, bB] (dois pilares/tesouras), divisoes, distancia (m, mão-francesa), secoes "
+        "{contraventamento, escora?} (diagonais só axiais; o motor não tem barra só de tração). tercas: barras "
+        "[tesouras em ordem], espacamento (máx., m), tirantes (linhas por vão), secoes {terca, tirante?}. "
+        "Pontos sobre barras existentes dividem a barra (cargas vão junto)"))]) -> dict[str, Any]:
+    """Gera nós, barras e pavimentos de uma tipologia (pórtico plano, edifício, galpão, treliça, treliças em série,
+    contraventamento, terças) no modelo atual e cria os
     casos G1 (peso próprio) e Q1 se não existirem. Cargas não são criadas: use carga_adicionar/lote_adicionar.
     Devolve {nos_criados, barras_criadas, pavimentos_criados, ids, avisos}.
     Exemplo: estrutura_gerar(dados={"tipo": "portico_plano", "material": {"aco": "A-572 GR.50"},

@@ -769,6 +769,13 @@ namespace NovoFtool
                     w.Close();
                     Environment.Exit(0);
                 }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "trelicas")   // só as capturas 50) de treliças e contraventamentos
+                {
+                    CapturasTrelicas(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "desenho3d")   // só as capturas 43) do desenho no 3D
                 {
                     CapturasDesenho3D(w);
@@ -1295,6 +1302,8 @@ namespace NovoFtool
                 CapturasEdicao(w);
                 // 43) Desenhar no 3D com o mouse
                 CapturasDesenho3D(w);
+                // 50) Treliças e contraventamentos
+                CapturasTrelicas(w);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
