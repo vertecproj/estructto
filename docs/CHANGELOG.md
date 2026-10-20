@@ -2,6 +2,13 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Níveis e planos de trabalho no modelo espacial (branch wt-planos)
+
+- Modelo › Planos: **Nível ▾** (ativa e isola o andar em planta, resto em fantasma), **Elevação X/Y ▾**, **3D completo**, painel
+  **Níveis** (criar, renomear, cota, apagar, detectar), **Copiar pavimento para cima** (um lote: um Ctrl+Z) e **Gerar pilares entre níveis**.
+  Paleta Ctrl+K e F1. Código `PlanosTrabalho.cs`; detalhe em [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#níveis-e-planos-de-trabalho). Capturas `43-*`.
+- Pendente: ligar o adaptador `PlanoNaVista` ao `Vista3D.PlanoAtual` depois do merge (comentário `ponytail:`).
+
 ## 20/10/2026 — Vista 3D Realista (branch wt-vista3d)
 
 - Botão **Realista** em Vista › Navegar (lembra a escolha): perfis reais extrudados (I, U, L, tubos, caixão, maciços) com as

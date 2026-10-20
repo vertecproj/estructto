@@ -236,6 +236,68 @@ namespace NovoFtool
             }
         }
 
+        // 43) Níveis e planos (PlanosTrabalho.cs): edifício de 1 andar, painel Níveis, copiar o andar 3× para cima (4 andares,
+        // um lote só: um desfazer volta tudo), nível isolado em planta, gerar pilares (regra pura).
+        static void CapturasPlanos(MainWindow w)
+        {
+            var jg = new JanelaGerar3D("edificio");
+            if (!jg.Montar()) throw new InvalidOperationException("JanelaGerar3D: valores padrão inválidos");
+            jg.Dados["alturas"] = new System.Text.Json.Nodes.JsonArray(3.0);
+            jg.Close();
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Gerar(jg.Dados, "Edifício 1 andar", jg.G, jg.Q), "gerando"));
+            var d = w.EspacialAtivo ?? throw new InvalidOperationException("modelo espacial não abriu");
+            int nb = d.Json["barras"].AsObject().Count, nc = d.Json["cargas_distribuidas"].AsArray().Count;
+            var niv = Niveis.Lista(d.Json);
+            if (niv.Count != 2 || !niv[0].Terreo) throw new InvalidOperationException("níveis: esperado Térreo + 1 pavimento, veio " + niv.Count);
+
+            void Painel(string arq)
+            {
+                var jn = new JanelaNiveis(w);
+                PrepararDialogoForaDaTela(jn);
+                jn.Show(); EsperarIdle();
+                CapturarDialogo(jn, arq);
+                jn.Close();
+            }
+            Painel("43-niveis-painel-1andar.png");
+
+            // copiar o andar de P1 (entre z=0 e z=3) 3× para cima, h = 3 m
+            double z1 = niv[1].Z;
+            Esperar(w.Lote(Niveis.CopiarParaCima(d.Json, 0, z1, 3, 3.0), "teste: copiar pavimento"));
+            d = w.EspacialAtivo;
+            niv = Niveis.Lista(d.Json);
+            if (niv.Count != 5 || d.Json["barras"].AsObject().Count != 4 * nb || d.Json["cargas_distribuidas"].AsArray().Count != 4 * nc)
+                throw new InvalidOperationException($"copiar pavimento: {niv.Count} níveis, {d.Json["barras"].AsObject().Count} barras (esperado {4 * nb}), {d.Json["cargas_distribuidas"].AsArray().Count} cargas (esperado {4 * nc})");
+            EsperarIdle();
+            w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+            CapturarPrincipal(w, "43-niveis-copiado-4-andares");
+            Painel("43-niveis-painel.png");
+
+            // isolar o 2º andar (z 3..6) em planta, com os outros em fantasma
+            w.AtivarNivel(niv[2].Z);
+            EsperarIdle();
+            int vis = w.FiltrarPlano(d.ParaVista()).Barras.Count;
+            if (vis != nb) throw new InvalidOperationException("nível isolado: " + vis + " barras na vista, esperado " + nb);
+            CapturarPrincipal(w, "43-niveis-isolado-planta");
+            w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+            EsperarIdle();
+            CapturarPrincipal(w, "43-niveis-isolado-fantasmas");
+            w.Elevacao('y', Niveis.Cotas(d.Json, "y")[0]);
+            EsperarIdle();
+            CapturarPrincipal(w, "43-niveis-elevacao-y");
+            w.Completo3D();
+            if (w.FiltrarPlano(d.ParaVista()).Barras.Count != 4 * nb) throw new InvalidOperationException("3D completo não voltou ao modelo inteiro");
+
+            // um desfazer volta o lote inteiro
+            Esperar(w.DesfazerEspacial());
+            if (w.EspacialAtivo.Json["barras"].AsObject().Count != nb || Niveis.Lista(w.EspacialAtivo.Json).Count != 2) throw new InvalidOperationException("desfazer não voltou o lote inteiro: " + w.StatusMsg.Text);
+
+            // gerar pilares: nada a fazer de P1 ao térreo (já há pilares); sob o térreo, um pilar e um nó por nó
+            var j = w.EspacialAtivo.Json;
+            if (Niveis.GerarPilares(j, z1, 0).Count != 0) throw new InvalidOperationException("gerar pilares duplicou pilares existentes");
+            int n0 = j["nos"].AsObject().Count(kv => Math.Abs((double)kv.Value["z"]) < 1e-3);
+            if (Niveis.GerarPilares(j, 0, -2).Count != 2 * n0) throw new InvalidOperationException("gerar pilares: esperado nó + pilar por nó do térreo");
+        }
+
         static void CapturasEspacial(MainWindow w)
         {
             var jg = new JanelaGerar3D("edificio");
@@ -572,6 +634,15 @@ namespace NovoFtool
                 w.TelaInicial.Visibility = Visibility.Collapsed;
                 w.Resolver(true);
                 EsperarIdle();
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "planos")   // só as capturas 43) de níveis e planos
+                {
+                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
+                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
+                    CapturasPlanos(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "3d")   // só as capturas 42) da vista 3D
                 {
                     string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
@@ -1086,6 +1157,7 @@ namespace NovoFtool
 
                 // 41) Modelo espacial (motor Python, DocumentoEspacial.cs): edifício gerado em 3D, calculado, mapa de aproveitamento
                 CapturasEspacial(w);
+                CapturasPlanos(w);   // 43) níveis e planos de trabalho
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
