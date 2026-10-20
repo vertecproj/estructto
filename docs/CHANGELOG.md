@@ -4,6 +4,7 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 
 ## 20/10/2026 — Gabriel (início da unificação com o motor Python)
 
+- Manual do usuário em [docs/manual/](manual/README.md): 11 páginas (primeiros passos, abas na ordem do fluxo, CYPE, uso por IA/MCP, limitações e ART). Vista "Realista" não existe no código: registrada como ausente.
 - Marca única **Estructto**: relatório (cabeçalho, carimbo, logo `docs/logo-estructto.svg`), servidor MCP `estructto` (+ `codigo/.mcp.json` e teste stdio), CLI/servidor web e textos da interface alinhados às abas novas (Modelo, Ações, Análise, Dimensionamento). Pacote Python segue `prossen_estrutural` (interno).
 - Animações (fase 8 adiantada para a casca atual): helper único `Anim.cs` (120/160 ms UI, 250–400 ms espacial, `CubicEase`, desliga com
   "efeitos de animação" do Windows e no modo `--capturas`). Aplicado em faixa, backstage, painéis, diálogos, tela inicial, HUD, Ctrl+K,
