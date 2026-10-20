@@ -25,6 +25,11 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   γ e ψ separados da combinação selecionada). Entradas em `ComandosAcoes.Abrir*(dono)`, botões da faixa a ligar. Capturas 29 a 33 com
   amostra real do motor (edificio_concreto). Pendente: espectro desenhado no sismo; q(z) por pavimento é recalculado na janela (cópia da
   tabela 21) e γ/ψ são deduzidos do produto, até o motor devolver esses valores.
+- Janelas de análise sobre o motor (REVISAO-TELAS 3.4), cada uma no seu arquivo: Modal (`JanelaModal`, evento ModoEscolhido), Estabilidade
+  (`JanelaEstabilidade`, γz/B2 com régua 1,0–1,4), Verificação de barras (`JanelaVerificacaoBarras`, lista ordenável com filtros e duplo clique),
+  Verificar barra (`JanelaVerificarBarraMotor`, critério × item NBR × combinação × Sd ≤ Rd), Ligação (`JanelaLigacao`, campos de /api/ligacoes/tipos),
+  Comparar/Importar CYPE (`JanelaCype`) e Catálogo de perfis (`JanelaCatalogo`). Abertura por `ComandosAnalise.Abrir...(dono)` (faixa ainda não
+  liga os botões). Capturas 40–46 com JSON reais do motor embutidos (`codigo/Estructto/amostras/`).
 
 ## 20/10/2026 — Bruno (v2: modernização da interface)
 
