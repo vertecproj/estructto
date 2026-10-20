@@ -58,4 +58,10 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - [ ] Q3 Publicar: exe + motor, README/manual, merge em main, push, Release no GitHub (conta bruno.nietsche@prossen.com.br pelo navegador se preciso)
 
 ## Diário
-- 20/10 noite: plano escrito; Fase 0/1 em disparo.
+- 20/10 18:10: plano escrito; tarefa agendada `estructto-retomar-noite` (30 min, LOCK > 45 min = retoma).
+- 18:15: disparados: ligar3d (retomada), P1 Plant, P2 x3 livros (docs/v3/ligacoes/), P4 logo (Fable, checkout principal), E1 export (wt-export), T1 treliças (wt-trelicas).
+
+- 18:20: LIMITE DE USO atingido na sessão principal. Agentes acima seguem rodando (verificar worktrees/ docs ao retomar).
+  PRÓXIMO PASSO EXATO: (1) conferir resultados de ligar3d, export, trelicas, logo, docs/v3/PESQUISA-PLANT.md e docs/v3/ligacoes/*.md; merge no unificacao;
+  (2) disparar L2 agrupamento de ligações no worktree já criado `C:\dev\wt\grupos` (motor: identificar ligações por nó/perfis/ângulos, grupos editáveis, pior do grupo pelos esforços, aplicar; testes);
+  (3) depois A1 3D-only (dividir Vista3D em partials: Render/Entrada/Snap/Medir para permitir paralelo), A2 snap/medir, R1 render (Fable), L1/L3/L4 ligações.
