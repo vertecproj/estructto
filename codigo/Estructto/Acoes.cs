@@ -46,7 +46,7 @@ namespace NovoFtool
                 else if (o is No n && n.Placa != null) AbrirPlaca(n);
                 else { PainelProp.Show(); PainelProp.IsActive = true; }
             };
-            Vista.Verificar = b => VerificarAtual(b, Biblioteca.AcharSecao(b.Secao));
+            Vista.Verificar = b => VerificarMotor(b) ?? VerificarAtual(b, Biblioteca.AcharSecao(b.Secao));
             Insp.Verificar = b => Vista.Resolvido && b.Res != null ? Vista.Verificar(b) : null;
             Insp.Acoes = AcoesDoInspector;
             Insp.Alterado += (alvos, rotulo) =>
@@ -194,7 +194,7 @@ namespace NovoFtool
                 int falham = M.Barras.Count(b => { var v = Vista.Verificar(b); return v.Aplicavel && !v.Passa; });
                 double rx = 0, ry = 0, dmax = 0;
                 foreach (No n in M.Nos.Where(x => x.Res != null)) { rx += n.Res[3]; ry += n.Res[4]; dmax = Math.Max(dmax, Math.Sqrt(n.Res[0] * n.Res[0] + n.Res[1] * n.Res[1])); }
-                StatusMsg.Text = "Calculado — " + NomeResultado() + ".  " + (Vista.Envoltoria != null ? "Envoltória de " + Pl.N(CombinacoesDaEnvoltoria().Count, "combinação", "combinações")
+                StatusMsg.Text = "Calculado — " + NomeResultado() + ".  " + (Vista.Envoltoria != null ? "Envoltória de " + Pl.N(resSel.StartsWith("py") ? Vista.NomesEnv.Count : CombinacoesDaEnvoltoria().Count,"combinação", "combinações")
                                  : "ΣRx " + Num.Fmt(rx, 2) + " · ΣRy " + Num.Fmt(ry, 2) + " kN · desl. máx. " + Num.Fmt(dmax * 1000, 3) + " mm") +
                                  (M.PesoProprio ? " (com peso próprio)" : "") + (falham > 0 ? " · ⚠ " + Pl.N(falham, "barra não passa", "barras não passam") : "");
                 if (avisar) Log(StatusMsg.Text);

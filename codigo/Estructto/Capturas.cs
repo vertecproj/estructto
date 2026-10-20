@@ -407,6 +407,34 @@ namespace NovoFtool
                 w.Vista.Etiqueta = null;
                 w.MostrarDiagrama(Diagrama.Nenhum);
 
+                // 40) Resultado do motor Python (envoltoria ELU NBR 8681, verificacao NBR 8800): momento, mapa de calor e reacoes.
+                // Em desenvolvimento acha o motor em ..\motor (capturar.ps1 roda de codigo\Estructto).
+                {
+                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
+                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
+                    string xml = w.M.ParaXml();
+                    MotorResultado rm = null;
+                    try { rm = System.Threading.Tasks.Task.Run(() => MotorModelo.Calcular(Modelo.DeXml(xml))).GetAwaiter().GetResult(); }
+                    catch (Exception ex) { File.AppendAllText(Path.Combine(pastaSaida, "erros.txt"), "40-motor-python: " + ex.Message + Environment.NewLine); }
+                    if (rm != null)
+                    {
+                        w.MostrarMotor(rm, xml);
+                        w.Faixa.SelectedTabItem = w.abaAnalise;
+                        w.MostrarDiagrama(Diagrama.Momento);
+                        CapturarPrincipal(w, "40-motor-python-momento");
+                        w.MostrarDiagrama(Diagrama.Verificacao, true);
+                        w.AbasTabela.SelectedIndex = 2;
+                        CapturarPrincipal(w, "40-motor-python-mapa-calor");
+                        w.AbasTabela.SelectedIndex = 0;
+                        bool reac = w.Vista.MostrarReacoes; w.Vista.MostrarReacoes = true;
+                        w.MostrarDiagrama(Diagrama.Nenhum);
+                        CapturarPrincipal(w, "40-motor-python-reacoes");
+                        w.Vista.MostrarReacoes = reac;
+                        w.EscolherResultado("ativo");
+                    }
+                    Motor.Desligar();
+                }
+
                 // 09) Cada aba da Ribbon (incluindo abas contextuais Barra e No)
                 foreach (var tab in w.Faixa.Tabs.ToList())
                 {

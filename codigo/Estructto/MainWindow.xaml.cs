@@ -500,8 +500,10 @@ namespace NovoFtool
             var prog = new Progress<string>(s => StatusMsg.Text = "Motor Python: " + s + "…");
             try
             {
-                var r = await MotorModelo.Calcular(Modelo.DeXml(M.ParaXml()), prog);
-                ResMotor = r;
+                string xml = M.ParaXml();
+                var r = await MotorModelo.Calcular(Modelo.DeXml(xml), prog);
+                if (xml != M.ParaXml()) { StatusMsg.Text = "Motor Python: o modelo mudou durante o cálculo; calcule de novo (F5)."; return; }
+                MostrarMotor(r, xml);
                 int reprov = r.Verificacao.Count(v => !v.Ok);
                 var pior = r.Verificacao.Where(v => v.Taxa.HasValue).OrderByDescending(v => v.Taxa.Value).FirstOrDefault();
                 StatusMsg.Text = "Motor Python: " + Pl.N(r.Combinacoes.Count, "combinação", "combinações") + " NBR 8681 · NBR 8800: " +
@@ -522,6 +524,14 @@ namespace NovoFtool
                 Mouse.OverrideCursor = antes;
                 motorRodando = false;
             }
+        }
+
+        // Passa a mostrar o resultado do motor (envoltoria ELU): diagramas, tabelas, reacoes e % Aprov. vem do MotorResultado.
+        internal void MostrarMotor(MotorResultado r, string xml)
+        {
+            ResMotor = r; motorXml = xml;
+            AtualizarListasCasos();
+            EscolherResultado(r.EstadoDe.Values.Any(e => e.StartsWith("ELU")) ? "pyenv:ELU" : "py:" + r.Combinacoes.FirstOrDefault());
         }
 
         F.ComboBox cbEletrodo;

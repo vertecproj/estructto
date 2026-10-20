@@ -7,6 +7,10 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 - Ponte com o motor Python ([UNIFICACAO-MOTOR.md](UNIFICACAO-MOTOR.md)): `MotorModelo.cs` converte o modelo e lê resultados; opção Motor em
   Análise › Opções (Interno padrão; Python roda no F5 com progresso); `--conferir-motor` (análise confere a 10⁻¹¹ nos guinchos);
   `codigo/motor/empacotar.ps1` + publish põe `motor\` ao lado do exe; motor desligado ao sair.
+- Ponte, parte 2 ([UNIFICACAO-MOTOR.md](UNIFICACAO-MOTOR.md)): kx/ky/Lb do `Flambagem` vão ao motor (KL/r das colunas igual nos dois);
+  motor ganhou carga distribuída linear (`q2`, engastamento + diagramas, `TestCargaLinear`) e a q perpendicular vai como carga linear
+  (conferência 4,5·10⁻¹⁰); com Python, a tela mostra o `MotorResultado` (diagramas, tabelas, reações, % Aprov.) em Mostrar › "Python: ...";
+  mensagem clara para molas e recalques. Pendente: esbeltez de tração do motor usa K·L.
 - Plano da unificação em [UNIFICACAO.md](UNIFICACAO.md) e revisão de abas/telas em [REVISAO-TELAS.md](REVISAO-TELAS.md) (proposta aprovada).
   Passo 1 feito: faixa nova sobre as funções atuais, abas na ordem do trabalho — Modelo (Início + Estrutura), Ações (ex-Cargas), Análise,
   Dimensionamento, Ligações e bases, Relatório, Vista. Calcular (F5) só na barra de acesso rápido; zoom só em Vista; Mostrar e Tabelas em Vista;

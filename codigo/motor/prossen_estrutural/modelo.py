@@ -76,8 +76,9 @@ class CargaNodal:
 class CargaDistribuida:
     caso: str
     barra: str
-    q: tuple  # qx, qy, qz global, kN/m, uniforme
+    q: tuple  # qx, qy, qz global, kN/m, uniforme (com q2: valor em ni)
     id: str = ""
+    q2: tuple | None = None  # valor em nj (q varia linearmente de q a q2); None = uniforme
 
 
 @dataclass
@@ -154,7 +155,9 @@ class Modelo:
             "barras": {k: asdict(v) for k, v in self.barras.items()},
             "casos": {k: asdict(v) for k, v in self.casos.items()},
             "cargas_nodais": [lst(c, "F") for c in self.cargas_nodais],
-            "cargas_distribuidas": [lst(c, "q") for c in self.cargas_distribuidas],
+            "cargas_distribuidas": [lst(c, "q", "q2") if c.q2 is not None
+                                    else {k: v for k, v in lst(c, "q").items() if k != "q2"}  # uniforme: sem q2
+                                    for c in self.cargas_distribuidas],
             "cargas_pontuais": [lst(c, "F") for c in self.cargas_pontuais],
             "pavimentos": {k: asdict(v) for k, v in self.pavimentos.items()},
             "peso_proprio": self.peso_proprio,
@@ -185,6 +188,8 @@ class Modelo:
             vistos = set()
             for v in d.get(k, []):
                 v[vet] = tuple(v[vet])
+                if v.get("q2") is not None:
+                    v["q2"] = tuple(v["q2"])
                 if v.get("id"):
                     if v["id"] in vistos:
                         raise ValueError(f"{k}: id {v['id']!r} repetido")

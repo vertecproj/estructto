@@ -428,7 +428,8 @@ def _c_carga(tipo):
                               "carga_pontual": (CargaPontual, "barra", "F", 3)}[tipo]
 
     def construir(m, d, err, ignorar):
-        _chaves(d, {"id", "caso", alvo, campo} | ({"a"} if tipo == "carga_pontual" else set()), err)
+        _chaves(d, {"id", "caso", alvo, campo} | ({"a"} if tipo == "carga_pontual" else set())
+                | ({"q2"} if tipo == "carga_distribuida" else set()), err)
         id_ = str(d.get("id") or "")
         if id_ and id_ != ignorar and any(c.id == id_ for c in _colecao(m, tipo)):
             err("id", f"id '{id_}' repetido")
@@ -449,6 +450,10 @@ def _c_carga(tipo):
                 err("a", f"a = {a:g} m excede o comprimento da barra")
             extra["a"] = a
             if a is None:
+                return None
+        if tipo == "carga_distribuida" and d.get("q2") is not None:
+            extra["q2"] = _vetor(d["q2"], 3, "q2", err)
+            if extra["q2"] is None:
                 return None
         if vet is None or not ok_caso or not ok_alvo:
             return None
@@ -484,7 +489,7 @@ def para_dict(modelo):
 
 
 _NUM_CAMPOS = {"x", "y", "z", "E", "G", "A", "Iy", "Iz", "J", "rot", "a", "peso"}
-_VET_CAMPOS = {"apoio": 6, "F": None, "q": 3}
+_VET_CAMPOS = {"apoio": 6, "F": None, "q": 3, "q2": 3}
 
 
 def _esquema(d):
@@ -524,8 +529,8 @@ def _esquema(d):
                                              and math.isfinite(val)):
                     if not (c in ("peso",) and val is None):
                         err(f"{loc}.{c}", f"número finito esperado (recebido {val!r})")
-                if c in _VET_CAMPOS:
-                    n = _VET_CAMPOS[c] or (6 if cls is CargaNodal else 3)
+                if c in _VET_CAMPOS and not (c == "q2" and val is None):
+                    n =_VET_CAMPOS[c] or (6 if cls is CargaNodal else 3)
                     if not (isinstance(val, (list, tuple)) and len(val) == n):
                         err(f"{loc}.{c}", f"lista de {n} valores esperada")
                     elif c != "apoio" and not all(isinstance(x, (int, float)) and not isinstance(x, bool)
@@ -1743,8 +1748,11 @@ def _forcas_horizontais(m, pavs):
         somar(c.caso, c.no, c.F)
     for c in m.cargas_distribuidas:
         b = m.barras[c.barra]
-        for no in (b.ni, b.nj):
-            somar(c.caso, no, np.asarray(c.q, float) * _comprimento(m, b) / 2)
+        qi = np.asarray(c.q, float)
+        qj = qi if c.q2 is None else np.asarray(c.q2, float)
+        L = _comprimento(m, b)
+        somar(c.caso, b.ni, (2 * qi + qj) * L / 6)  # trapézio: reações da biapoiada
+        somar(c.caso, b.nj, (qi + 2 * qj) * L / 6)
     for c in m.cargas_pontuais:
         b = m.barras[c.barra]
         t = c.a / _comprimento(m, b)

@@ -40,6 +40,8 @@ namespace NovoFtool
         public string Norma, Criterio, Item, Combinacao;
     }
 
+    public class VerifMotor : Verif { }   // verificacao do motor na tela: so taxa e criterio (sem as parcelas do Nucleo.cs)
+
     public class MotorResultado
     {
         public List<string> Combinacoes = new List<string>();
@@ -53,7 +55,6 @@ namespace NovoFtool
     public static class MotorModelo
     {
         const double g = 9.80665;
-        const int PontosQLocal = 20;   // ponytail: q perpendicular linear vira 20 cargas pontuais (motor so tem q global uniforme)
 
         static string IdNo(int id) { return "n" + id; }
         static string IdBarra(int id) { return "b" + id; }
@@ -66,10 +67,13 @@ namespace NovoFtool
             var erros = new List<string>();
             foreach (No n in m.Nos)
             {
-                if (n.MolaX != 0 || n.MolaY != 0 || n.MolaGiro != 0) erros.Add("nó " + n.Id + ": mola");
-                if (n.RecalqueX != 0 || n.RecalqueY != 0) erros.Add("nó " + n.Id + ": recalque");
+                var o = new List<string>();
+                if (n.MolaX != 0) o.Add("mola X"); if (n.MolaY != 0) o.Add("mola Y"); if (n.MolaGiro != 0) o.Add("mola de giro");
+                if (n.RecalqueX != 0) o.Add("recalque X"); if (n.RecalqueY != 0) o.Add("recalque Y");
+                if (o.Count > 0) erros.Add("nó " + n.Id + " (" + string.Join(", ", o) + ")");
             }
-            if (erros.Count > 0) throw new MotorErro(0, "O motor Python ainda não aceita molas nem recalques (" + string.Join(", ", erros) + "). Use o motor interno.");
+            if (erros.Count > 0) throw new MotorErro(0, "O motor Python ainda não calcula apoios elásticos (molas) nem recalques, e este modelo tem: "
+                + string.Join("; ", erros) + ". Para calcular, escolha \"Interno (Nucleo.cs)\" em Análise › Opções › Motor, ou tire essas molas e recalques.");
 
             var nos = new JsonObject();
             foreach (No n in m.Nos)
@@ -111,6 +115,7 @@ namespace NovoFtool
                 if (b.RotulaInicio) p["rotula_i"] = true;
                 if (b.RotulaFim) p["rotula_j"] = true;
                 if (m.Timoshenko) p["cortante"] = true;
+                Flambar(m, b, p);
                 itens.Add(Item("barra", new JsonObject { ["id"] = IdBarra(b.Id), ["ni"] = IdNo(b.N1), ["nj"] = IdNo(b.N2), ["secao"] = b.Secao, ["material"] = b.Material, ["tipo"] = "aco", ["rot"] = rot, ["params"] = p }));
             }
             for (int i = 0; i < m.Casos.Count; i++)
@@ -132,14 +137,14 @@ namespace NovoFtool
                     }
                     if (q[0] != 0 || q[1] != 0)
                         itens.Add(Item("carga_distribuida", new JsonObject { ["caso"] = caso, ["barra"] = IdBarra(b.Id), ["q"] = new JsonArray(q[0], 0.0, q[1]) }));
-                    if (q[2] != 0 || q[3] != 0)
+                    if (q[2] != 0 || q[3] != 0)   // perpendicular linear: q em ni, q2 em nj (globais, normal = (-S, C))
                     {
                         double L = m.Comp(b), C = (m.NoPorId(b.N2).X - m.NoPorId(b.N1).X) / L, S = (m.NoPorId(b.N2).Y - m.NoPorId(b.N1).Y) / L;
-                        for (int k = 0; k < PontosQLocal; k++)
+                        itens.Add(Item("carga_distribuida", new JsonObject
                         {
-                            double t = (k + 0.5) / PontosQLocal, P = (q[2] + (q[3] - q[2]) * t) * L / PontosQLocal;
-                            itens.Add(Item("carga_pontual", new JsonObject { ["caso"] = caso, ["barra"] = IdBarra(b.Id), ["a"] = t * L, ["F"] = new JsonArray(-S * P, 0.0, C * P) }));
-                        }
+                            ["caso"] = caso, ["barra"] = IdBarra(b.Id),
+                            ["q"] = new JsonArray(-S * q[2], 0.0, C * q[2]), ["q2"] = new JsonArray(-S * q[3], 0.0, C * q[3])
+                        }));
                     }
                 }
             }
@@ -155,6 +160,23 @@ namespace NovoFtool
                     ["props"] = new JsonObject { ["Az"] = s.AsX > 0 ? s.AsX : s.A, ["Ay"] = s.AsY > 0 ? s.AsY : s.A }
                 });
             }
+        }
+
+        // Comprimentos de flambagem iguais aos do Nucleo.cs (Flambagem.Calcular: barra continua inteira, travamento fora do
+        // plano, K >= 1). kx = eixo forte do motor (Iy do motor = Ix do Estructto), ky = eixo fraco; Lb = maior trecho
+        // destravado no plano em que a barra flete pelo eixo fraco (fora do plano em pe; no plano se "deitado").
+        // Plano instavel (Le infinito): nao envia; o motor usa k = 1 e a verificacao interna acusa a instabilidade.
+        static void Flambar(Modelo m, Barra b, JsonObject p)
+        {
+            Secao s = Biblioteca.AcharSecao(b.Secao); Material mt = Biblioteca.AcharMaterial(b.Material);
+            if (s == null || mt == null) return;
+            var v = new Verif();
+            Flambagem.Calcular(m, b, s, mt, v);
+            Flamb forte = b.EixoFraco ? v.ForaPlano : v.NoPlano, fraco = b.EixoFraco ? v.NoPlano : v.ForaPlano;
+            double L = m.Comp(b);
+            if (!forte.Instavel) p["kx"] = forte.Le / L;
+            if (!fraco.Instavel) p["ky"] = fraco.Le / L;
+            if (fraco.LDestr > 0) p["Lb"] = fraco.LDestr;
         }
 
         static JsonObject Item(string tipo, JsonObject dados) { return new JsonObject { ["tipo"] = tipo, ["dados"] = dados }; }
@@ -229,6 +251,38 @@ namespace NovoFtool
                     : new MotorEsforcos { X = A("x"), N = A("N"), V = A("Vz").Select(x => -x).ToArray(), M = A("My").Select(x => -x).ToArray() };
             }
             return e;
+        }
+
+        // ResBarra (formulas fechadas do Nucleo.cs) a partir dos esforcos e deslocamentos do motor, para a vista, as
+        // tabelas e as janelas usarem o resultado do motor. Rigidez e geometria vem de "base" (mesma barra no Nucleo.cs).
+        // Sem carga pontual, N e V sao quadraticos em x: F das pontas e cargas lineares (P1, P2, Q1, Q2) saem de x = 0,
+        // de um ponto interno e de x = L.
+        public static ResBarra ParaResBarra(Modelo m, Barra b, ResBarra base_, MotorEstado e)
+        {
+            var r = new ResBarra { L = base_.L, C = base_.C, S = base_.S, EA = base_.EA, EI = base_.EI, GAs = base_.GAs };
+            MotorEsforcos s = e.Barras[b.Id];
+            int k = 0; double L = r.L;
+            for (int i = 1; i < s.X.Length - 1; i++) if (Math.Abs(s.X[i] - L / 2) < Math.Abs(s.X[k] - L / 2)) k = i;
+            // f(x) = f0 + a.x + (c - a).x^2/(2L): (a, c) pelos valores em x = xm e x = L
+            void Linear(double[] f, out double a, out double c)
+            {
+                double xm = s.X[k], ym = f[k] - f[0], yL = f[f.Length - 1] - f[0];
+                // ym = a.xm + (c - a).xm^2/(2L) ; yL = (a + c).L/2
+                double t = xm * xm / (2 * L), det = (xm - t) * (L / 2) - t * (L / 2);
+                a = k == 0 ? yL / L : (ym * (L / 2) - t * yL) / det;
+                c = k == 0 ? yL / L : ((xm - t) * yL - (L / 2) * ym) / det;
+            }
+            double[] nNeg = s.N.Select(x => -x).ToArray();
+            Linear(nNeg, out r.P1, out r.P2);   // -N = F0 + P1.x + ...
+            Linear(s.V, out r.Q1, out r.Q2);
+            int u = s.X.Length - 1;
+            r.F[0] = -s.N[0]; r.F[1] = s.V[0]; r.F[2] = -s.M[0];
+            r.F[3] = s.N[u]; r.F[4] = -s.V[u]; r.F[5] = s.M[u];
+            double[] di = e.Nos[b.N1], dj = e.Nos[b.N2];
+            r.U[0] = di[0] * r.C + di[1] * r.S; r.U[1] = -di[0] * r.S + di[1] * r.C; r.U[2] = di[2];
+            r.U[3] = dj[0] * r.C + dj[1] * r.S; r.U[4] = -dj[0] * r.S + dj[1] * r.C; r.U[5] = dj[2];
+            r.Fechar();
+            return r;
         }
 
         // Analise de um caso de carga isolado (sem combinacao): GET /api/analise/caso/{nome}. Chamar Enviar antes.
