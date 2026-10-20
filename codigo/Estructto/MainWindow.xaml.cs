@@ -289,7 +289,7 @@ namespace NovoFtool
             var qSalvar = Botao("salvar", "Salvar", () => Salvar(false), "Salva as alterações do modelo atual no arquivo.", "Ctrl+S");
             var qDesf = Botao("desfazer", "Desfazer", Desfazer, "Desfaz a última alteração feita no modelo.", "Ctrl+Z");
             var qRef = Botao("refazer", "Refazer", Refazer, "Refaz a última alteração desfeita.", "Ctrl+Y");
-            var qCalc = Botao("calc", "Calcular", () => Resolver(true), "Calcula a estrutura. O cálculo também é refeito automaticamente a cada alteração.", "F5");
+            var qCalc = Botao("calc", "Calcular", Calcular, "Calcula a estrutura. O cálculo também é refeito automaticamente a cada alteração.", "F5");
             foreach (var q in new[] { qNovo, qAbrir, qSalvar, qDesf, qRef, qCalc })
                 Faixa.QuickAccessItems.Add(new F.QuickAccessMenuItem { Target = q, IsChecked = true });
 
@@ -362,7 +362,7 @@ namespace NovoFtool
             // ANALISE: resultado mostrado (inserido por MontarCasosNaFaixa), opcoes e diagramas
             tgTimo = Alternar("eixo", "Deformação por cortante", v => { M.Timoshenko = v; Confirmar("Timoshenko " + (v ? "ligado" : "desligado") + "."); }, "Viga de Timoshenko (considera a deformação por cortante). Desligado = Euler-Bernoulli.");
             abaAnalise = Aba("Análise", "N",
-                Grupo("Opções", tgTimo),
+                Grupo("Opções", tgTimo, CriarCbMotor()),
                 Grupo("Diagramas",
                     BotaoDiagrama("def", "Deformada", Diagrama.Deformada, "Configuração deformada (ampliada). Passe o mouse para ler os deslocamentos.", "D + Enter"),
                     BotaoDiagrama("normal", "Normal", Diagrama.Normal, "Esforço normal N (kN). Positivo = tração.", "N + Enter"),
@@ -470,6 +470,58 @@ namespace NovoFtool
                 for (int i = 0; i < VisualTreeHelper.GetChildrenCount(d); i++) Ir(VisualTreeHelper.GetChild(d, i));
             }
             Ir(Docas);
+        }
+
+        // Motor do Calcular (F5): interno (Nucleo.cs, sempre roda e alimenta a vista) ou, a mais, o motor Python (docs/UNIFICACAO-MOTOR.md)
+        F.ComboBox cbMotor;
+        internal MotorResultado ResMotor;
+        bool motorRodando;
+        F.ComboBox CriarCbMotor()
+        {
+            cbMotor = new F.ComboBox { Header = "Motor", IsEditable = false, Width = 220, ToolTip = Dica("Motor de cálculo", "Interno (Nucleo.cs): pórtico plano e verificação simplificada, refeito a cada alteração. Python (NBR completas): ao calcular (F5) também envia o modelo ao motor Python, que gera as combinações da NBR 8681 e verifica as barras pela NBR 8800 completa.", "F5") };
+            cbMotor.Items.Add("Interno (Nucleo.cs)");
+            cbMotor.Items.Add("Motor: Python (NBR completas)");
+            cbMotor.SelectedIndex = 0;
+            return cbMotor;
+        }
+
+        internal void Calcular()
+        {
+            Resolver(true);
+            if (cbMotor != null && cbMotor.SelectedIndex == 1 && Vista.Resolvido && !motorRodando) _ = CalcularMotor();
+        }
+
+        async System.Threading.Tasks.Task CalcularMotor()
+        {
+            motorRodando = true;
+            var barra = new ProgressBar { IsIndeterminate = true, Width = 90, Height = 6, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+            StatusBotoes.Children.Insert(0, barra);
+            var antes = Mouse.OverrideCursor; Mouse.OverrideCursor = Cursors.AppStarting;
+            var prog = new Progress<string>(s => StatusMsg.Text = "Motor Python: " + s + "…");
+            try
+            {
+                var r = await MotorModelo.Calcular(Modelo.DeXml(M.ParaXml()), prog);
+                ResMotor = r;
+                int reprov = r.Verificacao.Count(v => !v.Ok);
+                var pior = r.Verificacao.Where(v => v.Taxa.HasValue).OrderByDescending(v => v.Taxa.Value).FirstOrDefault();
+                StatusMsg.Text = "Motor Python: " + Pl.N(r.Combinacoes.Count, "combinação", "combinações") + " NBR 8681 · NBR 8800: " +
+                    (reprov == 0 ? "todas as barras passam" : "⚠ " + Pl.N(reprov, "barra não passa", "barras não passam")) +
+                    (pior != null ? " · pior: barra " + pior.Barra + " " + Num.Fmt(pior.Taxa.Value * 100, 0) + "% (" + pior.Criterio + ")" : "");
+                Log(StatusMsg.Text);
+                foreach (var v in r.Verificacao)
+                    Log("  barra " + v.Barra + ": " + (v.Taxa.HasValue ? Num.Fmt(v.Taxa.Value * 100, 0) + "%" : "não verificada") + " · " + v.Criterio + " · " + v.Item + " · " + v.Combinacao, false);
+            }
+            catch (Exception ex)
+            {
+                StatusMsg.Text = "⚠ Motor Python: " + ex.Message;
+                Log(StatusMsg.Text);
+            }
+            finally
+            {
+                StatusBotoes.Children.Remove(barra);
+                Mouse.OverrideCursor = antes;
+                motorRodando = false;
+            }
         }
 
         F.ComboBox cbEletrodo;

@@ -907,7 +907,7 @@ namespace NovoFtool
             else if (k == Key.F3) { AlternarStatus(stObj, v => Vista.AtrairObjetos = v, "Atração a objetos"); e.Handled = true; }
             else if (k == Key.F11) { AlternarStatus(stRastro, v => { Vista.Rastrear = v; if (!v) Vista.LimparRastreio(); }, "Rastreamento"); e.Handled = true; }
             else if (k == Key.F4) { Vista.ZoomTudo(); e.Handled = true; }
-            else if (k == Key.F5) { Resolver(true); e.Handled = true; }
+            else if (k == Key.F5) { Calcular(); e.Handled = true; }
             else if (k == Key.F7) { AlternarStatus(stGrade, v => { M.MostrarGrade = v; Vista.InvalidateVisual(); }, "Grade"); e.Handled = true; }
             else if (k == Key.F8) { AlternarStatus(stOrto, v => Vista.Orto = v, "ORTO"); e.Handled = true; }
             else if (k == Key.F9) { AlternarStatus(stAtrair, v => M.AtrairGrade = v, "SNAP na grade"); e.Handled = true; }
@@ -1018,7 +1018,7 @@ namespace NovoFtool
                 case "SELMEMBRO": SelecionarMembro(); break;
                 case "U": case "DESFAZER": Desfazer(); break;
                 case "REFAZER": Refazer(); break;
-                case "CALC": case "CALCULAR": Resolver(true); break;
+                case "CALC": case "CALCULAR": Calcular(); break;
                 case "NOVO": Novo(); break;
                 case "ABRIR": AbrirDialogo(); break;
                 case "SALVAR": Salvar(false); break;

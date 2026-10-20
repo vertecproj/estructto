@@ -23,6 +23,14 @@
     <EmbeddedResource Include="..\portico\fixacoes-pares.csv" LogicalName="fixacoes-pares.csv" />
   </ItemGroup>
 
+  <!-- Motor Python empacotado (codigo\motor\empacotar.ps1): o publish poe a pasta em motor\ ao lado do Estructto.exe (Motor.cs) -->
+  <PropertyGroup>
+    <MotorDist Condition="'$(MotorDist)' == ''">$(MSBuildThisFileDirectory)..\motor\dist</MotorDist>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(MotorDist)\estructto-motor.exe')">
+    <None Include="$(MotorDist)\**\*" Link="motor\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="Never" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="estructto.ico" />
     <Resource Include="estructto.png" />
