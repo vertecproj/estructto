@@ -154,11 +154,60 @@ namespace NovoFtool
                 CapturarPrincipal(w, "41-espacial-" + nome);
             }
 
+            // árvore e tabelas mostram o modelo espacial e os resultados do motor; HUD diz o que está na tela
+            if (!w.TextoResultado.Contains("envoltória")) throw new InvalidOperationException("HUD do espacial: " + w.TextoResultado);
+            if (!(w.TabNos.ItemsSource is IEnumerable<LinhaNoEsp> ln) || ln.Count() != d.Json["nos"].AsObject().Count) throw new InvalidOperationException("tabela de nós não mostra o modelo espacial");
+            w.PainelTabelas.IsSelected = true;
+            foreach (var (aba, nome) in new[] { (0, "nos"), (1, "barras"), (2, "verificacao") })
+            {
+                w.AbasTabela.SelectedIndex = aba;
+                EsperarIdle();
+                CapturarPrincipal(w, "41-espacial-tabela-" + nome);
+            }
+            w.AbasTabela.SelectedIndex = 0;
+
+            // combinação dos diagramas (padrão: envoltória ELU)
+            string comb = d.Combinacoes.First(c => c.StartsWith("ELU"));
+            Esperar(w.MostrarCombinacaoEspacial(comb));
+            if (d.CombDiagrama != comb || w.TextoResultado != comb) throw new InvalidOperationException("seletor de combinação não trocou: " + w.TextoResultado);
+            w.MostrarDiagrama(Diagrama.Momento);
+            EsperarIdle();
+            w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+            CapturarPrincipal(w, "41-espacial-combinacao");
+            Esperar(w.MostrarCombinacaoEspacial(null));
+            if (d.CombDiagrama != null) throw new InvalidOperationException("não voltou à envoltória");
+
+            // criar e apagar nó/barra, cargas por caso, seção do catálogo
+            int nb0 = d.Json["barras"].AsObject().Count;
+            var n0 = d.Json["nos"].AsObject().First(kv => (double)kv.Value["z"] > 0);
+            string nNovo = null, bNova = null;
+            Esperar(w.OperarEspacial(async dd =>
+            {
+                nNovo = await dd.Adicionar("no", new System.Text.Json.Nodes.JsonObject { ["x"] = (double)n0.Value["x"], ["y"] = (double)n0.Value["y"] - 2, ["z"] = (double)n0.Value["z"] });
+                string perfil = (await Motor.Get("/api/catalogo?filtro=W200")).AsArray().Select(x => (string)x["nome"]).First(x => dd.Json["secoes"][x] == null);
+                await dd.GarantirSecao(perfil);
+                bNova = await dd.Adicionar("barra", new System.Text.Json.Nodes.JsonObject { ["ni"] = n0.Key, ["nj"] = nNovo, ["secao"] = perfil, ["material"] = (string)dd.Json["barras"].AsObject().First().Value["material"] });
+                await dd.Adicionar("carga_nodal", new System.Text.Json.Nodes.JsonObject { ["caso"] = dd.CasoAtivo, ["no"] = nNovo, ["F"] = new System.Text.Json.Nodes.JsonArray(0.0, 0.0, -10.0, 0.0, 0.0, 0.0) });
+                await dd.Adicionar("carga_distribuida", new System.Text.Json.Nodes.JsonObject { ["caso"] = dd.CasoAtivo, ["barra"] = bNova, ["q"] = new System.Text.Json.Nodes.JsonArray(0.0, 0.0, -3.0) });
+            }, "teste: nó, barra (perfil do catálogo) e cargas"));
+            d = w.EspacialAtivo;
+            if (bNova == null || d.Json["barras"].AsObject().Count != nb0 + 1 || !d.Json["cargas_nodais"].AsArray().Any(c => (string)c["no"] == nNovo) || !d.Json["cargas_distribuidas"].AsArray().Any(c => (string)c["barra"] == bNova))
+                throw new InvalidOperationException("criar nó/barra/cargas pelo motor falhou: " + w.StatusMsg.Text);
+            w.EscolherEspacial("barra", bNova);
+            EsperarIdle();
+            CapturarPrincipal(w, "41-espacial-barra-nova");
+            w.EscolherEspacial("no", nNovo);
+            EsperarIdle();
+            CapturarPrincipal(w, "41-espacial-no-novo");
+            Esperar(w.OperarEspacial(dd => dd.Remover("no", nNovo), "teste: apagar nó"));
+            if (d.Json["barras"].AsObject().Count != nb0 || d.Json["nos"][nNovo] != null) throw new InvalidOperationException("apagar nó (cascata) falhou: " + w.StatusMsg.Text);
+
             // salvar (JSON do motor) e abrir de novo; exemplo do motor
             string tmp = Path.Combine(Path.GetTempPath(), "estructto-espacial-teste.json");
             File.WriteAllText(tmp, d.JsonFormatado());
             Esperar(w.AbrirEspacialArquivo(tmp));
             if (w.EspacialAtivo == d || w.EspacialAtivo.Json["barras"].AsObject().Count != d.Json["barras"].AsObject().Count) throw new InvalidOperationException("JSON salvo não reabriu igual");
+            if (!string.Equals(Config.Recentes().FirstOrDefault(), tmp, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException(".json aberto não entrou nos recentes");
             Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo("galpao_aco"), "exemplo"));
             Esperar(w.CalcularEspacial());
             EsperarIdle();

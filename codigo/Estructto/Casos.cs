@@ -28,6 +28,7 @@ namespace NovoFtool
 
         string NomeResultado()
         {
+            if (Esp != null) return Esp.NomeDiagrama;   // modelo espacial: o que os diagramas do motor mostram
             int i;
             if (resSel.StartsWith("caso:") && int.TryParse(resSel.Substring(5), out i) && i < M.Casos.Count) return "caso " + M.Casos[i].Nome;
             if (resSel.StartsWith("comb:") && int.TryParse(resSel.Substring(5), out i) && i < M.Combinacoes.Count) return "combinação " + M.Combinacoes[i].Nome;
@@ -196,7 +197,9 @@ namespace NovoFtool
             cbCaso = new F.ComboBox { Header = "Caso ativo", IsEditable = false, Width = 220, ToolTip = new F.ScreenTip { Title = "Caso de carga ativo", Text = "As cargas aplicadas e mostradas no desenho são as deste caso. Troque para lançar as cargas de outro caso (G, Q, vento...).", Width = 300 } };
             cbCaso.SelectionChanged += (s, e) =>
             {
-                if (listasOcupadas || cbCaso.SelectedIndex < 0 || cbCaso.SelectedIndex == M.CasoAtivo) return;
+                if (listasOcupadas || cbCaso.SelectedIndex < 0) return;
+                if (Esp != null) { if (cbCaso.SelectedItem is ComboBoxItem ci) { Esp.CasoAtivo = (string)ci.Tag; MontarPainelEspacial(); } return; }
+                if (cbCaso.SelectedIndex == M.CasoAtivo) return;
                 M.AtivarCaso(cbCaso.SelectedIndex);
                 Confirmar("Caso ativo: " + M.Casos[M.CasoAtivo].Nome + ". As cargas lançadas agora vão para este caso.");
             };
@@ -209,6 +212,7 @@ namespace NovoFtool
             cbResultado.SelectionChanged += (s, e) =>
             {
                 if (listasOcupadas || !(cbResultado.SelectedItem is ComboBoxItem it)) return;
+                if (Esp != null) { _ = MudarResultadoEsp(((string)it.Tag).Substring(4)); return; }   // "esp:<combinação>"
                 resSel = (string)it.Tag;
                 Atualizar();
                 Log("Mostrando: " + NomeResultado() + ".");
@@ -221,6 +225,7 @@ namespace NovoFtool
         void AtualizarListasCasos()
         {
             if (cbCaso == null) return;
+            if (Esp != null) { ListasEspaciais(); return; }
             listasOcupadas = true;
             M.GarantirCasos();
             cbCaso.Items.Clear();

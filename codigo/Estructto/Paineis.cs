@@ -156,6 +156,7 @@ namespace NovoFtool
 
         void AtualizarArvore()
         {
+            if (Esp != null) { ArvoreEspacial(); return; }   // modelo espacial: DocumentoEspacial.cs
             sincronizando = true;
             Arvore.Items.Clear();
             var raiz = Item("painel", "Modelo", arquivo != null ? System.IO.Path.GetFileNameWithoutExtension(arquivo) : null, null, null, true, "Raiz do modelo atual. Expanda os grupos abaixo para inspecionar e selecionar nós, barras, seções, materiais, apoios e cargas.");
@@ -203,6 +204,7 @@ namespace NovoFtool
             if (sincronizando) return;
             var it = Arvore.SelectedItem as TreeViewItem;
             if (it == null || it.Tag == null) return;
+            if (it.Tag is RefMotor r) { SelecionarEsp(r); return; }
             sincronizando = true;
             if (it.Tag is No || it.Tag is Barra) Vista.Selecionar(new[] { it.Tag });
             else if (it.Tag is List<object> lista)
@@ -243,6 +245,7 @@ namespace NovoFtool
 
         void AtualizarTabelas()
         {
+            if (Esp != null) { TabelasEspaciais(); return; }
             sincronizando = true;
             bool ok = Vista.Resolvido;
             TabNos.ItemsSource = M.Nos.Select(n => new LinhaNo
@@ -307,7 +310,7 @@ namespace NovoFtool
         }
 
         // colunas de texto/identificacao ficam a esquerda; numeros (e unidades no cabecalho) a direita
-        static readonly HashSet<string> ColEsq = new HashSet<string> { "Id", "Nos", "Perfil", "Apoio", "Situacao", "Critico", "Ponta", "Sit" };
+        static readonly HashSet<string> ColEsq = new HashSet<string> { "Id", "Nos", "Perfil", "Apoio", "Situacao", "Critico", "Ponta", "Sit", "Material", "Combinacao" };
         static Style estiloNumDir, estiloCabDir;
 
         static DataTemplate TemplateXaml(string xaml)
@@ -357,6 +360,7 @@ namespace NovoFtool
         void SelecionarDaTabela(DataGrid dg)
         {
             if (sincronizando) return;
+            if (dg.SelectedItem is LinhaEsp le) { SelecionarEsp(le.Obj); return; }
             var objs = new List<object>();
             foreach (var it in dg.SelectedItems)
             {
@@ -391,6 +395,7 @@ namespace NovoFtool
 
         void Diagnosticar()
         {
+            if (Esp != null) { MostrarAvisos(AvisosEspaciais()); return; }
             var lista = new List<(string, string, List<object>)>();   // nivel, texto, itens
             if (M.Barras.Count > 0 && !M.Nos.Any(n => n.TemApoio))
                 lista.Add(("erro", "Nenhum apoio. Selecione os nós da base e use Modelo › Engaste/Fixo/Móvel.", new List<object>()));
@@ -431,7 +436,11 @@ namespace NovoFtool
             }
             else if (M.Barras.Count > 0 && M.Nos.Any(n => n.TemApoio) && erroCalculo != "")
                 lista.Add(("erro", erroCalculo, new List<object>()));
+            MostrarAvisos(lista);
+        }
 
+        void MostrarAvisos(List<(string, string, List<object>)> lista)
+        {
             ListaAvisos.Items.Clear();
             foreach (var (nivel, texto, objs) in lista)
             {

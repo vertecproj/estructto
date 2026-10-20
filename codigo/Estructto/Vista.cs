@@ -1060,8 +1060,11 @@ namespace NovoFtool
         }
 
         // Texto da legenda do HUD: unidade, maximo e minimo do diagrama ativo (ou ampliacao da deformada).
+        public Func<string> ResumoExterno;   // modelo espacial (DocumentoEspacial.cs): a legenda vem dos resultados do motor
+
         public string ResumoDiagrama()
         {
+            if (ResumoExterno != null) return ResumoExterno();
             if (!Resolvido) return "sem resultados";
             if (Diag == Diagrama.Deformada)
             {
