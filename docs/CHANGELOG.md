@@ -2,6 +2,13 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 20/10/2026 — Desenhar no 3D (branch wt-desenho3d)
+
+- Modelo espacial: grupo **Desenhar 3D** (Selecionar, Barra, Pilar) e **Modelo 3D vazio**. Plano de trabalho (z, x ou y = c) com
+  grade, atração a nó/meio/grade, ortogonal/polar, entrada dinâmica (comprimento, ângulo, x,y,z, @dx,dy,dz), seleção por janela e
+  cruzamento; cada clique = um lote do motor (um passo de desfazer). API pública para planos, edição e painéis. Detalhe:
+  [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md#desenhar-no-3d-modelo--desenhar-3d). Capturas `43-desenho3d-*`.
+
 ## 20/10/2026 — Vista 3D Realista (branch wt-vista3d)
 
 - Botão **Realista** em Vista › Navegar (lembra a escolha): perfis reais extrudados (I, U, L, tubos, caixão, maciços) com as

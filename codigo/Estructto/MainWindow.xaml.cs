@@ -355,6 +355,7 @@ namespace NovoFtool
                     Botao("pincel", "Aplicar à seleção", () => AplicarSecao(false), "Aplica seção e material às barras selecionadas (ou, sem seleção, passa a valer para as próximas barras desenhadas).", null, true),
                     Botao("pincel", "Aplicar a todas", () => AplicarSecao(true), "Aplica seção e material a todas as barras.", null, true)));
             abaModelo.ToolTip = "Gerar e desenhar a estrutura, modificar, apoios e rótulas, seções e materiais, barras contínuas.";
+            MontarDesenho3D();   // Desenhar 3D (modelo espacial), Vista3D.cs
 
             // ACOES (antes "Cargas"): casos de carga (inseridos por MontarCasosNaFaixa), cargas no no e na barra, peso proprio
             cFx = Campo("Fx (kN)", "0", "Positivo para a direita."); cFy = Campo("Fy (kN)", "0", "Positivo para cima. Gravidade = negativo."); cMz = Campo("Mz (kN·m)", "0", "Positivo anti-horário.");

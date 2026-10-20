@@ -891,6 +891,7 @@ namespace NovoFtool
             bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control), shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
             bool editando = Editando();
             Key k = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (!editando && !ctrl && Comando.Text == "" && Tecla3D(k)) { e.Handled = true; return; }   // ferramentas da Vista3D (modelo espacial)
             if (!editando && !ctrl && Vista.DinAtivo && Comando.Text == "" && (k == Key.Tab || k == Key.Back || ((k == Key.Enter || k == Key.Return) && Vista.DinTravado)))
             {
                 if (k == Key.Enter || k == Key.Return)
