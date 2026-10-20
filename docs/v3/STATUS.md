@@ -34,13 +34,13 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 ### Fase 2 — núcleo 3D-only (sequencial no Vista3D/MainWindow)
 - [~] A1 (wt-so3d) Documento único 3D: todo documento é espacial; .estructto/.ftl abrem convertidos; Shift+arrastar orbita em qualquer vista;
       Vista 2D antiga só como câmera planta/elevação. Placa de base/memorial continuam funcionando.
-- [~] A2 (wt-snap) Snap CAD completo + rastreamento + entrada dinâmica; Medir (distância, ângulo, área, mínima entre objetos, cadeia) — arquivos Snap3D.cs / Medir3D.cs
+- [x] A2 (wt-snap, merge) Snap CAD completo + rastreamento + entrada dinâmica; Medir (distância, ângulo, área, mínima entre objetos, cadeia) — arquivos Snap3D.cs / Medir3D.cs
 - [ ] A3 Fluxo Plant: comandos e atalhos do PESQUISA-PLANT (grips, UCS/plano, copiar com ponto base, propriedades)
 
 ### Fase 3 — ligações (paralelo: motor Python + UI)
-- [~] L1 (wt-lig-flex/rig/contrav) Motor: tipos de ligação (cantoneira dupla, chapa de extremidade, chapa simples/shear tab, emendas, flange plate, gusset de contraventamento,
+- [x] L1 (19 tipos: flex/rig/contrav) Motor: tipos de ligação (cantoneira dupla, chapa de extremidade, chapa simples/shear tab, emendas, flange plate, gusset de contraventamento,
       base articulada/engastada, ligação de terça, mísula) com verificações NBR 8800 cap. 6; testes com exemplos dos livros
-- [~] L2 (wt-grupos) Agrupamento: identificar ligações iguais (perfis, ângulos, tipo), grupos editáveis, pior do grupo, aplicar
+- [x] L2 Agrupamento: identificar ligações iguais (perfis, ângulos, tipo), grupos editáveis, pior do grupo, aplicar
 - [x] L2 Agrupamento: identificar ligações iguais (perfis, ângulos, tipo), grupos editáveis, pior do grupo, aplicar
       (branch `wt-grupos`, [LIGACOES-GRUPOS.md](LIGACOES-GRUPOS.md); tipos novos do L1 entram em `VERIFICADORES`)
 - [ ] L3 UI: biblioteca de ligações (cards com desenho), janela de dimensionamento estilo placa de base (3 passos, desenho ao vivo)
@@ -72,3 +72,5 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - 20:08: L1 disparado em 3 famílias (wt-lig-flex, wt-lig-rig, wt-lig-contrav) seguindo docs/v3/LIGACOES-CONTRATO.md. Placa v2 em wt-placa2. Pendentes de disparo: A1 3D-only+A2 snap/medir (após ligar3d), R1 render Fable (após A1), L3 UI biblioteca (após L1), L4 3D ligações (após R1+L1).
 - 20:26: T1 treliças merge. BACKLOG QA: Ue 150x60x20x2,65 reprova distorcional (fórmula simplificada do motor fora do domínio) — rever nbr14762 distorcional.
 - 20:28: placa v2 merge (3137145), verificador rodando. Treliças e logo no unificacao. REGRA: nenhum agente edita código no checkout principal (bloqueia merges) — só worktrees. Polimento final: tela inicial ainda diz "pórticos planos" e tem assistentes 2D (A1 deve refazer).
+- 20:41: L1 flexíveis merge (693e4bf, 5 tipos, 35 testes, exemplos Pfeil/Gerdau). Registro de módulos = _MODULOS_CONTRATO em ligacoes.py. Placa v2: verificador achou V2-01/V2-02 críticos → wt-placa3 corrigindo.
+- 20:50: merges: L1 x3 (19 tipos), placa v2+v3 (V2-01..07 corrigidos), snap/medir. Rodando: A1 so3d, R1 render (Fable), L3 lig-ui. Backlog QA: itens NBR 5.7.x/6.1 a conferir; folgas furo alargado; Ue distorcional.
