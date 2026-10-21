@@ -122,6 +122,14 @@ def _motivo_vazio(m, nid, ends):
 _ANG_MIN = 20   # ° entre a barra e o apoio abaixo do qual a chapa/gusset não cabe (Review Focus 2)
 
 
+_L_CURTA = 1.5   # m: barra inclinada sobre apoio mais curta que isso é escora (mão-francesa), não pilar
+
+
+def _comprimento(m, b):
+    a, c = m.nos[b.ni], m.nos[b.nj]
+    return math.dist((a.x, a.y, a.z), (c.x, c.y, c.z))
+
+
 def _plano_vertical(e, continuo):
     """Barra de treliça `e` e banzo contínuo num plano vertical (normal quase horizontal)."""
     if not (continuo and e["b"].params.get("trelica")):
@@ -183,9 +191,13 @@ def _classificar(m, nid, ends, recusas):
             continue
         b, papel = e["b"], e["papel"]
         if apoiado and (papel != "diagonal" or so_trelica and not b.params.get("trelica")):
-            # pilar inclinado sozinho no apoio (classe "diagonal" pela geometria) também é base
+            # barra inclinada única sobre apoio (classe "diagonal" pela geometria) também é base
             cond = "rotulada" if _rotulada(b, e["ponta"]) or not (no.apoio[3] and no.apoio[4]) else "rigida"
-            out.append(_membro(m, nid, e, "base", None, _ang(e["d"], (0, 0, 1)), cond))
+            mb = _membro(m, nid, e, "base", None, _ang(e["d"], (0, 0, 1)), cond)
+            if papel == "diagonal" and _comprimento(m, b) < _L_CURTA:
+                # ponytail: só comprimento; checar perfil de pilar se aparecer escora longa
+                mb["aviso"] = "barra inclinada sobre apoio: chapa de apoio, não placa de base de pilar — conferir"
+            out.append(mb)
         elif papel == "diagonal":
             ap = (continuo[0] if continuo else apoio_pilar or next((x for x in ends if x["papel"] == "viga"), None))
             # treliça com banzo contínuo comum (barra "trelica" sobre banzo, sem pilar, plano vertical); o

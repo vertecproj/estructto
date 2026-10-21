@@ -204,6 +204,39 @@ class TestNosInclinados(unittest.TestCase):
         r = lm.identificar(m)
         self.assertIn("ângulo", r["sem_tipo"]["B"])
 
+    def test_viga_viga_angulo_pequeno(self):
+        m = _monta(_vazio(), {"A": (0, 0, 3), "B": (3, 0, 3), "C": (6, 0, 3), "D": (8, 0.5, 3)},
+                   {"V1": ("A", "B", "viga", {}), "V2": ("B", "C", "viga", {}), "V3": ("B", "D", "viga", {})})
+        mot = {}
+        self.assertEqual([x for x in lm.membros(m, mot) if x["no"] == "B"], [])
+        self.assertIn("ângulo", mot["B"])
+
+    def test_contravento_parede_sobre_terca_sem_pilar(self):
+        """Diagonal de parede (trelica) cruza longarina contínua sem pilar, plano vertical: nó de treliça."""
+        m = _monta(_vazio(), {"A": (0, 0, 3), "B": (3, 0, 3), "C": (6, 0, 3), "D": (0, 0, 0), "E": (6, 0, 6)},
+                   {"G1": ("A", "B", "viga", {}), "G2": ("B", "C", "viga", {}),
+                    "X1": ("D", "B", "viga", {"trelica": True}), "X2": ("B", "E", "viga", {"trelica": True})})
+        self.assertEqual(_tipos_no(m, "B"), ["no_trelica", "no_trelica"])
+
+    def test_contravento_cobertura_30(self):
+        """X no plano do telhado a 30° (normal longe da horizontal): gusset, não nó de treliça."""
+        t = math.tan(math.radians(30))
+        m = _monta(_vazio(), {"A": (0, 0, 3), "B": (2, 0, 3 + 2 * t), "C": (4, 0, 3 + 4 * t),
+                              "D": (0, 5, 3), "E": (4, 5, 3 + 4 * t)},
+                   {"R1": ("A", "B", "viga", {"papel": "viga"}), "R2": ("B", "C", "viga", {"papel": "viga"}),
+                    "X1": ("B", "D", "viga", {"trelica": True}), "X2": ("B", "E", "viga", {"trelica": True})})
+        self.assertEqual(_tipos_no(m, "B"), ["gusset_contraventamento", "gusset_contraventamento"])
+
+    def test_plataforma_escoras_sobre_apoio(self):
+        raiz = os.path.join(os.path.dirname(__file__), "..", "..", "..", "testes-aceite")
+        if not os.path.exists(os.path.join(raiz, "PLATAFORMA.ed3")):
+            self.skipTest("testes-aceite/PLATAFORMA.ed3 ausente")
+        m = P.importar_cype("PLATAFORMA.ed3", pasta=os.path.abspath(raiz))
+        mb = {x["barra"]: x for x in lm.membros(m) if x["no"] in ("N1221", "N1228", "N1235")}
+        for b in ("B1223", "B1230", "B1237"):
+            self.assertEqual(mb[b]["tipo"], "base")
+            self.assertIn("chapa de apoio, não placa de base", mb[b]["aviso"])
+
     def test_plataforma_todos_nos(self):
         raiz = os.path.join(os.path.dirname(__file__), "..", "..", "..", "testes-aceite")
         if not os.path.exists(os.path.join(raiz, "PLATAFORMA.ed3")):

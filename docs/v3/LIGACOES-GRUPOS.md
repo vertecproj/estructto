@@ -35,8 +35,9 @@ Em cada nó:
 
 Pilar que termina sem apoio (topo, pilar sobre viga) é o apoio das vigas: não vira ligação própria.
 
-**Nós inclinados e motivo (G3).** Pilar inclinado sozinho num apoio (classe `diagonal` pela geometria, sem
-`trelica`) vira `base`. Barra `trelica` sobre banzo contínuo comum, sem pilar no nó e no plano vertical do banzo, vira
+**Nós inclinados e motivo (G3).** Barra inclinada única sobre apoio (classe `diagonal` pela geometria, sem
+`trelica`) vira `base`; se L < 1,5 m (`_L_CURTA`, escora/mão-francesa) o membro traz `aviso` "barra inclinada sobre
+apoio: chapa de apoio, não placa de base de pilar — conferir". Barra `trelica` sobre banzo contínuo comum, sem pilar no nó e no plano vertical do banzo, vira
 `no_trelica` (o X de contraventamento da cobertura, no plano do telhado, continua `gusset_contraventamento`). Rampa com
 `papel="viga"` liga como viga. Ponta cujo ângulo com o apoio é < 20° (`_ANG_MIN`) não vira ligação: o nó recebe
 motivo ("ângulo X° … impossível"). Todo nó de aço sem ligação recebe motivo (ponta livre; só barras contínuas/pilar que
