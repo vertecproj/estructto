@@ -26,7 +26,7 @@ namespace NovoFtool
         ResultadoSnap snapRes;
         readonly Stopwatch relogioSnap = Stopwatch.StartNew(); double relogioExtra;
         readonly DispatcherTimer timerPausa = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Snap3D.TempoAquisicao + 20) };
-        GeoSnap geo; Modelo3D geoDe; bool geoRealista; Point pxPausa; (double[], double[], double) geoEixos;
+        GeoSnap geo; Modelo3D geoDe; bool geoRealista; Point pxPausa; (double[], double[], double) geoEixos; double[] geoNiveis;
         PainelMedir painelMedir;
 
         double AgoraSnap => relogioSnap.Elapsed.TotalMilliseconds + relogioExtra;
@@ -52,11 +52,11 @@ namespace NovoFtool
         GeoSnap Geometria()
         {
             double zEixos = plano.Normal == 'Z' ? plano.Valor : 0;
-            if (geo != null && geoDe == mod && geoRealista == Realista && geoEixos == (EixosX, EixosY, zEixos)) return geo;
+            if (geo != null && geoDe == mod && geoRealista == Realista && geoEixos == (EixosX, EixosY, zEixos) && geoNiveis == NiveisEixos) return geo;
             var g = new GeoSnap();
             foreach (No3D n in mod.Nos) g.Nos.Add(P(n));
-            foreach (double gx in EixosX) foreach (double gy in EixosY) g.Nos.Add(new Point3D(gx, gy, zEixos));   // cruzamentos da grade estrutural (GR) no nível do plano
-            geoEixos = (EixosX, EixosY, zEixos);
+            g.Nos.AddRange(CruzamentosEixos());   // cruzamentos da grade estrutural em cada nível, o do plano primeiro (Vista3D.Grade.cs)
+            geoEixos = (EixosX, EixosY, zEixos); geoNiveis = NiveisEixos;
             double h = raio * 0.006;
             foreach (Barra3D b in mod.Barras)
             {
@@ -339,11 +339,13 @@ namespace NovoFtool
             Vista.AtrairObjetos = s.Osnap; Vista.Orto = s.Orto; Vista.Polar = s.Polar; Vista.Rastrear = s.Rastreio;
         }
 
-        // Clique nos botões do rodapé com a Vista3D espacial na frente: vale para o snap 3D.
-        void LigarStatus3D()
+        // Clique num botão do rodapé (Orto, Polar, Objetos, Rastreio): o mesmo caminho das teclas F8/F10/F3/F11 (Snap3D via
+        // AplicarStatus, que espelha de volta no rodapé). Sem vista 3D ainda, só o 2D guarda o estado.
+        internal void StatusSnap3D()
         {
-            foreach (var b in new[] { stObj, stOrto, stPolar, stRastro })
-                if (b != null) b.Click += (s, e) => { if (Esp != null && vista3D != null && vista3D.IsVisible) vista3D.AplicarStatus(stObj.IsChecked == true, stOrto.IsChecked == true, stPolar.IsChecked == true, stRastro.IsChecked == true); };
+            if (stObj == null || stOrto == null || stPolar == null || stRastro == null) return;
+            if (vista3D != null) vista3D.AplicarStatus(stObj.IsChecked == true, stOrto.IsChecked == true, stPolar.IsChecked == true, stRastro.IsChecked == true);
+            else { Vista.AtrairObjetos = stObj.IsChecked == true; Vista.Orto = stOrto.IsChecked == true; Vista.Polar = stPolar.IsChecked == true; Vista.Rastrear = stRastro.IsChecked == true; }
         }
 
         // Ctrl+M: Medir 3D no modelo espacial (no 2D continua o Medir do desenho).
@@ -363,7 +365,6 @@ namespace NovoFtool
             b.Click += (s, e) => UsarFerramenta3D(Ferramenta3D.Medir);
             btnFerr3D[Ferramenta3D.Medir] = b; grpDesenho3D.Items.Add(b);
             Reg("medir", "Medir 3D", "Ctrl+M / ME", dica, () => UsarFerramenta3D(Ferramenta3D.Medir));
-            Dispatcher.BeginInvoke(new Action(LigarStatus3D), DispatcherPriority.Loaded);   // o rodapé é montado depois da faixa
             var abaVista = Faixa.Tabs.FirstOrDefault(t => (t.Header as string) == "Vista");
             var nav = abaVista?.Groups.FirstOrDefault(g => (g.Header as string) == "Navegar");
             if (nav != null)

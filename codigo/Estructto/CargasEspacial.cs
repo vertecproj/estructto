@@ -82,7 +82,10 @@ namespace NovoFtool
     public partial class MainWindow
     {
         // Janela do motor (Casos, Vento, Sismo, Pavimentos, Combinações) sobre o documento espacial ativo.
-        async void JanelaMotorEsp(Action<Window> abrir)
+        void JanelaMotorEsp(Action<Window> abrir) => _ = JanelaMotorEsp(w => { abrir(w); return Task.CompletedTask; });
+
+        // abrir roda inteiro dentro do Motor.Exclusivo (await): a busca da janela vê este modelo no servidor.
+        internal async Task JanelaMotorEsp(Func<Window, Task> abrir)
         {
             var d = Esp;
             if (d == null) return;
@@ -90,7 +93,7 @@ namespace NovoFtool
             espRodando = true;
             try
             {
-                bool mudou = await d.ComJanela(() => { abrir(this); return Task.CompletedTask; });
+                bool mudou = await d.ComJanela(() => abrir(this));
                 if (mudou && Esp == d) DepoisDeMudarEspacial("Modelo espacial alterado pela janela do motor (casos, ações ou pavimentos).");
             }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }

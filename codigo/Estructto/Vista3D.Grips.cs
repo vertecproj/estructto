@@ -104,34 +104,7 @@ namespace NovoFtool
             }
         }
 
-        // ---------- eixos da grade estrutural (GR) ----------
-
-        static readonly Pen PEixo = Caneta(new SolidColorBrush(Color.FromArgb(0x90, 0x7C, 0x8B, 0x9E)), 1, new double[] { 10, 3, 2, 3 });
-        static readonly Pen PBalao = Caneta(new SolidColorBrush(Color.FromArgb(0xC0, 0x94, 0xA3, 0xB8)), 1);
-
-        // Linhas traço-ponto no nível do plano de trabalho (horizontal) ou no térreo, com balões de nome fora da grade.
-        void DesenharEixos(DrawingContext dc)
-        {
-            if (EixosX.Length == 0 && EixosY.Length == 0) return;
-            double z = plano.Normal == 'Z' ? plano.Valor : 0;
-            double x0 = EixosX.DefaultIfEmpty(0).Min(), x1 = EixosX.DefaultIfEmpty(0).Max(), y0 = EixosY.DefaultIfEmpty(0).Min(), y1 = EixosY.DefaultIfEmpty(0).Max();
-            const double sobra = 1.5;
-            void Linha(Point3D a, Point3D b, string nome)
-            {
-                Point pa = Tela(a), pb = Tela(b);
-                dc.DrawLine(PEixo, pa, pb);
-                if (string.IsNullOrEmpty(nome)) return;
-                Vector u = pa - pb; if (u.Length < 1) return; u.Normalize();
-                Point c = pa + u * 11;
-                dc.DrawEllipse(TemaPlant.BCaixaHud, PBalao, c, 10, 10);
-                var ft = new FormattedText(nome, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, TfEntrada, 10.5, TemaPlant.BTexto1, 1.0);
-                dc.DrawText(ft, new Point(c.X - ft.Width / 2, c.Y - ft.Height / 2));
-            }
-            for (int i = 0; i < EixosX.Length; i++) Linha(new Point3D(EixosX[i], y0 - sobra, z), new Point3D(EixosX[i], y1 + sobra, z), i < NomesX.Length ? NomesX[i] : null);
-            for (int j = 0; j < EixosY.Length; j++) Linha(new Point3D(x0 - sobra, EixosY[j], z), new Point3D(x1 + sobra, EixosY[j], z), j < NomesY.Length ? NomesY[j] : null);
-        }
-
-        // ---------- pedidos dos comandos ----------
+        // ---------- pedidos dos comandos ----------   (eixos da grade estrutural: Vista3D.Grade.cs)
 
         Func<Point3D, Task<bool>> pedePonto;                         // true = continua pedindo (o ponto vira a base do próximo)
         Func<object, Point3D?, ModifierKeys, Task<bool>> pedeObjeto;   // true = continua pedindo

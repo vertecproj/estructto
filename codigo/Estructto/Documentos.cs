@@ -56,6 +56,8 @@ namespace NovoFtool
             Log("Modelo ativo: " + docs[i].Nome + ".");
         }
 
+        internal void TrocarParaDoc(DocumentoEspacial e) => TrocarDoc(docs.FindIndex(x => x.Esp == e));   // capturas
+
         bool DocVazio { get { return Esp == null && M.Barras.Count == 0 && M.Nos.Count == 0 && arquivo == null && !alterado; } }
 
         // aba nova (ou reaproveita a atual se ela estiver vazia) antes de carregar outro modelo
@@ -71,6 +73,7 @@ namespace NovoFtool
         {
             if (i != docAtivo) TrocarDoc(i);
             if (!PodeDescartar()) return;
+            Config.ApagarRecuperacao(docs[docAtivo].Esp?.Chave);   // fechada (salva ou descartada): a cópia dela sai
             docs[docAtivo].Esp?.Descartar();
             docs.RemoveAt(docAtivo);
             if (docs.Count == 0) docs.Add(new Documento());

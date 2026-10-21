@@ -340,8 +340,8 @@ namespace NovoFtool
             // ANALISE: resultado mostrado (inserido por MontarCasosNaFaixa), modal/estabilidade e diagramas
             abaAnalise = Aba("Análise", "N",
                 Grupo("Modal e estabilidade",
-                    Botao("modal", "Modos de vibração", () => ComMotor(false, ComandosAnalise.AbrirModal), "Análise modal: frequências, períodos e massa participante dos primeiros modos (motor Python)."),
-                    Botao("estabilidade", "Estabilidade", () => ComMotor(true, ComandosAnalise.AbrirEstabilidade), "γz e deslocamentos-limite (NBR 6118/8800). Calcula o modelo no motor Python antes de abrir.")),
+                    Botao("modal", "Modos de vibração", () => _ = ComMotor(false, ComandosAnalise.AbrirModal), "Análise modal: frequências, períodos e massa participante dos primeiros modos (motor Python)."),
+                    Botao("estabilidade", "Estabilidade", () => _ = ComMotor(true, ComandosAnalise.AbrirEstabilidade), "γz e deslocamentos-limite (NBR 6118/8800). Calcula o modelo no motor Python antes de abrir.")),
                 Grupo("Diagramas",
                     BotaoDiagrama("def", "Deformada", Diagrama.Deformada, "Configuração deformada (ampliada).", "DEF + Enter"),
                     BotaoDiagrama("normal", "Normal", Diagrama.Normal, "Esforço normal N (kN). Positivo = tração.", "N + Enter"),
@@ -354,7 +354,7 @@ namespace NovoFtool
             // DIMENSIONAMENTO
             abaDimens = Aba("Dimensionamento", "D",
                 Grupo("Verificar",
-                    Botao("veriflista", "Verificação de barras", () => ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras), "Lista de todas as barras com a taxa, o critério determinante e o item da norma. Calcula antes, se preciso."),
+                    Botao("veriflista", "Verificação de barras", () => _ = ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras), "Lista de todas as barras com a taxa, o critério determinante e o item da norma. Calcula antes, se preciso."),
                     (tgCalor = BotaoCalor()),
                     Botao("comparar", "Verificar barra", () => VerificarBarraConforme(null), "Verificação detalhada (NBR 8800) da barra escolhida.", null, true)),
                 Grupo("Otimizar",
@@ -543,10 +543,10 @@ namespace NovoFtool
             stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade do plano de trabalho (F9)", v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; })); stAtrair.IsChecked = true;
             stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade do plano de trabalho ao desenhar (F7)", v => V3(x => x.MostrarGradePlano = v)); stGrade.IsChecked = true;
             NovoBloco();
-            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => { });
-            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => { }); stPolar.IsChecked = true;
-            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => { }); stObj.IsChecked = true;
-            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => { }); stRastro.IsChecked = true;
+            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => StatusSnap3D());
+            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => StatusSnap3D()); stPolar.IsChecked = true;
+            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => StatusSnap3D()); stObj.IsChecked = true;
+            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => StatusSnap3D()); stRastro.IsChecked = true;
             stDin = StatusBtn("M2,6 H18 V14 H2 Z M5,10 H9 M12,8 V12", "Dinâmica — caixas de comprimento e ângulo junto ao cursor (F12)", v => V3(x => x.EntradaDinamica = v)); stDin.IsChecked = true;
             NovoBloco();
             var tela = new Button { Content = IconeStatus("M2,7 V2 H7 M13,2 H18 V7 M18,13 V18 H13 M7,18 H2 V13"), ToolTip = "Enquadrar o modelo (Z + Enter, duplo clique na roda)", Style = EstiloBotaoStatus() };

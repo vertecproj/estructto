@@ -149,8 +149,7 @@ namespace NovoFtool
             if (d == null) return;
             try
             {
-                var ids = await d.DesenharBarras(segs, SecaoDesenho3D(d), ApoioBase3D, MaterialDesenho3D(d), giro3D * Math.PI / 180);
-                foreach (string id in ids) if (cardinal3D != 5) d.Cardinais[id] = cardinal3D; else d.Cardinais.Remove(id);
+                var ids = await d.DesenharBarras(segs, SecaoDesenho3D(d), ApoioBase3D, MaterialDesenho3D(d), giro3D * Math.PI / 180, cardinal3D);
                 if (Esp == d) DepoisDeMudarEspacial(ids.Count == 1 ? "Barra " + ids[0] + " desenhada." : Pl.N(ids.Count, "barra desenhada", "barras desenhadas") + ".");
             }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
@@ -206,7 +205,7 @@ namespace NovoFtool
             void LerGiro() { if (Num.Ler(tbGiro.Text, out double g)) giro3D = g; tbGiro.Text = Num.Fmt(giro3D, 1); }
             tbGiro.LostFocus += (s, e) => LerGiro(); tbGiro.KeyDown += (s, e) => { if (e.Key == Key.Enter) LerGiro(); };
             cbCardinal3D = new F.ComboBox { Header = "Cardinal", IsEditable = false, Width = 150,
-                ToolTip = Dica("Ponto cardinal (justificação)", "Onde o eixo desenhado passa na seção: 1 a 9 da caixa da seção (7 8 9 em cima, 1 2 3 embaixo, como o teclado numérico) ou o centroide. Guardado por barra no .estructto (o desenho deslocado do perfil fica para o Realista); a análise usa o eixo.") };
+                ToolTip = Dica("Ponto cardinal (justificação)", "Onde o eixo desenhado passa na seção: 1 a 9 da caixa da seção (7 8 9 em cima, 1 2 3 embaixo, como o teclado numérico) ou o centroide. Guardado na barra (params.cardinal do motor; Ctrl+Z desfaz junto); o Realista desloca o perfil, a análise usa o eixo.") };
             foreach (string c in Cardinais) cbCardinal3D.Items.Add(c);
             cbCardinal3D.SelectedIndex = 4;
             cbCardinal3D.SelectionChanged += (s, e) => { if (cbCardinal3D.SelectedIndex >= 0) cardinal3D = cbCardinal3D.SelectedIndex + 1; };
@@ -270,9 +269,10 @@ namespace NovoFtool
         // existente reaproveita o nó. Seção = a do seletor (Desenhar 3D › Seção, que já põe o perfil do catálogo no modelo; se
         // faltar, entra no mesmo lote); sem seção, a primeira do modelo ou W310x38.7. Material = o da última barra
         // (ou A-572 GR.50 no mesmo lote). apoioBase: nó novo na cota do nível mais baixo nasce engastado.
+        // cardinal (1..10, 5 = centro) vai em params.cardinal da barra, no mesmo lote (um Ctrl+Z leva a barra e o cardinal).
         // Devolve os ids das barras criadas.
         // ponytail: material não segue a seção (perfil de concreto do catálogo herda o aço da última barra); trocar em Propriedades em lote.
-        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs, string secao = null, bool apoioBase = false, string materialEscolhido = null, double rot = 0) => Motor.Exclusivo(async () =>
+        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs, string secao = null, bool apoioBase = false, string materialEscolhido = null, double rot = 0, int cardinal = 5) => Motor.Exclusivo(async () =>
         {
             await Garantir();
             var nos = Json["nos"].AsObject();
@@ -302,7 +302,9 @@ namespace NovoFtool
             {
                 string ni = No(a), nj = No(b);
                 if (ni == nj) continue;
-                itens.Add(new JsonObject { ["tipo"] = "barra", ["dados"] = new JsonObject { ["ni"] = ni, ["nj"] = nj, ["secao"] = secao, ["material"] = material, ["rot"] = rot } });
+                var dados = new JsonObject { ["ni"] = ni, ["nj"] = nj, ["secao"] = secao, ["material"] = material, ["rot"] = rot };
+                if (cardinal != 5) dados["params"] = new JsonObject { ["cardinal"] = cardinal };
+                itens.Add(new JsonObject { ["tipo"] = "barra", ["dados"] = dados });
             }
             var r = await Motor.Post("/api/modelo/lote", new JsonObject { ["itens"] = itens });
             TemHistorico = true;
