@@ -1382,7 +1382,9 @@ namespace NovoFtool
                 sb.AppendLine("ligações na vista: " + v.ModeloAtual.Ligacoes.Count + " (com pontas do motor: " + v.ModeloAtual.Ligacoes.Count(l => l.Ponta != null) + ")");
                 Render3D.Coleta = new List<(string, MalhaDx)>();
                 v.DefinirLigacoes(v.ModeloAtual.Ligacoes); EsperarIdle();   // remonta a cena guardando os sólidos
-                var col = Render3D.Coleta; Render3D.Coleta = null;
+                var todos = Render3D.Coleta; Render3D.Coleta = null;
+                var col = todos.Where(x => !x.Nome.StartsWith("parafuso") && !x.Nome.StartsWith("excluir")).ToList();   // parafusos atravessam as chapas; barras curtas marcadas pelo motor (G5)
+                sb.AppendLine("fora do teste: " + todos.Count(x => x.Nome.StartsWith("excluir")) + " sólidos marcados excluir_interferencia");
                 var sw = Stopwatch.StartNew();
                 var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList());
                 pares = r.Count;

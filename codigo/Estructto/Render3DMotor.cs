@@ -170,6 +170,7 @@ namespace NovoFtool
                         lig = new Ligacao3D { No = idN, Barra = b.Id, Nome = (string)g["nome"] ?? "", Pendente = tipoNo + "|" + string.Join("|", assin) };
                     }
                     lig.Proposta = proposta;
+                    if (mb["excluir_interferencia"] is JsonValue ev && ev.TryGetValue(out bool ex) && ex) lig.Excluir = true;   // G5: barra curta marcada no membro
                     if (proposta) nProp++;
                     r.Add(lig);
                 }

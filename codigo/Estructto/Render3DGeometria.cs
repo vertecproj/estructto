@@ -155,10 +155,11 @@ namespace NovoFtool
         // Para cada ponta de barra que precisa de recorte, o plano de corte. Regras (docs/v3/RENDER.md):
         // pilar contínuo; viga para na face do pilar menos a folga; diagonal recua até a face da peça contínua (+ folga maior);
         // dois banzos do mesmo nível que se encontram sem peça contínua = esquadria pela bissetriz; viga secundária para na face
-        // da viga mais alta. folga(b, emI) = vão entre a ponta e a face (m); recuoFixo(b, emI) = recuo imposto (NaN = regra).
+        // da viga mais alta. v5 (modelo com pontas do motor): plano angulo na barra oblíqua, boca de peixe, esquadria recuada
+        // pela chapa e contínua = maior área; sem v5 fica a regra da v0.4 (Review Focus 3). folga(b, emI) = vão entre a ponta e a face (m); recuoFixo(b, emI) = recuo imposto (NaN = regra).
         public static Dictionary<(Barra3D, bool), Corte> Juntas(Modelo3D mod, Func<Barra3D, (Point3D A, Point3D C)> pontos, Func<Barra3D, Contorno> forma,
                                                                   Func<Barra3D, bool, double> folga, Func<Barra3D, bool, double> recuoFixo,
-                                                                  Func<Barra3D, bool, Corte> motor = null)
+                                                                  Func<Barra3D, bool, Corte> motor = null, bool v5 = false)
         {
             var porNo = new Dictionary<int, List<Ponta>>();
             foreach (Barra3D b in mod.Barras)
@@ -177,7 +178,7 @@ namespace NovoFtool
             var cortes = new Dictionary<(Barra3D, bool), Corte>();
             foreach (var kv in porNo)
             {
-                var ord = kv.Value.OrderByDescending(p => p.Rank).ThenByDescending(p => AreaSecao(p.F)).ThenByDescending(p => p.L).ToList();   // mesma classe: a de maior área é a contínua (tesoura HP, não a terça Ue de mesma altura)
+                var ord = kv.Value.OrderByDescending(p => p.Rank).ThenByDescending(p => v5 ? AreaSecao(p.F) : p.F.H).ThenByDescending(p => p.L).ToList();   // mesma classe: a de maior área é a contínua (tesoura HP, não a terça Ue de mesma altura)
                 Ponta top = ord[0];
                 Ponta par = ord.Skip(1).FirstOrDefault(q => q.Rank == top.Rank && Vector3D.DotProduct(q.D, top.D) < -0.98);
                 var continuas = new HashSet<Ponta> { top }; if (par != null) continuas.Add(par);
@@ -189,7 +190,7 @@ namespace NovoFtool
                     foreach (Ponta q in new[] { top, o2 })   // recuoFixo (chapa de topo da cumeeira): o plano recua a espessura da chapa para dentro da barra
                     {
                         double off = recuoFixo(q.B, q.EmI); Vector3D nq = Vector3D.DotProduct(n, q.D) > 0 ? n : -n;
-                        cortes[(q.B, q.EmI)] = new Corte { P = q.No + nq * (double.IsNaN(off) ? 0 : off), N = n, Esquadria = true, Contra = q == top ? o2.B : top.B };
+                        cortes[(q.B, q.EmI)] = new Corte { P = q.No + nq * (double.IsNaN(off) || !v5 ? 0 : off), N = n, Esquadria = true, Contra = q == top ? o2.B : top.B };
                     }
                     continuas.Add(o2);
                 }
@@ -226,8 +227,8 @@ namespace NovoFtool
                         }
                     }
                     k.NaMesa = top.F.H * Math.Abs(Vector3D.DotProduct(q.D, top.U)) <= top.F.B * Math.Abs(Vector3D.DotProduct(q.D, top.V));
-                    if (k.Contra != null && Redondo(q.F) && Redondo(top.F) && q.F.H <= top.F.H + 1e-9) { k.P = q.No; k.N = q.D; k.Inclinada = false; Boca(k, q, top); }   // tubo em tubo: boca de peixe
-                    else if (k.Contra != null && !k.Inclinada && (q.Rank == 1 || double.IsNaN(fixo))) k.Extra = Angulo(q, top, folga(q.B, q.EmI));   // barra oblíqua ao apoio (diagonal, água do telhado): nenhum canto entra nele
+                    if (v5 && k.Contra != null && Redondo(q.F) && Redondo(top.F) && q.F.H <= top.F.H + 1e-9) { k.P = q.No; k.N = q.D; k.Inclinada = false; Boca(k, q, top); }   // tubo em tubo: boca de peixe
+                    else if (v5 && k.Contra != null && !k.Inclinada && (q.Rank == 1 || double.IsNaN(fixo))) k.Extra = Angulo(q, top, folga(q.B, q.EmI));   // barra oblíqua ao apoio (diagonal, água do telhado): nenhum canto entra nele
                     cortes[(q.B, q.EmI)] = k;
                 }
             }
@@ -505,6 +506,16 @@ namespace NovoFtool
                     int n = Math.Max(1, (int)Math.Ceiling((q - p).Length() / passo));
                     for (int m = 0; m < n; m++) Testa(Vector3.Lerp(p, q, (float)m / n));
                 }
+            // face atravessando face (duas chapas em X sem vértice nem aresta dentro da outra): grade no interior dos triângulos
+            // que tocam a caixa de b
+            for (int k = 0; k + 2 < a.T.Count; k += 3)
+            {
+                Vector3 p0 = a.P[a.T[k]], p1 = a.P[a.T[k + 1]], p2 = a.P[a.T[k + 2]];
+                Vector3 mi = Vector3.Min(p0, Vector3.Min(p1, p2)), ma = Vector3.Max(p0, Vector3.Max(p1, p2));
+                if (mi.X > cb.Max.X || ma.X < cb.Min.X || mi.Y > cb.Max.Y || ma.Y < cb.Min.Y || mi.Z > cb.Max.Z || ma.Z < cb.Min.Z) continue;
+                int n = Math.Max(2, (int)Math.Ceiling(Math.Max((p1 - p0).Length(), Math.Max((p2 - p1).Length(), (p0 - p2).Length())) / passo));
+                for (int i = 1; i < n; i++) for (int j = 1; i + j < n; j++) Testa(p0 + (p1 - p0) * ((float)i / n) + (p2 - p0) * ((float)j / n));
+            }
             return pior > tol ? pior : 0;
         }
 
@@ -542,6 +553,68 @@ namespace NovoFtool
             float vb = d5 * d2 - d1 * d6; if (vb <= 0 && d2 >= 0 && d6 <= 0) return (p - (a + ac * (d2 / (d2 - d6)))).Length();
             float va = d3 * d6 - d5 * d4; if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return (p - (b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6))))).Length();
             float den = 1 / (va + vb + vc); return (p - (a + ab * (vb * den) + ac * (vc * den))).Length();
+        }
+
+        // Cópia literal do Juntas da v0.4 (commit 635d160), só para o teste de Review Focus 3: modelo sem pontas do motor
+        // tem de sair com os mesmos planos (TestesExportar).
+        internal static Dictionary<(Barra3D, bool), Corte> JuntasV04(Modelo3D mod, Func<Barra3D, (Point3D A, Point3D C)> pontos, Func<Barra3D, Contorno> forma,
+                                                                  Func<Barra3D, bool, double> folga, Func<Barra3D, bool, double> recuoFixo)
+        {
+            var porNo = new Dictionary<int, List<Ponta>>();
+            foreach (Barra3D b in mod.Barras)
+            {
+                var (a, c) = pontos(b); Vector3D e = c - a; double len = e.Length; if (len < 1e-9) continue; e /= len;
+                Vector3D v = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), u = Vector3D.CrossProduct(v, e);
+                Contorno f = forma(b);
+                Point dc = GeometriaPerfis.Cardinal(f, b.Cardinal); a += u * dc.X + v * dc.Y; c += u * dc.X + v * dc.Y;
+                foreach (bool emI in new[] { true, false })
+                {
+                    int id = emI ? b.Ni : b.Nj;
+                    if (!porNo.TryGetValue(id, out var l)) porNo[id] = l = new List<Ponta>();
+                    l.Add(new Ponta { B = b, EmI = emI, D = emI ? e : -e, L = len, F = f, U = u, V = v, No = emI ? a : c });
+                }
+            }
+            var cortes = new Dictionary<(Barra3D, bool), Corte>();
+            foreach (var kv in porNo)
+            {
+                var ord = kv.Value.OrderByDescending(p => p.Rank).ThenByDescending(p => p.F.H).ThenByDescending(p => p.L).ToList();
+                Ponta top = ord[0];
+                Ponta par = ord.Skip(1).FirstOrDefault(q => q.Rank == top.Rank && Vector3D.DotProduct(q.D, top.D) < -0.98);
+                var continuas = new HashSet<Ponta> { top }; if (par != null) continuas.Add(par);
+                int nTop = ord.Count(q => q.Rank == top.Rank);
+                if (par == null && nTop == 2 && top.Rank <= 2)   // cumeeira ou canto de banzos: esquadria
+                {
+                    Ponta o2 = ord.First(q => q != top && q.Rank == top.Rank);
+                    Vector3D n = top.D - o2.D; n.Normalize();
+                    foreach (Ponta q in new[] { top, o2 }) cortes[(q.B, q.EmI)] = new Corte { P = q.No, N = n, Esquadria = true, Contra = q == top ? o2.B : top.B };
+                    continuas.Add(o2);
+                }
+                foreach (Ponta q in ord)
+                {
+                    double fixo = recuoFixo(q.B, q.EmI);
+                    if (continuas.Contains(q) && double.IsNaN(fixo)) continue;
+                    double fd = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max();
+                    double recuo = double.IsNaN(fixo) ? fd + folga(q.B, q.EmI) : fixo;
+                    recuo = Math.Min(recuo, 0.3 * q.L);
+                    if (recuo <= 1e-6) continue;
+                    var k = new Corte { P = q.No + q.D * recuo, N = q.D, Recuo = recuo, Face = fd, Contra = continuas.Contains(q) ? null : top.B };
+                    // viga inclinada (água do telhado) contra pilar: a chapa fica rente à face do pilar (vertical) e a viga é cortada nesse plano;
+                    // a folga (espessura da chapa) conta na normal da face, não ao longo da barra.
+                    if (top.Rank == 3 && q.Rank == 2 && k.Contra != null)
+                    {
+                        Vector3D nf = q.D - Vector3D.DotProduct(q.D, top.D) * top.D; double cs = nf.Length;
+                        if (cs > 0.5 && cs < 1 - 1e-6)
+                        {
+                            nf /= cs;
+                            k.N = nf; k.Inclinada = true; k.Face = fd * cs;
+                            k.P = q.No + q.D * fd + nf * (recuo - fd);
+                        }
+                    }
+                    k.NaMesa = top.F.H * Math.Abs(Vector3D.DotProduct(q.D, top.U)) <= top.F.B * Math.Abs(Vector3D.DotProduct(q.D, top.V));
+                    cortes[(q.B, q.EmI)] = k;
+                }
+            }
+            return cortes;
         }
 
         // Autoverificação (Estructto.exe --testes-exportar também chama): triangulação, recortes e sólidos fechados.
@@ -649,6 +722,10 @@ namespace NovoFtool
                 var cb = new Color4(1, 1, 1, 1);
                 MalhaDx Cx(double x) { var mx = new MalhaDx(); mx.Caixa(new Point3D(x, 0, 0), 0.2, 0.2, 0.2, cb); return mx; }
                 var ip = Interferencias(new[] { Cx(0), Cx(0.15) }); var it = Interferencias(new[] { Cx(0), Cx(0.2) });
+                // duas chapas em cruz (16 mm × 300 × 300): os vértices de uma ficam fora da outra; o teste de face acha
+                var ma = new MalhaDx(); ma.Caixa(new Point3D(0, 0, 0), 0.3, 0.3, 0.016, cb); var mb = new MalhaDx(); mb.Caixa(new Point3D(0.07, 0.03, 0), 0.06, 0.016, 0.3, cb);
+                var ix = Interferencias(new[] { ma, mb });
+                afirmar(ix.Count == 1 && ix[0].Prof > 0.005, "interferência: chapas em cruz (face atravessando face) = 1 par (prof. " + (ix.Count > 0 ? (ix[0].Prof * 1000).ToString("0.0") : "—") + " mm)");
                 afirmar(ip.Count == 1 && ip[0].Prof > 0.02 && ip[0].Prof <= 0.05 + 1e-6 && it.Count == 0, "interferência: caixas sobrepostas 5 cm = 1 par (prof. " + (ip.Count > 0 ? (ip[0].Prof * 1000).ToString("0") : "—") + " mm); encostadas = 0");
                 // pórtico acima com os cortes das juntas: pilar, viga e diagonal (recorte angulo) não se interpenetram
                 MalhaDx Solido(Barra3D b, Dictionary<(Barra3D, bool), Corte> cs, Contorno f)
@@ -658,9 +735,10 @@ namespace NovoFtool
                     cs.TryGetValue((b, true), out Corte k1); cs.TryGetValue((b, false), out Corte k2);
                     Extrudar(ms, f, a0, c0, ub, vb, k1, k2, cb, false); return ms;
                 }
-                var pecas = new[] { Solido(pilar, cortes, fPilar), Solido(viga, cortes, fViga), Solido(diag, cortes, fViga) };
+                var c5 = Juntas(mod, b => (new Point3D(nos[b.Ni].X, 0, nos[b.Ni].Z), new Point3D(nos[b.Nj].X, 0, nos[b.Nj].Z)), b => b == pilar ? fPilar : fViga, (b, emI) => 0.01, (b, emI) => double.NaN, null, true);
+                var pecas = new[] { Solido(pilar, c5, fPilar), Solido(viga, c5, fViga), Solido(diag, c5, fViga) };
                 var ij = Interferencias(pecas);
-                afirmar(ij.Count == 0 && cd.Extra != null, "diagonal com recorte angulo: pilar, viga e diagonal sem interferência (" + ij.Count + " pares)");
+                afirmar(ij.Count == 0 && c5[(diag, true)].Extra != null && cd.Extra == null, "diagonal com recorte angulo: pilar, viga e diagonal sem interferência (" + ij.Count + " pares)");
                 // pontas do motor: plano no recuo dado (sem o limite 0,3·L) e cope lateral (esq) no contorno
                 var cm = Juntas(mod, b => (new Point3D(nos[b.Ni].X, 0, nos[b.Ni].Z), new Point3D(nos[b.Nj].X, 0, nos[b.Nj].Z)), b => b == pilar ? fPilar : fViga,
                                 (b, emI) => 0.01, (b, emI) => double.NaN, (b, emI) => b == viga && emI ? new Corte { P = new Point3D(1.5, 0, 3), N = new Vector3D(-1, 0, 0) } : null);
@@ -674,7 +752,7 @@ namespace NovoFtool
                 var nt = mt.Nos.ToDictionary(n => n.Id);
                 Contorno fB = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "TC", H = 0.168, Tw = 0.008 }, 0.1), fR = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "TC", H = 0.114, Tw = 0.006 }, 0.1);
                 Func<Barra3D, (Point3D, Point3D)> pt = b => (new Point3D(nt[b.Ni].X, 0, nt[b.Ni].Z), new Point3D(nt[b.Nj].X, 0, nt[b.Nj].Z));
-                var ct = Juntas(mt, pt, b => b == br ? fR : fB, (b, emI) => 0, (b, emI) => double.NaN);
+                var ct = Juntas(mt, pt, b => b == br ? fR : fB, (b, emI) => 0, (b, emI) => double.NaN, null, true);
                 MalhaDx Sol(Barra3D b) { var ms = new MalhaDx(); var (a0, c0) = pt(b); Vector3D eb = c0 - a0; eb.Normalize(); Vector3D vb = Modelo3D.EixoY(eb, 0), ub = Vector3D.CrossProduct(vb, eb);
                                          ct.TryGetValue((b, true), out Corte k1); ct.TryGetValue((b, false), out Corte k2); Extrudar(ms, b == br ? fR : fB, a0, c0, ub, vb, k1, k2, cb, false); return ms; }
                 MalhaDx sr = Sol(br);
