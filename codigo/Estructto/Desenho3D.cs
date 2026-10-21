@@ -97,7 +97,7 @@ namespace NovoFtool
             {
                 (Ferramenta3D.Selecionar, "sel", "Selecionar", "Selecionar", "Clique escolhe; arraste da esquerda p/ direita = janela, da direita p/ esquerda = cruzamento. Shift soma, Ctrl tira, Esc limpa. Grips: clique num □ e no destino (Ctrl copia).", "S / Esc"),
                 (Ferramenta3D.Barra, "barra", "Barra", "Barra", "Viga ou barra qualquer: cliques em sequência no plano de trabalho (snap a objetos, ORTO F8, polar F10). Digite o comprimento, Tab o ângulo, ou x,y,z / @dx,dy,dz. Enter, Esc ou botão direito termina.", "L"),
-                (Ferramenta3D.Pilar, "3d", "Pilar", "Pilar", "Clique o ponto no plano de trabalho: num nível com outro abaixo, o pilar desce até ele; no nível mais baixo, sobe até o próximo (3 m sem níveis).", "PI"),
+                (Ferramenta3D.Pilar, "pilar", "Pilar", "Pilar", "Clique o ponto no plano de trabalho: num nível com outro abaixo, o pilar desce até ele; no nível mais baixo, sobe até o próximo (3 m sem níveis).", "PI"),
             })
             {
                 var b = new F.ToggleButton { Header = txt, LargeIcon = Icone(ic, 32), Icon = Icone(ic, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(nome, dica, atalho) };

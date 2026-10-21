@@ -311,13 +311,12 @@ namespace NovoFtool
         F.BackstageTabItem TabExportar()
         {
             var sp = new StackPanel { Margin = new Thickness(30, 20, 30, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
-            sp.Children.Add(new TextBlock { Text = "Exportar o modelo 3D", FontSize = 22, FontWeight = FontWeights.Light, Margin = new Thickness(0, 0, 0, 14) });
+            sp.Children.Add(new TextBlock { Text = "Exportar o modelo 3D", FontSize = TemaPlant.TamDisplay, FontWeight = FontWeights.Medium, FontFamily = TemaPlant.FonteTitulo, Margin = new Thickness(0, 0, 0, 14) });
             foreach (var (fmt, dica) in new[] { ("DWG", "AutoCAD 2018 (AC1032): uma malha por barra na camada da seção + eixos analíticos, em mm."), ("DXF", "O mesmo conteúdo do DWG em DXF (texto)."), ("STEP", "STEP AP214: uma peça (sólido de faces planas) por barra, numa montagem, em mm.") })
             {
-                var b = new F.Button { Header = fmt + "...", ToolTip = dica, Margin = new Thickness(0, 0, 0, 6), HorizontalAlignment = HorizontalAlignment.Left };
-                b.Click += (s, e) => { Bastidor.IsOpen = false; ExportarModelo(fmt); };
-                sp.Children.Add(b);
-                sp.Children.Add(new TextBlock { Text = dica, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 0, 0, 12), TextWrapping = TextWrapping.Wrap });
+                // cartoes de acao iguais aos de Importar (Backstage.cs AcaoBs): icone da familia + titulo + descricao
+                string f = fmt;
+                sp.Children.Add(AcaoBs(f.ToLowerInvariant(), f + "…", dica, () => { Bastidor.IsOpen = false; ExportarModelo(f); }, 480));
             }
             return new F.BackstageTabItem { Header = "Exportar", Content = sp, ToolTip = "Exporta o modelo 3D para DWG, DXF ou STEP." };
         }

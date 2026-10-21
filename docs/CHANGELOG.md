@@ -2,6 +2,17 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 21/10/2026 — Polimento de design v3: tokens, Barlow, família de ícones, faixa/rodapé e janelas (branch wt-design)
+
+- Crítica das capturas e decisões em `docs/v3/DESIGN-V3.md`; imagens curadas antes/depois em `docs/v3/design/`.
+- `TemaPlant.cs`: escala tipográfica (10/11/12/13,5/16/22), `FonteTitulo` = Barlow (OFL, `codigo/Estructto/Fontes/`), bordas mais
+  quietas, `Text.Secondary` mais legível, `Elevation.Highlight`, raios como recurso. Layout (faixa, docks, 3D, tela inicial) não mudou.
+- `Icones.cs`: uma família (grade 32, traço 2, duotone 18 %): novos `eixos`, `niveis`, `pilar`, `laje`, `ligacao`, `grupos`, `trelica`,
+  `contrav`, `copiarpav`, `pilaresniv`, `3dcompleto`, `iso`, `dwg`/`dxf`/`step`, `casa`, `dinamica`; `verif`/`veriflista` no peso da
+  família; `Icones.Mono()` para os chips do rodapé (sem contorno azul; ligado = ícone em acento).
+- Janelas: `UiAcoes` e `ComandosAnalise` com o mesmo cabeçalho/rodapé; títulos ≥ 15 px na fonte de exibição; Exportar em cartões
+  como Importar; CTA da tela inicial em acento sutil; HUD/toast com aresta clara; ViewCube com rótulos 10 px.
+
 ## 21/10/2026 — Realista "absurdo": Render3D em DX11 com recortes e ligações (branch wt-render)
 
 - Modo Realista em HelixToolkit.Wpf.SharpDX 3.1.2 (`Render3D*.cs`): sombra entre peças (shadow map 4096²), SSAO, PBR com cor por

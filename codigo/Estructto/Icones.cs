@@ -106,6 +106,25 @@ namespace NovoFtool
                 ["separar"] = C(S(L, "M3,16 H10 M13,16 H19 M22,16 H29"), S(A, "M11.5,10 V22 M20.5,10 V22")),
                 ["selmembro"] = C(S(A, "M6,16 H26"), Hd(5, 16), Hd(16, 16), Hd(27, 16)),
 
+                // ---------------- v3: planos, pilares, chapas, ligações, treliças, exportação (DESIGN-V3 §2.2) ----------------
+                ["eixos"] = C(S(L2, "M11,8 V30 M23,8 V30 M2,12 H30 M2,24 H30", 1.5), Du(A, "M8,4 a3,3 0 1 0 6,0 a3,3 0 1 0 -6,0 Z M20,4 a3,3 0 1 0 6,0 a3,3 0 1 0 -6,0 Z", 1.5)),
+                ["niveis"] = C(S(L, "M4,12 H20 L28,6 H12 Z"), Du(A, "M4,20 H20 L28,14 H12 Z"), S(L, "M4,28 H20 L28,22 H12 Z")),
+                ["pilar"] = C(Du(L, "M12,3 H20 V24 H12 Z"), Du(A, "M6,24 H26 V28 H6 Z")),
+                ["laje"] = C(Du(A, "M4,14 H20 L28,8 H12 Z"), S(L, "M4,14 V19 H20 V14 M20,19 L28,13 V8")),
+                ["ligacao"] = C(S(L, "M8,3 V29"), S(L, "M15,16 H29"), Du(A, "M10,9 H15 V23 H10 Z"), Pt(L, 12.5, 13, 1.5), Pt(L, 12.5, 19, 1.5)),
+                ["grupos"] = C(S(L2, "M8,10 H24 M8,10 L16,24 M24,10 L16,24", 1.5), Du(A, "M4.5,10 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 Z M20.5,10 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 Z M12.5,24 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 Z", 1.5)),
+                ["trelica"] = C(S(L, "M3,25 H29 L16,8 Z"), S(A, "M16,8 V25 M9.5,16.5 L16,25 L22.5,16.5", 1.5)),
+                ["contrav"] = C(S(L, "M5,5 H27 V27 H5 Z"), S(A, "M5,5 L27,27 M27,5 L5,27", 1.5)),
+                ["copiarpav"] = C(S(L, "M4,27 H20 L28,21 H12 Z"), Du(A, "M4,17 H20 L28,11 H12 Z"), S(A, "M16,2 V9 M12.5,5.5 H19.5")),
+                ["pilaresniv"] = C(S(L, "M4,11 H20 L28,5 H12 Z"), S(A, "M4,11 V27 M20,11 V27 M28,5 V21 M12,5 V21", 1.5), S(L, "M4,27 H20 L28,21 H12 Z")),
+                ["3dcompleto"] = C(S(L, "M6,10 L16,5 L26,10 V22 L16,27 L6,22 Z M6,10 L16,15 L26,10 M16,15 V27"), Sd(A, "M6,22 L16,17 L26,22 M16,17 V5", 1.5)),
+                ["iso"] = C(Du(A, "M6,10 L16,5 L26,10 L16,15 Z"), S(L, "M6,10 V22 L16,27 L26,22 V10 M16,15 V27")),
+                ["dwg"] = C(TB("arquivo", L), S(A, "M11,24 L15,16 L18,21 L22,13", 1.5)),
+                ["dxf"] = C(TB("arquivo", L), S(A, "M11,14 H22 M11,19 H22 M11,24 H18", 1.5)),
+                ["step"] = C(TB("arquivo", L), S(A, "M12,19 L16.5,16.5 L21,19 V24 L16.5,26.5 L12,24 Z M12,19 L16.5,21.5 L21,19 M16.5,21.5 V26.5", 1.5)),
+                ["casa"] = S(L2, "M5,15 L16,5 L27,15 M8,13 V27 H24 V13"),
+                ["dinamica"] = C(S(L2, "M3,9 H29 V23 H3 Z"), S(A, "M8,13 V19"), S(L2, "M13,16 H24")),
+
                 // ---------------- apoios (estrutura cinza, apoio em azul) ----------------
                 ["engaste"] = C(S(L, "M16,4 V20"), S(A, "M6,20 H26", 3), S(L2, "M10,23 L7,27 M16,23 L13,27 M22,23 L19,27 M28,23 L25,27", 1.5)),
                 ["rotula"] = C(S(L, "M16,3 V9"), Du(A, "M16,9 L24,21 H8 Z"), S(A, "M5,21 H27"), S(L2, "M10,24 L7,28 M16,24 L13,28 M22,24 L19,28 M28,24 L25,28", 1.5)),
@@ -130,7 +149,7 @@ namespace NovoFtool
                 ["calc"] = Du(A, "M9,5.5 L26,16 L9,26.5 Z"),
                 ["modal"] = C(Sd(L2, "M16,4 V28", 1.5), S(Df, "M16,28 C27,20 5,12 16,4"), S(L2, "M8,28 H24")),
                 ["estabilidade"] = C(Du(L, "M9,27 L12,8 H20 L17,27 Z", 1.5), S(Y, "M16,2 V8 M13.5,5.5 L16,8 L18.5,5.5", 1.5), S(L2, "M4,27 H28")),
-                ["veriflista"] = C(Du(L2, "M4,4 H28 V28 H4 Z", 1.5), Fb(G, "M8,8.5 H18 V11.5 H8 Z"), Fb(Y, "M8,14.5 H22 V17.5 H8 Z"), Fb(R, "M8,20.5 H25 V23.5 H8 Z")),
+                ["veriflista"] = C(S(L, "M5,4 H27 V28 H5 Z"), S(L2, "M10,11 H22 M10,16 H22 M10,21 H16", 1.5), S(G, "M18,20 L21,23 L26,17")),
                 ["catalogo"] = C(Du(L, "M4,5 H16 V8.5 H11.5 V23.5 H16 V27 H4 V23.5 H8.5 V8.5 H4 Z", 1.5), S(A, "M20,8 H28 M20,16 H28 M20,24 H28")),
                 ["cype"] = C(S(L, "M4,26 V8 H16 V26"), S(A, "M13,26 V13 H28 V26"), S(L2, "M2,28 H30", 1.5)),
 
@@ -145,7 +164,7 @@ namespace NovoFtool
                 ["normal"] = C(Fa(Np, "M5,8 H27 V16 H5 Z"), S(Np, "M5,16 V8 H27 V16"), S(L2, "M3,16 H29", 1.5)),
                 ["cortante"] = C(Fa(Vc, "M5,16 V8 H16 V24 H27 V16 Z"), S(Vc, "M5,16 V8 H16 V24 H27 V16"), S(L2, "M3,16 H29", 1.5)),
                 ["momento"] = C(Fa(Mo, "M5,8 Q16,32 27,8 Z"), S(Mo, "M5,8 Q16,32 27,8"), S(L2, "M3,8 H29", 1.5)),
-                ["verif"] = C(Fa(L2, "M4,5 H28 V10 H4 Z", 0x26), Fb(G, "M4,5 H17 V10 H4 Z"), Fa(L2, "M4,13 H28 V18 H4 Z", 0x26), Fb(Y, "M4,13 H23 V18 H4 Z"), Fa(L2, "M4,21 H28 V26 H4 Z", 0x26), Fb(R, "M4,21 H28 V26 H4 Z")),
+                ["verif"] = C(Fb(G, "M4,7 H18 V11 H4 Z"), Fb(Y, "M4,14 H23 V18 H4 Z"), Fb(R, "M4,21 H28 V25 H4 Z")),
                 ["comparar"] = C(Du(L2, "M5,15 H10 V27 H5 Z"), Du(A, "M13.5,6 H18.5 V27 H13.5 Z"), Du(L2, "M22,19 H27 V27 H22 Z"), S(L2, "M3,27 H29")),
                 ["reac"] = C(Du(L, "M16,4 L23,15 H9 Z"), S(L2, "M5,18 H27"), S(G, "M16,29 V21"), S(G, "M12,24 L16,20 L20,24")),
                 ["valores"] = C(Fa(Mo, "M4,5 Q16,25 28,5 Z"), S(Mo, "M4,5 Q16,25 28,5"), Du(L2, "M8,19 H24 V28 H8 Z", 1.5), S(L, "M11,22.5 H21 M11,25.5 H17", 1.5)),
@@ -198,6 +217,7 @@ namespace NovoFtool
         public static readonly string[] Nomes = {
             "novo","abrir","salvar","desfazer","refazer","importar","exportar","relatorio","tabela",
             "sel","barra","no","medir","apagar","dividir","mover","copiar","espelhar","assist","dimens",
+            "eixos","niveis","pilar","laje","ligacao","grupos","trelica","contrav","copiarpav","pilaresniv","3dcompleto","iso","dwg","dxf","step","casa","dinamica",
             "engaste","rotula","rolo","roloh","livre","rotulab","placa","parafuso","solda","eixo","pincel",
             "cargano","cargadist","cargamom","peso","limpar",
             "calc","def","normal","cortante","momento","verif","comparar","reac","valores","unir","tirar","separar","selmembro","nomes","mais","menos",
@@ -254,10 +274,10 @@ namespace NovoFtool
         static readonly Dictionary<Color, Brush> pinceis = new Dictionary<Color, Brush>();
         static Brush Pincel(Color c) { Brush b; if (!pinceis.TryGetValue(c, out b)) { var sb = new SolidColorBrush(c); sb.Freeze(); pinceis[c] = b = sb; } return b; }
 
-        static ImageSource Fonte(string nome, double tam)
+        static ImageSource Fonte(string nome, double tam, Color? mono = null)
         {
             double dpi = DpiAtual();
-            string chave = nome + "|" + tam.ToString(CultureInfo.InvariantCulture) + "|" + dpi.ToString(CultureInfo.InvariantCulture);
+            string chave = nome + "|" + tam.ToString(CultureInfo.InvariantCulture) + "|" + dpi.ToString(CultureInfo.InvariantCulture) + (mono != null ? "|" + mono.Value : "");
             ImageSource src;
             if (cache.TryGetValue(chave, out src)) return src;
             Cam[] camadas;
@@ -274,11 +294,11 @@ namespace NovoFtool
                 Pen p = null;
                 if (c.S != null && wpx > 0)
                 {
-                    p = new Pen(Pincel(c.S.Value), wpx) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+                    p = new Pen(Pincel(mono ?? c.S.Value), wpx) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
                     if (c.Tracejado) { p.DashStyle = new DashStyle(new double[] { 2, 2 }, 0); p.DashCap = PenLineCap.Flat; }
                     p.Freeze();
                 }
-                g.Children.Add(new GeometryDrawing(c.F != null ? Pincel(c.F.Value) : null, p, geo));
+                g.Children.Add(new GeometryDrawing(c.F != null ? Pincel(mono != null ? Alfa(mono.Value, c.F.Value.A) : c.F.Value) : null, p, geo));
             }
             var raiz = new DrawingGroup { Transform = new ScaleTransform(1 / dpi, 1 / dpi) };
             raiz.Children.Add(g);
@@ -293,6 +313,9 @@ namespace NovoFtool
         {
             return new Image { Source = Fonte(nome, tam), Width = tam, Height = tam, Stretch = Stretch.None, SnapsToDevicePixels = true, UseLayoutRounding = true };
         }
+
+        // Mesma familia numa cor so (chips do rodape: ligado = acento, desligado = Text.Tertiary). Troque Image.Source ao alternar.
+        public static ImageSource Mono(string nome, double tam, Color cor) { return Fonte(nome, tam, cor); }
 
         // para botoes que trocam a cor do glifo (rodape): so o contorno, uma cor, geometria no quadro 'tam'
         public static bool Existe(string nome) { return D.ContainsKey(nome); }

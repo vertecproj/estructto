@@ -315,10 +315,10 @@ namespace NovoFtool
                       () => Niveis.Lista(Esp.Json).AsEnumerable().Reverse().Select(n => (n.Nome + "  (z = " + Num.Fmt(n.Z, 2) + " m)", (Action)(() => AtivarNivel(n.Z))))),
                 Lista("eixo", "Elevação X", "Plano vertical X = valor (vista de lado, YZ): só as barras desse plano.", () => Cotas('x')),
                 Lista("eixo", "Elevação Y", "Plano vertical Y = valor (vista de frente, XZ): só as barras desse plano.", () => Cotas('y')),
-                Botao("3d", "3D completo", Completo3D, "Volta a mostrar o modelo inteiro, em isométrica.", null, true),
-                Botao("tabela", "Níveis", AbrirNiveis, "Painel de níveis (pavimentos): criar, renomear, mudar a cota, apagar, detectar pela geometria, copiar pavimento para cima e gerar pilares.", null, true),
-                Botao("copiar", "Copiar pavimento", AbrirNiveis, "Copia barras, nós e cargas de um nível para N níveis acima (painel Níveis; um Ctrl+Z desfaz).", null, true),
-                Botao("barra", "Pilares entre níveis", AbrirNiveis, "Um pilar sob cada nó de um nível até o nível de baixo (painel Níveis).", null, true));
+                Botao("3dcompleto", "3D completo", Completo3D, "Volta a mostrar o modelo inteiro, em isométrica.", null, true),
+                Botao("niveis", "Níveis", AbrirNiveis, "Painel de níveis (pavimentos): criar, renomear, mudar a cota, apagar, detectar pela geometria, copiar pavimento para cima e gerar pilares.", null, true),
+                Botao("copiarpav", "Copiar pavimento", AbrirNiveis, "Copia barras, nós e cargas de um nível para N níveis acima (painel Níveis; um Ctrl+Z desfaz).", null, true),
+                Botao("pilaresniv", "Pilares entre níveis", AbrirNiveis, "Um pilar sob cada nó de um nível até o nível de baixo (painel Níveis).", null, true));
         }
 
         // Operação no motor (fila exclusiva + desfazer) a partir do painel.
