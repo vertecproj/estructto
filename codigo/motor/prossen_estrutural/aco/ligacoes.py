@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 
 from .. import materiais, secoes
 from ..modelo import MPa
@@ -836,9 +837,10 @@ def geometria_basica(tipo, dados):
 _D_MM = (12.7, 16, 19.05, 20, 22.225, 24, 25.4, 27, 28.575, 30, 31.75)
 _T_MM = (4.75, 6.3, 8, 9.5, 12.5, 16, 19, 22.4, 25, 31.5, 37.5, 44.5, 50)
 _B_MM = (3, 4, 5, 6, 8, 10, 12, 14, 16)
-_CONTAGEM = {"n", "n_linhas", "n_por_linha", "n_colunas", "fileiras", "por_fileira", "n_parafusos"}
+_CONTAGEM = {"n", "n_linhas", "n_linhas_extras", "n_por_linha", "n_colunas", "fileiras", "por_fileira", "n_parafusos",
+             "n_alma", "n_linhas_alma", "n_colunas_alma", "n_por_linha_mesa"}
 _ESPESSURA = {"t", "t_chapa", "t_gusset", "t_placa", "esp", "espessura", "t_assento", "t_enrijecedor", "tp", "t_mesa",
-              "t_alma"}
+              "t_alma", "t_tala_mesa", "t_tala_alma", "t_orelha"}
 _PERNA = {"b_solda", "perna", "perna_solda", "b_mesa", "b_alma", "b_solda_mesa", "b_solda_pilar", "b_solda_alma"}
 
 
@@ -847,18 +849,19 @@ def botoes_otimizar(tipo, campos=None):
     out = []
     for c in campos or esquema(tipo):
         nome, un = c["nome"], c.get("unidade") or ""
+        base = re.sub(r"_\d$", "", nome)   # nó de treliça: n_linhas_2 → n_linhas
         if c.get("opcoes") or isinstance(c.get("padrao"), bool):
             continue
         k = MM if un == "m" else 1.0
         lo = -math.inf if c.get("min") is None else float(c["min"])
         hi = math.inf if c.get("max") is None else float(c["max"])
-        if nome in _CONTAGEM:
+        if base in _CONTAGEM:
             papel, lista = 3, [float(i) for i in range(max(1, int(lo) if math.isfinite(lo) else 1), int(min(hi, 30)) + 1)]
-        elif nome in ("d", "d_mm", "db", "diametro", "diametro_mm"):
+        elif base in ("d", "d_mm", "db", "diametro", "diametro_mm", "d_alma_mm", "d_mesa_mm"):
             papel, lista = 2, list(_D_MM)
-        elif nome in _ESPESSURA:
+        elif base in _ESPESSURA:
             papel, lista = 1, [x * k for x in _T_MM]
-        elif nome in _PERNA or (tipo == "solda_filete" and nome == "b"):
+        elif base in _PERNA or (tipo == "solda_filete" and nome == "b"):
             papel, lista = 0, [x * k for x in _B_MM]
         else:
             continue
@@ -885,22 +888,96 @@ def _descer(r, nomes):
     return out
 
 
-def otimizar(tipo, dados, esforcos, max_passos=60):
-    """Enquanto não passa, aplica o degrau que mais reduz a pior taxa (empate dentro de 2 %: o de menos material —
-    solda, chapa, diâmetro, quantidade). Degraus: subir qualquer item, descer os que um máximo reprovado pede
-    (_descer), um item ou dois juntos (ex.: perna menor + chapa mais grossa). Depois de passar, desce cada item
-    enquanto continuar passando e mudando alguma verificação (campo sem efeito fica como está).
-    → {dados, resultado, ok, passos: [{campo, de, para, taxa}], mudancas: {campo: [antes, depois]}}"""
+_CHAPA_MAIOR = 10.0   # mm, degrau das dimensões de chapa (papel 4, último recurso)
+_ESPAC = ("s", "s_mesa", "s_alma", "sh_alma")
+
+
+def _membro(dados):
+    """membro de ligacoes_limites a partir dos perfis em `dados` (mesma leitura de pontas_de)."""
+    d = dados or {}
+    return dict(perfil=d.get("perfil_viga") or d.get("perfil_pilar"),
+                perfil_apoio=d.get("perfil_suporte") or (d.get("perfil_pilar") if d.get("perfil_viga") else None))
+
+
+def _construtivas(r):
+    """Nomes das disposições construtivas (com `sentido`) reprovadas."""
+    return {x["nome"] for x in r.get("verificacoes", []) if x.get("sentido") and x.get("taxa", 0.0) > 1 + 1e-9}
+
+
+def _fmt(v):
+    return f"{v:g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v)
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _t_min(d):
+    """Espessura (mm) da chapa mais fina entre os campos de espessura preenchidos (limites de 6.3.12); 0 = não sei."""
+    ts = [float(v) for k, v in d.items() if k in _ESPESSURA and _num(v) and v > 0]
+    return min(ts) if ts else 0.0
+
+
+def _botoes_limitados(tipo, campos, lim, cur):
+    """botoes_otimizar cortados pela faixa de `limites` (passos comerciais quando houver) + chapa maior (papel 4):
+    dimensões de chapa com máximo nos limites, em degraus de 10 mm (só se o valor atual não é o automático 0)."""
+    out = []
+    for nome, papel, lista in botoes_otimizar(tipo, campos):
+        f = lim.get(nome)
+        if f:
+            if f["passos"]:
+                lista = [x for x in f["passos"] if lista[0] - 1e-9 <= x <= lista[-1] + 1e-9]
+            lista = [x for x in lista if x >= f["min"] - 1e-9 and (f["max"] is None or x <= f["max"] + 1e-9)]
+        if lista:
+            out.append((nome, papel, lista))
+    feitos = {b[0] for b in out}
+    for nome, f in lim.items():
+        v = cur.get(nome)
+        base = re.sub(r"_\d$", "", nome)
+        if (nome not in feitos and f["max"] is not None and not f["passos"] and f["unidade"] == "mm" and _num(v)
+                and v > 0 and base not in _ESPAC and not base.startswith("e")):
+            n = int((f["max"] - f["min"]) // _CHAPA_MAIOR)
+            out.append((nome, 4, sorted({f["min"] + i * _CHAPA_MAIOR for i in range(n + 1)} | {f["max"]})))
+    return out
+
+
+def otimizar(tipo, dados, esforcos, max_passos=60, membro=None):
+    """Busca LIMITADA (docs/v3/LIGACOES-OTIMIZADOR.md): só valores dentro de ligacoes_limites.limites; degraus na
+    ordem de material espessura → diâmetro → nº de parafusos → chapa maior (empate da pior taxa dentro de 2 %).
+    Disposição construtiva é restrição: candidato que reprova uma que o atual não reprova tenta os espaçamentos no
+    mínimo (3d) e, se continuar reprovando, é descartado; "geometria impossível" (ValueError) também descarta.
+    Depois de passar, desce cada item enquanto continuar passando. Sem solução: dados como vieram, ok = False e
+    `motivo` com a verificação limitante e o limite atingido.
+    `membro` (opcional): perfis para os limites; padrão = perfis de `dados`.
+    → {ok, params, motivo, verificacao_limitante, limite_atingido, dados, resultado, passos, mudancas}"""
+    from .ligacoes_limites import limites
     campos = esquema(tipo)
     cur = {c["nome"]: c["padrao"] for c in campos if c["padrao"] is not None}
     cur.update(dict(dados or {}))
-    botoes = botoes_otimizar(tipo, campos)
+    original = dict(cur)
+    membro = membro or _membro(cur)
+
+    def lim(d):
+        return limites(tipo, membro, dict(d, t=_t_min(d)))
 
     def rodar(d):
         try:
             return verificar_ligacao(tipo, d, esforcos)
         except (ValueError, KeyError, TypeError, ZeroDivisionError):
             return None
+
+    def falha(motivo, limitante=None, atingido=None):
+        return dict(ok=False, params={}, motivo=motivo, verificacao_limitante=limitante, limite_atingido=atingido or [],
+                    dados=original, resultado=rodar(original), passos=[], mudancas={})
+
+    L0 = lim(cur)
+    for k, f in L0.items():   # faixa vazia (ex.: apoio mais estreito que a chapa mínima): para antes de buscar
+        if f["max"] is not None and f["min"] > f["max"] + 1e-9:
+            return falha(f"sem solução dentro dos limites: {k} mínimo {round(f['min'], 4):g} {f['unidade']} > máximo "
+                         f"{round(f['max'], 4):g} {f['unidade']} (limite do apoio/barra) — nada alterado", None, [k])
+    botoes = _botoes_limitados(tipo, campos, L0, cur)
+    nomes_b = {b[0] for b in botoes}
+    espac = [k for k in L0 if re.sub(r"_\d$", "", k) in _ESPAC and k not in nomes_b]
 
     def vizinho(nome, lista, sobe):
         v = cur.get(nome)
@@ -910,18 +987,47 @@ def otimizar(tipo, dados, esforcos, max_passos=60):
         return (min(cand) if sobe else max(cand)) if cand else None
 
     def valor(nome, x):
-        return int(round(x)) if nome in _CONTAGEM else x
+        return int(round(x)) if re.sub(r"_\d$", "", nome) in _CONTAGEM else x
 
+    def ajustar(cand):
+        """Espaçamentos/bordas que o otimizador não move presos à faixa do candidato (3d sobe com o diâmetro)."""
+        for k, f in lim(cand).items():
+            v = cand.get(k)
+            if k in nomes_b or not _num(v) or not v:
+                continue
+            x = max(v, f["min"]) if f["max"] is None else min(max(v, f["min"]), f["max"])
+            if abs(x - v) > 1e-9:
+                cand[k] = x
+        return cand
+
+    for nome, _p, lista in botoes:   # valor fora da lista (ex.: t = 20 mm não comercial) → degrau acima, dentro da faixa
+        v = cur.get(nome)
+        if _num(v) and not any(abs(float(v) - x) < 1e-9 for x in lista):
+            cur[nome] = valor(nome, next((x for x in lista if x > v), lista[-1]))
+    cur = ajustar(cur)
     r = rodar(cur)
-    if r is None:   # dados iniciais impossíveis: o erro do verificador explica
-        verificar_ligacao(tipo, cur, esforcos)
-    antes, passos = dict(cur), []
+    if r is None:
+        try:
+            verificar_ligacao(tipo, cur, esforcos)
+        except (ValueError, KeyError, TypeError, ZeroDivisionError) as e:
+            return falha(f"dados iniciais inválidos — {e.args[0] if e.args else e} — nada alterado")
+    proibidas = _construtivas(r)
+
+    def avaliar(cand):
+        rc = rodar(ajustar(cand))
+        if rc is not None and not (_construtivas(rc) <= proibidas) and espac:   # restrição: compacta o espaçamento
+            for k in espac:
+                cand[k] = lim(cand)[k]["min"]
+            rc = rodar(ajustar(cand))
+        return rc if rc is not None and _construtivas(rc) <= proibidas else None
+
+    passos, barrados = [], []
     for _ in range(max_passos):
         if r["ok"]:
             break
-        melhor = None
+        melhor, barrados = None, []
         # um degrau num item ou em dois juntos (ex.: chapa mais grossa só passa com solda maior, 5t/8)
-        desce = _descer(r, {b[0] for b in botoes})
+        desce = _descer(r, nomes_b)
         um = [(i, True) for i in range(len(botoes))] + [(i, False) for i, b in enumerate(botoes) if b[0] in desce]
         movs = [(a,) for a in um] + [(a, b) for k, a in enumerate(um) for b in um[k + 1:] if a[0] != b[0]]
         for mov in movs:
@@ -935,38 +1041,53 @@ def otimizar(tipo, dados, esforcos, max_passos=60):
                 cand[nome] = valor(nome, x)
             if not ok_mov:
                 continue
-            rc = rodar(cand)
+            rc = avaliar(cand)
             n3 = [botoes[i][0] for i, sobe in mov if botoes[i][1] == 3 and sobe]
-            if rc is None and n3 and isinstance(cur.get("h"), (int, float)) and isinstance(cur.get("s"), (int, float)):
+            if rc is None and n3 and _num(cur.get("h")) and _num(cur.get("s")):
                 # ponytail: mais um parafuso numa chapa de altura h (tipos antigos) só cabe se a chapa crescer s
                 cand["h"] = cur["h"] + cur["s"] * (cand[n3[0]] - (cur.get(n3[0]) or 0))
-                rc = rodar(cand)
+                rc = avaliar(cand)
             if rc is None:
+                if len(mov) == 1:
+                    barrados.append(botoes[mov[0][0]][0])
                 continue
             chave = (not rc["ok"], round(_nota(rc) / 0.02), len(mov), sum(botoes[i][1] * (1 if s_ else -1) for i, s_ in mov),
                      _nota(rc))
             if melhor is None or chave < melhor[0]:
-                melhor = (chave, "+".join(botoes[i][0] for i, _ in mov), None, rc, cand)
-        if melhor is None or (not melhor[3]["ok"] and _nota(melhor[3]) >= _nota(r) - 1e-9):
-            break   # nenhum degrau ajuda (disposição construtiva ou geometria travam)
-        _, nomes, _, r, cand = melhor
-        for nome in nomes.split("+"):
+                melhor = (chave, [botoes[i][0] for i, _ in mov], rc, cand)
+        if melhor is None or (not melhor[2]["ok"] and _nota(melhor[2]) >= _nota(r) - 1e-9):
+            break   # nenhum degrau dentro dos limites ajuda
+        _, nomes, r, cand = melhor
+        for nome in nomes:
             passos.append(dict(campo=nome, de=cur.get(nome), para=cand[nome], taxa=_nota(r)))
         cur = cand
-    if r["ok"]:   # descida: menos material enquanto passa (do item mais caro para o mais barato)
-        mudou = True
-        while mudou:
-            mudou = False
-            for nome, papel, lista in sorted(botoes, key=lambda b: -b[1]):
-                x = vizinho(nome, lista, False)
-                if x is None:
-                    continue
-                rc = rodar({**cur, nome: valor(nome, x)})
-                if rc is not None and rc["ok"] and rc["verificacoes"] != r["verificacoes"]:
-                    passos.append(dict(campo=nome, de=cur.get(nome), para=valor(nome, x), taxa=_nota(rc)))
-                    cur[nome], r, mudou = valor(nome, x), rc, True
-    return dict(dados=cur, resultado=r, ok=bool(r["ok"]), passos=passos,
-                mudancas={k: [antes.get(k), v] for k, v in cur.items() if antes.get(k) != v})
+        proibidas &= _construtivas(r)   # restrição atendida não volta a ser violada
+    if not r["ok"]:
+        ruins = [x for x in r.get("verificacoes", []) if x.get("taxa", 0.0) > 1 + 1e-9] or r.get("verificacoes", [])
+        pior = max(ruins, key=lambda x: x["taxa"] if math.isfinite(x["taxa"]) else 1e9, default=None)
+        topo = [f"{n} = {_fmt(cur.get(n))} {(lim(cur).get(n) or {}).get('unidade', '')}".rstrip() for n, _p, lista in botoes
+                if _num(cur.get(n)) and float(cur[n]) >= lista[-1] - 1e-9]
+        topo += [f"{n}: próximo degrau viola disposição construtiva ou geometria" for n in dict.fromkeys(barrados)
+                 if not any(t.startswith(n + " =") for t in topo)]
+        nome = pior["nome"] if pior else "?"
+        return falha(f"sem solução dentro dos limites: '{nome}' fica com taxa {_nota(r):.2f}"
+                     + (f"; no limite: {', '.join(topo)}" if topo else "; nenhum degrau dentro dos limites reduz a taxa")
+                     + " — nada alterado", nome, topo)
+    mudou = True   # descida: menos material enquanto passa (do item mais caro para o mais barato)
+    while mudou:
+        mudou = False
+        for nome, papel, lista in sorted(botoes, key=lambda b: -b[1]):
+            x = vizinho(nome, lista, False)
+            if x is None:
+                continue
+            cand = ajustar({**cur, nome: valor(nome, x)})
+            rc = rodar(cand)
+            if rc is not None and rc["ok"] and rc["verificacoes"] != r["verificacoes"]:
+                passos.append(dict(campo=nome, de=cur.get(nome), para=valor(nome, x), taxa=_nota(rc)))
+                cur, r, mudou = cand, rc, True
+    mud = {k: [original.get(k), v] for k, v in cur.items() if original.get(k) != v}
+    return dict(ok=True, params={k: v[1] for k, v in mud.items()}, motivo=None, verificacao_limitante=None,
+                limite_atingido=[], dados=cur, resultado=r, passos=passos, mudancas=mud)
 
 
 # --- memorial: seção HTML com as verificações (expressão pelo item da norma, valores e taxa)

@@ -2550,7 +2550,8 @@ def sugerir_ligacao(tipo, perfis, esforcos):
 def otimizar_ligacao(tipo, dados, esforcos):
     """Busca simples do menor detalhe que passa (`aco.ligacoes.otimizar`); o resultado vem como em verificar_ligacao."""
     r = _lig_ui(_ligacoes().otimizar, tipo, dados, esforcos)
-    r["resultado"] = verificar_ligacao(tipo, r["dados"], esforcos)
+    if r.get("resultado") is not None:   # sem solução por dados inválidos: resultado None, `motivo` explica
+        r["resultado"] = verificar_ligacao(tipo, r["dados"], esforcos)
     return r
 
 
