@@ -153,7 +153,12 @@ namespace NovoFtool
         public static async Task<DocumentoEspacial> AbrirArquivo(string caminho)
         {
             string ext = Path.GetExtension(caminho).ToLowerInvariant();
-            if (ext == ".ftl") return await DeModelo2D(Ftl.Importar(caminho, out _), caminho);
+            if (ext == ".ftl")
+            {   // E2E-10: o aviso do Ftl (apoios e cargas não lidos) vai para os avisos do documento (log, painel de avisos e toast ao abrir)
+                var df = await DeModelo2D(Ftl.Importar(caminho, out string avFtl), caminho);
+                df.Avisos.AddRange(avFtl.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+                return df;
+            }
             if (ext == ".estructto" || ext == ".portico")
             {
                 string txt = File.ReadAllText(caminho);
@@ -499,6 +504,8 @@ namespace NovoFtool
                 Log("Convertido para 3D: " + Path.GetFileName(d.Origem) + " (Y do 2D virou Z; fora do plano travado). Salvar grava o formato novo (.estructto 3D).", false);
                 if (!avisouConversao) { avisouConversao = true; MostrarToast("Modelo 2D convertido para 3D: o Y do desenho virou Z e o que sai do plano ficou travado. Ao salvar, o arquivo vai no formato novo (.estructto 3D); o original não é alterado.", true); }
             }
+            string semApoios = d.Avisos.FirstOrDefault(a => a.StartsWith("Apoios e cargas"));   // .ftl (E2E-10): não deixa o F5 achar o mecanismo sozinho
+            if (semApoios != null && !silencioso) MostrarToast(semApoios, true);
             return d;
         }
 

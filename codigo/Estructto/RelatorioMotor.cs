@@ -17,14 +17,15 @@ namespace NovoFtool
 {
     public static class RelatorioMotor
     {
-        // Empresa/autor do carimbo: guardada em %AppData%\NovoFtool\empresa.txt. Padrão vazio.
-        static string ArqEmpresa => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool", "empresa.txt");
-        // Empresa do projeto aberto (config.projeto.empresa, tela de novo projeto): tem prioridade sobre a guardada.
+        // Empresa/autor do carimbo: guardada em empresa.txt na pasta do Config (%AppData%\NovoFtool; na execução automática,
+        // %TEMP%\Estructto\config-automacao — E2E-11). Padrão vazio. Só regrava quando muda.
+        static string ArqEmpresa => Path.Combine(Config.Pasta, "empresa.txt");
+        // Empresa do projeto aberto (config.projeto.empresa, tela de novo projeto): tem prioridade sobre a guardada. Abrir a lê do documento ativo.
         public static string EmpresaProjeto;
         public static string Empresa
         {
             get { try { return File.Exists(ArqEmpresa) ? File.ReadAllText(ArqEmpresa).Trim() : ""; } catch { return ""; } }
-            set { try { Directory.CreateDirectory(Path.GetDirectoryName(ArqEmpresa)); File.WriteAllText(ArqEmpresa, (value ?? "").Trim()); } catch { } }
+            set { string v = (value ?? "").Trim(); if (v == Empresa) return; try { Directory.CreateDirectory(Path.GetDirectoryName(ArqEmpresa)); File.WriteAllText(ArqEmpresa, v); } catch { } }
         }
 
         // Gancho para o documento espacial (e para o 2D com motor Python): o modelo e o cálculo já estão no motor.
@@ -33,6 +34,7 @@ namespace NovoFtool
         // anexo: FlowDocument do Estructto acrescentado ao fim (placas de base); null = só o relatório do motor.
         public static JanelaRelatorioMotor Abrir(Window dono, string tituloDoc, Func<FlowDocument> anexo)
         {
+            EmpresaProjeto = (string)(dono as MainWindow)?.EspacialAtivo?.Json?["config"]?["projeto"]?["empresa"];   // E2E-02: a do projeto no carimbo
             var j = new JanelaRelatorioMotor(tituloDoc, anexo) { Owner = dono };
             j.Show();
             return j;
