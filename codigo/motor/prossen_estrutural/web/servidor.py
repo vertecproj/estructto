@@ -237,7 +237,7 @@ ROTAS = {
     ("POST", r"/api/placa_base/verificar"): lambda s, a, q, c: projeto.placa_base_verificar(_modelo(s), _calc_membros(s, c), c or {}),
     ("POST", r"/api/placa_base/dimensionar"): lambda s, a, q, c: projeto.placa_base_dimensionar(_modelo(s), _calc_membros(s, c), c or {}),
     ("POST", r"/api/placa_base/gravar"): lambda s, a, q, c: _ligacoes(s, lambda m: projeto.placa_base_gravar(m, c or {})),
-    ("GET", r"/api/catalogo"): lambda s, a, q, c: projeto.catalogo_perfis(q.get("filtro", ""), q.get("familia")),
+    ("GET", r"/api/catalogo"): lambda s, a, q, c: projeto.catalogo_arvore() if q.get("formato") == "arvore" else projeto.catalogo_perfis(q.get("filtro", ""), q.get("familia")),
     ("GET", r"/api/catalogo/(?P<nome>[^/]+)"): lambda s, a, q, c: projeto.perfil(a["nome"]),
     ("GET", r"/api/materiais"): lambda s, a, q, c: projeto.materiais_disponiveis(),
     ("GET", r"/api/normas"): lambda s, a, q, c: projeto.normas_implementadas(),

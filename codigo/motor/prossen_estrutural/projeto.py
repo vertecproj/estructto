@@ -2865,10 +2865,15 @@ def _norm(s):
     return str(s).upper().replace(" ", "").replace(",", ".")
 
 
+def catalogo_arvore():
+    """Catálogo em árvore: [{nivel1, familias:[{nome, series:[{nome, perfis:[nome]}]}]}]."""
+    return _sec.arvore_catalogo()
+
+
 def catalogo_perfis(filtro="", familia=None):
     """#26 Resumo dos perfis do catálogo (W/HP Gerdau e PFF NBR 6355). `filtro`: trecho do nome."""
-    if familia is not None and familia not in ("W", "HP", "Ue", "U"):
-        raise ErroEntrada("familia: use W, HP, Ue ou U", "familia")
+    if familia is not None and familia not in {p["familia"] for p in _sec.lista_catalogo()}:
+        raise ErroEntrada("familia: use uma das famílias de GET /api/catalogo?formato=arvore (W, HP, Ue, U, IPE...)", "familia")
     f = _norm(filtro or "")
     return [p for p in _sec.lista_catalogo(familia) if f in _norm(p["nome"])]
 

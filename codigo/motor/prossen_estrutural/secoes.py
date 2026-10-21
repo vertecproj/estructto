@@ -69,12 +69,33 @@ def secao_tubo_circular(d, t, nome=None):
                   Ay=A / 2, Az=A / 2)  # A/2: valor usual de tubo circular de parede fina
 
 
-def secao_tubo_retangular(h, b, t, nome=None):
-    # ponytail: cantos vivos; tubos com raio externo dão A ~2-4% menor
+def _canto(r):
+    """Sobra de um canto arredondado (quadrado r×r menos quarto de círculo): área, distância do centroide às
+    arestas e inércia própria."""
+    af = (1 - math.pi / 4) * r * r
+    e = (10 - 3 * math.pi) / (12 - 3 * math.pi) * r
+    return af, e, r ** 4 * (1 - 5 * math.pi / 16) - af * e * e
+
+
+def _ret_arred(b, h, r):
+    """A, Ix, Iy do retângulo cheio b × h com cantos de raio r."""
+    af, e, own = _canto(r)
+    return (b * h - 4 * af, b * h ** 3 / 12 - 4 * (own + af * (h / 2 - e) ** 2),
+            h * b ** 3 / 12 - 4 * (own + af * (b / 2 - e) ** 2))
+
+
+def secao_tubo_retangular(h, b, t, nome=None, re=None):
+    """Tubo retangular. re = raio externo de canto (m): None → cantos vivos; metalon NBR 6591 usa re = 1,5t
+    (raio interno 0,5t); A e I seguem a geometria arredondada, W/Z/J mantêm a fórmula de cantos vivos."""
+    # ponytail: sem re, cantos vivos (A ~2-4% maior que o tubo real)
     hi, bi = h - 2 * t, b - 2 * t
     A = b * h - bi * hi
     Ix = (b * h ** 3 - bi * hi ** 3) / 12
     Iy = (h * b ** 3 - hi * bi ** 3) / 12
+    if re:
+        Ae, Ixe, Iye = _ret_arred(b, h, re)
+        Ai, Ixi, Iyi = _ret_arred(bi, hi, max(re - t, 0.0))
+        A, Ix, Iy = Ae - Ai, Ixe - Ixi, Iye - Iyi
     hm, bm = h - t, b - t
     J = 2 * t * (hm * bm) ** 2 / (hm + bm)  # Bredt
     return _monta(nome or f"TR{h*1e3:g}x{b*1e3:g}x{t*1e3:g}", "tubo_retangular", A, Ix, Iy, J,
@@ -410,20 +431,137 @@ def _secao_pff(lin):
     raise ValueError(f"{_CSV_PFF}: tipo '{lin['tipo']}' inválido em {lin['nome']} (use Ue ou U)")
 
 
+# nível 1 da árvore -> arquivos de dados/perfis/ (spec ligações-catálogo-3D)
+_PASTA = os.path.join(os.path.dirname(__file__), "dados", "perfis")
+_NIVEL1 = {
+    "Gerdau (ABNT)": ("w_hp", "u_laminado", "l_iguais", "t_laminado", "barra_chata"),
+    "Europeu (EN/DIN)": ("ipe", "hea", "heb", "upn", "l_desiguais"),
+    "Tubos Vallourec": ("tubos_vallourec",),
+    "Metalon": ("tubo_quadrado", "tubo_retangular", "tubo_redondo"),
+    "Formados a frio NBR 6355": ("u_pff", "ue_pff"),
+}
+_cache = {}
+# Ix/Iy tabelados prevalecem sobre os calculados: Vallourec (raio de canto < 2t), U de mesas inclinadas
+# (a geometria de mesa constante erra Iy em até +19%) e L desigual EN 10056 (raios de canto não modelados)
+_TABELADOS = ("tubos_vallourec", "u_laminado", "upn", "l_desiguais")
+
+
+def secao_T(h, b, tw, tf, nome=None):
+    """T laminado (mesa b × tf no topo, alma tw descendo até h), cantos vivos. Eixo x horizontal pelo centroide."""
+    hw = h - tf
+    A = b * tf + hw * tw
+    yg = (b * tf * tf / 2 + hw * tw * (tf + hw / 2)) / A      # a partir do topo da mesa
+    Ix = b * tf ** 3 / 12 + b * tf * (yg - tf / 2) ** 2 + tw * hw ** 3 / 12 + hw * tw * (tf + hw / 2 - yg) ** 2
+    Iy = tf * b ** 3 / 12 + hw * tw ** 3 / 12
+    J = (b * tf ** 3 + hw * tw ** 3) / 3
+    # ponytail: Z não calculado (flexão de T não verificada); CC no encontro das linhas médias
+    sec = _monta(nome or f"T{h*1e3:g}x{b*1e3:g}", "T", A, Ix, Iy, J, Ix / max(yg, h - yg), 2 * Iy / b, None, None,
+                 0.0, 0.0, tf / 2 - yg, h=h, b=b, tw=tw, tf=tf, yg=yg, Ay=5 / 6 * b * tf, Az=hw * tw)
+    del sec.props["Zx"], sec.props["Zy"]
+    return sec
+
+
+def _carrega_catalogo():
+    """{chave: linha} de todos os CSV novos (+ arquivo, nível 1). Cache de processo."""
+    if not _cache:
+        for n1, arqs in _NIVEL1.items():
+            for arq in arqs:
+                caminho = os.path.join(_PASTA, arq + ".csv")
+                if not os.path.exists(caminho):
+                    continue
+                with open(caminho, encoding="utf-8", newline="") as f:
+                    for lin in csv.DictReader(f, delimiter=";"):
+                        lin["_nivel1"], lin["_arq"] = n1, arq
+                        _cache.setdefault(_chave(lin["nome"]), lin)
+    return _cache
+
+
+def _secao_linha(lin):
+    """Secao (m) de uma linha dos CSV novos. Tubos Vallourec: Ix/Iy tabelados prevalecem (a brochura usa
+    raio de canto < 2t); nos demais, valem as propriedades calculadas da geometria."""
+    f = lambda k: float(lin[k]) / 1000 if lin[k] else 0.0  # noqa: E731
+    forma, h, b, tw, tf, nome = lin["forma"], f("h"), f("b"), f("tw"), f("tf"), lin["nome"]
+    if lin["_arq"] in ("ue_pff", "u_pff"):
+        if forma == "Ue":
+            D = float(re.search(r"x(\d+(?:[.,]\d+)?)x\d+(?:[.,]\d+)?$", nome).group(1).replace(",", ".")) / 1000
+            s = secao_Ue(h, b, D, tw, nome=nome, ri=ri_nbr6355(tw))
+        else:
+            s = secao_U_pf(h, b, tw, nome=nome, ri=ri_nbr6355(tw))
+    elif forma == "I":
+        s = secao_I(h, b, tw, tf, f("r"), nome=nome, soldado=False)
+    elif forma == "U":
+        s = secao_U(h, b, tw, tf, nome=nome)
+    elif forma == "L":
+        s = secao_cantoneira(b, h, tw, nome=nome)
+    elif forma == "T":
+        s = secao_T(h, b, tw, tf, nome=nome)
+    elif forma == "R":
+        s = secao_retangular(b, h, nome=nome)
+    elif forma == "TR":
+        s = secao_tubo_retangular(h, b, tw, nome=nome, re=1.5 * tw)
+    elif forma == "TC":
+        s = secao_tubo_circular(h, tw, nome=nome)
+    else:
+        raise ValueError(f"{lin['_arq']}: forma '{forma}' desconhecida em {nome}")
+    s.props["massa"] = float(lin["massa"])
+    s.props["A_catalogo"] = float(lin["A"]) * 1e-4
+    if lin["_arq"] in _TABELADOS:
+        kx, ky = float(lin["Ix"]) * 1e-8 / s.Iy, float(lin["Iy"]) * 1e-8 / s.Iz
+        s.Iy *= kx
+        s.Iz *= ky
+        p = s.props
+        for k in ("Ix", "Wx", "Zx"):
+            if k in p:
+                p[k] *= kx
+        for k in ("Iy", "Wy", "Zy"):
+            if k in p:
+                p[k] *= ky
+        p["rx"] *= math.sqrt(kx)
+        p["ry"] *= math.sqrt(ky)
+        if lin["_arq"] == "tubos_vallourec":  # A da brochura também (raio de canto real); r = sqrt(I/A)
+            s.A = p["A"] = float(lin["A"]) * 1e-4
+            p["rx"], p["ry"] = math.sqrt(p["Ix"] / s.A), math.sqrt(p["Iy"] / s.A)
+        p["r0"] = math.sqrt(p["rx"] ** 2 + p["ry"] ** 2 + p["x0"] ** 2 + p["y0"] ** 2)
+        if "Ixy" in p:  # cantoneira: refaz os eixos principais com Ix, Iy tabelados
+            p["Ixy"] *= math.sqrt(kx * ky)
+            m, rr = (p["Ix"] + p["Iy"]) / 2, math.hypot((p["Ix"] - p["Iy"]) / 2, p["Ixy"])
+            p.update(Imax=m + rr, Imin=m - rr, Iu=m + rr, Iv=m - rr, rmin=math.sqrt((m - rr) / s.A),
+                     alfa_principal=0.5 * math.atan2(-2 * p["Ixy"], p["Ix"] - p["Iy"]))
+    return s
+
+
 def catalogo(nome):
-    """Perfil por nome: W/HP Gerdau ('W200x26.6') ou PFF NBR 6355 ('Ue 150x60x20x2,00', se
-    perfis_pff.csv existir). CSV em mm; retorna Secao em m."""
+    """Perfil por nome: W/HP Gerdau ('W200x26.6') ou PFF NBR 6355 ('Ue 150x60x20x2,00') nos CSV antigos (nomes
+    já salvos em modelos continuam resolvendo, com as mesmas propriedades), senão o catálogo novo
+    (dados/perfis/*.csv: IPE, HEA, UPN, cantoneiras, T, chata, tubos...). Retorna Secao em m."""
     chave = _chave(nome)
     for caminho, monta in ((_CSV, _secao_gerdau), (_CSV_PFF, _secao_pff)):
         for lin in _ler_csv(caminho):
             if _chave(lin["nome"]) == chave:
                 return monta(lin)
-    raise KeyError(f"perfil {nome} não está no catálogo")
+    lin = _carrega_catalogo().get(chave)
+    if lin is None:
+        raise KeyError(f"perfil {nome} não está no catálogo")
+    return _secao_linha(lin)
+
+
+def arvore_catalogo():
+    """[{nivel1, familias:[{nome, series:[{nome, perfis:[nome]}]}]}] dos CSV novos, na ordem dos arquivos."""
+    out = []
+    for n1 in _NIVEL1:
+        fams = {}
+        for lin in _carrega_catalogo().values():
+            if lin["_nivel1"] == n1:
+                fams.setdefault(lin["familia"], {}).setdefault(lin["serie"], []).append(lin["nome"])
+        out.append({"nivel1": n1, "familias": [
+            {"nome": fam, "series": [{"nome": sr, "perfis": ps} for sr, ps in ss.items()]}
+            for fam, ss in fams.items()]})
+    return out
 
 
 def lista_catalogo(familia=None):
-    """[dict(nome, familia, massa_kg_m, d_mm, bf_mm, A_cm2)]; familia ∈ {W, HP, Ue, U} ou None.
-    Massa de PFF = A·7850 kg/m³ (A com as dobras da NBR 6355)."""
+    """[dict(nome, familia, massa_kg_m, d_mm, bf_mm, A_cm2)]; familia ∈ {W, HP, Ue, U} (CSV antigos) ou o
+    nome de família do catálogo novo (ex.: 'IPE'), ou None. Massa de PFF = A·7850 kg/m³."""
     itens = []
     for lin in _ler_csv(_CSV):
         itens.append(dict(nome=lin["nome"], familia=re.match(r"[A-Z]+", lin["nome"]).group(),
@@ -433,6 +571,11 @@ def lista_catalogo(familia=None):
         s = _secao_pff(lin)
         itens.append(dict(nome=lin["nome"], familia=lin["tipo"], massa_kg_m=round(s.A * 7850, 2),
                           d_mm=float(lin["h"]), bf_mm=float(lin["b"]), A_cm2=round(s.A * 1e4, 3)))
+    vistos = {_chave(i["nome"]) for i in itens}
+    for k, lin in _carrega_catalogo().items():
+        if k not in vistos:
+            itens.append(dict(nome=lin["nome"], familia=lin["familia"], massa_kg_m=float(lin["massa"]),
+                              d_mm=float(lin["h"]), bf_mm=float(lin["b"]), A_cm2=float(lin["A"])))
     return [i for i in itens if familia is None or i["familia"] == familia]
 
 
@@ -451,6 +594,7 @@ _FORMAS = {
     "Ue": (secao_Ue, ("h", "b", "D", "t"), ("ri",), "Ue"),
     "U_pf": (secao_U_pf, ("h", "b", "t"), ("ri",), "U"),
     "cantoneira": (secao_cantoneira, ("b", "h", "t"), (), "L"),
+    "T": (secao_T, ("h", "b", "tw", "tf"), (), "T"),
 }
 
 
