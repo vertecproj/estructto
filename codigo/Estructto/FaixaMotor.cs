@@ -125,7 +125,7 @@ namespace NovoFtool
                     Environment.Exit(0);
                 }
                 if (i % 10 == 0) System.IO.File.WriteAllText(txt, "aguardando " + i / 10 + " s: " + StatusMsg.Text + " | janelas: " + string.Join(", ", OwnedWindows.Cast<Window>().Select(w => w.GetType().Name)));
-                if (!motorRodando && i > 20 && ResMotor == null) break;   // erro do motor (toast)
+                if (EspacialAtivo == null && !motorRodando && i > 20 && ResMotor == null) break;   // erro do motor (toast); no 3D espera a janela até o tempo-limite
                 await Task.Delay(100);
             }
             System.IO.File.WriteAllText(txt, "FALHOU: " + StatusMsg.Text);

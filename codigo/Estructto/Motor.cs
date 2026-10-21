@@ -6,6 +6,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -25,6 +26,8 @@ namespace NovoFtool
 
         // Pasta de trabalho do servidor (caminhos de abrir/salvar sao relativos a ela).
         public static string Pasta => Path.Combine(Path.GetTempPath(), "Estructto", "trabalho");
+        // motor instalado por usuário: o exe sozinho (sem a pasta motor\ ao lado) ainda acha o cálculo
+        public static string PastaMotorUsuario => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Estructto", "motor");
 
         // Quem deixou o modelo atual no servidor (DocumentoEspacial.cs). PUT /api/modelo (ponte 2D) troca o modelo: zera.
         public static object Dono;
@@ -96,12 +99,13 @@ namespace NovoFtool
             string pasta = Pasta;
             Directory.CreateDirectory(pasta);
             string args = $"--porta {porta} --pasta \"{pasta}\"";
-            var exe = Path.Combine(AppContext.BaseDirectory, "motor", "estructto-motor.exe");
+            // procura: motor\ ao lado do exe; motor\ instalado por usuário (%LOCALAPPDATA%\Estructto\motor); ESTRUCTTO_MOTOR (fonte)
+            var exe = new[] { Path.Combine(AppContext.BaseDirectory, "motor", "estructto-motor.exe"), Path.Combine(PastaMotorUsuario, "estructto-motor.exe") }.FirstOrDefault(File.Exists);
             var dev = Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR");
             ProcessStartInfo psi;
-            if (File.Exists(exe)) psi = new ProcessStartInfo(exe, args);
+            if (exe != null) psi = new ProcessStartInfo(exe, args);
             else if (!string.IsNullOrEmpty(dev)) psi = new ProcessStartInfo("python", "-m prossen_estrutural.web " + args + " --pai " + Environment.ProcessId) { WorkingDirectory = dev };   // --pai so no fonte: o exe empacotado antigo nao conhece a opcao (fica com o Job)
-            else throw new MotorErro(0, "motor de calculo nao encontrado (motor\\estructto-motor.exe ou variavel ESTRUCTTO_MOTOR)");
+            else throw new MotorErro(0, "motor de cálculo não encontrado. Mantenha a pasta \"motor\" ao lado do Estructto.exe (vem no .zip da release) ou instale-a em " + PastaMotorUsuario + ".");
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             psi.RedirectStandardError = true;
