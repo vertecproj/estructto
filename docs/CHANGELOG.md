@@ -2,6 +2,14 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 21/10/2026 — Testes de fluxo ponta a ponta (branch wt-e2e)
+
+- `Estructto.exe --testes-fluxo <pasta> [A,B,C,D,E,F] [raiz]` dirige a MainWindow real: galpão do zero, edifício, legados/CYPE, edição,
+  robustez (motor morto, entradas inválidas, recuperação, janela visível em ≤ 10 s, `--capturas` sem tocar na recuperação do usuário,
+  3069 barras) e F = só o motor empacotado (catálogo, 19 ligações, modelos do novo projeto, `.ed3`, exemplos, relatório).
+- Última rodada: 281 conferências no pacote (266 ok, 0 falhas, 15 conhecidas); 227 com ESTRUCTTO_MOTOR (212 ok, 0 falhas, 15 conhecidas).
+- 10 bugs registrados, não corrigidos: [docs/v3/BUGS-E2E.md](v3/BUGS-E2E.md) (1 alta, 5 médias, 4 baixas; E2E-01 já estava corrigido).
+
 ## 21/10/2026 — Integração do main do Bruno no produto 3D (branch wt-bruno)
 
 - Junta `origin/main` (f2c443d..1f719d3) sem perder nada; mapa commit → lugar novo em [v3/INTEGRACAO-BRUNO.md](v3/INTEGRACAO-BRUNO.md).
