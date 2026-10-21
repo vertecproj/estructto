@@ -731,7 +731,8 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
         r.res("pressão de contato na alma da viga (grupo excêntrico)", V, C * Fc_w, "kN", "6.3.3.3")
     else:        # método elástico com N
         M = V * a
-        R = math.hypot(V / n, N / n + M * max(map(abs, ys)) / sum(y * y for y in ys))
+        # parafuso extremo do lado em que N e V·a somam (linha simétrica): compressão não cancela a parcela de M
+        R = math.hypot(V / n, abs(N) / n + abs(M) * max(map(abs, ys)) / sum(y * y for y in ys))
         r.val["Fd_parafuso"] = R
         r.avisos.append("com N ≠ 0 o grupo de parafusos é verificado pelo método elástico (V, N e V·a)")
         r.res("parafusos: cisalhamento (V, N e V·a, elástico)", R, p["Fv"], "kN", "6.3.3.2")

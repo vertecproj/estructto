@@ -440,7 +440,7 @@ def _pilar(R, d, pil, fyc, Ft, Fc, ln, bfb, tfb, H, M, soldada, geo, x_face):
         hp = dc - 2 * tfc
         VRd += 2 * cisalhamento_painel(hp, td, fyc, d["N_pilar"], Ny, hp, a)
     R.res("cisalhamento do painel de alma do pilar" + (" (com chapas de reforço)" if td else ""),
-          "5.7.7.1 / 5.4.3" + (" / 5.7.7.2" if td else ""), max(Vp, 0.0), VRd)
+          "5.7.7.1 / 5.4.3" + (" / 5.7.7.2" if td else ""), abs(Vp), VRd)   # V_pilar > ΣF mesas inverte o painel
     if td > 0:
         # 5.7.7.2: estendidas 150 mm além das forças das mesas. A flambagem da chapa entra pela 5.4.3; o limite
         # (dz + wz)/t ≤ 90 do AISC 341 não é da NBR e saiu
@@ -535,8 +535,13 @@ def _chapa_topo(d, e, estendida_padrao):
     s_t = 1 if M >= 0 else -1
     zc = -s_t * (H / 2 - tf / 2)                       # centro da mesa comprimida
     tr = [L for L in linhas if L["z"] * s_t > 0]
+    braco = H - tf
+    # tração axial com N/2 > |M|/braço: a mesa "comprimida" também traciona (sem contato). Cada mesa recebe
+    # N/2 ± |M|/braço (ΣF = N, ΣM = M) e as suas linhas precisam resistir a essa força (6.3.3.1 / 6.3.5)
+    F_op = N / 2 - abs(M) / braco
+    co = [L for L in linhas if L["z"] * s_t < 0] if N > 0 and F_op > 1e-9 else []
     pil, fyc, fuc = _pilar_props(d, R)
-    for L in tr:
+    for L in tr + co:
         L["h"] = abs(L["z"] - zc)
         L["chapa"] = tstub(0.0, L["p"], tp, L["b"], L["a"], db, dh, fyp, FtRd)
         L["Tcap"] = L["chapa"]["Tcap"]
@@ -556,15 +561,19 @@ def _chapa_topo(d, e, estendida_padrao):
             cands = [(tstub(0.0, o[0], pil["tf"], o[1], o[2], db, dh, fyc, FtRd), o) for o in ops]
             L["pilar"], L["pc"] = max(cands, key=lambda c: c[0]["Tcap"])
             L["Tcap"] = min(L["Tcap"], L["pilar"]["Tcap"])
-    braco = H - tf
     Mef = momento_efetivo(M, N, braco)
     MRd = momento_resistente_linhas(tr)
     R.res("momento: parafusos tracionados + chapa (T-stub, alavanca)", "6.3.3.1 / 6.3.5", Mef, MRd, "kN·m")
     fator = Mef / MRd if MRd > 0 else 0.0
+    fator_op = 0.0
+    if co:   # ponytail: força da mesa oposta concentrada nela (linhas a ±pf da mesa), sem charneiras combinadas
+        Rop = sum(L["n"] * L["Tcap"] for L in co)
+        R.res("tração axial: linhas da mesa oposta (N/2 − |M|/braço, sem contato)", "6.3.3.1 / 6.3.5", F_op, Rop)
+        fator_op = F_op / Rop
     n_tot = sum(L["n"] for L in linhas)
     Vb = abs(V) / n_tot
-    for i, L in enumerate(tr, 1):
-        T = L["Tcap"] * fator
+    for i, L in enumerate(tr + co, 1):
+        T = L["Tcap"] * (fator if i <= len(tr) else fator_op)
         c = tstub(T, L["p"], tp, L["b"], L["a"], db, dh, fyp, FtRd)
         L["T"], L["Q"] = T, c["Q"]
         nome = f"linha {i} ({dict(ext='externa', int='interna', alma='junto à alma')[L['tipo']]}, h = {L['h'] / MM:.0f} mm)"
@@ -738,8 +747,9 @@ def verificar_flange_plate(dados, esforcos):
         R.res("chapa de mesa: compressão (K = 0,65, L = folga)", "6.5.4", Fc,
               compressao_chapa(Ag, 0.65 * max(folga, 1e-3), t / math.sqrt(12), fyp))
         r = lg.resistencia_filete(bw_, fw, min(fyp, fyb), min(fup, fub_v))
-        R.res("solda chapa–mesa da viga (2 filetes longitudinais)", "6.2.5 / tabela 8", max(Ft, Fc) / (2 * Lw),
-              r["FwRd"], "kN/m")
+        bt = lg.beta_filete_longo(Lw, bw_)   # 6.2.2.2 d): filetes longitudinais da chapa de mesa (força axial)
+        R.res("solda chapa–mesa da viga (2 filetes longitudinais" + (f", β = {bt:.3f}" if bt < 1 else "") + ")",
+              "6.2.5 / tabela 8" + (" / 6.2.2.2 d)" if bt < 1 else ""), max(Ft, Fc) / (2 * bt * Lw), r["FwRd"], "kN/m")
         _filete(R, bw_, min(t, tf), "chapa–mesa", "b_solda_mesa")
         R.minimo("filetes longitudinais: L ≥ distância entre eles", "6.2.6.2.3 (Pfeil 4.4)", bpl, Lw)
         R.minimo("filete: L ≥ 4b e ≥ 40 mm", "6.2.6.2.3", max(4 * bw_, 0.040), Lw)
@@ -897,7 +907,23 @@ def _emenda(d, esforcos, pilar):
     c = lg.cisalhamento_chapa(2 * ha * ta, 2 * (ha - nr * dna) * ta, fyp, fup)
     R.res("talas da alma: escoamento por cisalhamento", "6.5.5", abs(V), c["escoamento"])
     R.res("talas da alma: ruptura por cisalhamento", "6.5.5", abs(V), c["ruptura"])
-    R.res("talas da alma: flexão (Z·fy/γa1, M0)", "6.5 (Pfeil 9.10.1 d)", M0, 2 * ta * ha ** 2 / 4 * fyp / GA1, "kN·m")
+    MRd_ta = 2 * ta * ha ** 2 / 4 * fyp / GA1
+    R.res("talas da alma: flexão (Z·fy/γa1, M0)", "6.5 (Pfeil 9.10.1 d)", M0, MRd_ta, "kN·m")
+    # parcela axial da alma Nw = N·Aw/A nas duas talas: 6.5.3 (tração) / 6.5.4 (compressão) e interação com M0
+    NRd_ta = None
+    if Nw_t > 0:
+        tra = lg.tracao_chapa(2 * ha * ta, 2 * (ha - nr * dna) * ta, fyp, fup)
+        R.res("talas da alma: tração Nw (escoamento da seção bruta)", "6.5.3 → 5.2.2 a)", Nw_t, tra["escoamento"])
+        R.res("talas da alma: tração Nw (ruptura da seção líquida, An ≤ 0,85Ag)", "6.5.3 → 5.2.2 b)", Nw_t,
+              tra["ruptura"])
+        NRd_ta = min(tra["escoamento"], tra["ruptura"])
+    elif Nw_t < 0:   # sem contato: KL = 0,65 · (distância livre entre as primeiras colunas, 2·ee), como na mesa
+        NRd_ta = compressao_chapa(2 * ha * ta, 0.65 * 2 * ee, ta / math.sqrt(12), fyp)
+        R.res("talas da alma: compressão Nw (K = 0,65, L = 2·e_emenda)", "6.5.4", Nw_t, NRd_ta)
+    if NRd_ta and M0 > 0:
+        nr_ = abs(Nw_t) / NRd_ta
+        R.res("talas da alma: Nw + M0 (interação)", "6.5 → 5.5.1.2",
+              nr_ + 8 / 9 * M0 / MRd_ta if nr_ >= 0.2 else nr_ / 2 + M0 / MRd_ta, 1.0, "-")
     hw = H - 2 * tf
     R.res("alma do perfil: ruptura por cisalhamento na seção líquida", "6.5.5", abs(V),
           0.6 * fub_v * (hw - nr * dna) * tw / GA2)

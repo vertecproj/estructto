@@ -135,10 +135,16 @@ class TestTirante(unittest.TestCase):
         self.assertFalse(r["ok"])
 
     def test_garfo_pino(self):
-        # à mão: pino A325 φ19,05 em 2 planos: 2·0,4·2,850·82,5/1,35 = 139,3 kN; gusset 9,5 mm A36,
+        # à mão (RC08: pino pela 6.4, não pela 6.3.3.2): pino A325 φ19,05, fy = 63,5 kN/cm² (tab. A.3), 2 planos:
+        # 2·0,6·0,75·2,850·63,5/1,10 = 148,1 kN (6.4.2.2); M = N·t/8 = 60·0,95/8 = 7,125 kN·cm contra
+        # 1,2·(π·1,905³/32)·63,5/1,10 = 47,0 kN·cm (6.4.2.1); gusset 9,5 mm A36,
         # borda 2d = 38,1 mm: lf = 38,1 − 20,55/2 = 27,8 mm → min(1,2·2,78; 2,4·1,905)·0,95·40/1,35 = 94,0 kN
         r = C.verificar_tirante(dict(D_barra=19.05, t_chapa=9.5, extremidade="garfo_pino"), {"N": 60})
-        self.assertLess(rel(linha(r, "pino")["resistente"], 2 * 0.4 * math.pi * 1.905 ** 2 / 4 * 82.5 / 1.35), 1e-3)
+        self.assertLess(rel(linha(r, "pino: cis")["resistente"], 2 * 0.6 * 0.75 * math.pi * 1.905 ** 2 / 4 * 63.5 / 1.1),
+                        1e-3)
+        self.assertLess(rel(linha(r, "pino: flex")["solicitante"], 60 * 0.0095 / 8), 1e-3)
+        self.assertLess(rel(linha(r, "pino: flex")["resistente"], 1.2 * math.pi * 1.905 ** 3 / 32 * 63.5 / 1.1 / 100),
+                        1e-3)
         lf = 3.81 - (1.905 + 0.15) / 2
         self.assertLess(rel(linha(r, "gusset: contato")["resistente"],
                             min(1.2 * lf, 2.4 * 1.905) * 0.95 * 40 / 1.35), 1e-3)

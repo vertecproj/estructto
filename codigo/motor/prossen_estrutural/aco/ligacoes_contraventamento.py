@@ -220,6 +220,9 @@ _TIRANTE = {
                      ajuda="garfo: centro do furo à borda na direção da força; 0 = 2·d do pino"),
     "d_pino": _e("Diâmetro do pino", "mm", 0.0, min=0.0, max=100.0, ajuda="garfo: 0 = D_barra"),
     "tipo_pino": _e("Pino (especificação)", "-", "A325", opcoes=list(L.PARAFUSOS)),
+    "t_orelha": _e("Espessura da orelha", "mm", 0.0, min=0.0, max=100.0,
+                   ajuda="flexão do pino (6.4.1); 0 = não informada: momento mínimo N·t/8 (aviso)"),
+    "folga_garfo": _e("Folga orelha–gusset", "mm", 0.0, min=0.0, max=50.0, ajuda="cada lado; flexão do pino (6.4.1)"),
     "comprimento": _e("Comprimento do tirante", "mm", 0.0, min=0.0, max=1e5),
     "borda_laminada": _e("Bordas laminadas/maçarico", "-", False),
     "deformacao_limitada": _e("Deformação limitada", "-", True),
@@ -472,9 +475,11 @@ def _membro(d, s, N, c, v, av, rot=""):
             linhas, w0, lc = [("lado 1", l1, F / 2), ("lado 2", l2, F / 2)], a, (l1 + l2) / 2
         else:  # tubo com rasgo no gusset: 4 filetes de comprimento l1
             linhas, w0, lc = [(f"{i + 1}", l1, F / 4) for i in range(4)], a, l1
-        for nm, li, Fi in linhas:
+        for nm, li, Fi in linhas:   # filetes longitudinais da ligação extrema da barra axial: β da 6.2.2.2 d)
             if Fi > 0:
-                v.append(_vf(f"solda{rot}: filete {nm} (l = {li / MM:.0f} mm)", Fi, Fw * li, "kN", "6.2.5 / tabela 8"))
+                bt = L.beta_filete_longo(li, bs)
+                v.append(_vf(f"solda{rot}: filete {nm} (l = {li / MM:.0f} mm" + (f", β = {bt:.3f}" if bt < 1 else "")
+                             + ")", Fi, Fw * bt * li, "kN", "6.2.5 / tabela 8" + (" / 6.2.2.2 d)" if bt < 1 else "")))
         if sec != "barra_redonda":
             v += [_de_legado(L._minimo(f"solda{rot}: dimensão mínima", L.filete_minimo(min(t, tg)), bs,
                                        "6.2.6.2.1 / tabela 10", f"b_solda{s}")),
@@ -801,6 +806,19 @@ def tracao_barra_rosqueada(D, fy, fu):
     return dict(Ab=Ab, rosca=0.75 * Ab * fu / GA2, escoamento=Ab * fy / GA1)
 
 
+def pino_garfo(F, d, fy, t, t_orelha=0.0, folga=0.0):
+    """Pino de garfo (2 orelhas, gusset central de espessura t), NBR 8800 6.4 (unidades m, kN, kN/m²).
+    6.4.1: contato uniforme em cada parte → M = F/2·(t_orelha/2 + folga + t/4) no meio do pino [Pfeil 9.10.4,
+    p. 259]; 6.4.2.1 MRd = 1,2·W·fy/γa1; 6.4.2.2 Fv,Rd = 0,6·(0,75·Ag)·fy/γa1 por plano (2 planos);
+    6.4.2.3 σRd = 1,5·fy/γa1 contra a maior tensão de contato F/(d·t) e F/2/(d·t_orelha)."""
+    Ag = math.pi * d ** 2 / 4
+    sig = F / (d * t)
+    if t_orelha > 0:
+        sig = max(sig, F / 2 / (d * t_orelha))
+    return dict(M=F / 2 * (t_orelha / 2 + folga + t / 4), MRd=1.2 * (math.pi * d ** 3 / 32) * fy / GA1,
+                FvRd=2 * 0.6 * 0.75 * Ag * fy / GA1, sigma=sig, sigmaRd=1.5 * fy / GA1)
+
+
 def verificar_tirante(dados, esforcos):
     d = _ler(_TIRANTE, dados, "tirante_barra_redonda")
     N = _esf(esforcos)["N"]
@@ -841,10 +859,21 @@ def verificar_tirante(dados, esforcos):
         a = (d["borda_pino"] * MM) or 2 * dp
         L._geometria("tirante_barra_redonda", dn, [("borda_pino", a, dn / 2, "borda além do pino"),
                                                    ("largura_chapa", bw / 2, dn / 2, "meia largura da chapa")])
+        fyp = L.PARAFUSOS[tipo]["fyb"]
+        if tipo == "A325" and fub < 825 * MPa:
+            fyp = 560   # tabela A.3: 24 < db ≤ 36 mm
+        if fyp is None:
+            raise ValueError(f"tipo_pino {tipo}: fy não definido na NBR 8800 tabela A.3 — pino (6.4) não verificável")
+        te, gf = d["t_orelha"] * MM, d["folga_garfo"] * MM
+        if te <= 0:
+            av.append("garfo: espessura das orelhas não informada — flexão do pino com o momento mínimo N·t/8 "
+                      "(orelhas e folgas aumentam o momento; informe t_orelha)")
         if F > 0:
             tr = L.tracao_chapa(bw * t, (bw - dn) * t, fyc, fuc)
-            v += [_vf("pino: cisalhamento (2 planos, garfo)", F,
-                      2 * L.cisalhamento_parafuso(db, fub, True, alta), "kN", "6.3.3.2"),
+            pn = pino_garfo(F, db, fyp * MPa, t, te, gf)
+            v += [_vf("pino: cisalhamento (2 planos, 0,6·0,75·Ag·fy/γa1)", F, pn["FvRd"], "kN", "6.4.2.2"),
+                  _vf("pino: flexão (contato uniforme, 1,2·W·fy/γa1)", pn["M"], pn["MRd"], "kN·m", "6.4.1 / 6.4.2.1"),
+                  _vf("pino: esmagamento (1,5·fy/γa1)", pn["sigma"] / MPa, pn["sigmaRd"] / MPa, "MPa", "6.4.2.3"),
                   _vf("gusset: contato/rasgamento no furo do pino", F,
                       L.pressao_contato(a - dh / 2, t, db, fuc, d["deformacao_limitada"]), "kN", "6.3.3.3"),
                   _vf("gusset: escoamento na seção do pino", F, tr["escoamento"], "kN", "6.5.3 → 5.2.2 a)"),
