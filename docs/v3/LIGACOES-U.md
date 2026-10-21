@@ -68,8 +68,7 @@ do membro em `dimensionar_grupo` também traz essa chave. O WPF tira essa ponta 
 - `abertura_y` (+1/−1, padrão +1): lado local para onde o U abre. O chamador informa; a `geometria` devolve o lado
   usado. Com −1, a chapa, os parafusos e as soldas espelham em y.
 - Excentricidade ao centro de cisalhamento medida do plano de corte dos parafusos (costas da alma): `e = |x0| − xg`.
-- Centro instantâneo: o coeficiente `C` nunca fica abaixo do método elástico, `1/√((1/n)² + (e·ymáx/Σy²)²)`.
-  Com 2 parafusos, o ajuste de Δmáx dava 2 % abaixo do elástico.
+- Centro instantâneo: vale o C da tabela/IC como está (Gerdau n = 2: 0,88, abaixo do elástico 0,894; conservador, aceito — rodada 2).
 - Novo tipo `solda_direta_alma`: alma do U soldada direto no apoio por dois filetes, sem chapa nem parafusos.
   Verifica o filete (6.2.5), o metal base do apoio, o metal base da alma entre os filetes, o cisalhamento da alma
   (`Aw = h·tw`), a perna mínima e a máxima (tabela 10, 6.2.6.2.2) e o comprimento mínimo (4b e 40 mm). Comprimento padrão

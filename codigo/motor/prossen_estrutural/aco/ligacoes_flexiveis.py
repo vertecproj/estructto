@@ -72,10 +72,7 @@ def coeficiente_ci(ys, e):
             b = m
         else:
             a, fa = m, fm
-    # G5: o centro instantâneo nunca fica abaixo do método elástico (limite inferior clássico); com 2 parafusos o
-    # ajuste de Δmáx dava C 2 % menor que o elástico
-    ym = max(map(abs, ys))
-    return max(f((a + b) / 2)[1], 1 / math.hypot(1 / n, e * ym / sum(y * y for y in ys)))
+    return f((a + b) / 2)[1]   # G5: tabela/centro instantâneo como está (Gerdau n = 2: 0,88, conservador)
 
 
 def alavanca(T, t, p, b, a, db, dh, fy):

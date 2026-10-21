@@ -99,11 +99,6 @@ class TestFlexiveisU(unittest.TestCase):
         o = L.otimizar("chapa_simples_alma", pf, {"V": 45.0})
         self.assertEqual((o["ok"], o["tipo"]), (True, "solda_direta_alma"))
 
-    def test_ci_nao_abaixo_do_elastico(self):
-        for ys, e in (([-0.0375, 0.0375], 0.075), ([-0.019, 0.019], 0.05), ([-0.075, 0, 0.075], 0.075)):
-            el = 1 / math.hypot(1 / len(ys), e * max(map(abs, ys)) / sum(y * y for y in ys))
-            self.assertGreaterEqual(F.coeficiente_ci(ys, e), el - 1e-12)
-
     def test_ue_aceito(self):
         r = _sug_ver("chapa_simples_alma", dict(perfil_viga="Ue 150x60x20x2,00", perfil_suporte="W 200 x 26,6",
                                                 apoio="alma_viga"), {"V": 5.0})

@@ -52,8 +52,7 @@ LCPP_30B = dict(perfil_suporte="W530x92", apoio="alma_viga", cantoneira="L76x76x
 class TestComponentes(unittest.TestCase):
     def test_coeficiente_centro_instantaneo_gerdau(self):
         # [GD] 5.4 (p. 96–97), AISC tabela 7-7: s = ec = 75 mm, 2..6 parafusos → C = 0,88 1,75 2,81 3,90 4,98
-        # G5: n = 2 fica no método elástico, 1/√(0,5² + 1²) = 0,894 (o C nunca fica abaixo dele; tabela 0,88)
-        for n, c in zip(range(2, 7), (0.8944, 1.75, 2.81, 3.90, 4.98)):
+        for n, c in zip(range(2, 7), (0.88, 1.75, 2.81, 3.90, 4.98)):
             ys = [(i - (n - 1) / 2) * 0.075 for i in range(n)]
             self.assertLess(rel(lf.coeficiente_ci(ys, 0.075), c), 0.01, n)
 
@@ -244,8 +243,7 @@ class TestChapaSimples(unittest.TestCase):
 
     def test_gerdau_r20_corte_dos_parafusos(self):
         # [GD] 5.3 (p. 96) / CBCA.md R20: 0,4·Ab·fub·C/1,35 com C = 0,88 e 1,75 → 61,3 e 121,9 kN (tabela: 60 e 120)
-        # G5: n = 2 com C elástico 0,894 → 61,3·0,894/0,88 = 62,3 kN
-        for n, esp in ((2, 62.3), (3, 121.9)):
+        for n, esp in ((2, 61.3), (3, 121.9)):
             res = T["chapa_simples_alma"]["verificar"](dict(self.BASE, n=n, dist_topo_furo=80), {"V": 50.0})
             self.assertLess(rel(ver(res, "parafusos: cisalhamento")["resistente"], esp), 0.01, n)
 
