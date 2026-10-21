@@ -2,6 +2,18 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 21/10/2026 — Tela inicial, Novo projeto em 3 passos e menu Arquivo novos (branch wt-inicio)
+
+- Tela inicial cobre a janela toda (Home estilo Revit): logo, Novo projeto / Abrir / Importar CYPE / Importar Ftool, galeria de
+  modelos com miniatura real do motor (vazio com grade, galpão, edifício, pórtico, treliça/cobertura, mezanino), recentes com
+  miniatura, pasta, data, pino e remover, cartão Aprender. Nada de 2D/"pórticos planos".
+- Novo projeto (Ctrl+N, "+", Arquivo › Novo): modelo → dados (nome, pasta, cliente, engenheiro, empresa, normas) → grade de eixos
+  "3x6 2x5" e níveis, com prévia 3D ao vivo; Criar gera, salva `pasta\nome.json` e abre em planta do 1º nível. `config.projeto`
+  e `config.grade` novos no motor (informativos).
+- Menu Arquivo com páginas de verdade (Início, Novo, Abrir, Exportar, Importar, Propriedades do projeto, Opções, Sobre) em
+  `Backstage.cs`; Opções (acento, autor/empresa padrão, pasta, unidades exibidas, autosalvar, restaurar painéis) em
+  `%AppData%\NovoFtool\opcoes.txt`. Capturas 01/02 (`ESTRUCTTO_CAPTURAS=inicio`). Detalhe: [docs/v3/INICIO.md](v3/INICIO.md).
+
 ## 20/10/2026 — Snap igual ao AutoCAD e Medir AutoCAD + Inventor na Vista 3D (branch wt-snap)
 
 - Snap 3D novo (`Snap3D.cs`, motor puro): extremidade, meio, centro, nó, interseção real e aparente, perpendicular, extensão,

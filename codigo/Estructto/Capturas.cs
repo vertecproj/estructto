@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -238,6 +239,80 @@ namespace NovoFtool
 
         // 43) Níveis e planos (PlanosTrabalho.cs): edifício de 1 andar, painel Níveis, copiar o andar 3× para cima (4 andares,
         // um lote só: um desfazer volta tudo), nível isolado em planta, gerar pilares (regra pura).
+        // 01) Tela inicial (1600x900 e 1280x720), novo projeto nos 3 passos, cada página do Arquivo e Opções.
+        static void CapturasInicio(MainWindow w)
+        {
+            // recentes de verdade para a captura: um .json do motor na pasta de saída (fixado) + um caminho inexistente
+            string rec = Path.Combine(pastaSaida, "Galpao demo.json");
+            try
+            {
+                Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo("galpao_aco"), "exemplo"));
+                File.WriteAllText(rec, w.EspacialAtivo.JsonFormatado());
+                Config.AdicionarRecente(rec); Config.Fixar(rec, true);
+                Config.AdicionarRecente(Path.Combine(pastaSaida, "Edificio sede.json"));
+                w.FecharEspaciaisSemPerguntar();
+            }
+            catch (Exception ex) { File.AppendAllText(Path.Combine(pastaSaida, "erros.txt"), "01-recentes: " + ex.Message + Environment.NewLine); }
+
+            w.MontarTelaInicial();
+            w.TelaInicial.Visibility = Visibility.Visible;
+            w.Bastidor.IsOpen = false;
+            Esperar(w.MiniaturasInicio);
+            CapturarPrincipal(w, "01-inicio", () => Esperar(w.MiniaturasInicio));
+
+            foreach (string chave in new[] { "galpao", "vazio" })
+            {
+                var j = new JanelaNovoProjeto(w, chave) { Owner = w };
+                PrepararDialogoForaDaTela(j);
+                j.Show();
+                for (int p = 0; p < 3; p++)
+                {
+                    j.IrPasso(p);
+                    Esperar(w.MiniaturasInicio);
+                    EsperarIdle(); System.Threading.Thread.Sleep(350); EsperarIdle();
+                    Esperar(j.PreviaPronta);
+                    EsperarIdle();
+                    CapturarDialogo(j, "02-novo-projeto-" + chave + "-passo" + (p + 1) + ".png");
+                }
+                j.Close();
+            }
+
+            // páginas do Arquivo com um projeto aberto (Propriedades e Exportar precisam dele)
+            if (File.Exists(rec)) { Esperar(w.AbrirEspacialArquivo(rec)); EsperarIdle(); }
+            foreach (string pg in w.PaginasBs.ToList())
+            {
+                w.MostrarBs(pg);
+                EsperarIdle();
+                if (pg == "novo" || pg == "inicio") Esperar(w.MiniaturasInicio);
+                EsperarIdle();
+                CapturarPrincipal(w, "01-backstage-" + pg);
+            }
+            w.Bastidor.IsOpen = false;
+            EsperarIdle();
+            w.FecharEspaciaisSemPerguntar();
+
+            // Criar de verdade: edifício 2x6 / 2x5 / 3 níveis em pastaSaida\Sede.json; abre em planta do 1º nível
+            {
+                var me = ModeloInicial.Por("edificio");
+                var d = new NovoProjetoDados { Modelo = me, Grade = me.GradePadrao(), Nome = "Sede", Pasta = pastaSaida, Cliente = "Cliente Exemplo", Engenheiro = "Eng. Teste", Empresa = "PROSSEN", Material = me.Material, Pilar = me.Pilar, Viga = me.Viga, Normas = new List<string> { "NBR 8800" } };
+                if (File.Exists(d.Arquivo)) File.Delete(d.Arquivo);
+                Esperar(Inicio.Acoes.Novo(w, d));
+                EsperarIdle();
+                var doc = w.EspacialAtivo ?? throw new InvalidOperationException("novo projeto: documento não abriu");
+                if (!File.Exists(d.Arquivo)) throw new InvalidOperationException("novo projeto: arquivo não foi salvo");
+                var js = (JsonObject)JsonNode.Parse(File.ReadAllText(d.Arquivo));
+                if (js["config"]?["grade"]?["x"]?.AsArray().Count != 2) throw new InvalidOperationException("novo projeto: config.grade não gravada");
+                if ((string)js["config"]?["projeto"]?["empresa"] != "PROSSEN") throw new InvalidOperationException("novo projeto: config.projeto não gravado");
+                if (Niveis.Lista(doc.Json).Count != 4) throw new InvalidOperationException("novo projeto: esperados 4 níveis, veio " + Niveis.Lista(doc.Json).Count);
+                if (!string.Equals(Config.Recentes().FirstOrDefault(), d.Arquivo, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("novo projeto: não entrou nos recentes");
+                CapturarPrincipal(w, "02-novo-projeto-criado");
+                w.FecharEspaciaisSemPerguntar();
+                Config.RemoverRecente(d.Arquivo);
+            }
+            w.TelaInicial.Visibility = Visibility.Collapsed;
+            try { Config.RemoverRecente(rec); Config.RemoverRecente(Path.Combine(pastaSaida, "Edificio sede.json")); } catch { }
+        }
+
         static void CapturasPlanos(MainWindow w)
         {
             var jg = new JanelaGerar3D("edificio");
@@ -873,20 +948,18 @@ namespace NovoFtool
                 FolhaIcones("00-icones-16x3.png", TemaPlant.Surface1, 3);
                 FolhaIcones("00-icones-32x2.png", TemaPlant.Surface1, 2, 32);
 
-                // 01) Tela inicial e Backstage
-                w.MontarTelaInicial();
-                w.TelaInicial.Visibility = Visibility.Visible;
-                w.Bastidor.IsOpen = false;
-                CapturarPrincipal(w, "01-inicio");
-
-                w.Bastidor.IsOpen = true;
-                EsperarIdle();
-                CapturarPrincipal(w, "01-backstage");
-                w.MostrarRecentesBs();
-                EsperarIdle();
-                CapturarPrincipal(w, "01-backstage-recentes");
-                w.Bastidor.IsOpen = false;
-                EsperarIdle();
+                // 01) Tela inicial, novo projeto e Backstage (CapturasInicio; só elas: ESTRUCTTO_CAPTURAS=inicio)
+                {
+                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
+                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
+                }
+                CapturasInicio(w);
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "inicio")
+                {
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
 
                 // Abre o modelo e calcula (F5)
                 w.Abrir(caminhoModelo);

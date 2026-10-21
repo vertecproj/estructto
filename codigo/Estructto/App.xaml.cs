@@ -49,6 +49,7 @@ namespace NovoFtool
             base.OnStartup(e);
             ThemeManager.Current.ChangeTheme(this, "Dark.Cobalt");
             TemaPlant.AplicarFluent(this);   // cores do AutoCAD Plant 3D por cima do tema escuro
+            if (!e.Args.Contains("--capturas")) TemaPlant.AplicarAcento(this, Config.Opcoes.Acento);   // Arquivo › Opções
         }
 
         protected override void OnExit(ExitEventArgs e)

@@ -48,7 +48,7 @@ namespace NovoFtool
             // barra das abas de arquivo (a do AvalonDock fica escondida; ver EsconderAbaDocumento)
             ArqMenu.Click += (s, e) => Bastidor.IsOpen = true;
             ArqInicio.Click += (s, e) => { MontarTelaInicial(); TelaInicial.Visibility = TelaInicial.Visibility == Visibility.Visible && M.Barras.Count > 0 ? Visibility.Collapsed : Visibility.Visible; };
-            ArqNovo.Click += (s, e) => Novo();
+            ArqNovo.Click += (s, e) => NovoProjeto();
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(EsconderAbaDocumento), System.Windows.Threading.DispatcherPriority.Loaded);
             var selo = TemaPlant.Selo(24);
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => TemaPlant.AjustarFaixa(this, selo)), System.Windows.Threading.DispatcherPriority.Loaded);
@@ -292,7 +292,7 @@ namespace NovoFtool
         void MontarFaixa()
         {
             // barra de acesso rapido (Calcular fica sempre visivel aqui, nao em abas)
-            var qNovo = Botao("novo", "Novo", Novo, "Cria um novo modelo em branco em uma nova aba.", "Ctrl+N");
+            var qNovo = Botao("novo", "Novo", () => NovoProjeto(), "Novo projeto 3D: modelo, dados e grade de eixos e níveis.", "Ctrl+N");
             var qAbrir = Botao("abrir", "Abrir", AbrirDialogo, "Abre um arquivo de modelo (.estructto, .portico ou .ftl do Ftool).", "Ctrl+O");
             var qSalvar = Botao("salvar", "Salvar", () => Salvar(false), "Salva as alterações do modelo atual no arquivo.", "Ctrl+S");
             var qDesf = Botao("desfazer", "Desfazer", Desfazer, "Desfaz a última alteração feita no modelo.", "Ctrl+Z");
@@ -583,50 +583,7 @@ namespace NovoFtool
 
         static void Alternar(AvalonDock.Layout.LayoutAnchorable p) { if (p.IsVisible) p.Hide(); else p.Show(); }
 
-        // ================= bastidores (menu Arquivo) =================
-
-        F.BackstageTabItem bsRecentes;
-
-        void MontarBastidores()
-        {
-            BsAbas.Items.Clear();
-            BsAbas.Items.Add(BotaoBs("Novo", "Ctrl+N", Novo, "Cria um novo modelo em branco em uma nova aba."));
-            BsAbas.Items.Add(BotaoBs("Abrir...", "Ctrl+O", AbrirDialogo, "Abre um modelo salvo (.estructto, .portico) ou importa um arquivo .ftl do Ftool."));
-            BsAbas.Items.Add(BotaoBs("Exemplos 3D...", "", AbrirExemplosEspaciais, "Abre um modelo espacial de exemplo do motor Python (edifício, galpão, pórtico)."));
-            BsAbas.Items.Add(BotaoBs("Salvar", "Ctrl+S", () => Salvar(false), "Salva as alterações do modelo atual no disco."));
-            BsAbas.Items.Add(BotaoBs("Salvar como...", "Ctrl+Shift+S", () => Salvar(true), "Salva uma cópia do modelo atual com outro nome ou em outra pasta."));
-            BsAbas.Items.Add(new F.SeparatorTabItem());
-            bsRecentes = new F.BackstageTabItem { Header = "Recentes", ToolTip = "Lista os últimos arquivos de modelo abertos para acesso rápido." };
-            BsAbas.Items.Add(bsRecentes);
-            BsAbas.Items.Add(new F.SeparatorTabItem());
-            BsAbas.Items.Add(BotaoBs("Importar .ftl do Ftool...", null, ImportarDialogo, "Importa a geometria, seções, materiais e casos de carga de um arquivo .ftl do Ftool original."));
-            BsAbas.Items.Add(BotaoBs("Importar/comparar CYPE...", null, () => ComandosAnalise.AbrirCype(this), "Importa um modelo do CYPE 3D (.ed3) ou compara os resultados com os do CYPE (motor Python)."));
-            BsAbas.Items.Add(TabExportar());   // Exportar.cs: DWG, DXF, STEP
-            BsAbas.Items.Add(new F.SeparatorTabItem());
-            BsAbas.Items.Add(BotaoBs("Ajuda e atalhos", "F1", MostrarAjuda, "Abre a janela de ajuda com o passo a passo, convenções de sinais e lista de atalhos."));
-            BsAbas.Items.Add(BotaoBs("Sair", "Alt+F4", Close, "Fecha o programa (pergunta antes caso existam alterações não salvas)."));
-            BsAbas.SelectedItem = bsRecentes;
-            Bastidor.IsOpenChanged += (s, e) => { if (Bastidor.IsOpen) AtualizarRecentesBs(); };
-        }
-
-        F.Button BotaoBs(string texto, string atalho, Action acao, string dica = null)
-        {
-            var b = new F.Button { Header = texto, ToolTip = dica != null ? (object)Dica(texto, dica, atalho) : atalho };
-            b.Click += (s, e) => { Bastidor.IsOpen = false; acao(); };
-            return b;
-        }
-
-        internal void MostrarRecentesBs() { Bastidor.IsOpen = true; AtualizarRecentesBs(); BsAbas.SelectedItem = bsRecentes; }
-
-        void AtualizarRecentesBs()
-        {
-            var sp = new StackPanel { Margin = new Thickness(30, 20, 30, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
-            sp.Children.Add(new TextBlock { Text = "Arquivos recentes", FontSize = 22, FontWeight = FontWeights.Light, Margin = new Thickness(0, 0, 0, 14) });
-            var lista = Config.Recentes();
-            if (lista.Count == 0) sp.Children.Add(new TextBlock { Text = "Nenhum arquivo aberto ainda.", Foreground = TemaPlant.BTexto3 });
-            foreach (string c in lista) { var ca = CartaoRecente(c); ca.Margin = new Thickness(0, 0, 0, 8); sp.Children.Add(ca); }
-            bsRecentes.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        }
+        // ================= bastidores (menu Arquivo): Backstage.cs =================
 
         Button Cartao(string titulo, string sub, Action acao, string icone = null, string dica = null)
         {

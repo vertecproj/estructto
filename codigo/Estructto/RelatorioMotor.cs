@@ -19,6 +19,8 @@ namespace NovoFtool
     {
         // Empresa/autor do carimbo: guardada em %AppData%\NovoFtool\empresa.txt. Padrão vazio.
         static string ArqEmpresa => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool", "empresa.txt");
+        // Empresa do projeto aberto (config.projeto.empresa, tela de novo projeto): tem prioridade sobre a guardada.
+        public static string EmpresaProjeto;
         public static string Empresa
         {
             get { try { return File.Exists(ArqEmpresa) ? File.ReadAllText(ArqEmpresa).Trim() : ""; } catch { return ""; } }
@@ -112,7 +114,7 @@ namespace NovoFtool
             DockPanel.SetDock(dir, Dock.Right); barra.Children.Add(dir);
             var esq = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             esq.Children.Add(new TextBlock { Text = "Empresa / autor", Foreground = BFraco, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
-            cEmpresa = Campo(RelatorioMotor.Empresa, 220, "Nome que sai no campo Empresa do carimbo. Vazio = em branco, para preencher à mão. Fica guardado para os próximos relatórios.");
+            cEmpresa = Campo(string.IsNullOrWhiteSpace(RelatorioMotor.EmpresaProjeto) ? RelatorioMotor.Empresa : RelatorioMotor.EmpresaProjeto, 220, "Nome que sai no campo Empresa do carimbo. Vazio = em branco, para preencher à mão. Fica guardado para os próximos relatórios.");
             cEmpresa.KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Enter) Atualizar(); };
             esq.Children.Add(cEmpresa);
             esq.Children.Add(B("Aplicar", Atualizar, false, "Gera o relatório de novo com esta empresa (Enter)."));

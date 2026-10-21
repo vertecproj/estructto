@@ -129,7 +129,7 @@ namespace NovoFtool
         }
 
         // O modelo que `preparar` deixou no servidor vira um documento novo (sem pilha de desfazer).
-        static async Task<DocumentoEspacial> Criar(Func<Task> preparar, string titulo, string arquivo)
+        internal static async Task<DocumentoEspacial> Criar(Func<Task> preparar, string titulo, string arquivo)
         {
             var d = new DocumentoEspacial { Titulo = titulo, Arquivo = arquivo };
             await Motor.Exclusivo(async () =>
@@ -1028,28 +1028,6 @@ namespace NovoFtool
             jan.ShowDialog();
           }
           catch (Exception ex) { MostrarToast("⚠ Exemplos: " + ex.Message, true); }
-        }
-
-        FrameworkElement LinhaEspacialInicio(bool comp)
-        {
-            var sp = new StackPanel { Margin = new Thickness(0, 0, 0, comp ? 6 : 14) };
-            sp.Children.Add(new TextBlock { Text = "MODELO ESPACIAL (3D, MOTOR PYTHON)", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 0, 0, 6) });
-            var wp = new WrapPanel();
-            foreach (var (t, ic, a, dica) in new (string, string, Action, string)[]
-            {
-                ("Edifício 3D", "3d", () => AbrirGerador3D("edificio"), "Gera um edifício de pórticos espaciais (vãos em X e Y, pavimentos) no motor Python."),
-                ("Galpão 3D", "3d", () => AbrirGerador3D("galpao"), "Gera um galpão (pórticos, terças, contraventamento) no motor Python."),
-                ("Pórtico 3D", "3d", () => AbrirGerador3D("portico_plano"), "Gera um pórtico plano de vários vãos e pavimentos no motor Python (6 graus de liberdade por nó)."),
-                ("Exemplos do motor…", "abrir", AbrirExemplosEspaciais, "Abre um dos modelos de exemplo do motor (edifício de concreto, galpão de aço…)."),
-                ("Abrir .json / .ed3…", "abrir", AbrirDialogo, "Abre um modelo do motor (.json) ou importa uma obra do CYPE 3D (.ed3)."),
-            })
-            {
-                var b = UiPlaca.Botao(t, ic, a, dica);
-                b.Margin = new Thickness(0, 0, 8, 6);
-                wp.Children.Add(b);
-            }
-            sp.Children.Add(wp);
-            return sp;
         }
     }
 

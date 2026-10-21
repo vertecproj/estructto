@@ -303,6 +303,24 @@ namespace NovoFtool
             System.Windows.Controls.ToolTipService.ShowDurationProperty.OverrideMetadata(typeof(FrameworkContentElement), new FrameworkPropertyMetadata(20000));
         }
 
+        // Acento escolhido em Arquivo › Opções: troca os recursos dinâmicos (faixa, botões primários, seleção). Os pincéis
+        // estáticos (BAcento etc., usados em código) continuam no ciano até reiniciar.
+        // ponytail: hover/pressionado derivados por clareamento/escurecimento fixos; paleta por acento se alguém pedir.
+        public static void AplicarAcento(Application app, string hex)
+        {
+            Color c;
+            try { c = C(hex); } catch { return; }
+            if (c == Acento) return;
+            Color Mix(Color a, Color b, double t) => Color.FromRgb((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
+            var hover = Mix(c, Colors.White, 0.22); var pressed = Mix(c, Colors.Black, 0.18);
+            var r = app.Resources;
+            r["Accent.Primary"] = B(c); r["Accent.Hover"] = B(hover); r["Accent.Pressed"] = B(pressed);
+            r["Accent.Highlight"] = B(hover); r["Accent.Subtle"] = B(hover, 0x26); r["Accent.SubtleBg"] = B(hover, 0x26);
+            r["Destaque"] = B(c); r["Realce"] = B(hover);
+            r["AccentBase"] = B(c); r["Accent80"] = B(hover); r["Accent60"] = B(c); r["Accent40"] = B(hover); r["Accent20"] = B(pressed);
+            r["BackstageTabItem.Selected.Background"] = B(c);
+        }
+
         // Registra TODOS os tokens como recursos do aplicativo (chaves do GUIA-DESIGN + aliases) para uso com DynamicResource.
         // Fonte unica das cores: este arquivo. App.xaml nao define cor nenhuma.
         public static void RegistrarTokens(Application app)
