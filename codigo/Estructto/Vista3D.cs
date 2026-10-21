@@ -107,6 +107,7 @@ namespace NovoFtool
         public List<No3D> Nos = new List<No3D>();
         public List<Barra3D> Barras = new List<Barra3D>();
         public List<Carga3D> Cargas = new List<Carga3D>();
+        public List<Ligacao3D> Ligacoes = new List<Ligacao3D>();   // geometria do contrato (Render3DLigacoes.cs); vazio = nenhuma
         // Barras fora do plano/nível isolado: linhas claras sem picking nem atração (PlanosTrabalho.cs › FiltrarPlano).
         public List<(Point3D A, Point3D B)> Fantasmas = new List<(Point3D, Point3D)>();
 
@@ -157,6 +158,16 @@ namespace NovoFtool
                     if (v != null && v.Aplicavel) b3.Aprov = v.Ap;
                 }
                 r.Barras.Add(b3);
+            }
+            // placas de base calculadas (Ligações e bases › Placa de base) viram chapa + chumbadores no Render3D
+            foreach (No n in m.Nos)
+            {
+                if (n.Placa == null) continue;
+                Barra pilar = PlacaCalc.Pilar(m, n, out _, out _, out _, out _); if (pilar == null) continue;
+                Barra3D b3 = r.Barras.FirstOrDefault(b => b.Origem == pilar); if (b3 == null) continue;
+                Secao sec = Biblioteca.AcharSecao(pilar.Secao); if (sec == null) continue;
+                var lig = LigacoesAmostra.DaPlaca2D(n.Id, b3, b3.Ni == n.Id, GeometriaPerfis.CriarContorno(Perfil3D.DoCatalogo(sec), 0.1), n.Placa, PlacaCalc.Calcular(m, n));
+                if (lig != null) r.Ligacoes.Add(lig);
             }
             return r;
         }
@@ -209,6 +220,10 @@ namespace NovoFtool
         public object Selecionado;
         public bool Realista;                    // perfis reais, materiais, sombra e arestas (Config.Realista3D)
         public Func<string, Perfil3D> Perfil;    // nome da seção -> forma real (null/desconhecida = caixa fina)
+        // Render3D (DX11) quando há placa de vídeo; senão o Realista nativo deste arquivo. ESTRUCTTO_3D=nativo força o nativo.
+        Render3D render;
+        bool Dx => Realista && Render3D.Disponivel;
+        public bool LigacoesAmostra = Environment.GetEnvironmentVariable("ESTRUCTTO_3D_AMOSTRAS") == "1";   // sem ligações do motor: exemplos (capturas)
         readonly Dictionary<string, Forma> formas = new Dictionary<string, Forma>();
         readonly Dictionary<Model3D, (int[] Ini, object[] Obj)> faixas = new Dictionary<Model3D, (int[], object[])>();   // malhas juntadas: vértice inicial de cada barra
         double largArestas = 1;                  // largura de tela com que as arestas foram feitas
@@ -268,7 +283,7 @@ namespace NovoFtool
             timerArestas.Tick += (s, e) =>
             {
                 timerArestas.Stop();
-                if (Realista && Math.Abs(Math.Log(LarguraAresta() / largArestas)) > 0.3) Reconstruir();
+                if (Realista && !Dx && Math.Abs(Math.Log(LarguraAresta() / largArestas)) > 0.3) Reconstruir();
             };
             IniciarSnap();
         }
@@ -379,7 +394,8 @@ namespace NovoFtool
         {
             mapa.Clear(); faixas.Clear();
             var g = new Model3DGroup();
-            if (!Realista)
+            bool dx = Dx;
+            if (!Realista || dx)   // DX: a cena nativa só tem cargas, diagramas e nós (sobrepostos ao Render3D)
             {
                 g.Children.Add(new AmbientLight(Color.FromRgb(0x78, 0x7C, 0x86)));
                 g.Children.Add(new DirectionalLight(Color.FromRgb(0x6C, 0x6C, 0x6C), new Vector3D(-0.4, 0.6, -0.7)));
@@ -394,7 +410,8 @@ namespace NovoFtool
             double dmax = def ? mod.Nos.Where(n => n.Desl != null).Max(n => Math.Sqrt(n.Desl[0] * n.Desl[0] + n.Desl[1] * n.Desl[1] + n.Desl[2] * n.Desl[2])) : 0;
             double fDef = dmax < 1e-15 ? 0 : 0.08 * 2 * raio / dmax * EscalaDeformada;
 
-            if (Realista) Realismo(g, cx, fDef, h);
+            if (render != null && !dx) render.Vista.Visibility = Visibility.Collapsed;
+            if (Realista) { if (dx) RealismoDx(cx, fDef, h); else Realismo(g, cx, fDef, h); }
             // grade no plano do piso (z mínimo): referência de profundidade, discreta como a grade do 2D
             else {
                 double passo = Math.Pow(10, Math.Floor(Math.Log10(raio / 2))); if (raio / passo > 12) passo *= 2.5; if (raio / passo > 12) passo *= 2;
@@ -434,7 +451,7 @@ namespace NovoFtool
                     var geo = Geo(m, Mat(selNo ? TemaPlant.CorBarraSel : TemaPlant.Texto2, true));
                     mapa[geo] = n; g.Children.Add(geo);
                 }
-                if (!n.Apoios.Any(x => x)) continue;
+                if (!n.Apoios.Any(x => x) || dx) continue;   // DX: pedestal no Render3D
                 double s = Realista ? ApoioReal(n) : raio * 0.035; Point3D p = P(n), bz = p - new Vector3D(0, 0, s * 1.4);
                 if (n.Apoios[3] || n.Apoios[4] || n.Apoios[5])
                     Prisma(mApoio, bz, p - new Vector3D(0, 0, Realista ? 0 : hn), s);   // engaste: bloco (Realista: encostado no pilar)
@@ -582,7 +599,7 @@ namespace NovoFtool
         // do vértice (faixas). Viewport3D não tem shadow map: ver docs/VISTA3D.md.
 
         sealed class Laco { public Point[] P; public Vector[] N; public bool Liso; }   // N[k]: normal da aresta k->k+1 (liso: normal do vértice k)
-        sealed class Forma { public readonly List<Laco> Lacos = new List<Laco>(); public readonly List<Point> Tampa = new List<Point>(); public double Larg; public bool Concreto; }
+        sealed class Forma { public readonly List<Laco> Lacos = new List<Laco>(); public readonly List<Point> Tampa = new List<Point>(); public double Larg; public bool Concreto; public GeometriaPerfis.Contorno Contorno; }
 
         sealed class Malha
         {
@@ -600,83 +617,24 @@ namespace NovoFtool
         static readonly Vector3D LuzEnch = Norm(new Vector3D(-0.85, -0.2, -0.35));
         static Vector3D Norm(Vector3D v) { v.Normalize(); return v; }
 
-        static Laco Poli(params double[] uv)
-        {
-            int n = uv.Length / 2; var l = new Laco { P = new Point[n], N = new Vector[n] };
-            for (int k = 0; k < n; k++) l.P[k] = new Point(uv[2 * k], uv[2 * k + 1]);
-            for (int k = 0; k < n; k++) { Vector t = l.P[(k + 1) % n] - l.P[k]; t.Normalize(); l.N[k] = new Vector(t.Y, -t.X); }   // anti-horário: normal para fora
-            return l;
-        }
-
-        static Laco Circulo(double r)
-        {
-            const int n = 24; var l = new Laco { P = new Point[n], N = new Vector[n], Liso = true };
-            for (int k = 0; k < n; k++) { double a = 2 * Math.PI * k / n; l.N[k] = new Vector(Math.Cos(a), Math.Sin(a)); l.P[k] = new Point(r * l.N[k].X, r * l.N[k].Y); }
-            return l;
-        }
-
-        // contorno de furo: sentido horário, normal para dentro do furo (fora do material)
-        static Laco Furo(Laco ccw)
-        {
-            if (!ccw.Liso) return Poli(ccw.P.Reverse().SelectMany(p => new[] { p.X, p.Y }).ToArray());
-            return new Laco { P = ccw.P.Reverse().ToArray(), N = ccw.N.Reverse().Select(v => -v).ToArray(), Liso = true };
-        }
-
-        static void Ret(Forma f, double u0, double v0, double u1, double v1)
-        { f.Tampa.AddRange(new[] { new Point(u0, v0), new Point(u1, v0), new Point(u1, v1), new Point(u0, v0), new Point(u1, v1), new Point(u0, v1) }); }
-
-        static void Anel(Forma f, Point[] ext, Point[] inn)   // dois contornos anti-horários com o mesmo número de pontos
-        {
-            for (int i = 0; i < ext.Length; i++) { int j = (i + 1) % ext.Length; f.Tampa.AddRange(new[] { ext[i], ext[j], inn[j], ext[i], inn[j], inn[i] }); }
-        }
-
-        // Contorno da seção no plano (u, v) = (largura, altura); v é o eixo local y da Vista3D. padrao = lado sem dados.
+        // Contorno da seção (GeometriaPerfis.CriarContorno, o mesmo da exportação) com as normais do Realista nativo:
+        // plana por aresta nas chapas, radial nos tubos (laço liso); furo (sentido horário) com a normal para dentro.
         static Forma CriarForma(Perfil3D p, double padrao)
         {
-            var f = new Forma();
-            double h = p != null && p.H > 0 ? p.H : padrao, b = p != null && p.B > 0 ? p.B : h;
-            f.Larg = Math.Max(h, b); f.Concreto = p?.Concreto ?? false;
-            double tw = Math.Min(p != null && p.Tw > 0 ? p.Tw : h * 0.06, b * 0.45), tf = Math.Min(p != null && p.Tf > 0 ? p.Tf : h * 0.08, h * 0.45);
-            double hb = b / 2, hh = h / 2;
-            switch (p?.Forma)
+            GeometriaPerfis.Contorno c = GeometriaPerfis.CriarContorno(p, padrao);
+            var f = new Forma { Larg = c.Larg, Concreto = c.Concreto, Contorno = c };
+            for (int i = 0; i < c.Lacos.Count; i++)
             {
-                case "I":
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, -hh + tf, tw / 2, -hh + tf, tw / 2, hh - tf, hb, hh - tf, hb, hh, -hb, hh, -hb, hh - tf, -tw / 2, hh - tf, -tw / 2, -hh + tf, -hb, -hh + tf));
-                    Ret(f, -hb, -hh, hb, -hh + tf); Ret(f, -tw / 2, -hh + tf, tw / 2, hh - tf); Ret(f, -hb, hh - tf, hb, hh);
-                    break;
-                case "U":   // alma do lado -u
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, -hh + tf, -hb + tw, -hh + tf, -hb + tw, hh - tf, hb, hh - tf, hb, hh, -hb, hh));
-                    Ret(f, -hb, -hh, hb, -hh + tf); Ret(f, -hb, -hh + tf, -hb + tw, hh - tf); Ret(f, -hb, hh - tf, hb, hh);
-                    break;
-                case "L":   // abas em -u (vertical) e -v (horizontal)
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, -hh + tw, -hb + tw, -hh + tw, -hb + tw, hh, -hb, hh));
-                    Ret(f, -hb, -hh, hb, -hh + tw); Ret(f, -hb, -hh + tw, -hb + tw, hh);
-                    break;
-                case "TR":
+                Point[] q = c.Lacos[i]; int n = q.Length; var l = new Laco { P = q, N = new Vector[n], Liso = c.Liso[i] };
+                double area = 0; for (int k = 0; k < n; k++) area += q[k].X * q[(k + 1) % n].Y - q[(k + 1) % n].X * q[k].Y;
+                for (int k = 0; k < n; k++)
                 {
-                    double t = Math.Min(tw, Math.Min(hb, hh) * 0.9);
-                    Laco e = Poli(-hb, -hh, hb, -hh, hb, hh, -hb, hh), i = Poli(-hb + t, -hh + t, hb - t, -hh + t, hb - t, hh - t, -hb + t, hh - t);
-                    f.Lacos.Add(e); f.Lacos.Add(Furo(i)); Anel(f, e.P, i.P);
-                    break;
+                    if (l.Liso) { Vector r = (Vector)q[k]; r.Normalize(); l.N[k] = area < 0 ? -r : r; }
+                    else { Vector t = q[(k + 1) % n] - q[k]; t.Normalize(); l.N[k] = new Vector(t.Y, -t.X); }
                 }
-                case "TC":
-                {
-                    double r = h / 2, t = Math.Min(tw, r * 0.9);
-                    Laco e = Circulo(r), i = Circulo(r - t);
-                    f.Lacos.Add(e); f.Lacos.Add(Furo(i)); Anel(f, e.P, i.P);
-                    break;
-                }
-                case "CIRC":
-                {
-                    Laco e = Circulo(h / 2); f.Lacos.Add(e);
-                    for (int k = 0; k < e.P.Length; k++) f.Tampa.AddRange(new[] { new Point(0, 0), e.P[k], e.P[(k + 1) % e.P.Length] });
-                    break;
-                }
-                default:   // RET, caixa equivalente (A, I) ou sem dados
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, hh, -hb, hh));
-                    Ret(f, -hb, -hh, hb, hh);
-                    break;
+                f.Lacos.Add(l);
             }
+            f.Tampa.AddRange(c.Tampa);
             return f;
         }
 
@@ -894,6 +852,67 @@ namespace NovoFtool
             if (casca.P.Count > 0) g.Children.Add(Modelo(casca, null, MatAresta.Value));
         }
 
+        // Modo Realista no Render3D: a cena vai para o Viewport3DX (abaixo do Viewport3D nativo, que fica com cargas,
+        // diagramas, nós e fantasmas por cima). Cores, posições deformadas e chão são os mesmos do Realismo nativo.
+        void RealismoDx(Rect3D cx, double fDef, double h)
+        {
+            if (render == null)
+            {
+                render = new Render3D();
+                render.Falhou += () => Dispatcher.BeginInvoke(new Action(Reconstruir));
+                Children.Insert(Children.IndexOf(vp), render.Vista);
+            }
+            render.Vista.Visibility = Visibility.Visible;
+            string sem = Environment.GetEnvironmentVariable("ESTRUCTTO_3D_SEM") ?? "";   // diagnóstico (Render3D.cs)
+            vp.Visibility = sem.Contains("nativo") ? Visibility.Collapsed : Visibility.Visible;
+            sobre.Visibility = sem.Contains("sobre") ? Visibility.Collapsed : Visibility.Visible;
+            largNo.Clear();
+            foreach (Barra3D b in mod.Barras)
+            {
+                double l = FormaDe(b.Secao, h * 2).Larg;
+                foreach (int id in new[] { b.Ni, b.Nj }) largNo[id] = Math.Max(l, largNo.TryGetValue(id, out double l0) ? l0 : 0);
+            }
+            double z0 = cx.Z;
+            foreach (No3D n in mod.Nos) if (n.Apoios.Any(x => x)) z0 = Math.Min(z0, n.Z - ApoioReal(n) * 1.4);
+            var cena = new Cena3D
+            {
+                Mod = mod, Raio = raio, Z0 = z0, Caixa = cx, Amostras = LigacoesAmostra,
+                Forma = s => FormaDe(s, h * 2).Contorno,
+                Pontos = b => { No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); return a == null || c == null ? (new Point3D(), new Point3D()) : (fDef > 0 ? Deformado(a, fDef) : P(a), fDef > 0 ? Deformado(c, fDef) : P(c)); },
+                Selecionada = b => EhSel(b, b.Origem),
+                Apoio = n =>
+                {
+                    if (!n.Apoios.Any(x => x)) return 0;
+                    double s = ApoioReal(n);   // pedestal: cabe a placa de base (chapa mais larga da ligação do nó) com 40 mm de sobra
+                    foreach (Ligacao3D l in mod.Ligacoes) if (l.No == n.Id) foreach (var ch in l.Chapas) s = Math.Max(s, ch.Contorno.Max(p => Math.Max(Math.Abs(p.X), Math.Abs(p.Y))) / 1000 / 2 + 0.04);
+                    return s;
+                },
+                Cor = b =>
+                {
+                    Color cor = Render3D.CorBase(FormaDe(b.Secao, h * 2).Concreto);
+                    if (MostrarAproveitamento && b.Aprov.HasValue) cor = Mistura(cor, CorAprov(b.Aprov.Value), 0.72);
+                    if (EhSel(b, b.Origem)) cor = Mistura(cor, TemaPlant.CorBarraSel, 0.45);   // o brilho da seleção vem do pós-efeito
+                    return cor;
+                },
+            };
+            render.Montar(cena);
+            render.Lod(1 / Escala);
+            AplicarCamera();
+        }
+
+        public Modelo3D ModeloAtual => mod;
+        // Ligações vindas do motor (Render3DMotor.cs) para o modelo já carregado: redesenha o Realista.
+        public void DefinirLigacoes(List<Ligacao3D> ligacoes) { mod.Ligacoes = ligacoes ?? new List<Ligacao3D>(); if (Realista) Reconstruir(); }
+        public double UltimaMontagemDxMs => render?.UltimaMontagemMs ?? double.NaN;
+        public double MedirQuadroDx() => Dx && render != null ? render.MedirQuadro() : double.NaN;
+        public bool UsandoDx => Dx && render != null;
+
+        // Capturas: o Render3D precisa desenhar antes de a janela ser lida pelo RenderTargetBitmap (Capturas.cs).
+        public void PrepararCaptura() { if (Dx && render != null && IsVisible) render.PrepararCaptura(); }
+
+        // Aproxima um ponto (close-ups das capturas): largura visível (m), azimute e elevação em graus, sem animação.
+        public void Focar(Point3D p, double largura, double azv, double elv) { AtualizarNome("Detalhe"); IrPara(new Camera3 { Az = azv, El = elv, Larg = largura, Alvo = p }, false); }
+
         // ================= câmera =================
 
         Camera3 Atual() { return new Camera3 { Az = az, El = el, Larg = larg, Alvo = alvo }; }
@@ -914,6 +933,7 @@ namespace NovoFtool
             cam.UpDirection = cima;
             cam.Width = larg;
             cam.NearPlaneDistance = raio; cam.FarPlaneDistance = raio * 14;   // faixa justa: melhor precisão de profundidade (chão x sombra)
+            if (render != null && Dx) { render.Camera(cam.Position, cam.LookDirection, cam.UpDirection, larg, raio, raio * 14); render.Lod(1 / Escala); }
             sobre.InvalidateVisual();
         }
 
@@ -922,7 +942,7 @@ namespace NovoFtool
             if (!animar || !IsVisible)
             {
                 Parar(); az = c.Az; el = c.El; larg = c.Larg; alvo = c.Alvo; AplicarCamera();
-                if (Realista && Math.Abs(Math.Log(LarguraAresta() / largArestas)) > 0.3) Reconstruir();   // arestas na escala nova já
+                if (Realista && !Dx && Math.Abs(Math.Log(LarguraAresta() / largArestas)) > 0.3) Reconstruir();   // arestas na escala nova já
                 return;
             }
             de = Atual(); para = c;
@@ -1079,6 +1099,7 @@ namespace NovoFtool
                 }
                 return HitTestResultBehavior.Continue;
             }, new PointHitTestParameters(TranslatePoint(p, vp)));
+            if (achado == null && Dx && render != null) achado = render.Acertar(TranslatePoint(p, render.Vista));   // peças no Render3D
             // Realista não desenha os nós: vale o nó a até 8 px do clique (os da barra acertada, ou qualquer um no vazio)
             if (Realista && !(achado is No3D))
             {

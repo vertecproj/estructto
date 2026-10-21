@@ -2,7 +2,25 @@
 
 Código: `codigo/Estructto/Vista3D.cs`. Capturas: `40-vista3d-*` (`Capturas.cs`).
 
-## Decisão: Viewport3D nativo, sem HelixToolkit
+## Decisão (21/10/2026): Realista no HelixToolkit.Wpf.SharpDX; analítico e fallback no Viewport3D nativo
+
+Reavaliado com a meta "absurdamente bonito" (docs/v3/RENDER.md): o Viewport3D não faz sombra entre peças, oclusão ambiente nem
+MSAA nas capturas, e os truques (sombra projetada, casca invertida) tinham chegado ao teto. Medido num protótipo e depois no
+Estructto (`Render3D.cs`):
+
+| | Viewport3D nativo | HelixToolkit.Wpf.SharpDX 3.1.2 (D3D11) |
+|---|---|---|
+| Pacote | nada | HelixToolkit.Wpf.SharpDX + HelixToolkit.SharpDX/Maths/Geometry + SharpDX 4.2 (net8.0-windows; ~7 MB) |
+| Sombra, SSAO, AA | só no chão; sem SSAO; sem MSAA no RenderTargetBitmap | shadow map 4096², SSAO, MSAA 4× + FXAA, PBR, pós-efeito de contorno |
+| Captura (`RenderTargetBitmap` da janela) | funciona | **funciona**: o D3DImage entra na captura depois de 2 quadros (`Render3D.PrepararCaptura`), com fundo opaco (transparente sai branco) |
+| Sem placa de vídeo | funciona (software) | **não**: `EnableSoftwareRendering` (WARP) estoura a pilha ao criar o D3D9Ex do D3DImage (testado). `Render3D.Disponivel` só aceita adaptador de hardware com nível 10.0+ (DXGI), senão a Vista3D usa o Realista nativo deste arquivo. `ESTRUCTTO_3D=nativo` força. |
+| 2.430 barras | montar 150–166 ms | montar 25–34 ms, quadro 9–10 ms (RTX 4060), picking 5 ms |
+
+Resultado: o modo Realista vai para o Render3D quando há GPU; o analítico, a entrada (snap, desenho, seleção), as cargas e os
+diagramas continuam no Viewport3D nativo, que fica por cima do DX. Integração mínima na `Vista3D.cs` (`RealismoDx`, câmera,
+`Acertar`, `PrepararCaptura`); o resto em `Render3D*.cs`.
+
+## Decisão original (18/10): Viewport3D nativo, sem HelixToolkit
 
 O que a vista precisa (câmera ortográfica, órbita, pan, zoom no cursor, picking, prismas, diagramas planos) cabe em ~450 linhas
 com `Viewport3D`, `OrthographicCamera` e `VisualTreeHelper.HitTest`. HelixToolkit.Wpf traria um pacote a mais e uma convenção de mouse
@@ -61,7 +79,13 @@ Capturas `42-realista-*` lado a lado com `42-analitico-*` (`Capturas.CapturasRea
   (`faixas`, busca binária) e os nós (não desenhados) pela distância na tela (8 px). Medido nas capturas (12 × 10 vãos,
   6 pavimentos, 2.430 barras): montar a cena 150 ms (analítico: 70–100 ms, mas com 2.430 modelos separados), picking 8 ms.
 
-### Sombras de verdade: HelixToolkit.Wpf.SharpDX? (avaliado, não adotado)
+### Render3D (DX11)
+
+Quando `Render3D.Disponivel`, tudo o que esta seção descreve (geometria, material, arestas, sombra, chão) é feito pelo
+`Render3D.cs` com sombra entre peças, SSAO, PBR, arestas de 1 px, recortes nas juntas e ligações: ver
+[v3/RENDER.md](v3/RENDER.md). O Realista nativo abaixo continua como fallback sem GPU.
+
+### Sombras de verdade: HelixToolkit.Wpf.SharpDX? (avaliação de 18/10, superada pela decisão acima)
 
 A sombra projetada nativa ficou boa o bastante (capturas `42-realista-*`): a leitura de profundidade vem do chão + sombra +
 contorno. O que ela não faz: sombra de uma peça sobre outra, sombra sobre peças inclinadas, oclusão ambiente real e
@@ -81,6 +105,6 @@ Recomendação: ficar no nativo. Rever se o usuário pedir sombra entre peças, 
 
 - Deformada desenhada como cordas entre nós deslocados (sem a elástica dentro da barra), inclusive no Realista.
 - Modo analítico: seção desenhada como prisma quadrado fino (o Realista extruda o perfil real).
-- Realista: nós sem acabamento (as peças se cruzam), Ue sem enrijecedores, 2L costas com costas desenhado como I, material pela
+- Realista nativo (fallback): nós sem acabamento (as peças se cruzam; o Render3D recorta); Ue sem enrijecedores, 2L costas com costas desenhado como I, material pela
   forma da seção (aço maciço apareceria como concreto).
 - Sem envoltória nos diagramas 3D.

@@ -1,0 +1,130 @@
+# Realista "absurdo": Render3D (DX11) com recortes e ligações
+
+Data: 21/10/2026. Branch `wt-render`. Código: `codigo/Estructto/Render3D.cs` (viewport DX11, materiais, luzes, sombra, SSAO,
+chão, seleção, LOD, picking), `Render3DGeometria.cs` (malha, recortes nas juntas, extrusão com planos de corte, parafuso,
+cordão, triangulação), `Render3DLigacoes.cs` (contrato `geometria` → `Ligacao3D`, exemplos à mão, placa de base do 2D),
+`Render3DMotor.cs` (ligações dos grupos do motor). Integração na `Vista3D.cs`: `RealismoDx` + 6 linhas de gancho.
+Decisão do renderizador e medições: [../VISTA3D.md](../VISTA3D.md).
+
+## Antes e depois
+
+Capturas `42-realista-*` (1280×720): `antes-*` = Realista nativo (Viewport3D, commit 7b6ee94); `depois-*` = Render3D.
+
+| Modelo | Antes (nativo) | Depois (Render3D) |
+|---|---|---|
+| Guincho (2D, placa de base calculada) | ![](render/antes-guincho.png) | ![](render/depois-guincho.png) |
+| Pórtico 2×2 | ![](render/antes-portico2x2.png) | ![](render/depois-portico2x2.png) |
+| Pórtico 2×2, detalhe | ![](render/antes-portico2x2-detalhe.png) | ![](render/depois-portico2x2-detalhe.png) |
+| `edificio_concreto` (motor) | ![](render/antes-edificio_concreto.png) | ![](render/depois-edificio_concreto.png) |
+| `galpao_aco` (motor) | ![](render/antes-galpao_aco.png) | ![](render/depois-galpao_aco.png) |
+
+Só no Render3D (não existia antes):
+
+| | |
+|---|---|
+| Chapa de topo viga-pilar com parafusos e enrijecedores (exemplo do contrato) | ![](render/depois-ligacao-chapa-topo.png) |
+| Placa de base com chumbadores (exemplo do contrato) | ![](render/depois-ligacao-placa-base.png) |
+| Vão contraventado com gussets | ![](render/depois-contraventamento.png) |
+| Gusset, close-up | ![](render/depois-ligacao-gusset.png) |
+| Galpão com as ligações dos grupos do motor (`chapa_topo_estendida`, `chapa_simples_alma`, placa de base) | ![](render/depois-galpao_aco-ligacoes.png) |
+| Chapa de topo do motor (`verificar_ligacao`, geometria do contrato) | ![](render/depois-ligacao-motor-chapa-topo.png) |
+| Placa de base do grupo "base" do motor | ![](render/depois-ligacao-motor-placa-base.png) |
+
+Julgamento honesto contra Tekla/Advance Steel/Revit: o nativo lia como "sombreado plano com sombra no chão", peças se
+atravessando nos nós e sem anti-serrilhado nas capturas. O Render3D traz sombra entre peças, oclusão nas quinas, arestas de 1 px,
+recortes e ligações: está no nível de um "Shaded with edges" do Revit com sombras. Falta para o Tekla: reflexos de ambiente
+(mapa de ambiente), cope de mesa de verdade e soldas com perfil triangular.
+
+## O look
+
+- **Luz de estúdio**: chave quente `#F2E8D6` (a mesma direção do Realista nativo: esquerda-alto da Iso, fixa no mundo),
+  enchimento frio `#303A4C` do lado oposto, contraluz `#48546A` por trás, ambiente `#30343C`. A 1ª luz direcional é a da sombra.
+- **Sombra**: `ShadowMap3D` 4096², intensidade 0,7, bias 0,0012, `AutoCoverCompleteScene` (o chão não projeta sombra).
+- **Oclusão ambiente**: SSAO alto, raio = 0,9 × largura média das seções (0,12–0,6 m), intensidade 1.
+- **Materiais PBR** com cor por vértice (`VertexColorBlendingFactor = 1`: o albedo é a cor do vértice, então o mapa de
+  aproveitamento e a seleção tingem a peça sem trocar de material). Aço galvanizado (`CorAco3D`, metálico 0,12, rugosidade 0,5);
+  `ESTRUCTTO_3D_ACO=pintado` (`CorAcoPintado3D`) ou `primer` (`CorPrimer3D`, vermelho-acinzentado fosco). Concreto
+  (`CorConcreto3D`, rugosidade 0,9). Chapas `CorChapa3D`, parafusos `CorParafuso3D` (metálico 0,6), soldas `CorSolda3D`.
+- **Exposição**: o PBR do Helix com as 3 luzes rende ~2,7 × o albedo numa face horizontal; as cores do `TemaPlant` são as
+  cores-alvo na tela, então o albedo entra multiplicado por 0,42 (chão) e 0,6 (peças; faces verticais recebem menos luz).
+- **Arestas**: `LineGeometryModel3D` de 0,9 px (`CorArestaDx3D`) nas arestas longitudinais e nos anéis das pontas (tubos só
+  anéis), com MSAA 4× + FXAA. Somem quando a seção tem menos de 6 px na tela.
+- **Chão**: disco com degradê radial `CorChao3D` → cor do canvas (o último anel, a 3 R, já é o canvas: a borda fica fora da
+  tela) e grade `CorGrade3D` embutida na malha, um fio acima do chão, que esmaece com o raio. Opaco: o fundo transparente do
+  D3DImage sai branco no `RenderTargetBitmap` das capturas, e a passagem transparente do Helix ignora a profundidade das peças.
+- **Seleção**: peças escolhidas vão para uma malha própria com `PostEffectMeshOutlineBlur` (halo `CorBarraSel`, 1,2 ×, 1 passe)
+  + tinta azul a 45%. O halo passa por cima de tudo (é um pós-efeito).
+- **Aproveitamento**: 72% da cor da faixa (`CorCalor1..4`), o sombreado continua.
+- **Tema escuro**: fundo do viewport = `BgCanvas`; a vista nativa (cargas, diagramas, nós, fantasmas) fica por cima, sem
+  profundidade contra as peças (ponytail: setas e diagramas aparecem na frente das peças).
+
+## Geometria
+
+- **Seção**: `GeometriaPerfis.CriarContorno` (o mesmo da exportação DWG/STEP). A cópia que a Vista3D tinha foi apagada:
+  `Vista3D.CriarForma` só acrescenta as normais (plana por aresta; radial nos laços lisos dos tubos).
+- **Recortes nas juntas** (`Render3DGeometria.Juntas`): em cada nó, ranking pilar (|dz| > 0,95) > viga (|dz| < 0,2) > diagonal,
+  desempate pela altura da seção e pelo comprimento. A peça de maior ranking é contínua (um par colinear do mesmo ranking é uma
+  só peça). As outras param na face da caixa da seção de **todas** as peças de ranking maior (`FaceDist`: B/2 ou H/2 ao longo da
+  direção da barra) + folga: 12 mm aço, 40 mm diagonal (espaço do gusset), 0 concreto. Dois banzos do mesmo ranking sem peça
+  contínua (cumeeira, canto) = esquadria pela bissetriz (`Corte.Esquadria`: plano pelo nó com normal `d1 − d2`). Recuo limitado
+  a 30% do vão. A extrusão (`Extrudar`) termina em planos de corte arbitrários: cada vértice do contorno anda ao longo da barra
+  até o plano; as tampas vão junto.
+- **Ligações** (`Ligacao3D`): o `geometria` do contrato (mm, referencial local: origem no nó, x = barra que chega saindo do nó,
+  z = eixo forte = v da extrusão, **y = x × z**, que é canhoto — por isso o 2º eixo das chapas é `normal × u` calculado no
+  local, antes de ir para o mundo, e a orientação dos triângulos é decidida pela mão do triedro no mundo). Chapas: polígono
+  (triangulação por orelhas) extrudado de 0 a `espessura` ao longo da normal. Cantoneiras: `L<b>x<t>` extrudadas. Parafusos:
+  cabeça sextavada + arruela, fuste, arruela + porca, numa malha só (ponytail: sem instancing; 2.430 barras com ~1.200 chapas
+  de topo montam em 0,5 s). Soldas: tubo fino ao longo da polilinha (raio ≈ 0,55 × perna; ponytail: sem o perfil triangular).
+  Recortes: `recuo` com `folga` (vão até a face) ou `x_ponta` (posição absoluta da ponta, como o motor manda); `cope` lido mas
+  não desenhado.
+- **Origem das ligações**, por ordem: (1) `Modelo3D.Ligacoes` preenchido pelo modelo espacial: grupos do motor
+  (`GET /api/ligacoes/grupos`) com projeto → `POST /api/ligacoes/verificar` por grupo (esforços nulos; `perfil_viga` = seção
+  do membro, `perfil_pilar/suporte` = barra com `papel: pilar` no nó, senão a mais alta) → `geometria`; grupo "base" → placa pelo
+  perfil (esquema padrão do motor: esp 19, borda 50, sobra 100 mm) com chumbadores. (2) Modelo 2D: `No.Placa` +
+  `PlacaCalc.Calcular` → placa, furos e solda reais. (3) Sem nada: exemplos (`LigacoesAmostra.Gerar`, formato do contrato:
+  chapa de topo estendida com 8 parafusos e enrijecedores, chapa simples, gusset, placa de base) só nas capturas ou com
+  `ESTRUCTTO_3D_AMOSTRAS=1` — não aparecem para o usuário sem ele pedir, porque não são calculados.
+- **Motor**: os tipos das três famílias do contrato entraram em `ligacoes_modelo.VERIFICADORES` (`_registrar_contrato`:
+  esforços do solver → convenção do contrato, V = Vz local, M = My), senão `editar {acao: projeto}` recusava
+  `chapa_topo_estendida` etc. Testes `test_ligacoes_modelo/rigidas/flexiveis/contraventamento` passam.
+- **LOD**: parafusos e soldas só com ≤ 80 ligações ou quando a seção média tem ≥ 40 px; arestas com ≥ 6 px. Atualizado a cada
+  mudança de câmera (`Render3D.Lod`, só troca `Visibility`).
+- **Pedestal**: bloco de concreto do apoio cresce para caber a chapa mais larga da ligação do nó + 40 mm.
+
+## Picking, seleção, cargas, modo analítico
+
+- `Vista3D.Acertar`: primeiro o `HitTest` nativo (nós escolhidos, setas não contam), depois `Render3D.Acertar` (`FindHits` do
+  Helix, vértice → barra por busca binária nas faixas), depois o nó a 8 px, como antes. Chapas, parafusos e chão não são
+  escolhíveis.
+- Seleção múltipla, janela/cruzamento, Desenhar 3D, snap e Medir não mudaram: continuam na Vista3D (a malha DX fica abaixo do
+  Viewport3D nativo, que só tem cargas, diagramas, nós e fantasmas no modo DX).
+- Modo analítico e Realista nativo intactos (`ESTRUCTTO_3D=nativo` força o nativo; capturas `capturas-nativo` conferidas).
+
+## Capturas e desempenho
+
+`ESTRUCTTO_CAPTURAS=3d` (Capturas.CapturasRealista): além das antigas, `42-realista-ligacao-chapa-topo(-planta|-iso)`,
+`-ligacao-placa-base`, `-contraventamento`, `-ligacao-gusset`, `-galpao_aco-ligacoes`, `-ligacao-motor-chapa-topo`,
+`-ligacao-motor-placa-base`, `-2400barras-ligacoes`. `42-tempos.txt` (RTX 4060, 1600×900):
+
+| | nativo (antes) | Render3D | Render3D + ~1.200 ligações de exemplo |
+|---|---|---|---|
+| 2.430 barras: carregar + enquadrar | 166 ms | 25–34 ms | 480–550 ms |
+| montar a cena DX | — | 24–34 ms | 476–548 ms |
+| quadro (1600×900, sombra 4096², SSAO alto, MSAA 4×) | — | 9,3–10 ms (~100 fps) | 9,4 ms |
+| picking (centro da tela) | 8 ms | 4,7–5,6 ms | 5,6 ms |
+| 2 capturas (RenderTargetBitmap) | 915 ms | 600–730 ms | 850–920 ms |
+
+Autoverificação (`Estructto.exe --testes-exportar`): 12 asserções novas (`render3d:` juntas, esquadria, extrusão com corte,
+triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, placa de base).
+
+## Limites e próximos passos
+
+- Sem mapa de ambiente (reflexos): metálico baixo para o aço não ficar escuro. Adicionar um cubemap procedural (`EnvironmentMap3D`).
+- Cope de mesa não desenhado (a viga para na face; o `cope` do contrato é lido e ignorado). Solda sem perfil triangular.
+- Cantoneira: só `L<b>x<t>` de abas iguais; triedro direito no mundo (a aba pode sair espelhada no referencial canhoto do contrato).
+- Setas de carga e diagramas (vista nativa por cima) não são ocultados pelas peças.
+- O halo da seleção atravessa as peças (pós-efeito do Helix).
+- Ligações dos grupos só aparecem depois de Ligações › Identificar e de dar um tipo ao grupo; sem cálculo, a geometria usa os
+  dados padrão do tipo.
+- Gusset do motor exige `dim_a/dim_b` etc. no projeto do grupo (o `sugerir` não os deduz do nome do perfil): grupos de
+  contraventamento sem esses dados não desenham.

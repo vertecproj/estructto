@@ -47,7 +47,8 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - [ ] L4 3D: ligação e recortes aparecem no Realista
 
 ### Fase 4 — visual 3D e exportação
-- [~] R1 (wt-render, Fable) Realista "absurdo" (Fable): avaliar HelixToolkit.Wpf.SharpDX (sombras reais, SSAO, MSAA) vs nativo; recortes e ligações
+- [x] R1 (wt-render, Fable) Realista "absurdo": Render3D em HelixToolkit.Wpf.SharpDX (sombra, SSAO, MSAA, PBR, arestas), recortes nas
+      juntas e ligações do contrato (motor, placa 2D, exemplos) → [RENDER.md](RENDER.md); fallback nativo sem GPU
 - [x] E1 Exportar (merge c5e3f92) DWG (ACadSharp) e STEP (AP214, sólidos facetados/extrusões)
 
 ### Fase 5 — ferramentas de produtividade

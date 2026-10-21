@@ -1,6 +1,5 @@
 // Geometria pura dos perfis extrudados para a exportação (Exportar.cs): mesma forma do modo Realista da Vista3D.
-// ponytail: cópia de Vista3D.CriarForma/Extrudar (privados; Vista3D.cs é de outro agente). Unificar: a Vista3D passa a
-// chamar GeometriaPerfis.Contorno e apaga Laco/Forma/Poli/Circulo/Furo/Ret/Anel/CriarForma de lá.
+// A Vista3D (modo Realista nativo e Render3D) usa o mesmo CriarContorno: forma única para a tela e para os arquivos.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,7 +21,14 @@ namespace NovoFtool
     public static class GeometriaPerfis
     {
         // Contorno da seção no plano (u, v) = (largura, altura). Lacos: externo anti-horário, furos horários. Tampa: triângulos.
-        public sealed class Contorno { public readonly List<Point[]> Lacos = new List<Point[]>(); public readonly List<Point> Tampa = new List<Point>(); public bool Concreto; }
+        public sealed class Contorno
+        {
+            public readonly List<Point[]> Lacos = new List<Point[]>(); public readonly List<Point> Tampa = new List<Point>(); public bool Concreto;
+            public readonly List<bool> Liso = new List<bool>();   // por laço: normal suave (tubo circular) ou plana (chapas)
+            public double H, B, Tw, Tf;                           // altura (v), largura (u), alma e mesa, m
+            public double Larg => Math.Max(H, B);
+            public void Laco(Point[] p, bool liso = false) { Lacos.Add(p); Liso.Add(liso); }
+        }
 
         static Point[] Poli(params double[] uv) { var p = new Point[uv.Length / 2]; for (int k = 0; k < p.Length; k++) p[k] = new Point(uv[2 * k], uv[2 * k + 1]); return p; }
 
@@ -47,45 +53,46 @@ namespace NovoFtool
         {
             var f = new Contorno();
             double h = p != null && p.H > 0 ? p.H : padrao, b = p != null && p.B > 0 ? p.B : h;
-            f.Concreto = p?.Concreto ?? false;
+            f.Concreto = p?.Concreto ?? false; f.H = h; f.B = b;
             double tw = Math.Min(p != null && p.Tw > 0 ? p.Tw : h * 0.06, b * 0.45), tf = Math.Min(p != null && p.Tf > 0 ? p.Tf : h * 0.08, h * 0.45);
+            f.Tw = tw; f.Tf = tf;
             double hb = b / 2, hh = h / 2;
             switch (p?.Forma)
             {
                 case "I":
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, -hh + tf, tw / 2, -hh + tf, tw / 2, hh - tf, hb, hh - tf, hb, hh, -hb, hh, -hb, hh - tf, -tw / 2, hh - tf, -tw / 2, -hh + tf, -hb, -hh + tf));
+                    f.Laco(Poli(-hb, -hh, hb, -hh, hb, -hh + tf, tw / 2, -hh + tf, tw / 2, hh - tf, hb, hh - tf, hb, hh, -hb, hh, -hb, hh - tf, -tw / 2, hh - tf, -tw / 2, -hh + tf, -hb, -hh + tf));
                     Ret(f, -hb, -hh, hb, -hh + tf); Ret(f, -tw / 2, -hh + tf, tw / 2, hh - tf); Ret(f, -hb, hh - tf, hb, hh);
                     break;
                 case "U":
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, -hh + tf, -hb + tw, -hh + tf, -hb + tw, hh - tf, hb, hh - tf, hb, hh, -hb, hh));
+                    f.Laco(Poli(-hb, -hh, hb, -hh, hb, -hh + tf, -hb + tw, -hh + tf, -hb + tw, hh - tf, hb, hh - tf, hb, hh, -hb, hh));
                     Ret(f, -hb, -hh, hb, -hh + tf); Ret(f, -hb, -hh + tf, -hb + tw, hh - tf); Ret(f, -hb, hh - tf, hb, hh);
                     break;
                 case "L":
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, -hh + tw, -hb + tw, -hh + tw, -hb + tw, hh, -hb, hh));
+                    f.Laco(Poli(-hb, -hh, hb, -hh, hb, -hh + tw, -hb + tw, -hh + tw, -hb + tw, hh, -hb, hh));
                     Ret(f, -hb, -hh, hb, -hh + tw); Ret(f, -hb, -hh + tw, -hb + tw, hh);
                     break;
                 case "TR":
                 {
                     double t = Math.Min(tw, Math.Min(hb, hh) * 0.9);
                     Point[] e = Poli(-hb, -hh, hb, -hh, hb, hh, -hb, hh), i = Poli(-hb + t, -hh + t, hb - t, -hh + t, hb - t, hh - t, -hb + t, hh - t);
-                    f.Lacos.Add(e); f.Lacos.Add(i.Reverse().ToArray()); Anel(f, e, i);
+                    f.Laco(e); f.Laco(i.Reverse().ToArray()); Anel(f, e, i);
                     break;
                 }
                 case "TC":
                 {
                     double r = h / 2, t = Math.Min(tw, r * 0.9);
                     Point[] e = Circulo(r), i = Circulo(r - t);
-                    f.Lacos.Add(e); f.Lacos.Add(i.Reverse().ToArray()); Anel(f, e, i);
+                    f.Laco(e, true); f.Laco(i.Reverse().ToArray(), true); Anel(f, e, i);
                     break;
                 }
                 case "CIRC":
                 {
-                    Point[] e = Circulo(h / 2); f.Lacos.Add(e);
+                    Point[] e = Circulo(h / 2); f.Laco(e, true);
                     for (int k = 0; k < e.Length; k++) f.Tampa.AddRange(new[] { new Point(0, 0), e[k], e[(k + 1) % e.Length] });
                     break;
                 }
                 default:
-                    f.Lacos.Add(Poli(-hb, -hh, hb, -hh, hb, hh, -hb, hh));
+                    f.Laco(Poli(-hb, -hh, hb, -hh, hb, hh, -hb, hh));
                     Ret(f, -hb, -hh, hb, hh);
                     break;
             }

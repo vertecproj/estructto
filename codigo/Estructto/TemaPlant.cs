@@ -121,7 +121,15 @@ namespace NovoFtool
             CorLuzAmb3D        = C("#5C6068"),   // luz ambiente
             CorChao3D          = C("#2A313C"),   // centro do chão (some no fundo do canvas)
             CorSombra3D        = C("#000000"),   // sombra no chão (alfa no pincel)
-            CorAresta3D        = C("#0A0D12");   // contorno das peças
+            CorAresta3D        = C("#0A0D12"),   // contorno das peças
+            // Render3D (DX11): acabamentos do aço, chapas, parafusos, soldas e grade do chão
+            CorAcoPintado3D    = C("#8A96A3"),   // aço pintado cinza
+            CorPrimer3D        = C("#8E4E45"),   // primer vermelho-acinzentado
+            CorChapa3D         = C("#97A1AD"),   // chapas e cantoneiras das ligações (um tom abaixo do perfil)
+            CorParafuso3D      = C("#555E6A"),   // parafusos, porcas e arruelas
+            CorSolda3D         = C("#464B54"),   // cordões de solda
+            CorGrade3D         = C("#343D4B"),   // grade do chão (some no degradê)
+            CorArestaDx3D      = C("#161B23");   // arestas de 1 px do Render3D
 
         // ---------- Aliases de compatibilidade (nomes ja usados no codigo) ----------
         public static readonly Color

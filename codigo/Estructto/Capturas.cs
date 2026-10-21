@@ -11,6 +11,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Media3D;
+using System.Text.Json.Nodes;
 using System.Windows.Threading;
 using Portico;
 using F = Fluent;
@@ -115,7 +117,8 @@ namespace NovoFtool
         }
 
         // Pórtico espacial 2 x 2 vãos, 2 pavimentos (entrada neutra da Vista3D), com aproveitamento e deslocamentos inventados.
-        static Modelo3D Portico2x2()
+        // contraventado: X de cantoneiras nos dois vãos da fachada y = 0 (gussets nas capturas das ligações).
+        static Modelo3D Portico2x2(bool contraventado = false)
         {
             var esp = new Modelo3D(); int idn = 0;
             var rnd = new Random(7);
@@ -130,6 +133,12 @@ namespace NovoFtool
                 if (i < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i + 1, j, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
                 if (j < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i, j + 1, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
             }
+            if (contraventado)
+                for (int k = 0; k < 2; k++) for (int i = 0; i < 2; i++)
+                {
+                    esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, 0, k), Nj = nid(i + 1, 0, k + 1), Secao = "L 3\" x 1/4\"", Aprov = 0.5 });
+                    esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i + 1, 0, k), Nj = nid(i, 0, k + 1), Secao = "L 3\" x 1/4\"", Aprov = 0.5 });
+                }
             return esp;
         }
 
@@ -146,6 +155,7 @@ namespace NovoFtool
                 w.MostrarDiagrama(Diagrama.Nenhum);
                 w.MostrarVista3D(true);
                 EsperarIdle();
+                w.vista3D.LigacoesAmostra = true;   // ligações de exemplo (LigacoesAmostra.Gerar) nos modelos sem ligações do motor
                 w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                 CapturarPrincipal(w, "42-" + suf + "-guincho");
                 if (real)
@@ -184,10 +194,34 @@ namespace NovoFtool
                     w.vista3D.Carregar(esp, false);
                     w.vista3D.MostrarVista(VistaPadrao.Frente, false);
                     CapturarPrincipal(w, "42-realista-portico2x2-frente");
+
+                    // close-ups das ligações: chapa de topo viga-pilar com parafusos, placa de base com chumbadores,
+                    // vão contraventado com gussets (Render3DLigacoes.cs, exemplos no formato do contrato)
+                    w.vista3D.LimparSelecao(); w.vista3D.Escolher(null);   // o halo da seleção (pós-efeito) passa por cima de tudo: fora dos close-ups
+                    Func<int, int, int, int> nid = (i, j, k) => 1 + i + 3 * j + 9 * k;
+                    Point3D PNo(Modelo3D m, int id) { var n = m.Nos.First(x => x.Id == id); return new Point3D(n.X, n.Y, n.Z); }
+                    w.vista3D.Focar(PNo(esp, nid(2, 0, 1)) + new Vector3D(-0.1, 0, -0.05), 1.9, -35, 18);
+                    CapturarPrincipal(w, "42-realista-ligacao-chapa-topo");
+                    w.vista3D.Focar(PNo(esp, nid(2, 0, 1)), 2.2, -90, 90);
+                    CapturarPrincipal(w, "42-realista-ligacao-chapa-topo-planta");
+                    w.vista3D.Focar(PNo(esp, nid(2, 0, 1)), 2.2, -55, 28);
+                    CapturarPrincipal(w, "42-realista-ligacao-chapa-topo-iso");
+                    w.vista3D.Focar(PNo(esp, nid(2, 0, 0)) + new Vector3D(0, 0, 0.12), 1.3, -40, 26);
+                    CapturarPrincipal(w, "42-realista-ligacao-placa-base");
+                    var cv = Portico2x2(true);
+                    w.vista3D.Carregar(cv, false);
+                    w.vista3D.Focar(new Point3D(6, 0, 3.5), 15, -90, 12);
+                    CapturarPrincipal(w, "42-realista-contraventamento");
+                    w.vista3D.Focar(PNo(cv, nid(1, 0, 1)) + new Vector3D(0, 0, -0.15), 2.4, -75, 14);
+                    CapturarPrincipal(w, "42-realista-ligacao-gusset");
+                    w.vista3D.Carregar(esp, false);
+                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                 }
 
-                // desempenho: ~2.400 barras (12 x 10 vãos, 6 pavimentos); tempos em 42-tempos.txt
+                // desempenho: ~2.400 barras (12 x 10 vãos, 6 pavimentos), sem e com as ligações de exemplo; tempos em 42-tempos.txt
+                foreach (bool amostras in real ? new[] { false, true } : new[] { false })
                 {
+                    w.vista3D.LigacoesAmostra = amostras;
                     var g = new Modelo3D(); int nx = 12, ny = 10, nz = 6;
                     Func<int, int, int, int> id = (i, j, k) => 1 + i + (nx + 1) * (j + (ny + 1) * k);
                     for (int k = 0; k <= nz; k++) for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++)
@@ -203,14 +237,16 @@ namespace NovoFtool
                     w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                     double tCarregar = sw.Elapsed.TotalMilliseconds;
                     sw.Restart();
-                    CapturarPrincipal(w, "42-" + suf + "-2400barras");
+                    CapturarPrincipal(w, "42-" + suf + "-2400barras" + (amostras ? "-ligacoes" : ""));
                     double tCaptura = sw.Elapsed.TotalMilliseconds;
                     sw.Restart();
                     object achou = null;
                     for (int r = 0; r < 20; r++) achou = w.vista3D.Acertar(new Point(w.vista3D.ActualWidth / 2, w.vista3D.ActualHeight / 2));
                     double tPick = sw.Elapsed.TotalMilliseconds / 20;
+                    string dx = w.vista3D.UsandoDx ? string.Format(System.Globalization.CultureInfo.InvariantCulture, ", Render3D: montar cena {0:0} ms, quadro {1:0.0} ms", w.vista3D.UltimaMontagemDxMs, w.vista3D.MedirQuadroDx()) : "";
                     File.AppendAllText(Path.Combine(pastaSaida, "42-tempos.txt"), string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                        "{0}: {1} barras, carregar+enquadrar {2:0} ms, 2 capturas {3:0} ms, picking {4:0.0} ms ({5}){6}", suf, g.Barras.Count, tCarregar, tCaptura, tPick, achou?.GetType().Name ?? "nada", Environment.NewLine));
+                        "{0}{8}: {1} barras, carregar+enquadrar {2:0} ms, 2 capturas {3:0} ms, picking {4:0.0} ms ({5}){6}{7}", suf, g.Barras.Count, tCarregar, tCaptura, tPick, achou?.GetType().Name ?? "nada", dx, Environment.NewLine, amostras ? " + ligações de exemplo" : ""));
+                    w.vista3D.LigacoesAmostra = true;
                 }
                 w.MostrarVista3D(false);
                 EsperarIdle();
@@ -221,6 +257,26 @@ namespace NovoFtool
                     EsperarIdle();
                     w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                     CapturarPrincipal(w, "42-" + suf + "-" + ex);
+                    if (real && ex == "galpao_aco")
+                    {
+                        // ligações reais do motor: identifica os grupos, dá um tipo a cada grupo viga-pilar/viga-viga e redesenha
+                        Esperar(Motor.Post("/api/ligacoes/identificar"));
+                        var tg = Motor.Get("/api/ligacoes/grupos"); Esperar(tg);
+                        foreach (JsonNode g in tg.Result.AsArray())
+                        {
+                            string t = (string)g["tipo"], tl = t == "viga_pilar_mesa" ? "chapa_topo_estendida" : t == "viga_pilar_alma" || t == "viga_viga" ? "chapa_simples_alma" : null;
+                            if (tl != null) Esperar(Motor.Post("/api/ligacoes/grupos/editar", new JsonObject { ["acao"] = "projeto", ["grupo"] = (string)g["id"], ["tipo_ligacao"] = tl, ["dados"] = new JsonObject() }));
+                        }
+                        w.Atualizar3D(false);
+                        Esperar(w.TarefaLigacoes3D); EsperarIdle();
+                        if (w.vista3D.ModeloAtual.Ligacoes.Count == 0) throw new InvalidOperationException("galpão: nenhuma ligação do motor chegou à Vista3D");
+                        w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                        CapturarPrincipal(w, "42-realista-galpao_aco-ligacoes");
+                        w.vista3D.Focar(new Point3D(0, 0, 6), 2.4, -40, 20);
+                        CapturarPrincipal(w, "42-realista-ligacao-motor-chapa-topo");
+                        w.vista3D.Focar(new Point3D(0, 0, 0.15), 1.4, -40, 24);
+                        CapturarPrincipal(w, "42-realista-ligacao-motor-placa-base");
+                    }
                     if (real && ex == "edificio_concreto")
                     {
                         Esperar(w.CalcularEspacial());
@@ -737,6 +793,7 @@ namespace NovoFtool
                 w.UpdateLayout();
             }
 
+            (w as MainWindow)?.vista3D?.PrepararCaptura();   // Render3D (D3DImage) desenha 2 quadros antes da leitura
             var rtb = new RenderTargetBitmap(larg, alt, 96, 96, PixelFormats.Pbgra32);
             var fundo = new DrawingVisual();
             using (var dc = fundo.RenderOpen())

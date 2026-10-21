@@ -2,6 +2,20 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 21/10/2026 — Realista "absurdo": Render3D em DX11 com recortes e ligações (branch wt-render)
+
+- Modo Realista em HelixToolkit.Wpf.SharpDX 3.1.2 (`Render3D*.cs`): sombra entre peças (shadow map 4096²), SSAO, PBR com cor por
+  vértice (aço galvanizado/pintado/primer, concreto), MSAA 4× + FXAA, arestas de 1 px, chão com degradê e grade, halo de seleção,
+  aproveitamento tingindo a peça. Sem GPU D3D11 (WARP) cai no Realista nativo (`ESTRUCTTO_3D=nativo` força). Capturas funcionam.
+- Recortes nas juntas: pilar contínuo, viga para na face do pilar + folga, diagonal recua de todas as peças maiores, esquadria
+  na cumeeira/canto. Extrusão com planos de corte; `GeometriaPerfis.CriarContorno` unificado (a cópia da Vista3D saiu).
+- Ligações no 3D pelo contrato (`Ligacao3D`): chapas, cantoneiras, parafusos (cabeça, arruelas, porca), soldas, recortes.
+  Fontes: grupos do motor com projeto (`Render3DMotor.cs`, `verificar_ligacao` por grupo), placa de base do 2D
+  (`No.Placa` + `PlacaCalc`), exemplos do contrato nas capturas. Motor: tipos das 3 famílias registrados em
+  `ligacoes_modelo.VERIFICADORES` (`_registrar_contrato`).
+- Antes/depois, look, medições (2.430 barras: cena 25–34 ms, quadro 9–10 ms) e limites: [v3/RENDER.md](v3/RENDER.md);
+  decisão do renderizador: [VISTA3D.md](VISTA3D.md).
+
 ## 20/10/2026 — Snap igual ao AutoCAD e Medir AutoCAD + Inventor na Vista 3D (branch wt-snap)
 
 - Snap 3D novo (`Snap3D.cs`, motor puro): extremidade, meio, centro, nó, interseção real e aparente, perpendicular, extensão,

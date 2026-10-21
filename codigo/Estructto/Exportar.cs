@@ -237,6 +237,8 @@ namespace NovoFtool
             var sb = new StringBuilder(); int falhas = 0;
             void Ok(string nome, bool c) { sb.AppendLine((c ? "ok    " : "FALHA ") + nome); if (!c) falhas++; }
             Directory.CreateDirectory(pasta);
+            Render3DGeometria.Testar((c, nome) => Ok("render3d: " + nome, c));   // juntas, extrusão com corte, triangulação
+            LigacoesAmostra.Testar((c, nome) => Ok("ligacoes3d: " + nome, c));   // contrato ida e volta, chapa de topo, placa de base
 
             Modelo m2 = Modelo.DeXml(File.ReadAllText(Path.Combine(raiz, "exemplos", "guincho-coluna-escorada.estructto")));
             var guincho = Modelo3D.De(m2, null);

@@ -508,6 +508,7 @@ namespace NovoFtool
             vista3D.EscalaDeformada = Vista.EscalaDef; vista3D.EscalaDiagrama = Vista.EscalaDiag;
             vista3D.Selecionado = selEsp;
             vista3D.Carregar(FiltrarPlano(d.ParaVista()), enquadrar);   // plano/nível isolado (PlanosTrabalho.cs)
+            LigacoesEspacial3D(d);                                       // Realista: ligações dos grupos do motor (Render3DMotor.cs)
             Vista.Resolvido = c;   // o HUD (seletor de diagrama, escala) segue o cálculo do motor; o Modelo 2D do documento é vazio
             AtualizarLegenda();
             if (selEsp != null && vista3D.Selecionado == null) selEsp = null;
