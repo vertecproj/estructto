@@ -44,20 +44,24 @@ codigo\portico\compilar.ps1                # Portico.exe (versão simples, WinFo
 codigo\portico\sincronizar-planilha.ps1 -Planilha "<caminho>\PLANILHA DE CÁLCULO.xlsx"   # aba CHUMBADORES = CSV
 ```
 
-Estructto.exe (precisa do .NET 8 SDK; bin/obj ficam em `C:\dev\build\EstructtoV2`, fora do Drive):
+Release (precisa do .NET 8 SDK e de python com numpy e pyinstaller; bin/obj ficam em `C:\dev\build\EstructtoV2`, fora do Drive):
 
 ```
-dotnet publish codigo\Estructto\Estructto.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o C:\dev\build\EstructtoV2\publish
+codigo\publicar.ps1 -Versao 0.4   [-Saida C:\dev\build\EstructtoRelease\publish]
 ```
 
-Antes do publish, empacotar o motor Python (precisa de python com numpy e pyinstaller). O publish copia a pasta gerada para
-`publish\motor\`, ao lado do `Estructto.exe`; sem ela o programa só tem o motor interno (ou o da variável `ESTRUCTTO_MOTOR`):
+Um comando faz tudo e para na primeira falha (mensagem `FALHOU: ...`, código de saída 1):
 
-```
-codigo\motor\empacotar.ps1 -Motor <pasta que contém prossen_estrutural>   # gera codigo\motor\dist\estructto-motor.exe
-```
+1. `codigo\motor\empacotar.ps1` gera `codigo\motor\dist\estructto-motor.exe` (PyInstaller).
+2. Confere o pacote: todo arquivo não `.py` de `prossen_estrutural\dados` e `relatorio_estilo` e os exemplos `.json`;
+   sobe o motor empacotado e exige 200 em `/api/versao`, `/api/exemplos`, `POST /api/exemplos/galpao_aco`, `/api/calcular`,
+   `/api/catalogo?filtro=W310`, `/api/ligacoes/tipos` (19 tipos ou mais) e `POST /api/importar_cype` com um `.ed3` de `codigo\motor\testes\dados_cype`.
+3. `dotnet publish` (single file, win-x64) em `-Saida` (a pasta é recriada) e confere `motor\` completo ao lado do `Estructto.exe`.
+4. Roda o exe publicado sem `ESTRUCTTO_MOTOR`: `Estructto.exe --teste-motor=<png> exemplos\guincho-com-placa.estructto` tem de sair 0, sem `estructto-motor` órfão.
+5. Gera `Estructto-<versao>-win-x64.zip` ao lado de `-Saida`, com `Estructto\Estructto.exe` e `Estructto\motor\` (é o arquivo da Release).
+6. Mostra o resumo com os tamanhos.
 
-Depois copiar `C:\dev\build\EstructtoV2\publish\Estructto.exe` **e a pasta `motor\`** para esta pasta (feche o programa antes).
+Para usar aqui: copiar `publish\Estructto.exe` **e a pasta `motor\`** para esta pasta (feche o programa antes).
 Em desenvolvimento, sem empacotar: `$env:ESTRUCTTO_MOTOR = "<pasta que contém prossen_estrutural>"` (roda `python -m prossen_estrutural.web`).
 
 Conferência visual sem abrir o programa: `codigo\Estructto\capturar.ps1` gera PNG de todas as telas em `C:\dev\build\EstructtoV2\capturas`
