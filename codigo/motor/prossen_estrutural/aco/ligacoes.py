@@ -29,12 +29,13 @@ MM = 1e-3
 # fub, fyb (MPa) — NBR 8800 tabela A.3; alta = parafuso de alta resistência (6.3.3.2)
 #   A307: fub 415 (curso calculistadeaco, 41,5 kN/cm²); fyb não usado (sem barra rosqueada) → None.
 #   A325: fub 825 para db ≤ 24 mm ou 1" (tab. A.3); 725 para 24 < db ≤ 36 mm (ver _parafuso).
-#   A490: fub 1035 (tab. A.3).
-#   ISO 898-1 classes: fub pela designação; ISO 4.6: fyb 235 (tab. A.3); fyb não é usado no cálculo.
+#   A490: fub 1035, fyb 895 (tab. A.3).
+#   ISO 898-1 classes: fub pela designação; ISO 4.6: fyb 235 (tab. A.3). fyb só é usado no pino (6.4,
+#   ligacoes_contraventamento); A325 com db > 24 mm: fyb 560 (tab. A.3).
 PARAFUSOS = {
     "A307": dict(fub=415, fyb=None, alta=False),
     "A325": dict(fub=825, fyb=635, alta=True),
-    "A490": dict(fub=1035, fyb=None, alta=True),
+    "A490": dict(fub=1035, fyb=895, alta=True),   # fyb: NBR 8800 tabela A.3
     "ISO 4.6": dict(fub=400, fyb=235, alta=False),
     "ISO 8.8": dict(fub=800, fyb=640, alta=True),
     "ISO 10.9": dict(fub=1000, fyb=900, alta=True),
@@ -95,7 +96,8 @@ COBERTURA = [
          verificacao="solda de filete: metal da solda, metal base, garganta 0,707b, dimensão mínima e máxima",
          limitacao="aumento de resistência com o ângulo θ não usado (a favor da segurança); metal base só da chapa "
                    "informada; comprimento mínimo do filete (6.2.6.2.3: ≥ 4b e ≥ 40 mm) verificado; comprimento efetivo "
-                   "= comprimento total (6.2.2.2 c)"),
+                   "= comprimento total (6.2.2.2 c), com β da 6.2.2.2 d) se L_longitudinal > 0 (cordão longitudinal "
+                   "em ligação extrema de barra axial)"),
     dict(norma="NBR 8800", edicao="2008", item="6.5.3 → 5.2", verificacao="elemento de ligação tracionado: escoamento e ruptura",
          limitacao="An ≤ 0,85·Ag (6.5.3, chapas de emenda parafusadas); furação alternada não tratada"),
     dict(norma="NBR 8800", edicao="2008", item="6.5.5", verificacao="elemento de ligação: escoamento e ruptura por cisalhamento",
@@ -143,6 +145,12 @@ def resistencia_filete(b, fw, fy, fu):
     solda = 0.6 * 0.707 * b * fw / GW2
     base = min(0.6 * b * fy / GA1, 0.6 * b * fu / GA2)
     return dict(metal_solda=solda, metal_base=base, FwRd=min(solda, base))
+
+
+def beta_filete_longo(lw, dw):
+    """NBR 8800 6.2.2.2 d): filete longitudinal em ligação extrema de elemento axialmente solicitado,
+    comprimento efetivo = β·lw, β = 1,2 − 0,002·lw/dw, 0,6 ≤ β ≤ 1,0 (Pfeil eq. 4.3, p. 100)."""
+    return min(max(1.2 - 0.002 * lw / dw, 0.6), 1.0)
 
 
 def filete_minimo(t):
@@ -209,7 +217,9 @@ _TIPOS = {
                 ("L", "m", "comprimento total efetivo dos filetes", None, (0.01, 10.0)),
                 ("eletrodo", "", "eletrodo", "E70", list(ELETRODOS)),
                 ("aco_base", "", "aço do metal base", "A-36", list(materiais.ACOS)),
-                ("t_base", "m", "espessura da chapa mais fina da junta", None, (0.002, 0.1))],
+                ("t_base", "m", "espessura da chapa mais fina da junta", None, (0.002, 0.1)),
+                ("L_longitudinal", "m", "comprimento de cada cordão longitudinal em ligação extrema de barra axial "
+                 "(6.2.2.2 d: β se > 100·b); 0 = não se aplica", 0.0, (0.0, 10.0))],
         esforcos=[("F", "kN", None)]),
     "chapa_simples": dict(
         descricao="Viga–apoio flexível: chapa soldada ao apoio (filete duplo) e parafusada à alma da viga, "
@@ -439,8 +449,11 @@ def _ligacao_parafuso(d, e):
 def _ligacao_solda(d, e):
     fy, fu = _aco(d["aco_base"])
     r = resistencia_filete(d["b"], ELETRODOS[d["eletrodo"]] * MPa, fy, fu)
-    v = [_v("solda: resistência (metal da solda e metal base)", e["F"] / d["L"], r["FwRd"], "kN/m",
-            "6.2.5 / tabela 8" + (" (metal base)" if r["metal_base"] < r["metal_solda"] else "")),
+    beta = beta_filete_longo(d["L_longitudinal"], d["b"]) if d["L_longitudinal"] > 0 else 1.0
+    v = [_v("solda: resistência (metal da solda e metal base)" + (f", β = {beta:.3f}" if beta < 1 else ""),
+            e["F"] / (beta * d["L"]), r["FwRd"], "kN/m",
+            "6.2.5 / tabela 8" + (" (metal base)" if r["metal_base"] < r["metal_solda"] else "")
+            + (" / 6.2.2.2 d)" if beta < 1 else "")),
          _minimo("solda: dimensão mínima", filete_minimo(d["t_base"]), d["b"], "6.2.6.2.1 / tabela 10", "b"),
          _maximo("solda: dimensão máxima (ao longo de borda)", d["b"], filete_maximo(d["t_base"]), "6.2.6.2.2", "b"),
          _minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * d["b"], 0.040), d["L"], "6.2.6.2.3")]

@@ -44,23 +44,8 @@ namespace NovoFtool
 
         public static string F(double v, int casas) { return double.IsNaN(v) ? "—" : Portico.Num.Fmt(v, casas); }
 
-        // Erro do motor: {"erro", "detalhe", "erros":[{campo, mensagem}]} → texto curto
-        public static string Mensagem(Exception e)
-        {
-            if (e is MotorErro me)
-            {
-                try
-                {
-                    var j = JsonNode.Parse(me.Message);
-                    var erros = Lista(j?["erros"]).Select(x => (S(x?["campo"]) + ": " + S(x?["mensagem"])).TrimStart(':', ' ')).ToList();
-                    if (erros.Count > 0) return string.Join(" · ", erros);
-                    if (j?["detalhe"] != null) return S(j["detalhe"]);
-                }
-                catch (JsonException) { }
-                return me.Message;
-            }
-            return e.Message;
-        }
+        // Texto do erro: MotorErro já traz detalhe + erros[] legíveis (Motor.cs, MotorErro.Texto).
+        public static string Mensagem(Exception e) => e.Message;
 
         // Roda uma chamada ao motor mostrando "trabalhando" e o erro na linha de status
         public static async Task<bool> Tentar(TextBlock status, Func<Task> f, string ocupado = "Consultando o motor de cálculo…")

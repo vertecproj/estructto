@@ -198,3 +198,29 @@ Nas primitivas de parafusos, chapas e filetes examinadas, os valores básicos γ
 Em `vento_barras.py`, a conversão q=0,613·Vk²/1000 e a reconstrução vetorial com módulo proporcional a sen²α conferiram. Exemplo: Vk=35 m/s, Cf=1,5, K=0,81, c=0,1 m, sen²α=0,5 dão q=0,750925 kN/m² e w=**0,04561869375 kN/m**, iguais à execução. Em `nbr8400.py`, 20²/1,6=250 Pa; com C=1,6, c=0,1 m e sen²α=0,5, w=**0,020 kN/m**, também reproduzido. A conversão ν/γa1 das combinações é explicitamente uma equivalência de escoamento no contrato do módulo; não foi confundida com uma segunda majoração global nas ligações. Não há novo achado confirmado nesses dois arquivos nesta revisão; isso não constitui validação integral de suas tabelas aerodinâmicas ou das hipóteses declaradas.
 
 Não foram reabertas como achados as limitações já declaradas de flexão biaxial simultânea, fadiga, armadura de ancoragem, soldas de reforços/enrijecedores ou calibração ACI/NBR. As correções sugeridas acima não foram implementadas.
+
+## Verificação e correção
+
+Data: 21/10/2026. Branch `wt-rc`. Cada achado foi reproduzido com o script da revisão e recalculado à mão contra o texto da NBR 8800:2008 (6.2.2.2 d, 6.3.3, 6.4, 6.5). As regressões estão em `codigo/motor/testes/test_revisao_rc.py`. Os 11 testes falham no código anterior (9 falhas e 2 erros) e passam com as correções.
+
+| RC | Veredito | Causa e correção | Valor à mão (teste) |
+|---|---|---|---|
+| RC01 | Confirmado | `_chapa_simples` somava N com sinal à parcela de V·a do mesmo parafuso. Agora usa `abs(N)/n + abs(M)·ymáx/Σy²`, o parafuso extremo do lado em que as parcelas se somam (linha simétrica). | R = 105,409 kN > 69,672 kN; reprova |
+| RC02 | Confirmado | Com N/2 > \|M\|/braço, a mesa "comprimida" também fica tracionada, e as suas linhas só eram verificadas ao corte. Agora cada mesa recebe N/2 ± \|M\|/braço (ΣF = N, ΣM = M). As linhas da mesa oposta resistem a F_op = N/2 − \|M\|/braço, com a mesma análise de T-stub e alavanca por linha. | 450 kN > 2·130,636 = 261,27 kN; reprova |
+| RC03 | Confirmado | Com Σu² = 0 (uma fileira), a parcela de M era zerada e o modelo "todos tracionados" era aceito. Agora esse modelo só vale com Σu² > 0 ou M = 0; senão o cálculo segue para o bloco de compressão. | T = q·Y + N = 140,82 kN; Tmáx = 70,41 kN; ΣM = 10 kN·m |
+| RC04 | Confirmado | O adaptador genérico só tem o N da ponta corrente. Bloqueio: `ligacoes_modelo.verificador("no_trelica_gusset")` recusa, com ValueError, um nó com as barras 2–4 ativas. O gerenciador de grupos registra o erro e não aprova. Pendente: um adaptador que leia N1–N4 da mesma combinação. | ValueError "N2–N4" |
+| RC05 | Confirmado | Nw = N·Aw/A ia aos parafusos, mas não às talas da alma. Agora as talas verificam tração (6.5.3: escoamento e ruptura com An ≤ 0,85Ag) ou compressão sem contato (6.5.4, K = 0,65, L = 2·e_emenda), mais a interação Nw + M0 (5.5.1.2). | Nw = 760,33 kN; ruptura 590,55 kN; escoamento 647,73 kN; reprova |
+| RC06 | Confirmado | `max(Vp, 0)` descartava o painel invertido (V_pilar > ΣF das mesas). Agora usa \|Vp\|. | \|Vp\| = 941,76 kN > 338,35 kN |
+| RC07 | Parcialmente | Confirmado nos filetes longitudinais das barras de contraventamento/treliça e da chapa de mesa soldada, onde a orientação é conhecida. Nesses casos passa a valer β = 1,2 − 0,002·l/b (0,6 ≤ β ≤ 1,0). O componente genérico `solda_filete` não é bug: o seu L é a soma dos cordões, sem orientação, e reduzir sempre seria indevido. Ganhou o campo opcional `L_longitudinal` para aplicar a alínea d). | β(1000; 5) = 0,8 → taxa 1,0663 |
+| RC08 | Confirmado | O pino do garfo usava 6.3.3.2 (fub/γa2), sem flexão. Agora segue a 6.4: corte 0,6·0,75·Ag·fy/γa1 em 2 planos, flexão 1,2·W·fy/γa1 com M = F/2·(t_orelha/2 + folga + t/4) (6.4.1, contato uniforme) e esmagamento 1,5·fy/γa1. Novos campos: `t_orelha` e `folga_garfo`; com t_orelha = 0 vale o mínimo N·t/8, com aviso. Na tabela PARAFUSOS, fyb do A490 passou a 895 MPa (tab. A.3). | Fv,Rd = 60,404 kN; M = 0,40625 > MRd = 0,20135 kN·m; Pfeil 9.10.4 (p. 259): M = 1066 kN·cm, d ≥ 7,36 cm |
+| RC09 | Confirmado | Com lf ≤ 0, `aco_chumbador_nbr` omitia a pressão de contato. Agora entra com resistência nula (taxa infinita, reprova) e um aviso explícito. | lf = −7,15 mm → Rd = 0; reprova |
+| RC10 | Confirmado | `concreto_chumbador_aci` agora recusa, com ValueError, um chumbador sem distância positiva às faces do bloco. Isso acontece antes de qualquer fórmula ACI e não há mais ZeroDivisionError. | c1 = 0 → ValueError "bloco" |
+| RC11 | Confirmado | `ligacao_tracao` recebia \|N\|. Agora N < 0 levanta ValueError ("compressão não verificada... 6.5.4"), e a tração segue igual. | N = −50 → ValueError; N = +50 aprova |
+
+Valores de teste alterados: `test_ligacoes_contraventamento.TestTirante.test_garfo_pino` era um valor à mão, não de livro. Ele usava a resistência de parafuso 2·0,4·Ab·fub/γa2 = 139,3 kN. Passou a usar a 6.4.2.2, 2·0,6·0,75·Ag·fy/γa1 = 148,1 kN com fy = 635 MPa do A325, e a conferir também a flexão. Nenhum valor de livro mudou, e os testes de livro continuam passando.
+
+Pendências:
+- RC04: falta o adaptador de nó com N1–N4.
+- RC05: falta a verificação da seção ligada do perfil sob o carregamento combinado.
+- RC08: faltam as verificações próprias do olhal (garfo comercial: catálogo).
+- RC11: `JanelaLigacaoProjeto.cs` (`EsforcosDoMembro`) ainda envia \|N\| aos tipos antigos. O motor recusa N < 0 só pelo gerenciador de grupos; a janela WPF precisa enviar N com sinal.

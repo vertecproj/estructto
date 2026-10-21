@@ -146,7 +146,7 @@ namespace NovoFtool
                 o[n] = Math.Round(n switch
                 {
                     "Ft" => Math.Max(N, 0), "Fv" => Math.Sqrt(Vy * Vy + Vz * Vz), "F" => Math.Sqrt(N * N + Vy * Vy + Vz * Vz),
-                    "V" => antigo ? Math.Sqrt(Vy * Vy + Vz * Vz) : Math.Abs(Vz), "N" => antigo ? Math.Abs(N) : N,
+                    "V" => antigo ? Math.Sqrt(Vy * Vy + Vz * Vz) : Math.Abs(Vz), "N" => N,   // com sinal: ligação de tração recusa compressão no motor (RC11), em vez de verificar |N| como tração
                     "Vz" => Math.Abs(Vy), "M" => My, "Mz" => Mz, "T" => T, _ => 0
                 }, 3);
             return o;

@@ -2,13 +2,14 @@
 
 Suíte: `codigo/Estructto/TestesFluxo.cs`. Cada bug abaixo tem uma conferência marcada `[CONHECIDO #E2E-nn]` na suíte: ela conta à parte
 e não reprova a rodada; quando o bug for corrigido, a linha sai como `ok … (era [CONHECIDO #…]: conferir e tirar a marca)`.
-Nenhum bug foi corrigido aqui (regra da tarefa): só registrado.
+Na rodada de registro nenhum bug foi corrigido (regra da tarefa). Correções depois: E2E-05 e E2E-07 (`unificacao`); E2E-02, 03, 04, 06, 08, 09, 10 e 11 (`wt-bugs-a`),
+cada uma com a sua conferência de volta a normal (sem a marca `[CONHECIDO]`). Status em cada bug, abaixo.
 
 ## Como rodar
 
 ```
 cd codigo\Estructto; dotnet build -c Release
-# fluxos A–E (ESTRUCTTO_MOTOR = fonte; ver E2E-08)
+# fluxos A–E (ESTRUCTTO_MOTOR = fonte; a variável ganha do pacote instalado desde a correção do E2E-08)
 set ESTRUCTTO_MOTOR=C:\dev\wt\e2e\codigo\motor
 C:\dev\build\EstructtoV2-e2e\bin\Release\net8.0-windows\Estructto.exe --testes-fluxo <pasta> A,B,C,D,E
 # só o motor empacotado (sem ESTRUCTTO_MOTOR): o exe ao lado de motor\ (o publish, ou uma pasta com o exe e um link para motor\)
@@ -32,9 +33,9 @@ sem ele, vem de `ESTRUCTTO_MOTOR` ou de subir a partir do diretório atual.
 
 | Severidade | Bugs |
 |---|---|
-| Alta | E2E-04 |
-| Média | E2E-03, E2E-05 (corrigido), E2E-06, E2E-08, E2E-10 |
-| Baixa | E2E-02, E2E-07 (corrigido), E2E-09, E2E-11 |
+| Alta | E2E-04 (corrigido) |
+| Média | E2E-03 (corrigido), E2E-05 (corrigido), E2E-06 (corrigido), E2E-08 (corrigido), E2E-10 (corrigido) |
+| Baixa | E2E-02 (corrigido), E2E-07 (corrigido), E2E-09 (corrigido), E2E-11 (corrigido) |
 
 E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no `unificacao` quando a suíte rodou: a conferência voltou a ser normal.
 
@@ -49,6 +50,9 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Suspeito: `codigo/Estructto/Snap3D.cs:387` — o desempate entre candidatos à mesma distância de tela usa só a prioridade do tipo e a ordem da
   lista (a ponta `A` do segmento vem primeiro: o pé). Não usa a profundidade (`olho`, já disponível, só serve à interseção aparente) nem o plano de trabalho.
 - Contorno na suíte: desfazer e desenhar em isométrica.
+- **Status: corrigido.** `Snap3D.Objetos`: depois de escolher o melhor candidato (prioridade do tipo, distância de tela), os candidatos do
+  mesmo tipo no mesmo pixel (< 0,5 px) desempatam pela distância ao plano de trabalho e depois pela profundidade (`olho`: o mais perto de quem olha).
+  `--testes-snap`: 3 conferências "E2E-04" (pilar visto de topo com plano em 6 m, 0 m e 3 m); falhavam com o desempate antigo.
 
 ### E2E-03 — Média — Motor morto durante o F5: a mensagem acusa o modelo ("não tem barras, não tem casos")
 - Passos: modelo de 3069 barras (edifício 10×10 vãos, 9 pavimentos; F5 ≈ 9 s), F5 calculado; F5 de novo e matar `estructto-motor.exe`
@@ -59,6 +63,10 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Evidência: `fluxo-E.txt` (linha "motor morto durante o F5").
 - Suspeito: `codigo/Estructto/DocumentoEspacial.cs:116-117` confere o dono do modelo uma vez, antes; o `POST /api/calcular` (`DocumentoEspacial.cs:364`)
   passa por `Motor.Chamar` → `Motor.Garantir` (`Motor.cs:39`), que sobe um motor novo, vazio, em silêncio e manda o F5 a ele.
+- **Status: corrigido.** `Motor.cs`: cada partida do motor tem um número (`geracao`); `Motor.Exclusivo` guarda o da partida em que a operação
+  começou e `Motor.Chamar` recusa, dentro da operação, um motor que morreu ou foi trocado (não sobe um vazio por baixo). Conexão que cai no meio
+  da chamada (`HttpRequestException`) também. Nos dois casos: `Desligar` e a mensagem "o motor de cálculo parou no meio da operação … reiniciado
+  sozinho na próxima ação: repita o comando". A próxima ação passa por `Motor.Garantir` (sobe outro) e `DocumentoEspacial.Garantir` recoloca o modelo.
 
 ### E2E-05 — Média — "Otimizar" não resolve reprovação de limite máximo (perna de solda maior que a chapa)
 - Passos: fluxo A até o grupo do joelho (tesoura W310x38.7 na mesa do pilar W310x38.7); projetista do grupo; Chapa de topo estendida; Otimizar.
@@ -81,6 +89,10 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Evidência: `fluxo-C.txt` (linhas "comparar recusado pelo motor" e "[CONHECIDO #E2E-06]").
 - Suspeito: `codigo/Estructto/ComandosAnalise.cs:41` `MensagemMotor` devolve o campo `erro` e descarta `detalhe`. Usada em 12 lugares
   (JanelaCype.cs:88, janelas de análise, ligações…).
+- **Status: corrigido** (junto com E2E-09). `MotorErro` (Motor.cs) guarda o corpo cru em `Corpo`, o código em `Codigo` e monta `Message` legível
+  (`MotorErro.Texto`): `detalhe` (ou `mensagem`) + `erros[]` (`campo: mensagem` ou texto), sem os códigos de validação (`sem_barras: …`), mecanismo
+  como "Mecanismo (estrutura instável): o nó n1 está livre em uz; confira os apoios e as ligações", `interno` como erro interno do motor.
+  `ComandosAnalise.MensagemMotor`, `UiAcoes.Mensagem`, `PlacaMotor.Mensagem` e o novo projeto deixaram de reinterpretar o JSON: todo `ex.Message` já sai legível.
 
 ### E2E-08 — Média — `ESTRUCTTO_MOTOR` é ignorada quando há motor instalado em `%LOCALAPPDATA%\Estructto\motor`
 - Passos: com `%LOCALAPPDATA%\Estructto\motor` presente (pacote completo), definir `ESTRUCTTO_MOTOR` para a fonte e abrir o Estructto de `bin\`.
@@ -90,6 +102,8 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Evidência: `C:\dev\build\EstructtoV2-e2e\fluxo\testes-fluxo.txt` ("Processo do motor que rodou: …\AppData\Local\Estructto\motor\estructto-motor.exe")
   e a conferência `[CONHECIDO #E2E-08]` no início de `fluxo-A.txt`.
 - Suspeito: `codigo/Estructto/Motor.cs:104-109` (ordem: `motor\` ao lado do exe, `%LOCALAPPDATA%`, só depois `ESTRUCTTO_MOTOR`).
+- **Status: corrigido.** `Motor.Iniciar`: ordem nova — `ESTRUCTTO_MOTOR` (fonte), depois `motor\` ao lado do exe (pacote completo), depois
+  `%LOCALAPPDATA%\Estructto\motor` (pacote completo).
 
 ### E2E-10 — Média — Abrir um `.ftl` não avisa que apoios e cargas não foram lidos
 - Passos: abrir `exemplos/untitled.ftl` (ou Importar › Ftool); F5.
@@ -98,6 +112,8 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Evidência: `fluxo-C.txt` (linhas "[CONHECIDO #E2E-10]"), `fluxo-pkg\fluxo-C-untitled.png`.
 - Suspeito: `codigo/Estructto/DocumentoEspacial.cs:156` — `Ftl.Importar(caminho, out _)` descarta o aviso (`Ftl.cs:185`).
   Importar › Ftool passa pelo mesmo caminho (`Acoes.cs:245`).
+- **Status: corrigido.** `DocumentoEspacial.AbrirArquivo` (.ftl) põe o aviso do `Ftl.Importar` nos avisos do documento (log, painel Avisos) e
+  `AbrirEspacial` mostra o "Apoios e cargas aplicadas não são lidos do .ftl…" num toast ao abrir. Importar › Ftool passa pelo mesmo caminho.
 
 ### E2E-02 — Baixa — O relatório do documento 3D não usa a empresa do novo projeto no carimbo
 - Passos: novo projeto com Empresa = "PROSSEN E2E"; F5; Relatório.
@@ -105,6 +121,8 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Obtido: vem o `empresa.txt` guardado (ou vazio).
 - Evidência: `fluxo-pkg\fluxo-A-14-relatorio.pdf`, `fluxo-A.txt`.
 - Suspeito: `codigo/Estructto/Relatorio.cs:20-26` (ramo 3D) não define `RelatorioMotor.EmpresaProjeto`; só o ramo 2D o faz (`Relatorio.cs:32`), onde `Esp` é sempre null.
+- **Status: corrigido.** `RelatorioMotor.Abrir` lê `config.projeto.empresa` do documento ativo do dono (todo caminho que abre o relatório
+  passa por ele); o ramo 2D deixou de definir `EmpresaProjeto` (lá `Esp` era sempre null).
 
 ### E2E-07 — Baixa — Manual diz que sismo gera casos "E"; o motor gera "S"
 - Esperado (manual): "Os casos têm tipo G, Q, V (vento) ou E (sismo)"; "Gerar vento e sismo cria casos V e E".
@@ -121,6 +139,7 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Evidência: `fluxo-C.txt` (linhas "[CONHECIDO #E2E-09]"), `fluxo-E.txt` (treliça com vão 0), `fluxo-pkg\fluxo-E-04-trelica-invalida.png`.
 - Suspeito: `codigo/Estructto/DocumentoEspacial.cs:667` (`"⚠ Motor: " + ex.Message`), e as irmãs em `DocumentoEspacial.cs:581, 696, 1119`,
   `Desenho3D.cs:155, 245`, `CargasEspacial.cs:99`. Mesma raiz de E2E-06.
+- **Status: corrigido** com E2E-06 (`MotorErro.Texto`): as barras de status ("⚠ Motor: " + `ex.Message`) mostram o texto legível.
 
 ### E2E-11 — Baixa — Execução automática ainda grava `%AppData%\NovoFtool\empresa.txt` do usuário
 - Passos: `--testes-fluxo` ou `--capturas` abrindo o relatório do motor.
@@ -128,6 +147,8 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Obtido: cada abertura do relatório regrava `empresa.txt` (a data muda; com E2E-02 corrigido, o conteúdo também mudaria). A suíte devolve o arquivo.
 - Evidência: `fluxo-A.txt`, `fluxo-B.txt`, `fluxo-F.txt` (linhas "[CONHECIDO #E2E-11]").
 - Suspeito: `codigo/Estructto/RelatorioMotor.cs:21` (`ArqEmpresa` fixo no `%AppData%`) e `:159` (`Atualizar` grava ao abrir, chamado em `:129`).
+- **Status: corrigido.** `RelatorioMotor.ArqEmpresa` fica em `Config.Pasta` (agora `internal`: `%TEMP%\Estructto\config-automacao` na execução
+  automática) e o `empresa.txt` só é regravado quando o texto muda. Único escritor: `RelatorioMotor.Empresa` (também via `Config.Opcoes.Empresa`).
 
 ## Correções de hipótese da suíte (não são bugs)
 - `.ed3` sem resultados gravados pelo CYPE (`novo.ed3`, `PIPERACK TESTE 2.ed3`): o motor recusa a comparação, corretamente.

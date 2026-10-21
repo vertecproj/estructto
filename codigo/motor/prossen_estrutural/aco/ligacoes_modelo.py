@@ -370,8 +370,16 @@ _ESFORCOS_LIG = {
     "parafuso": lambda e: dict(Ft=max(e["N"], 0.0), Fv=math.hypot(e["Vy"], e["Vz"])),
     "solda_filete": lambda e: dict(F=math.sqrt(e["N"] ** 2 + e["Vy"] ** 2 + e["Vz"] ** 2)),
     "chapa_simples": lambda e: dict(V=math.hypot(e["Vy"], e["Vz"])),
-    "ligacao_tracao": lambda e: dict(N=abs(e["N"])),  # ponytail: compressão tratada como tração (chapa sem flambagem)
+    "ligacao_tracao": lambda e: dict(N=_so_tracao(e["N"])),
 }
+
+
+def _so_tracao(N):
+    """ligacao_tracao só verifica tração (sem flambagem da chapa, 6.5.4): compressão não é aprovada por ela."""
+    if N < 0:
+        raise ValueError(f"ligacao_tracao: N = {N:.1f} kN é compressão — compressão não verificada por este tipo "
+                         "(sem flambagem da chapa, NBR 8800 6.5.4); use gusset_contraventamento")
+    return N
 
 
 # Tipos do contrato (flexíveis, rígidas, contraventamento): verificador() monta um genérico com esforcos_contrato();
@@ -414,6 +422,10 @@ def verificador(tl):
         return None
 
     def f(modelo, membro, e, dados):
+        # o nó de treliça exige N1–N4 simultâneos; a ponta só fornece o N da barra 1 (N2–N4 virariam 0/45 kN)
+        if tl == "no_trelica_gusset" and any((dados or {}).get(f"secao_{i}", "nenhum") != "nenhum" for i in "234"):
+            raise ValueError("no_trelica_gusset com várias barras: os esforços simultâneos N2–N4 não são obtidos do "
+                             "modelo — verifique o nó pela janela da ligação com os esforços de todas as barras")
         r = _lig.verificar_ligacao(tl, dados, esforcos_contrato(e))
         r.setdefault("taxa_max", r.get("taxa"))
         return r

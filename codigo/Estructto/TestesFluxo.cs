@@ -68,7 +68,7 @@ namespace NovoFtool
 
         static readonly List<Rel> relatos = new List<Rel>();
         static readonly HashSet<string> motoresVistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // o processo que o Motor.cs de fato abriu (o pacote ao lado do exe e o de %LOCALAPPDATA% ganham de ESTRUCTTO_MOTOR)
+        // o processo que o Motor.cs de fato abriu (ESTRUCTTO_MOTOR ganha do pacote ao lado do exe e do de %LOCALAPPDATA%; era E2E-08)
         static string ProcessoMotor()
         {
             try
@@ -147,8 +147,8 @@ namespace NovoFtool
         }
 
         // ================================================================ configuração do usuário (%AppData%\NovoFtool)
-        // Execuções --teste* usam a pasta própria do Config (%TEMP%\Estructto\config-automacao). Só o empresa.txt do relatório
-        // (RelatorioMotor.ArqEmpresa) ainda vai para o %AppData% do usuário [E2E-11]: a suíte o confere e devolve depois de cada relatório.
+        // Execuções --teste* usam a pasta própria do Config (%TEMP%\Estructto\config-automacao). O empresa.txt do relatório
+        // (RelatorioMotor.ArqEmpresa) também (era E2E-11): a suíte confere que o do %AppData% do usuário ficou intacto e o devolve se não.
         // ponytail: não copia/restaura a pasta inteira — outras sessões do usuário gravam cópias de recuperação nela enquanto a suíte roda.
         static string ArqEmpresaUsuario => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool", "empresa.txt");
         static byte[] empresaBytes; static DateTime empresaData;
@@ -312,7 +312,7 @@ namespace NovoFtool
             var fi = new FileInfo(pdf);
             bool ehPdf = fi.Exists && fi.Length > 20000 && Encoding.ASCII.GetString(File.ReadAllBytes(pdf), 0, 4) == "%PDF";
             r.Checar(ehPdf, "relatório PDF gravado: " + pdf + " (" + (fi.Exists ? fi.Length / 1024 + " kB" : "não existe") + ")");
-            r.Conhecido("E2E-11", DevolverConfigUsuario(), "abrir o relatório na execução automática não grava %AppData%\\NovoFtool\\empresa.txt do usuário");
+            r.Checar(DevolverConfigUsuario(), "abrir o relatório na execução automática não grava %AppData%\\NovoFtool\\empresa.txt do usuário");
             string html = File.ReadAllText(Path.Combine(Motor.Pasta, "relatorio-estructto.html"));
             r.Checar(html.Contains("engenheiro") || html.Contains("ART"), "relatório traz o aviso de responsabilidade (engenheiro/ART)");
             return html;
@@ -339,7 +339,7 @@ namespace NovoFtool
             var d = w.EspacialAtivo;
             r.Exigir(d != null && File.Exists(dados.Arquivo), "documento aberto e gravado em " + dados.Arquivo);
             if (envMotorOriginal != null)
-                r.Conhecido("E2E-08", !MotorEmpacotado(), "ESTRUCTTO_MOTOR definida: o motor da fonte é o que roda (rodou: " + ProcessoMotor() + ")");
+                r.Checar(!MotorEmpacotado(), "ESTRUCTTO_MOTOR definida: o motor da fonte é o que roda (rodou: " + ProcessoMotor() + ")");
             var v = w.vista3D;
             r.Checar(Niveis.Lista(d.Json).Count == 2, "2 níveis (Térreo e 6 m): " + string.Join(", ", Niveis.Lista(d.Json).Select(n => n.Nome + " " + Nf(n.Z))));
             r.Checar(v.PlanoAtual.Normal == 'Z' && Math.Abs(v.PlanoAtual.Valor - H) < 1e-9, "plano de trabalho no nível de 6 m (" + v.PlanoAtual.Nome + ")");
@@ -416,7 +416,7 @@ namespace NovoFtool
             bool BeiraisNoTopo() { var mm = J(w); var bs = mm["barras"].AsObject().Where(kv => (string)kv.Value["secao"] == pBeiral).ToList(); return bs.Count == 8 && bs.All(kv => Math.Abs(Pos(mm, (string)kv.Value["ni"]).Z - H) < 1e-9 && Math.Abs(Pos(mm, (string)kv.Value["nj"]).Z - H) < 1e-9); }
             r.L("        beirais: " + string.Join("; ", m["barras"].AsObject().Where(kv => (string)kv.Value["secao"] == pBeiral).Select(kv => kv.Key + " " + Pos(m, (string)kv.Value["ni"]) + " → " + Pos(m, (string)kv.Value["nj"]))));
             bool beiralPlanta = NBarras(w) == 28 && NNos(w) == 25 && BeiraisNoTopo();
-            r.Conhecido("E2E-04", beiralPlanta, "planta, plano 6 m: Barra com atração Extremidade nos topos dos pilares liga em z = 6 m (" + NBarras(w) + " barras, " + NNos(w) + " nós, no topo: " + BeiraisNoTopo() + ")");
+            r.Checar(beiralPlanta, "planta, plano 6 m: Barra com atração Extremidade nos topos dos pilares liga em z = 6 m (" + NBarras(w) + " barras, " + NNos(w) + " nós, no topo: " + BeiraisNoTopo() + ")");
             if (!beiralPlanta)
             {   // contorno do usuário: desfaz e desenha em isométrica, onde topo e pé não coincidem na tela
                 Foto(w, "A-03a-beiral-errado", () => v.MostrarVista(VistaPadrao.Iso, false));
@@ -600,7 +600,7 @@ namespace NovoFtool
                 r.L("        joelho: taxa " + jg.Resultado?["taxa"] + " · " + (string)jg.Resultado?["criterio"] + " · reprovam: " + string.Join(" | ", jg.Resultado?["verificacoes"]?.AsArray().Where(x => !UiAnalise.Bool(x, "ok")).Select(x => (string)x["nome"] + " " + x["solicitante"] + "/" + x["resistente"] + " " + (string)x["unidade"] + " (" + (string)x["item"] + ")") ?? new string[0]));
                 r.L("        joelho, dados: " + jg.Resultado?["dados"]?.ToJsonString() + " · esforços: " + jg.Resultado?["esforcos"]?.ToJsonString());
                 bool okOtim = jg.Resultado != null && UiAnalise.Bool(jg.Resultado, "ok");
-                r.Conhecido("E2E-05", okOtim, "Otimizar resolve a chapa de topo estendida no joelho (taxa " + jg.Resultado?["taxa"] + ", " + (string)jg.Resultado?["criterio"] + ")");
+                r.Checar(okOtim, "Otimizar resolve a chapa de topo estendida no joelho (taxa " + jg.Resultado?["taxa"] + ", " + (string)jg.Resultado?["criterio"] + ")");
                 if (!okOtim && ((string)jg.Resultado?["criterio"] ?? "").Contains("perna máxima"))
                 {   // contorno do usuário: baixa a perna da solda que passou do máximo (a espessura mais fina) à mão
                     var dimin = new JsonObject();
@@ -631,7 +631,7 @@ namespace NovoFtool
 
             // --- relatório PDF
             string html = RelatorioPdf(w, r, "A-14-relatorio");
-            r.Conhecido("E2E-02", html.Contains("PROSSEN E2E"), "relatório leva a empresa do novo projeto (config.projeto.empresa = PROSSEN E2E) no carimbo");
+            r.Checar(html.Contains("PROSSEN E2E"), "relatório leva a empresa do novo projeto (config.projeto.empresa = PROSSEN E2E) no carimbo");
 
             // --- salvar (.estructto), fechar, reabrir e comparar; F5 de novo dá os mesmos números
             d = w.EspacialAtivo;
@@ -718,7 +718,7 @@ namespace NovoFtool
             var casosE = J(w)["casos"].AsObject().Where(kv => (string)kv.Value["tipo"] == "S").Select(kv => kv.Key).ToList();
             string manualAcoes = Path.Combine(Raiz(), "docs", "manual", "03-acoes.md");
             if (File.Exists(manualAcoes) && casosE.Count > 0)
-                r.Conhecido("E2E-07", !File.ReadAllText(manualAcoes).Contains("E (sismo)"), "manual 03-acoes.md diz o mesmo tipo de caso do sismo que o motor gera (\"S\")");
+                r.Checar(!File.ReadAllText(manualAcoes).Contains("E (sismo)"), "manual 03-acoes.md diz o mesmo tipo de caso do sismo que o motor gera (\"S\")");
             r.Checar(mudouS && casosE.Count >= 2, "sismo gerado: " + stSismo + " · casos " + string.Join(", ", casosE));
 
             // --- F5, modal, estabilidade
@@ -767,9 +767,9 @@ namespace NovoFtool
                 if (nome.EndsWith(".ftl"))
                 {   // o .ftl não traz apoios nem cargas (Ftl.cs): o usuário tem de ser avisado ao abrir e o F5 tem de explicar
                     string st = w.StatusMsg.Text;
-                    r.Conhecido("E2E-10", w.EspacialAtivo.Avisos.Any(x => x.Contains("Apoios")) || caixasVistas.Any(x => x.Contains("Apoios")), nome + ": ao abrir, avisa que apoios e cargas do .ftl não são lidos (avisos: " + string.Join("; ", w.EspacialAtivo.Avisos.Take(3)) + ")");
-                    r.Checar(!w.EspacialAtivo.Calculado && st.Contains("mecanismo"), nome + ": sem apoios, o F5 recusa e aponta o mecanismo (" + st + ")");
-                    r.Conhecido("E2E-09", !st.Contains("{\""), nome + ": a mensagem do F5 é legível, sem o JSON cru do motor (" + st + ")");
+                    r.Checar(w.EspacialAtivo.Avisos.Any(x => x.Contains("Apoios")) || caixasVistas.Any(x => x.Contains("Apoios")), nome + ": ao abrir, avisa que apoios e cargas do .ftl não são lidos (avisos: " + string.Join("; ", w.EspacialAtivo.Avisos.Take(3)) + ")");
+                    r.Checar(!w.EspacialAtivo.Calculado && st.Contains("mecanismo", StringComparison.OrdinalIgnoreCase), nome + ": sem apoios, o F5 recusa e aponta o mecanismo (" + st + ")");
+                    r.Checar(!st.Contains("{\""), nome + ": a mensagem do F5 é legível, sem o JSON cru do motor (" + st + ")");
                 }
                 else r.Checar(w.EspacialAtivo.Calculado, nome + ": F5 (" + w.EspacialAtivo.Resumo() + " · status: " + w.StatusMsg.Text + ")");
                 Foto(w, "C-" + Slug(Path.GetFileNameWithoutExtension(a)), () => w.vista3D.MostrarVista(VistaPadrao.Iso, false));
@@ -800,10 +800,10 @@ namespace NovoFtool
                 try { cmp = Esperar(Motor.Post("/api/comparar_cype", new JsonObject { ["nome"] = nome, ["conteudo_base64"] = Convert.ToBase64String(File.ReadAllBytes(e)) })); }
                 catch (Exception ex)
                 {   // obra sem resultados gravados pelo CYPE: o motor recusa; o usuário tem de ler o porquê
-                    string det = null; try { det = (string)JsonNode.Parse(ex.Message)?["detalhe"]; } catch { }
+                    string det = null; try { det = (string)JsonNode.Parse((ex as MotorErro)?.Corpo ?? "")?["detalhe"]; } catch { }
                     string tela = ComandosAnalise.MensagemMotor(ex);
                     r.Checar(det != null && det.Contains("resultados"), nome + ": comparar recusado pelo motor: " + det);
-                    if (!semResultadosVisto) r.Conhecido("E2E-06", tela.Contains("resultados"), nome + ": a janela Comparar CYPE mostra o motivo (mostra: " + tela + ")");
+                    if (!semResultadosVisto) r.Checar(tela.Contains("resultados"), nome + ": a janela Comparar CYPE mostra o motivo (mostra: " + tela + ")");
                     semResultadosVisto = true;
                     continue;
                 }
@@ -1148,7 +1148,7 @@ namespace NovoFtool
                 // o modelo tem barras e casos: a mensagem não pode dizer que não tem (o motor novo sobe vazio e recebe o F5 sem o modelo)
                 bool msgEngana = msg.Contains("não tem barras") || msg.Contains("sem_barras");
                 bool msgClara = !msgEngana && msg.Contains("motor", StringComparison.OrdinalIgnoreCase) && (msg.Contains("encerr") || msg.Contains("reinici") || msg.Contains("parou") || msg.Contains("de novo"));
-                r.Conhecido("E2E-03", msgClara, "motor morto durante o F5: a mensagem diz que o motor parou, sem acusar o modelo (status: " + msg.Substring(0, Math.Min(200, msg.Length)) + ")");
+                r.Checar(msgClara, "motor morto durante o F5: a mensagem diz que o motor parou, sem acusar o modelo (status: " + msg.Substring(0, Math.Min(200, msg.Length)) + ")");
                 Esperar(w.CalcularEspacial());
                 r.Checar(w.EspacialAtivo.Calculado, "F5 seguinte recupera o modelo grande (" + w.StatusMsg.Text + ")");
             }

@@ -1,4 +1,4 @@
-// Modo de capturas automaticas de tela para QA visual (--capturas <pasta_saida> [arquivo.estructto]).
+﻿// Modo de capturas automaticas de tela para QA visual (--capturas <pasta_saida> [arquivo.estructto]).
 // Abre o modelo, calcula (F5), renderiza a janela principal (1600x900 e 1280x720) e todos os dialogos/abas
 // fora da tela com RenderTargetBitmap (96 dpi) + PngBitmapEncoder, e encerra com codigo 0 (ou 1 + erros.txt).
 using System;
@@ -1070,7 +1070,8 @@ namespace NovoFtool
                 if (so == "ligacoes") so1(() => CapturasLigacoes(w));             // só as 49) do gerenciador de ligações
                 if (so == "desenho3d") so1(() => CapturasDesenho3D(w));           // só as 43) do desenho no 3D
                 if (so == "snap") so1(() => CapturasSnap(w));                     // só as 50-53) de snap e medir 3D
-                if (so == "navegacao") so1(() => CapturasNavegacao(w));           // só as 56) do pivô automático da órbita
+                if (so == "navegacao") so1(() => CapturasNavegacao(w));
+                if (so == "estilo") so1(() => CapturasEstilo(w));                 // só as 57) do estilo visual           // só as 56) do pivô automático da órbita
                 if (so == "fluxo3d") so1(() => CapturasFluxo3D(w));               // só as 49) do fluxo de modelagem 3D
                 if (so == "a1") so1(() => CapturasA1(w, caminhoModelo));          // só as 54) do produto 3D único (A1)
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
@@ -1255,6 +1256,7 @@ namespace NovoFtool
                 // 42) Vista 3D Realista (perfis reais, sombra, arestas) lado a lado com a analítica; começa no guincho convertido
                 bool realAntes = Config.Realista3D;
                 CapturasRealista(w);
+                CapturasEstilo(w);   // 57) estilo visual: seletor da vista, chip da barra de status, VS
                 w.DefinirRealista(false);
 
                 // 40) Vista 3D analítica de um pórtico espacial de entrada neutra (Modelo3D direto, sem motor)

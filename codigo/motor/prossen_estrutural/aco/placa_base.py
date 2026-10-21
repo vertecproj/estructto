@@ -617,7 +617,8 @@ def forcas_bloco(N, M, coordenadas, H, B, sigma_cRd):
         u = [-s*y for y, _ in pts]
         s2 = sum(x*x for x in u)
         te = [N/n+(Ma*x/s2 if s2 > 0 else 0) for x in u]
-        if min(te) >= -1e-9:
+        # uma fileira (Σu² = 0) não equilibra M sem contato: vai ao bloco de compressão
+        if min(te) >= -1e-9 and (s2 > 1e-12 or Ma == 0):
             t = [max(0, x) for x in te]
             out.update(modelo='Todos tracionados', taxa_concreto=0.)
     if 'modelo' not in out and P > 0 and H-2*Ma/P > 0 and P/(q*(H-2*Ma/P)) <= 1:
@@ -822,6 +823,12 @@ def concreto_chumbador_aci(paraf, V, n_ef, hef, da, abrg, fck, fissurado=True, b
     h0, da, ab = hef*1000, da*1000, abrg*1e6
     Hb, Bb, ha = ((bloco[0]*1000, bloco[1]*1000, (bloco[2] or 0)*1000) if bloco else (None, None, 0))
     pts = [(y*1000, z*1000, T*1000) for y, z, T in paraf]
+    if Hb:   # chumbador na face ou fora do bloco: geometria inválida (ca = 0 zera/divide as fórmulas do ACI)
+        fora = [(y, z) for y, z, _ in pts if min(Hb/2-abs(y), Bb/2-abs(z)) <= 1e-6]
+        if fora:
+            y, z = fora[0]
+            raise ValueError(f'bloco: chumbador em (y, z) = ({y:.0f}, {z:.0f}) mm sem distância positiva às faces do '
+                             f'bloco {Hb:.0f} × {Bb:.0f} mm; aumente o bloco ou reduza a borda/placa')
     tr = [p for p in pts if p[2] > 1e-6]
     psc = 1. if fissurado else 1.25
     v, av = [], []
@@ -937,8 +944,9 @@ def aco_chumbador_nbr(T, Fv, d, fub, fyb=0, rosca_no_corte=True, esp=0, lf=0, fu
         v.append(_v('chumbador: escoamento da haste', T, ab*fyb/GA1, 'kN', 'NBR 8800 5.2.2 a)'))
     if Fv > 0:
         v.append(_v('chumbador: corte na haste', Fv, fv, 'kN', 'NBR 8800 6.3.3.2'))
-        if esp > 0 and lf > 0:
-            v.append(_v('chapa: pressão de contato no furo', Fv, pressao_contato(lf, esp, d, fu_chapa), 'kN', 'NBR 8800 6.3.3.3'))
+        if esp > 0:   # lf ≤ 0: furo aberto na borda, ligamento nulo → resistência 0 (reprova; nunca omitir)
+            v.append(_v('chapa: pressão de contato no furo', Fv, pressao_contato(lf, esp, d, fu_chapa) if lf > 0 else 0.,
+                        'kN', 'NBR 8800 6.3.3.3'))
         if T > 0:
             v.append(_v('chumbador: interação tração–corte', interacao_tracao_cisalhamento(T, ft, Fv, fv), 1., '', 'NBR 8800 6.3.3.4'))
     return dict(Ab=ab, Ft_Rd=ft, Fv_Rd=fv, verificacoes=v, Ag_nec_corte=None)
@@ -1025,7 +1033,8 @@ def verificar_placa_base(dados, esforcos, secao):
                           'exige arruelas especialmente dimensionadas soldadas à placa (arruela_soldada).')
         lf = d['borda']-dh/2
         if lf <= 0 and f['Fv'] > 0:
-            avisos.append('Furo alargado alcança a borda (lf ≤ 0): pressão de contato no furo NÃO verificada.')
+            avisos.append('Furo alargado alcança a borda (lf ≤ 0): sem ligamento entre furo e borda — pressão de '
+                          'contato com resistência nula (reprovado); aumente a borda.')
         nbr = aco_chumbador_nbr(f['Tmax'], f['Fv'], dm, fu, fyb, d['rosca_no_corte'], d['esp'], lf,
                                 d['fu_chapa'] if d['fu_chapa'] > 0 else 400000)
         hef = d['hef'] if d['hef'] > 0 else 12*dm

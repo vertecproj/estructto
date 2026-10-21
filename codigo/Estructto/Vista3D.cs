@@ -223,7 +223,8 @@ namespace NovoFtool
         public Func<string, Perfil3D> Perfil;    // nome da seção -> forma real (null/desconhecida = caixa fina)
         // Render3D (DX11) quando há placa de vídeo; senão o Realista nativo deste arquivo. ESTRUCTTO_3D=nativo força o nativo.
         Render3D render;
-        bool Dx => Realista && Render3D.Disponivel;
+        public bool SemDx;                       // estilo "Sombreado" (SeletorEstilo.cs): o Realista nativo mesmo com GPU
+        bool Dx => Realista && !SemDx && Render3D.Disponivel;
         public bool LigacoesAmostra = Environment.GetEnvironmentVariable("ESTRUCTTO_3D_AMOSTRAS") == "1";   // sem ligações do motor: exemplos (capturas)
         readonly Dictionary<string, Forma> formas = new Dictionary<string, Forma>();
         readonly Dictionary<Model3D, (int[] Ini, object[] Obj)> faixas = new Dictionary<Model3D, (int[], object[])>();   // malhas juntadas: vértice inicial de cada barra

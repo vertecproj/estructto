@@ -59,6 +59,7 @@ namespace NovoFtool
             MontarFaixa();
             MontarBastidores();
             MontarStatus();
+            MontarEstiloVisual();   // seletor na vista e chip na barra de status (SeletorEstilo.cs)
             LigarEventos();
             // animacoes da interface (Anim.cs, docs/ANIMACOES.md)
             Anim.Iniciar(Faixa, Insp);
@@ -389,7 +390,7 @@ namespace NovoFtool
             abaRelatorio.ToolTip = "Memorial de cálculo do motor e das placas de base. Exportar DWG/DXF/STEP: Arquivo › Exportar.";
             MontarCasosNaFaixa(abaAcoes, abaAnalise);
 
-            // VISTA: câmeras (planta, elevações, iso), projeção, Realista, o que aparece, passo da grade do plano, painéis
+            // VISTA: câmeras (planta, elevações, iso), projeção, estilo visual, o que aparece, passo da grade do plano, painéis
             tgCargas = Alternar("cargano", "Cargas", v => { if (vista3D != null) { vista3D.MostrarCargas = v; vista3D.Reconstruir(); } }, "Mostra as setas das cargas do caso ativo.", true);
             tgCargas.IsChecked = true;
             cGrade = Campo("Passo da grade (m)", "1", "Espaçamento da grade do plano de trabalho (atração F9).", 50);
@@ -405,7 +406,7 @@ namespace NovoFtool
                     Botao("lado", "Lado", () => ExecutarComando("LADO"), "Elevação YZ (direita).", "Ctrl+3 num.", true),
                     Botao("iso", "Isométrica", () => ExecutarComando("ISO"), "Vista isométrica (Home do ViewCube).", "Ctrl+5 num.", true),
                     tgPerspectiva,
-                    tgRealista = Alternar("realista", "Realista", DefinirRealista, "Perfis reais, materiais (aço e concreto), luz, sombra no chão e arestas — como o \"Sombreado com arestas\" do Revit. Desligado = vista analítica (barras finas). A escolha fica guardada.")),
+                    BotaoEstilo()),
                 Grupo("Mostrar", tgCargas),
                 Grupo("Grade", cGrade),
                 Grupo("Painéis",
@@ -413,8 +414,7 @@ namespace NovoFtool
                     Botao("painel", "Propriedades", () => Alternar(PainelProp), "Mostra/oculta o painel Propriedades.", "Ctrl+1", true),
                     Botao("tabela", "Tabelas", () => Alternar(PainelTabelas), "Mostra/oculta as tabelas de nós, barras e verificação.", "TABELAS", true)),
                 Grupo("Ajuda", Botao("ajuda", "Atalhos e ajuda", MostrarAjuda, "Como usar e lista de atalhos.", "F1")));
-            tgRealista.IsChecked = Config.Realista3D;
-            abaVista.ToolTip = "Enquadrar, planta/elevações/isométrica, perspectiva, Realista, cargas, passo da grade, painéis e ajuda.";
+            abaVista.ToolTip = "Enquadrar, planta/elevações/isométrica, perspectiva, estilo visual, cargas, passo da grade, painéis e ajuda.";
 
             Faixa.SelectedTabItem = abaModelo;
         }

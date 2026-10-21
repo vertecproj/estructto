@@ -29,7 +29,6 @@ namespace NovoFtool
             if (MotorAtivo)   // motor Python: relatório NBR do motor + anexo das placas do Estructto (docs/RELATORIO-UNIFICADO.md)
             {
                 if (!await PrepararMotor(true)) return;
-                RelatorioMotor.EmpresaProjeto = (string)Esp?.Json["config"]?["projeto"]?["empresa"];
                 RelatorioMotor.Abrir(this, NomeRelatorio(), AnexoPlacas);
                 return;
             }

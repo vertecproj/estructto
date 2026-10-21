@@ -9,7 +9,7 @@ namespace NovoFtool
     public static class Config
     {
         // execução automática (--capturas, --teste-*): pasta própria no %TEMP%, para não sujar recentes e recuperação do usuário
-        static readonly string Pasta = Environment.GetCommandLineArgs().Any(a => a == "--capturas" || a.StartsWith("--teste"))
+        internal static readonly string Pasta = Environment.GetCommandLineArgs().Any(a => a == "--capturas" || a.StartsWith("--teste"))
             ? Path.Combine(Path.GetTempPath(), "Estructto", "config-automacao")
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool");
         static string ArqRecentes { get { return Path.Combine(Pasta, "recentes.txt"); } }
@@ -77,12 +77,27 @@ namespace NovoFtool
             try { Directory.CreateDirectory(Pasta); File.WriteAllLines(ArqCmd, l.Take(6)); } catch { }
         }
 
-        // Vista 3D: modo "Realista" (perfis reais, sombras) ou analítico; lembra a última escolha.
+        // Vista 3D: estilo visual (SeletorEstilo.cs) "analitico", "sombreado" ou "realista"; lembra a última escolha.
+        // Os arquivos antigos só tinham "realista"/"analitico" e continuam valendo.
         static string ArqVista3D { get { return Path.Combine(Pasta, "vista3d.txt"); } }
+        public static EstiloVisual Estilo3D
+        {
+            get
+            {
+                try
+                {
+                    string s = File.Exists(ArqVista3D) ? File.ReadAllText(ArqVista3D).Trim() : "";
+                    return s == "realista" ? EstiloVisual.Realista : s == "sombreado" ? EstiloVisual.Sombreado : EstiloVisual.Analitico;
+                }
+                catch { return EstiloVisual.Analitico; }
+            }
+            set { try { Directory.CreateDirectory(Pasta); File.WriteAllText(ArqVista3D, value == EstiloVisual.Realista ? "realista" : value == EstiloVisual.Sombreado ? "sombreado" : "analitico"); } catch { } }
+        }
+        // Sólidos (Sombreado ou Realista) ou analítico; ligar = Realista.
         public static bool Realista3D
         {
-            get { try { return File.Exists(ArqVista3D) && File.ReadAllText(ArqVista3D).Trim() == "realista"; } catch { return false; } }
-            set { try { Directory.CreateDirectory(Pasta); File.WriteAllText(ArqVista3D, value ? "realista" : "analitico"); } catch { } }
+            get { return Estilo3D != EstiloVisual.Analitico; }
+            set { Estilo3D = value ? EstiloVisual.Realista : EstiloVisual.Analitico; }
         }
 
         // Grava num temporário ao lado e troca no fim (File.Replace/Move): queda no meio não corrompe o arquivo que já existia.
