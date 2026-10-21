@@ -33,7 +33,7 @@ Branch `unificacao`. Detalhes de cada parte nos `.md` citados.
   rodar antes de considerar o produto validado por fluxo completo.
 - Ver "Limites" em cada doc (ex.: RO só em torno do eixo vertical, solda sem esquadria no canto, DWG sem 3DSOLID, sem barra só de tração).
 
-## Integração com o `main` do Bruno (pendente)
+## Integração com o `main` do Bruno (feita em 21/10/2026, branch `wt-bruno`: ver [INTEGRACAO-BRUNO.md](INTEGRACAO-BRUNO.md))
 O `origin/main` recebeu 6 commits do Bruno (1f719d3) no programa 2D: vento NBR 6123:2023 nas barras (V0, S1, S2, S3, Cf/Ca, K) com casos,
 vento NBR 8400:1984 (seletor de norma, combinações I/II/III), e melhorias na placa legada (pior combinação por item, n da solda, troca de
 chumbador por família). Eles conflitam com o produto só-3D (Acoes.cs, Capturas.cs, Casos.cs, JanelaPlaca.cs, Paleta.cs) e trazem cálculo

@@ -461,7 +461,10 @@ def config_definir(dados: Annotated[dict[str, Any], Field(description=(
         "que recebe o peso próprio, ex. 'G1'), variabilidade ('grandes'|'pequenas'), armadura ('CA-50'...), "
         "cobrimento_m (m), caa ('I'..'IV'), vento ({V0 m/s, S1, S3, categoria 'I'..'V', classe 'A'|'B'|'C', "
         "direcoes ['+X','-X','+Y','-Y'], dimensoes {lx, ly} m, Ca?, e para galpões: tipo='galpao', geometria "
-        "{vao, altura_pilar, altura_cumeeira, n_modulos, espacamento}, permeabilidade, cpi}; null remove), "
+        "{vao, altura_pilar, altura_cumeeira, n_modulos, espacamento}, permeabilidade, cpi; vento POR BARRA da NBR 6123:2023 "
+        "8.1: tipo='barras' com V0, S1, S3, categoria, classe (vazio = automática), usar_K (tabela 28), direcoes; "
+        "equipamentos de levantamento NBR 8400:1984: tipo='nbr8400' com v_servico (m/s, padrão 20), direcoes}; null remove), "
+        "combinacoes ('nbr8681' padrão | 'nbr8400': casos I, II, III da NBR 8400 5.6), nbr8400 ({grupo 1-6 (Mx), psi}), "
         "sismo ({zona 0-4, classe_terreno 'A'..'E', categoria_utilizacao, R, sistema, sistema_resistente, "
         "dimensoes {lx, ly} m para torção acidental}; null remove)"))]
         ) -> dict[str, Any]:
@@ -475,7 +478,9 @@ def config_definir(dados: Annotated[dict[str, Any], Field(description=(
 def acoes_gerar() -> dict[str, Any]:
     """Recria os casos e cargas automáticos de vento (V+X, V-X, V+Y, V-Y; NBR 6123) e sismo (SX, SY; NBR 15421) a partir
     de config.vento, config.sismo e dos pavimentos. Opcional: projeto_calcular já faz isso. Devolve casos, forcas
-    por pavimento (kN), parametros e avisos."""
+    por pavimento (kN), parametros e avisos. Com config.vento.tipo='barras' (NBR 6123:2023 8.1) ou 'nbr8400' (casos
+    VS±X serviço e VM±X máximo) a carga é distribuída em cada barra e forcas[caso] traz uma linha por barra (z, S2,
+    q ou Pa, Cf/C, c, K, sen²α, w_kN_m, w_vet_kN_m, fonte = item da tabela usado)."""
     return projeto.gerar_acoes(_modelo())
 
 
@@ -484,7 +489,8 @@ def acoes_gerar() -> dict[str, Any]:
 @_ferramenta(ro=True, idem=True)
 def combinacoes_listar() -> dict[str, Any]:
     """Lista as combinações de ações geradas (NBR 8681) para o modelo atual: nome, estado (ELU, ELU_EXC, ELS_QP,
-    ELS_FREQ, ELS_RARA) e fatores por caso."""
+    ELS_FREQ, ELS_RARA) e fatores por caso. Com config.combinacoes='nbr8400': casos I, II e III da NBR 8400:1984 5.6
+    (ELU já multiplicadas por ν/γa1 para reproduzir as tensões admissíveis) e ELS_RARA G + Q; campo nbr8400."""
     itens = projeto.combinacoes(_modelo())
     return {"total": len(itens), "itens": itens}
 

@@ -1319,6 +1319,14 @@ namespace NovoFtool
                 void Cap(Window j, string nome) { PrepararDialogoForaDaTela(j); j.Show(); EsperarIdle(); CapturarDialogo(j, nome); j.Close(); EsperarIdle(); }
                 Cap(new JanelaVento(am["resumo"], am["geracao"]), "29-acoes-vento.png");
                 Cap(new JanelaVento(am["resumo"]), "29-acoes-vento-sem-gerar.png");
+                // vento por barra (NBR 6123 8.1) e NBR 8400 (port do vento 2D do Bruno; amostras reais do motor, guincho 3D)
+                var vb = Amostras.Ler("vento-barras");
+                Cap(new JanelaVento(vb["resumo"], vb["geracao"]), "29-acoes-vento-barras.png");
+                Cap(new JanelaVento(vb["resumo"]), "29-acoes-vento-barras-sem-gerar.png");
+                var v8 = Amostras.Ler("vento-8400");
+                Cap(new JanelaVento(v8["resumo"], v8["geracao"]), "29-acoes-vento-8400.png");
+                var c8 = Amostras.Ler("combinacoes-8400");
+                Cap(new JanelaCombinacoes(c8["comb"], c8["casos"], "comercial", c8["config"]), "33-acoes-combinacoes-8400.png");
                 Cap(new JanelaSismo(am["resumo"], am["geracao"]), "30-acoes-sismo.png");
                 Cap(new JanelaSismo(System.Text.Json.Nodes.JsonNode.Parse("{\"config\":{}}")), "30-acoes-sismo-zona0.png");
                 Cap(new JanelaPavimentos(am["pav"], am["nos"]), "31-acoes-pavimentos.png");

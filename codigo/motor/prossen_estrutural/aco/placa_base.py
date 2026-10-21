@@ -495,8 +495,22 @@ def _solda(secao, dados, esforcos, h):
                 LNec=L*min(1, tau/adm)/1000, massa=h*h/2*L*7850e-9,
                 espessura=t, t_chapa=chapa, h_min_norma=hn, abaixo_minimo=abaixo,
                 maior_que_parede=maior, NEquiv=_seg(.577*(adm/.30), tau, 1e-12),
+                seguranca=seguranca_solda(tau, adm),
                 passa=tau/adm <= 1 and not abaixo and not maior, eletrodo=el,
                 intermediarios=dict(b=b/1000, d=d/1000, c=c/1000, Iu=iu*1e-9))
+
+
+N_MIN_SOLDA = .577/.30   # ≈ 1,92: segurança que o admissível 0,30·FEXX já embute
+
+
+def seguranca_solda(tau, tau_adm):
+    """Critério do Bruno (origin/main 0cefecc), só informativo ao lado da verificação: n = 0,577·FEXX/τ ≥ 0,577/0,30.
+    0,577·FEXX = resistência ao corte do metal de solda por von Mises; o admissível AWS/AISC τ ≤ 0,30·FEXX (aqui
+    ``tau_adm``, MPa) já traz n ≈ 1,92, então "passa" e "n ≥ 1,92" são a mesma condição (não é critério novo).
+    → dict(n, n_min, passa, criterio, informativo)."""
+    n = _seg(.577*(tau_adm/.30), tau, 1e-12)
+    return dict(n=n, n_min=N_MIN_SOLDA, passa=n >= N_MIN_SOLDA-1e-9, informativo=True,
+                criterio='n = 0,577·FEXX / τ ≥ 0,577/0,30 ≈ 1,92 (equivale a τ ≤ 0,30·FEXX; informativo)')
 
 
 def perna_minima_contorno(secao, dados, esforcos):

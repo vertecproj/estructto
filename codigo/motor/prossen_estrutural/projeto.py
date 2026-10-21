@@ -32,7 +32,9 @@ from . import solver as _sol
 from .acoes import cargas as _cargas
 from .acoes import combinacoes as _comb
 from .acoes import sismo as _sismo
+from .acoes import nbr8400 as _nbr8400
 from .acoes import vento as _vento
+from .acoes import vento_barras as _vb
 from .aco import nbr8800 as _nbr8800
 from .concreto import nbr6118 as _nbr6118
 from .modelo import (Barra, CargaDistribuida, CargaNodal, CargaPontual, CasoCarga, Material, Modelo, MPa,
@@ -51,6 +53,9 @@ EXEMPLOS = Path(__file__).resolve().parent.parent / "exemplos"
 CONFIG_PADRAO = {"tipo_uso": "comercial", "variabilidade": "grandes", "pdelta": False,
                  "armadura": "CA-50", "cobrimento_m": None, "caa": "II",  # cobrimento None = pela CAA
                  "tipo_edificacao": None,  # None | "tipo1" | "tipo2" | "separadas": γ da NBR 8681 tab. 2/5 ou NBR 8800 tab. 1 (None = por `variabilidade`)
+                 # Conjunto de combinações: "nbr8681" (padrão) ou "nbr8400" (equipamentos de levantamento, casos I/II/III,
+                 # acoes/nbr8400.py); `nbr8400` = {grupo 1-6 (Mx, tab. 10), psi (tab. 5)}.
+                 "combinacoes": "nbr8681", "nbr8400": {"grupo": 3, "psi": _nbr8400.PSI_PADRAO},
                  # Dados do projeto (tela de novo projeto do Estructto, docs/v3/INICIO.md): só informativos, não entram no cálculo.
                  "projeto": {},  # {cliente, engenheiro, empresa, normas: ["NBR 8800", ...], pasta}
                  "grade": None}  # {"x": [espaçamentos m], "y": [...], "nomes_x": ["1", ...], "nomes_y": ["A", ...]} | None
@@ -188,7 +193,7 @@ _PARAMS_BARRA = {"kx", "ky", "kz", "Lb", "Cb", "rotula_i", "rotula_j", "trelica"
                  "fracao_qp_pos_alvenaria", "ponto_aplicacao", "C2",
                  "cardinal"}  # cardinal: justificação do desenho (1..9 da caixa, 10 = centroide); a análise usa o eixo
 _AUTO = ("V+X", "V-X", "V+Y", "V-Y", "SX", "SY")
-_RE_AUTO_V = re.compile(r"V[+-][XY]( Cpi=.*)?")  # vento de edifício ("V+X") ou de galpão ("V+X Cpi=-0.3")
+_RE_AUTO_V = re.compile(r"V[SM]?[+-][XY]( Cpi=.*)?")  # vento de edifício/barras ("V+X"), galpão ("V+X Cpi=-0.3"), NBR 8400 ("VS+X", "VM+X")
 _RE_AUTO_S = re.compile(r"S[XY](" + re.escape(_comb.TORCAO) + ")?")  # sismo e torção acidental
 
 
@@ -800,7 +805,19 @@ def _val_vento(v, err):
         err("vento", "esperado objeto (ou null para remover)")
         return
     _chaves(v, {"V0", "S1", "S3", "categoria", "classe", "direcoes", "dimensoes", "Ca", "T1_s", "tipo", "geometria",
-                "permeabilidade", "cpi"}, err, "vento.")
+                "permeabilidade", "cpi", "usar_K", "v_servico"}, err, "vento.")
+    if v.get("tipo") not in _TIPOS_VENTO:
+        err("vento.tipo", "use 'edificio', 'galpao', 'barras' (NBR 6123 8.1, por barra) ou 'nbr8400' (equipamentos de "
+            "levantamento); vazio: galpão se o modelo veio do gerador e não tem pavimentos")
+    if v.get("tipo") == "nbr8400":  # NBR 8400:1984 5.5.4.1: só a velocidade de serviço (o vento máximo é tabelado)
+        if v.get("v_servico") is not None:
+            _num(v["v_servico"], "vento.v_servico", err, pos=True)
+        dirs = v.get("direcoes")
+        if dirs is not None and (not isinstance(dirs, list) or not dirs or any(x not in _vento.DIRECOES for x in dirs)):
+            err("vento.direcoes", f"lista de {', '.join(_vento.DIRECOES)}")
+        return
+    if v.get("usar_K") is not None and not isinstance(v["usar_K"], bool):
+        err("vento.usar_K", "true/false (fator K da NBR 6123 tabela 28)")
     if _num(v.get("V0"), "vento.V0", err, pos=True) is not None and v["V0"] > 100:
         err("vento.V0", f"{v['V0']:g} m/s é irreal (as isopletas do Brasil ficam em torno de 30 a 50 m/s): "
             "confira a unidade (m/s)")
@@ -811,8 +828,8 @@ def _val_vento(v, err):
         _num(v["Ca"], "vento.Ca", err, pos=True)
     if str(v.get("categoria", "")).upper() not in _vento.TAB21:
         err("vento.categoria", f"use {', '.join(_vento.TAB21)}")
-    if str(v.get("classe", "")).upper() not in _vento.FR:
-        err("vento.classe", f"use {', '.join(_vento.FR)}")
+    if str(v.get("classe", "")).upper() not in _vento.FR and not (v.get("tipo") == "barras" and not v.get("classe")):
+        err("vento.classe", f"use {', '.join(_vento.FR)}" + (" (vazio = automática, 5.3.2)" if v.get("tipo") == "barras" else ""))
     dirs = v.get("direcoes")
     if dirs is not None and (not isinstance(dirs, list) or not dirs or any(x not in _vento.DIRECOES for x in dirs)):
         err("vento.direcoes", f"lista de {', '.join(_vento.DIRECOES)}")
@@ -823,8 +840,6 @@ def _val_vento(v, err):
         else:
             for k in ("lx", "ly"):
                 _num(dim.get(k), f"vento.dimensoes.{k}", err, pos=True)
-    if v.get("tipo") not in (None, "edificio", "galpao"):
-        err("vento.tipo", "use 'edificio' ou 'galpao' (vazio: galpão se o modelo veio do gerador e não tem pavimentos)")
     geo = v.get("geometria")
     if geo is not None:
         if not isinstance(geo, dict):
@@ -844,6 +859,19 @@ def _val_vento(v, err):
 
 
 _GEOM_GALPAO = ("vao", "altura_pilar", "altura_cumeeira", "n_modulos", "espacamento")
+_TIPOS_VENTO = (None, "edificio", "galpao", "barras", "nbr8400")
+_VENTO_POR_BARRA = ("barras", "nbr8400")  # carga distribuída em cada barra: não usam pavimentos nem geometria de galpão
+
+
+def _val_nbr8400(v, err):
+    if not isinstance(v, dict):
+        err("nbr8400", "esperado {grupo 1-6, psi}")
+        return
+    _chaves(v, {"grupo", "psi"}, err, "nbr8400.")
+    g = v.get("grupo", 3)
+    if isinstance(g, bool) or not isinstance(g, int) or not 1 <= g <= 6:
+        err("nbr8400.grupo", "inteiro de 1 a 6 (NBR 8400 tabela 10, Mx)")
+    _num(v.get("psi", _nbr8400.PSI_PADRAO), "nbr8400.psi", err, pos=True)
 
 
 def _val_sismo(v, err):
@@ -908,6 +936,10 @@ def configurar(modelo, dados):
         _num(dados["cobrimento_m"], "cobrimento_m", err, pos=True)
     if "caa" in dados and str(dados["caa"]).upper() not in _nbr6118.CNOM:
         err("caa", "use I, II, III ou IV")
+    if "combinacoes" in dados and dados["combinacoes"] not in ("nbr8681", "nbr8400"):
+        err("combinacoes", "use 'nbr8681' (padrão) ou 'nbr8400' (equipamentos de levantamento, casos I/II/III)")
+    if "nbr8400" in dados:
+        _val_nbr8400(dados["nbr8400"], err)
     if dados.get("vento") is not None:
         _val_vento(dados["vento"], err)
     if dados.get("sismo") is not None:
@@ -1068,7 +1100,7 @@ def validar(modelo):
                     and c.a > _comprimento(m, m.barras[alvo]) + 1e-9:
                 add("erro", "carga_fora_da_barra", f"carga {c.id}: a = {c.a:g} m excede a barra {alvo}", ref)
     acima = _pavimentos_acima(m)
-    if cfg.get("vento"):
+    if cfg.get("vento") and cfg["vento"].get("tipo") not in _VENTO_POR_BARRA:
         try:
             galpao = _geom_galpao(m, cfg["vento"]) is not None
         except ErroEntrada as e:
@@ -1237,7 +1269,7 @@ def _geom_galpao(m, vcfg):
     """Geometria do galpão se o vento é de galpão (Cpe/Cpi por pórtico), senão None. Galpão: `vento.tipo` =
     'galpao', ou `vento.geometria` informada, ou modelo do gerador `galpao` sem pavimentos."""
     tipo = vcfg.get("tipo")
-    if tipo == "edificio":
+    if tipo in ("edificio",) + _VENTO_POR_BARRA:
         return None
     explicita = vcfg.get("geometria")
     g = explicita or _geometria_do_gerador(m)
@@ -1280,9 +1312,27 @@ def _binario_no_pavimento(m, caso, pav, z, Mz):
                        f"auto_{caso}_{n.id}") for n in livres]
 
 
+def _vento_por_barra(m, vcfg):
+    """Casos de vento com carga distribuída em cada barra: NBR 6123:2023 8.1 (`tipo` 'barras',
+    acoes/vento_barras.py) ou NBR 8400:1984 5.5.4.1 (`tipo` 'nbr8400', acoes/nbr8400.py)."""
+    barras = []
+    for b in m.barras.values():
+        ni, nj = m.nos[b.ni], m.nos[b.nj]
+        barras.append(dict(id=b.id, xi=(ni.x, ni.y, ni.z), xj=(nj.x, nj.y, nj.z), eixos=_sol.eixos_locais(m, b.id),
+                           props=m.secoes[b.secao].props, apoiada=any(ni.apoio) or any(nj.apoio)))
+    if vcfg["tipo"] == "nbr8400":
+        return _nbr8400.casos_vento_8400(vcfg, barras, _base(m))
+    return _vb.casos_vento_barras(vcfg, barras, _base(m), _caixa(m))
+
+
 def gerar_acoes(modelo):
     """#15 Recria os casos e cargas `auto_` de vento (NBR 6123) e sismo (NBR 15421) a partir de
     `config.vento`, `config.sismo` e dos pavimentos. Idempotente. → {casos, forcas, parametros, avisos}.
+
+    Vento por barra (`config.vento.tipo` = 'barras', NBR 6123:2023 8.1): casos V±X/V±Y com carga distribuída
+    w = Cf·q(z)·K·c·sen²α normal a cada barra (acoes/vento_barras.py; forcas[caso] = uma linha por barra).
+    Vento NBR 8400:1984 (`tipo` = 'nbr8400', equipamentos de levantamento): VS±X/VS±Y (serviço, subtipo 'vento')
+    e VM±X/VM±Y (máximo, subtipo 'vento_maximo'), w = C·Pa·c·sen²α (acoes/nbr8400.py).
 
     Vento de edifício: casos V±X/V±Y, força de cada pavimento dividida igualmente entre seus nós.
     Vento de galpão (`config.vento.tipo` = 'galpao', `.geometria` ou modelo do gerador sem pavimentos):
@@ -1310,7 +1360,23 @@ def gerar_acoes(modelo):
 
     try:
         vcfg = cfg.get("vento")
-        if vcfg:
+        if vcfg and vcfg.get("tipo") in _VENTO_POR_BARRA:
+            if vcfg["tipo"] == "nbr8400" and cfg.get("combinacoes") != "nbr8400":
+                avisos.append(_aviso("vento_8400_sem_combinacoes", "vento NBR 8400 com combinações NBR 8681: defina "
+                                     "config.combinacoes = 'nbr8400' (casos I, II e III da NBR 8400 5.6)"))
+            elif vcfg["tipo"] == "barras" and not 20 <= (vcfg.get("V0") or 0) <= 60:
+                avisos.append(_aviso("vento_V0_fora_da_faixa", f"V0 = {vcfg.get('V0')} m/s fora da faixa usual das "
+                                     "isopletas do Brasil (≈ 25 a 55 m/s, NBR 6123); confira o valor e a unidade (m/s)"))
+            for r in _vento_por_barra(m, vcfg):
+                casos.append((r["caso"], "V", r.get("subtipo", "vento")))
+                avisos.extend(r["avisos"])
+                for f in r["barras"]:
+                    if max(abs(x) for x in f["w_vet_kN_m"]) > 1e-12:  # barra paralela ao vento: sem carga
+                        cargas.append(CargaDistribuida(r["caso"], f["barra"], tuple(f["w_vet_kN_m"]),
+                                                       f"auto_{r['caso']}_{f['barra']}"))
+                forcas[r["caso"]] = r["barras"]
+                params[r["caso"]] = r["parametros"]
+        elif vcfg:
             if not 20 <= (vcfg.get("V0") or 0) <= 60:
                 avisos.append(_aviso("vento_V0_fora_da_faixa", f"V0 = {vcfg.get('V0')} m/s fora da faixa usual das "
                                      "isopletas do Brasil (≈ 25 a 55 m/s, NBR 6123); confira o valor e a unidade (m/s)"))
@@ -1424,9 +1490,20 @@ def _detalhe_fatores(casos, cfg, estado, fatores):
 
 
 def combinacoes(modelo):
-    """#16 Combinações NBR 8681: [{nome, estado, fatores}] (estado ∈ ELU, ELU_EXC, ELS_QP, ELS_FREQ, ELS_RARA)."""
+    """#16 Combinações NBR 8681: [{nome, estado, fatores}] (estado ∈ ELU, ELU_EXC, ELS_QP, ELS_FREQ, ELS_RARA).
+    `config.combinacoes` = 'nbr8400': casos I/II/III da NBR 8400:1984 5.6 (ELU já com ν/γa1) e ELS_RARA G + Q
+    (+ vento de serviço); cada item traz `nbr8400` {caso_8400, Mx, psi, nu, conversao}."""
     cfg = _cfg(modelo)
     _garantir_recalque(modelo)
+    if cfg.get("combinacoes") == "nbr8400":  # NBR 8400:1984 5.6, casos I/II/III (acoes/nbr8400.py)
+        p = cfg.get("nbr8400") or {}
+        try:
+            lista = _nbr8400.gerar_combinacoes(modelo.casos, p.get("grupo", 3), p.get("psi", _nbr8400.PSI_PADRAO))
+        except ValueError as e:
+            raise ErroEntrada(str(e), "nbr8400") from e
+        return [{"nome": n, "estado": e, "fatores": dict(f),
+                 "detalhe": {k: {"gamma": v, "psi": 1.0, "produto": v} for k, v in f.items()}, "nbr8400": d}
+                for n, f, e, d in lista]
     try:
         lista = _comb.gerar_combinacoes(modelo.casos, cfg["tipo_uso"], cfg["variabilidade"], cfg["tipo_edificacao"])
     except ValueError as e:  # subtipo de Q/origem de G inválidos, mais de 12 casos Q: erro de entrada, não bug
@@ -1801,7 +1878,7 @@ def _desloc_verticais(m, barras, resultados, por_estado, linhas, avisos):
             avisos.append(_aviso("elemento_desloc", f"barra {b.id}: {e}; usado 'viga_piso'", {"tipo": "barra", "id": b.id}))
             elem, lim = "viga_piso", _nbr8800.limite_deslocamento("viga_piso", L)
         # sem ações variáveis não há combinação frequente/rara: coincidem com a quase permanente
-        nomes = por_estado.get(lim["estado"]) or por_estado.get("ELS_QP", [])
+        nomes = por_estado.get(lim["estado"]) or por_estado.get("ELS_QP") or por_estado.get("ELS_RARA", [])  # NBR 8400: só RARA
         if not nomes:
             continue
         vals = {n: _flecha_max(cache, resultados, n, b.id, ponta) for n in nomes}
@@ -2137,7 +2214,15 @@ def _deslocamentos_sismicos(m, pavs, cfg, res_caso, n_pontos, avisos):
 
 def _normas_usadas(m, cfg, tipos):
     mods = [(_comb, "acoes.combinacoes")]
-    if cfg.get("vento"):
+    if cfg.get("combinacoes") == "nbr8400":
+        mods[0] = (_nbr8400, "acoes.nbr8400")
+    tv = (cfg.get("vento") or {}).get("tipo")
+    if tv == "barras":
+        mods.append((_vb, "acoes.vento_barras"))
+    elif tv == "nbr8400":
+        if cfg.get("combinacoes") != "nbr8400":
+            mods.append((_nbr8400, "acoes.nbr8400"))
+    elif cfg.get("vento"):
         mods.append((_vento, "acoes.vento"))
     if cfg.get("sismo") and int(cfg["sismo"].get("zona", 0)) > 0:
         mods.append((_sismo, "acoes.sismo"))
@@ -2624,7 +2709,12 @@ def _placa_pior(dados, casos, primeiro=None, passo=None):
             for p, (tp, okp, nome) in grupos.items():   # local do passo: o pior caso (reprovado antes, depois a taxa)
                 x = passos.setdefault(p, dict(taxa=-1.0, ok=True, _k=(False, -1.0)))
                 if (not okp, tp) > x["_k"]:
-                    x.update(onde, criterio=nome, esforcos=dict(N=e["N"], V=e["V"], M=e["M"]), _k=(not okp, tp))
+                    # cada passo com os números da SUA pior combinação (Bruno, origin/main be0a9e2): trocar a fixação
+                    # pode mudar qual combinação manda na chapa ou na solda, e a janela mostra cada uma
+                    x.update(onde, criterio=nome, esforcos=dict(N=e["N"], V=e["V"], M=e["M"]), _k=(not okp, tp),
+                             verificacoes=[v for v in r["verificacoes"] if _passo_placa(v["nome"]) == p])
+                    if p == "solda":
+                        x["solda"] = sd
                 x["taxa"], x["ok"] = max(x["taxa"], tp), x["ok"] and okp
             passos["chapa"]["t_nec"] = max(passos["chapa"].get("t_nec", 0.0), r["chapa"]["t_cbca"])
             if sd is not None:
@@ -2659,7 +2749,9 @@ def placa_base_verificar(modelo, calculo, corpo):
     (esforços do cálculo, todas as combinações ELU de todos os membros) ou {dados, esforcos, secao}. Biaxial: My no eixo
     forte e Mz no eixo fraco, separadamente (nota em `biaxial`). `variantes` [dados...]: resumo de cada uma (triagem
     pelo caso governante da placa de `dados`; `triagem` = passo que manda parar: fixacao, chapa ou solda). → {ok, taxa_max, governante, resultado, passos, combinacoes, membros,
-    biaxial[, variantes]}"""
+    biaxial[, variantes]}. Cada passo (fixacao, chapa, solda) traz a sua pior combinação (`combinacao`, `eixo`,
+    `esforcos`) e as `verificacoes` dele nessa combinação (solda: também o resultado `solda`, com `seguranca`
+    n = 0,577·FEXX/τ informativo); `resultado` é o da combinação governante da placa inteira."""
     c = corpo or {}
     casos = _casos_placa(modelo, calculo, c)
     out = _placa_pior(c.get("dados") or {}, casos)
@@ -2813,7 +2905,7 @@ def normas_implementadas():
     """#28 `COBERTURA` de todos os módulos de norma/ações (item, verificação, limitação)."""
     import importlib
     out = []
-    for nome in ("acoes.combinacoes", "acoes.vento", "acoes.sismo", "acoes.cargas", "aco.nbr8800",
+    for nome in ("acoes.combinacoes", "acoes.vento", "acoes.vento_barras", "acoes.nbr8400", "acoes.sismo", "acoes.cargas", "aco.nbr8800",
                  "aco.nbr14762", "aco.ligacoes", "concreto.nbr6118"):
         try:
             mod = importlib.import_module(f"{__package__}.{nome}")
