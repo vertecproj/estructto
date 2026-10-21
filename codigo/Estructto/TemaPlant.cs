@@ -28,12 +28,14 @@ namespace NovoFtool
             SurfaceHover   = C("#3E4B61"),   // realce suave de hover em controles
             SurfacePressed = C("#1E2530"),   // estado pressionado
 
-            BordaSutil     = C("#333E50"),   // Border.Subtle (linhas de grade de tabela, divisores 1px)
-            Borda          = C("#475569"),   // Border.Default (contorno de inputs, botoes, cartoes)
+            BordaSutil     = C("#2F3948"),   // Border.Subtle (linhas de grade de tabela, divisores 1px)
+            Borda          = C("#3F4B5E"),   // Border.Default (contorno de inputs, botoes, cartoes)
+            BordaForte     = C("#4F5D73"),   // Border.Strong (hover de input, divisor de arrastar)
+            ElevacaoClara  = C("#0FFFFFFF"), // Elevation.Highlight: aresta superior de cartoes/HUD (branco a 6%)
             BordaFoco      = C("#38BDF8"),   // Border.Focus (anel de foco, cota ativa, selecao)
 
             Texto1         = C("#F1F5F9"),   // Text.Primary
-            Texto2         = C("#94A3B8"),   // Text.Secondary
+            Texto2         = C("#9FABBD"),   // Text.Secondary (6.8:1)
             Texto3         = C("#7C8B9E"),   // Text.Tertiary (4.6:1, AA): metadados, legendas, dicas de rodape
             TextoMudo      = C("#64748B"),   // Text.Muted: so placeholders, atalhos e desabilitados
             TextoSobreAcento = C("#0F172A"), // texto sobre botao/indicador de acento
@@ -136,7 +138,7 @@ namespace NovoFtool
             CorGrade3D         = C("#343D4B"),   // grade do chão (some no degradê)
             CorArestaDx3D      = C("#161B23"),   // arestas de 1 px do Render3D
             // ViewCube e grips da Vista3D (ViewCube.cs, Vista3D.Grips.cs; docs/v3/PESQUISA-PLANT.md 2.2 e 3.7)
-            CorCuboFace        = C("#D92D3646"),   // face do cubo (Surface2 a 85%)
+            CorCuboFace        = C("#E6242B38"),   // face do cubo (Surface1 a 90%)
             CorCuboHover       = C("#CC0EA5E9"),   // região sob o mouse (acento)
             CorCuboAresta      = C("#7C8B9E"),
             CorPivo            = C("#1B202B"),     // esfera do pivô da órbita (contorno branco)
@@ -171,6 +173,8 @@ namespace NovoFtool
 
             BBordaSutil     = B(BordaSutil),
             BBorda          = B(Borda),
+            BBordaForte     = B(BordaForte),
+            BElevacaoClara  = B(ElevacaoClara),
             BBordaFoco      = B(BordaFoco),
 
             BTexto1         = B(Texto1),
@@ -288,6 +292,26 @@ namespace NovoFtool
             }
         }
 
+        // Fonte de exibicao (titulos de janela e de tela inicial, cabecalhos de cartao, numeros de destaque): Barlow (OFL 1.1),
+        // empacotada em Fontes/ (mesma fonte da marca, docs/v3/LOGO.md). Corpo continua em Segoe UI Variable (legibilidade a 11-12 px).
+        static FontFamily fonteTitulo;
+        public static FontFamily FonteTitulo
+        {
+            get
+            {
+                if (fonteTitulo == null)
+                {
+                    try { fonteTitulo = new FontFamily(new System.Uri("pack://application:,,,/"), "./Fontes/#Barlow"); }
+                    catch { fonteTitulo = Fonte; }
+                }
+                return fonteTitulo;
+            }
+        }
+
+        // Escala tipografica (GUIA-DESIGN 2.3 + DESIGN-V3): 10 / 11 / 12 / 13,5 / 16 / 22. Raios: 4 controle, 6 cartao, 8 janela.
+        public const double TamMicro = 10, TamLegenda = 11, TamCorpo = 12, TamSub = 13.5, TamTitulo = 16, TamDisplay = 22;
+        public const double RaioControle = 4, RaioCartao = 6, RaioJanela = 8;
+
         public static FontFamily FonteMono
         {
             get
@@ -349,7 +373,9 @@ namespace NovoFtool
         public static void RegistrarTokens(Application app)
         {
             var r = app.Resources;
-            r["Font.Micro"] = 10.0; r["Font.Caption"] = 11.0; r["Font.Body"] = 12.5; r["Font.Subtitle"] = 14.0; r["Font.Title"] = 18.0;
+            r["Font.Micro"] = TamMicro; r["Font.Caption"] = TamLegenda; r["Font.Body"] = TamCorpo; r["Font.Subtitle"] = TamSub; r["Font.Title"] = TamTitulo; r["Font.Display"] = TamDisplay;
+            r["Font.DisplayFamily"] = FonteTitulo;
+            r["Radius.Control"] = new CornerRadius(RaioControle); r["Radius.Card"] = new CornerRadius(RaioCartao); r["Radius.Window"] = new CornerRadius(RaioJanela);
             r["Shadow.Float"] = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 16, ShadowDepth = 4, Opacity = 0.45, Color = Colors.Black, Direction = 270 };
 
             // Superficies
@@ -362,7 +388,8 @@ namespace NovoFtool
             r["Surface.Legend"]  = B(Color.FromArgb(0xB3, Surface1.R, Surface1.G, Surface1.B));
             r["Surface.WarnBanner"] = B(Color.FromArgb(0xE6, ErroFundo.R, ErroFundo.G, ErroFundo.B));
             // Bordas
-            r["Border.Subtle"] = BBordaSutil; r["Border.Default"] = BBorda; r["Border.Strong"] = BBorda; r["Border.Focus"] = BBordaFoco;
+            r["Border.Subtle"] = BBordaSutil; r["Border.Default"] = BBorda; r["Border.Strong"] = BBordaForte; r["Border.Focus"] = BBordaFoco;
+            r["Elevation.Highlight"] = BElevacaoClara;
             // Texto
             r["Text.Primary"] = BTexto1; r["Text.Secondary"] = BTexto2; r["Text.Tertiary"] = BTexto3; r["Text.Muted"] = BTextoMudo;
             r["Text.OnAccent"] = BTextoSobreAcento;
@@ -434,7 +461,7 @@ namespace NovoFtool
             S("RibbonTabItem.MouseOver.Background", BSup2);
             S("RibbonTabItem.MouseOver.Foreground", BTexto1);
             S("RibbonTabItem.Selected.MouseOver.Foreground", BTexto1);
-            S("RibbonGroupBox.Header.Foreground", BTexto2);
+            S("RibbonGroupBox.Header.Foreground", BTexto3);
             S("GroupSeparator.Background", BBordaSutil);
             S("LabelText", BTexto1);
             S("IdealForeground", BTexto1);

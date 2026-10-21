@@ -36,6 +36,7 @@
   <ItemGroup>
     <Resource Include="estructto.ico" />
     <Resource Include="estructto.png" />
+    <Resource Include="Fontes\*.ttf" />
   </ItemGroup>
 
   <ItemGroup>

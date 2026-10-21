@@ -23,6 +23,7 @@ namespace NovoFtool
             return new TextBlock
             {
                 Text = s ?? "", FontSize = tam, Foreground = cor ?? TemaPlant.BTexto1, FontWeight = peso ?? FontWeights.Normal,
+                FontFamily = tam >= 15 ? TemaPlant.FonteTitulo : TemaPlant.Fonte,   // titulos (>= 15 px) na fonte de exibicao (Barlow)
                 TextWrapping = quebra ? TextWrapping.Wrap : TextWrapping.NoWrap, VerticalAlignment = VerticalAlignment.Center
             };
         }

@@ -70,7 +70,7 @@ namespace NovoFtool
         static ScrollViewer Pagina(string titulo, string sub, params UIElement[] filhos)
         {
             var sp = new StackPanel { Margin = new Thickness(40, 28, 40, 28), MaxWidth = 1040, HorizontalAlignment = HorizontalAlignment.Left };
-            sp.Children.Add(new TextBlock { Text = titulo, FontSize = 22, FontWeight = FontWeights.Light, Foreground = TemaPlant.BTexto1 });
+            sp.Children.Add(new TextBlock { Text = titulo, FontSize = TemaPlant.TamDisplay, FontWeight = FontWeights.Medium, FontFamily = TemaPlant.FonteTitulo, Foreground = TemaPlant.BTexto1 });
             if (sub != null) sp.Children.Add(new TextBlock { Text = sub, FontSize = 12, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 4, 0, 18), TextWrapping = TextWrapping.Wrap });
             foreach (var f in filhos) sp.Children.Add(f);
             return new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };

@@ -711,7 +711,7 @@ namespace NovoFtool
             var sp = new StackPanel { Margin = new Thickness(12, 10, 12, 12) };
             Action<string, string> cab = (t, s) =>
             {
-                sp.Children.Add(new TextBlock { Text = t, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = TemaPlant.BTexto1 });
+                sp.Children.Add(new TextBlock { Text = t, FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = TemaPlant.FonteTitulo, Foreground = TemaPlant.BTexto1 });
                 sp.Children.Add(new TextBlock { Text = s, FontSize = 11.5, Foreground = TemaPlant.BTexto2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 10) });
             };
             Action<string> secao = t => sp.Children.Add(new TextBlock { Text = t.ToUpperInvariant(), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 10, 0, 4) });

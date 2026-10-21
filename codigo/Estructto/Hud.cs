@@ -37,7 +37,7 @@ namespace NovoFtool
         {
             vista = v; this.escolher = escolher; this.caso = caso; this.fator = fator;
             HorizontalAlignment = HorizontalAlignment.Left; VerticalAlignment = VerticalAlignment.Top; Margin = new Thickness(10);
-            Background = TemaPlant.BCaixaHud; BorderBrush = TemaPlant.BBordaSutil; BorderThickness = new Thickness(1);
+            Background = TemaPlant.BCaixaHud; BorderBrush = TemaPlant.BElevacaoClara; BorderThickness = new Thickness(1);
             CornerRadius = new CornerRadius(6); Padding = new Thickness(8, 7, 8, 8);
             Effect = new DropShadowEffect { BlurRadius = 16, ShadowDepth = 4, Opacity = 0.45, Color = Colors.Black, Direction = 270 };
             SnapsToDevicePixels = true;

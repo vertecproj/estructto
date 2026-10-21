@@ -184,14 +184,14 @@ namespace NovoFtool
             };
             DockPanel.SetDock(icone, Dock.Left); dp.Children.Add(icone);
             var txt = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-            txt.Children.Add(Tx(titulo, 15, nv == Nivel.Ok || nv == Nivel.Alerta ? c.fg : TemaPlant.BTexto1, FontWeights.SemiBold));
+            txt.Children.Add(Tx(titulo, 16, nv == Nivel.Ok || nv == Nivel.Alerta ? c.fg : TemaPlant.BTexto1, FontWeights.SemiBold));
             if (!string.IsNullOrEmpty(sub))
             {
                 var t = Tx(sub, 11.5, TemaPlant.BTexto2); t.Margin = new Thickness(0, 2, 0, 0); t.TextTrimming = TextTrimming.CharacterEllipsis;
                 txt.Children.Add(Dica(t, sub));
             }
             dp.Children.Add(txt);
-            return new Border { Background = TemaPlant.BSup1, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(16, 9, 16, 9), Child = dp };
+            return new Border { Background = TemaPlant.BSup1, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(16, 10, 16, 10), Child = dp };
         }
 
         // Rodapé: controles à esquerda, botões à direita (o último é o principal se principal = true).
@@ -203,7 +203,7 @@ namespace NovoFtool
             DockPanel.SetDock(sp, Dock.Right); dp.Children.Add(sp);
             if (esquerda != null) dp.Children.Add(esquerda);
             else dp.Children.Add(new Border());
-            return new Border { Background = TemaPlant.BSup1, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(14, 7, 14, 7), Child = dp };
+            return new Border { Background = TemaPlant.BSup1, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(14, 8, 14, 8), Child = dp };
         }
 
         // Cartão técnico (GUIA 5.4) com título de seção
