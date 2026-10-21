@@ -89,6 +89,7 @@ namespace NovoFtool
         public sealed class Peca3D { public string Nome, Tipo; public MalhaDx M; public Barra3D Barra; public Ligacao3D Lig; public bool Trecho, Excluir; }
         // Barras curtas demais para a ligação na última cena montada (IdBarra): o gerenciador avisa.
         public static readonly HashSet<string> Curtas = new HashSet<string>();
+        public static readonly HashSet<string> Locais = new HashSet<string>();   // G6: barras com chapa de proposta local (sem ligação do motor), para o gerenciador
         public static Dictionary<(Barra3D, bool), Corte> CortesColeta; public static Dictionary<(int, bool), Ligacao3D> LigsColeta;   // diagnóstico do teste
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
         public const int MaxPropostas = 600;         // ponytail: modelos enormes ficam com as 600 primeiras; subir se pedirem
@@ -303,6 +304,7 @@ namespace NovoFtool
         {
             var g = new Montagem();
             lock (Curtas) Curtas.Clear();
+            lock (Locais) Locais.Clear();
             Modelo3D mod = c.Mod;
             var nos = new Dictionary<int, No3D>();
             foreach (No3D n in mod.Nos) if (!nos.ContainsKey(n.Id)) nos[n.Id] = n;
@@ -328,7 +330,11 @@ namespace NovoFtool
                 return new Vector3D(Vector3D.DotProduct(v, x), Vector3D.DotProduct(v, y), Vector3D.DotProduct(v, z));
             }
             foreach (Ligacao3D p in mod.Ligacoes.Where(l => l.Pendente != null && l.Pendente != "*").Take(MaxPropostas))
-                foreach (Ligacao3D q in LigacoesAmostra.Proposta(p, mod, cortes, forma, FolgaPadrao, ParaLocal)) { q.Proposta = true; q.Nome = p.Nome; ligs.Add(q); }
+                foreach (Ligacao3D q in LigacoesAmostra.Proposta(p, mod, cortes, forma, FolgaPadrao, ParaLocal))
+                {
+                    q.Proposta = true; q.Nome = p.Nome; q.Pendente = p.Pendente; ligs.Add(q);   // G6: Pendente marca a proposta local (o motor não desenha)
+                    if (q.Chapas.Count > 0 && barras.TryGetValue(q.Barra, out Barra3D bq)) lock (Locais) Locais.Add(Exportador.IdBarra(bq));
+                }
             bool todas = mod.Ligacoes.Any(l => l.Pendente == "*");
             if (ligs.Count == 0 && (c.Amostras || todas))
                 foreach (Ligacao3D q in LigacoesAmostra.Gerar(mod, cortes, forma, FolgaPadrao).Take(c.Amostras ? int.MaxValue : MaxPropostas)) { q.Proposta = !c.Amostras; ligs.Add(q); }
@@ -389,9 +395,14 @@ namespace NovoFtool
                 MalhaDx alvo = c.Selecionada(b) ? mallSel : f.Concreto ? mallConc : mallAco;
                 alvo.Marcar(b);
                 cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
-                bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6
+                // G6: gussets das duas pontas que se alcançam ao longo da barra (diagonal curta) = barra curta demais para a ligação
+                double Alcance(bool ei) => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lg) && lg.Chapas.FirstOrDefault(ch => ch.Nome == "gusset") is Ligacao3D.Chapa gu && gu.Contorno.Length > 0 ? gu.Contorno.Max(p => p.X) / 1000 : 0;
+                bool gussets = Alcance(true) > 0 && Alcance(false) > 0 && Alcance(true) + Alcance(false) >= (d - a).Length - 1e-6;
+                if (gussets) foreach (bool ei in new[] { true, false }) porPonta[(b.Id, ei)].Excluir = true;
+                bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6 || gussets
                              || new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir);
                 if (curta) lock (Curtas) Curtas.Add(Exportador.IdBarra(b));
+                if (curta) foreach (bool ei in new[] { true, false }) if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lc)) lc.Excluir = true;   // G6: a ligação da barra curta também sai
                 void Guardar(MalhaDx sm, bool trecho) { if (sm.T.Count > 0) coleta.Add(new Peca3D { Nome = (curta ? "excluir · " : "") + "barra " + Exportador.IdBarra(b) + (trecho ? " (cope)" : ""), Tipo = "barra", M = sm, Barra = b, Trecho = trecho, Excluir = curta }); }
                 // cope (recortes "cope" da ligação na ponta): trechos da ponta com o contorno cortado, a peça cheia começa depois
                 Corte Cope(bool emI, Corte k)
@@ -472,6 +483,7 @@ namespace NovoFtool
                 cortes.TryGetValue((b, emI), out Corte kl);
                 var (o, x, y, z) = LigacoesAmostra.Referencial((emI ? a : d) + Vector3D.CrossProduct(Modelo3D.EixoY(e, b.Rot + b.RotPerfil), e) * dc.X + Modelo3D.EixoY(e, b.Rot + b.RotPerfil) * dc.Y,
                                                                emI ? e : -e, Modelo3D.EixoY(e, b.Rot + b.RotPerfil), kl);   // contrato: y = x × z (canhoto); origem no eixo do perfil deslocado
+                if (l.DeslU != 0) o += Vector3D.CrossProduct(Modelo3D.EixoY(e, b.Rot + b.RotPerfil), e) * l.DeslU;   // G6: origem do contrato no centroide do U
                 var gus = l.Chapas.FirstOrDefault(ch => ch.Nome == "gusset");
                 if (l.Ponta != null && gus != null && kl?.Contra != null && l.ApoioDir == null)   // com apoio_dir (G5) o referencial do motor vale como veio
                 {
@@ -487,6 +499,17 @@ namespace NovoFtool
                         Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
                         double ymin = forma(b).Lacos[0].Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, yp));
                         (o, y, z) = (o + yp * (ymin - gus.Espessura / 2000), yp, zp);
+                    }
+                }
+                else if (gus != null && l.ApoioDir is Vector3D ad && l.ApoioMundo is Vector3D sm && Math.Abs(ad.Z) > 1e-6)
+                {   // G6: apoio_dir local (ax, 0, az) = eixo do apoio no mundo: z = (S − (S·x)x)/az, y = x × z (contrato canhoto)
+                    sm.Normalize(); if (Math.Sign(Vector3D.DotProduct(sm, x)) != Math.Sign(ad.X) && Math.Abs(ad.X) > 1e-9) sm = -sm;
+                    Vector3D zp = sm - Vector3D.DotProduct(sm, x) * x;
+                    if (zp.Length > 1e-6) { zp.Normalize(); if (ad.Z < 0) zp = -zp; (y, z) = (Vector3D.CrossProduct(x, zp), zp); }
+                    if (forma(b).Forma != "TC" && forma(b).Forma != "CIRC")   // perfil aberto: o contrato põe a peça do lado +y da chapa (sem rasgo); encosta na face −y
+                    {
+                        Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
+                        o += y * (forma(b).Lacos[0].Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y)) - gus.Espessura / 2000);
                     }
                 }
                 else if (l.Ponta != null && gus != null && l.ApoioDir == null)   // sem apoio conhecido: só encosta a chapa na face −y da peça

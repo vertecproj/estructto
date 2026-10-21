@@ -125,6 +125,7 @@ def _motivo_vazio(m, nid, ends):
     return f"só barras contínuas ou pilar que termina ({', '.join(papeis)}): sem ligação a dimensionar"
 
 
+_ANG_TELHADO = 60   # ° com o pilar acima do qual a diagonal é do telhado (gusset na viga, G6)
 _ANG_MIN = 20   # ° entre a barra e o apoio abaixo do qual a chapa/gusset não cabe (Review Focus 2)
 
 
@@ -206,6 +207,13 @@ def _classificar(m, nid, ends, recusas):
             out.append(mb)
         elif papel == "diagonal":
             ap = (continuo[0] if continuo else apoio_pilar or next((x for x in ends if x["papel"] == "viga"), None))
+            # G6: diagonal quase horizontal no topo do pilar (contraventamento do telhado no beiral): o gusset fica no
+            # plano do telhado, na viga mais pesada do nó (tesoura), não num canto viga–pilar vertical
+            if ap is not None and not apoiado and ap["papel"].startswith("pilar") and _ang(e["d"], ap["d"]) > _ANG_TELHADO:
+                vs = [x for x in ends if x["papel"] == "viga" and _ang(e["d"], x["d"]) >= _ANG_MIN]
+                if vs:
+                    ap = dict(max(vs, key=lambda x: (m.secoes[x["b"].secao].A, not _rotulada(x["b"], x["ponta"]))),
+                              papel="viga")
             # treliça com banzo contínuo comum (barra "trelica" sobre banzo, sem pilar, plano vertical); o
             # contraventamento em X da cobertura também é "trelica", mas fica no plano do telhado → gusset
             tipo = ("no_trelica" if so_trelica or _plano_vertical(e, continuo) and not pilares
@@ -663,14 +671,19 @@ def dimensionar_grupo(modelo, calculo, grupo):
 def resumo_grupos(modelo, calculo=None):
     """Lista dos grupos para a interface; com cálculo, cada grupo vem dimensionado (taxa por membro e governante)."""
     out = []
+    apoio = {_chave(n): n.get("apoio") for n in membros(modelo)}   # G6: barra de apoio de cada membro (não persiste)
     for gid, g in _grupos(modelo).items():
+        mbs = [dict(x, **({"apoio": apoio[_chave(x)]} if apoio.get(_chave(x)) else {})) for x in g["membros"]]
         item = dict(id=gid, nome=g["nome"], tipo=g["tipo"], rotulo=TIPOS.get(g["tipo"], (g["tipo"],))[0],
                     assinatura=g.get("assinatura", ""), travado=bool(g.get("travado")), manual=bool(g.get("manual")),
-                    projeto=g.get("projeto"), n_membros=len(g["membros"]), membros=[dict(x) for x in g["membros"]],
+                    projeto=g.get("projeto"), n_membros=len(g["membros"]), membros=mbs,
                     taxa_max=None, ok=None, governante=None, erros=[])
         if calculo is not None:
             r = dimensionar_grupo(modelo, calculo, gid)
             item.update(membros=r["membros"], taxa_max=r["taxa_max"], ok=r["ok"], governante=r["governante"],
                         erros=r["erros"])
+            for x in item["membros"]:
+                if apoio.get(_chave(x)):
+                    x.setdefault("apoio", apoio[_chave(x)])
         out.append(item)
     return out

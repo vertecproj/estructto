@@ -227,6 +227,26 @@ class TestNosInclinados(unittest.TestCase):
                     "X1": ("B", "D", "viga", {"trelica": True}), "X2": ("B", "E", "viga", {"trelica": True})})
         self.assertEqual(_tipos_no(m, "B"), ["gusset_contraventamento", "gusset_contraventamento"])
 
+    def test_contravento_cobertura_no_beiral(self):
+        """G6: diagonal do telhado chega no topo do pilar quase na horizontal (82° com o pilar): o gusset vai no plano do
+        telhado, apoiado na tesoura (a viga mais pesada do nó), não num canto viga–pilar vertical de 2,5 m."""
+        m = _monta(_vazio(), {"A": (0, 0, 0), "B": (0, 0, 6), "C": (10, 0, 8), "D": (10, 6, 8), "E": (0, 6, 6)},
+                   {"P": ("A", "B", "pilar", {}), "R": ("B", "C", "viga", {"papel": "viga"}),
+                    "T": ("B", "E", "viga", {"papel": "viga", "rotula_i": True, "rotula_j": True}),
+                    "X": ("B", "D", "viga", {"trelica": True})}, apoios=("A",))
+        x = next(x for x in lm.membros(m) if x["no"] == "B" and x["barra"] == "X")
+        self.assertEqual((x["tipo"], x["apoio"]), ("gusset_contraventamento", "R"))
+        self.assertEqual(x["assinatura"].split("|")[3], "viga")
+
+    def test_resumo_membro_traz_apoio(self):
+        """G6: o resumo dos grupos diz a barra de apoio de cada membro (o WPF usa para a face e o gusset)."""
+        m = _portico()
+        P.ligacoes_identificar(m)
+        vp = next(g for g in lm.resumo_grupos(m) if g["tipo"] == "viga_pilar_mesa")
+        b = m.barras[vp["membros"][0]["apoio"]]
+        self.assertEqual(m.secoes[b.secao].nome if hasattr(m.secoes[b.secao], "nome") else b.secao, W["pilar"])
+        self.assertNotIn("apoio", m.ligacoes["grupos"][vp["id"]]["membros"][0])   # não vai para o arquivo
+
     def test_plataforma_escoras_sobre_apoio(self):
         raiz = os.path.join(os.path.dirname(__file__), "..", "..", "..", "testes-aceite")
         if not os.path.exists(os.path.join(raiz, "PLATAFORMA.ed3")):

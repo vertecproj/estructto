@@ -201,6 +201,8 @@ namespace NovoFtool
             var nv = erro != null ? Nivel.Erro : pior == null ? Nivel.Neutro : NivelAp(Taxa(pior), grupos.All(g => g["ok"] == null || Bool(g, "ok")));
             lock (Render3D.Curtas) if (Render3D.Curtas.Count > 0)   // vindas da última cena do Realista (recuos das duas pontas ≥ comprimento)
                 sub += " · Barra curta demais para a ligação: " + string.Join(", ", Render3D.Curtas.Take(8)) + (Render3D.Curtas.Count > 8 ? "…" : "");
+            lock (Render3D.Locais) if (Render3D.Locais.Count > 0)   // G6: o motor não desenha essas pontas; o Realista mostra uma proposta indicativa
+                sub += " · Sem ligação do motor (proposta local, pode interferir): " + string.Join(", ", Render3D.Locais.OrderBy(x => x).Take(8)) + (Render3D.Locais.Count > 8 ? "…" : "");
             hostCab.Child = Cabecalho(nv, nv == Nivel.Erro ? "✕" : nv == Nivel.Neutro ? "≡" : nv == Nivel.Alerta ? "!" : "✓", titulo, sub, acoes);
         }
 

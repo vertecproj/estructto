@@ -161,6 +161,29 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
   (b = 55) em pilar UPN 50 (face 38) contra a chapa simples da face vizinha; barras de 13 e 97 mm no nó N1105; no galpão,
   o gusset do contraventamento (apoio = pilar) contra a tesoura no beiral (≈ 3,7 mm).
 
+## Integração motor + Realista (G6)
+
+- Carga: uma passada coleta os pedidos que faltam no cache (tipo, dados, perfis), um `POST /api/ligacoes/geometrias` (lote:
+  sugerir + verificar por item, erro de um item não derruba o lote) resolve todos e a segunda passada monta as ligações. Sem
+  teto de chamadas (era 40). PLATAFORMA: 1,4 s para as ligações do Realista (95 de 146 com geometria do motor).
+- Seção composta vai só como medidas `{d, bf, tw, tf}` (sem a 2ª tentativa por nome; o motor aceita, também no gusset).
+- Gusset do motor (`apoio_dir`): o referencial gira em torno da diagonal até o `apoio_dir` local coincidir com o eixo real do
+  apoio (pilar/viga-pilar: vertical; base: projeção horizontal da diagonal; viga: a barra de apoio do membro, `membros[].apoio`
+  do motor). Tubo: chapa centrada (passa pelo rasgo); perfil aberto: a chapa encosta na face −y da peça.
+- U/Ue: o contrato põe o centroide no eixo (costas da alma em y = −abertura·xg); o Realista anda a origem `xg − B/2` em u.
+  `abertura_y` vai também para Ue. Chapas do contrato: `origem` é a face, o sólido vai até origem + espessura·normal (o
+  motor flexível usava o plano médio: chapa simples entrava meia espessura na alma).
+- Apoio que não é I (U, Ue, composto, tubo): o WPF manda `x_face` (flexíveis) ou `ec`/`eb` (gusset) = até onde o perfil do
+  apoio chega na direção da barra; o motor corta a viga e põe a chapa ali, sem cope.
+- Barra cujas pontas têm gussets que se alcançam, ou barra curta demais: a barra e as ligações das duas pontas saem do teste e o
+  gerenciador mostra "Barra curta demais para a ligação". Proposta local (o motor não desenha a ponta) com chapa: o gerenciador
+  lista em "Sem ligação do motor (proposta local, pode interferir)".
+- Teste de interferência: ponto dentro da malha por 3 raios com maioria (um raio numa aresta comum contava duas vezes: era a
+  "DC3 entrando 18 mm no gusset" do galpão, a 730 mm do nó); par diagonal tubular × o próprio gusset até meia espessura =
+  rasgo (fora da contagem, listado); pares com proposta local ou entre vizinhas de barra curta saem com o motivo escrito.
+- Resultado (21/10/2026): PLATAFORMA 0 pares (5 com motivo: 4 proposta local, 1 vizinhas da B1110 de 12,5 mm); galpão 0 pares
+  (16 pelo rasgo). Contraventamento do telhado no beiral: o motor apoia o gusset na tesoura (diagonal a mais de 60° do pilar).
+
 ## Limites e próximos passos
 
 - Mapa de ambiente: cubo procedural 64² com mips (`Render3D.CeuDds`, céu de estúdio em degradê com Z para cima), só reflexo

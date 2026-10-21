@@ -519,9 +519,11 @@ namespace NovoFtool
             return pior > tol ? pior : 0;
         }
 
-        static bool Dentro(MalhaDx b, Vector3 o)
+        // G6: três raios tortos, maioria: um raio que passa numa aresta comum conta o cruzamento duas vezes (paridade errada)
+        static readonly Vector3[] Raios = { Vector3.Normalize(new Vector3(0.5773f, 0.6129f, 0.5397f)), Vector3.Normalize(new Vector3(-0.3411f, 0.8127f, -0.4721f)), Vector3.Normalize(new Vector3(0.7071f, -0.2236f, -0.6708f)) };
+        static bool Dentro(MalhaDx b, Vector3 o) => Raios.Count(d => Dentro(b, o, d)) >= 2;
+        static bool Dentro(MalhaDx b, Vector3 o, Vector3 dir)
         {
-            var dir = Vector3.Normalize(new Vector3(0.5773f, 0.6129f, 0.5397f));   // direção "torta": não corre ao longo de arestas
             int n = 0;
             for (int k = 0; k + 2 < b.T.Count; k += 3)
             {

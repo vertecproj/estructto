@@ -660,6 +660,8 @@ def pontas_de(tipo, dados, ctx=None, aproximacao=None):
         params["folga"] = float(d.get("tp") or reg["entradas"]["tp"]["padrao"]) * MM
     if d.get("folga") and "folga" not in params:   # folga viga–apoio do detalhe (mm) = folga da ponta
         params["folga"] = float(d["folga"]) * MM
+    if d.get("x_face") and float(d["x_face"]) > 0:   # G6: face do apoio informada pelo chamador (mm)
+        params["x_face"] = float(d["x_face"]) * MM
     if aproximacao is not None and tipo_no in _COM_APOIO and (barra is None or apoio is None):
         aproximacao.append(APOIO_SEM_PERFIL)
     return _p.pontas_locais(tipo_no, barra, apoio, comprimento=ctx.get("comprimento", math.inf), theta=theta,
@@ -964,7 +966,9 @@ def _solda_direta_reserva(tipo, dados, esforcos):
     r2 = otimizar("solda_direta_alma", base, esforcos)
     if not r2["ok"]:
         return None
-    r2.update(tipo="solda_direta_alma", motivo=f"{tipo} sem solução com viga U: trocado por solda direta da alma")
+    from .ligacoes_flexiveis import _governa
+    r2.update(tipo="solda_direta_alma", motivo=f"{tipo} sem solução com viga U: trocado por solda direta da alma; "
+                                               f"governa: {_governa(r2.get('resultado'))}")
     return r2
 
 

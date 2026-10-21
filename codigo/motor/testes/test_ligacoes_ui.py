@@ -125,6 +125,12 @@ class TestWebProjetista(BaseWeb):
                                                        "esforcos": {"V": 150}})
         self.assertEqual(s["perfil_viga"], "W310x38.7")
         self.api("POST", "/api/ligacoes/sugerir", {"tipo": "chapa_simples", "perfis": {}, "esforcos": {}}, status=422)
+        lote = self.api("POST", "/api/ligacoes/geometrias", {"itens": [
+            {"tipo": "chapa_simples_alma", "dados": {}, "perfis": {"perfil_viga": "W310x38.7", "perfil_suporte": "W250x73"}},
+            {"tipo": "inventada", "dados": {}}]})
+        self.assertEqual(len(lote), 2)
+        self.assertTrue(lote[0]["geometria"]["chapas"])           # sugerir + verificar num item
+        self.assertIn("erro", lote[1])                            # item ruim não derruba o lote
         m = self.api("POST", "/api/ligacoes/memorial", {"tipo": "chapa_simples", "dados": dict(CHAPA, t=0.0095), "esforcos": {"V": 100}})
         self.assertIn("memorial-ligacao", m["html"])
 

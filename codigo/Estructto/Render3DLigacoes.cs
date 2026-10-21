@@ -41,6 +41,7 @@ namespace NovoFtool
         // interferência); gusset com apoio_dir (direção do apoio no referencial local) e lado (+1/−1: lado y da chapa). Com
         // apoio_dir o Render3D usa o referencial do motor como veio, sem adivinhar.
         public bool Excluir; public Vector3D? ApoioDir; public double Lado = double.NaN;
+        public Vector3D? ApoioMundo; public double DeslU;   // DeslU (m): centroide do U − centro do envolvente, em u   // G6: eixo do apoio no mundo (Render3DMotor); com ApoioDir fixa a rotação do gusset em torno da diagonal
 
         // Recorte "recuo" da barra dada ("viga" = a que chega; "pilar" = a contínua). Folga (m) = vão entre a ponta e a face
         // da peça contínua; XPonta (m) = posição da ponta a partir do nó (o motor manda x_ponta). NaN = sem recorte: vale a regra das juntas.

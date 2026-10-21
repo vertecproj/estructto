@@ -123,7 +123,7 @@ def pontas_do_no(no, membros, tipo_ligacao, params=None):
     """Planos de corte e recortes das barras que terminam no nó.
 
     tipo_ligacao: viga_pilar_mesa | viga_pilar_alma | viga_viga | gusset_contraventamento | esquadria | boca_peixe.
-    params (m): folga (0,012), raio_cope (0,010, mínimo 0,010), cope_folga_alt (0,012), cope_folga_comp (0,012).
+    params (m): x_face (face do apoio informada, G6), folga (0,012), raio_cope (0,010, mínimo 0,010), cope_folga_alt (0,012), cope_folga_comp (0,012).
     ValueError("barra curta demais para a ligação") se o corte (recuo + recorte) alcança o comprimento da barra.
     """
     p = dict(folga=FOLGA, raio_cope=RAIO_COPE, cope_folga_alt=FOLGA, cope_folga_comp=FOLGA)
@@ -140,7 +140,9 @@ def pontas_do_no(no, membros, tipo_ligacao, params=None):
     for m in livres:
         u = m["dir"]
         recortes, fol = [], folga
-        if tipo_ligacao == "viga_pilar_mesa":
+        if tipo_ligacao in ("viga_pilar_mesa", "viga_pilar_alma", "viga_viga") and p.get("x_face"):
+            dist = p["x_face"] + folga   # G6: face informada (apoio U/composto: o perfil inteiro fica antes dela, sem cope)
+        elif tipo_ligacao == "viga_pilar_mesa":
             dist = _perfil(ap, "h")["h"] / 2 + folga
         elif tipo_ligacao in ("viga_pilar_alma", "viga_viga"):
             dist = _perfil(ap, "tw")["tw"] / 2 + folga

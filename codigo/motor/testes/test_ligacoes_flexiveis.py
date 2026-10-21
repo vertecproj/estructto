@@ -360,7 +360,7 @@ class TestGeometria(unittest.TestCase):
             for s_ in (0.0, ch["espessura"] / 2, p["pega"] - ch["espessura"] / 2):
                 q = [o[i] + s_ * e[i] for i in range(3)]
                 a, b, c = self._local(ch, q)
-                if abs(c) < 1e-6:
+                if abs(c - ch["espessura"] / 2) < 1e-6:   # plano médio (origem do contrato na face, G6)
                     break
             else:
                 continue

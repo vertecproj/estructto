@@ -992,11 +992,10 @@ def _base(entradas, perfis):
 def _de_catalogo(perfis, d):
     """eb/ec pela meia altura dos perfis do catálogo (perfil_viga, perfil_pilar), se informados."""
     for chave, campo in (("perfil_viga", "eb"), ("perfil_pilar", "ec")):
-        if (perfis or {}).get(chave) and campo in d:
-            try:
-                d[campo] = secoes.catalogo(perfis[chave]).props["h"] / 2 / MM
-            except KeyError:
-                pass
+        if (perfis or {}).get(chave) and campo in d and not (perfis or {}).get(campo):   # informado vence (G6)
+            pr = L.perfil_pontas(perfis[chave])   # nome do catálogo ou medidas {d, bf, tw, tf} (composto, G6)
+            if pr:
+                d[campo] = pr["h"] / 2 / MM
 
 
 def _std_parafuso(d, sfx_list):

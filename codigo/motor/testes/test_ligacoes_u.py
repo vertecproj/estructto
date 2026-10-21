@@ -59,7 +59,8 @@ class TestFlexiveisU(unittest.TestCase):
         c = F._sug_cs(pf, {"V": 10.0})
         ra, rb = (P.verificar_ligacao("chapa_simples_alma", dict(c, abertura_y=s), {"V": 10.0}) for s in (1, -1))
         self.assertEqual((ra["geometria"]["abertura_y"], rb["geometria"]["abertura_y"]), (1, -1))
-        self.assertAlmostEqual(ra["geometria"]["chapas"][0]["origem"][1], -rb["geometria"]["chapas"][0]["origem"][1])
+        ym = [c["origem"][1] + c["espessura"] / 2 * c["normal"][1] for c in (ra["geometria"]["chapas"][0], rb["geometria"]["chapas"][0])]
+        self.assertAlmostEqual(ym[0], -ym[1])   # plano médio da chapa (a origem do contrato é a face)
         for pa, pb in zip(ra["geometria"]["parafusos"], rb["geometria"]["parafusos"]):
             self.assertAlmostEqual(pa["origem"][1], -pb["origem"][1])
             self.assertEqual(pa["eixo"][1], -pb["eixo"][1])
@@ -94,7 +95,7 @@ class TestFlexiveisU(unittest.TestCase):
         self.assertAlmostEqual(nomes["alma da viga: escoamento por cisalhamento (Aw = h·tw)"]["taxa"], 45 / 47.045,
                                delta=0.002)
         g = s["geometria"]
-        self.assertEqual((g["chapas"], g["parafusos"], len(g["soldas"])), ([], [], 2))
+        self.assertEqual((g["chapas"], g["parafusos"], len(g["soldas"])), ([], [], 1))   # G6: um filete fechado em volta da ponta da alma
         self.assertTrue(g["pontas"])
         o = L.otimizar("chapa_simples_alma", pf, {"V": 45.0})
         self.assertEqual((o["ok"], o["tipo"]), (True, "solda_direta_alma"))
@@ -253,3 +254,70 @@ class TestPlataforma(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestChapaFaceContrato(unittest.TestCase):
+    def test_chapa_simples_fora_da_alma(self):
+        """G6: contrato = a chapa vai da `origem` até origem + espessura·normal (como o gusset e o Render3D). Chapa simples
+        em U (nos dois sentidos de abertura) e em I: o sólido encosta na face da alma, sem entrar nela."""
+        for perfil, ab in (("Ue 250x85x25x3,00", 1), ("Ue 250x85x25x3,00", -1), ("UPN 120", 1), ("W310x38.7", 1)):
+            d = dict(perfil_viga=perfil, perfil_suporte="W360x51", abertura_y=ab)
+            d.update({k: v for k, v in P.sugerir_ligacao("chapa_simples_alma", d, {"V": 20}).items() if v is not None})
+            d.pop("tipo_ligacao", None), d.pop("motivo", None)
+            g = P.verificar_ligacao("chapa_simples_alma", d, {"V": 0})["geometria"]
+            ch = g["chapas"][0]
+            y0 = ch["origem"][1]
+            y1 = y0 + ch["espessura"] * ch["normal"][1]
+            lo, hi = min(y0, y1), max(y0, y1)
+            sol = sorted(s["pontos"][0][1] for s in g["soldas"])
+            self.assertAlmostEqual(lo, sol[0], 3, (perfil, ab))      # filetes nas duas faces da chapa
+            self.assertAlmostEqual(hi, sol[-1], 3, (perfil, ab))
+
+    def test_face_do_apoio_informada(self):
+        """G6: apoio U (alma fora do eixo): o chamador informa a face de contato (`x_face`, mm do nó); chapa e plano de
+        corte da viga partem dela. 0 = pelo perfil (tw/2, alma centrada do I)."""
+        for tipo, viga, apoio in (("chapa_simples_alma", "UPN 120", "alma_viga"), ("solda_direta_alma", "UPN 50", "alma_viga"),
+                                  ("chapa_simples_alma", "UPN 120", "mesa_pilar")):
+            base = dict(perfil_viga=viga, perfil_suporte="UPN 120", apoio=apoio)
+            base.update({k: v for k, v in P.sugerir_ligacao(tipo, base, {"V": 20}).items() if v is not None and k not in ("tipo_ligacao", "motivo")})
+            g0 = P.verificar_ligacao(tipo, base, {"V": 0})["geometria"]
+            g = P.verificar_ligacao(tipo, dict(base, x_face=48.0), {"V": 0})["geometria"]
+            x0, x = g0["pontas"][0]["plano"]["ponto"][0], g["pontas"][0]["plano"]["ponto"][0]
+            self.assertAlmostEqual(x - x0, 0.048 - (0.0035 if apoio != "mesa_pilar" else 0.060), 6, tipo)   # tw/2 = 3,5 mm; d/2 = 60 mm
+            if g["chapas"]:
+                self.assertAlmostEqual(g["chapas"][0]["origem"][0], 48.0, 6)
+
+    def test_gusset_apoio_composto_por_dict(self):
+        """G6: gusset com o pilar composto em medidas {d, bf, tw, tf} (como o WPF manda): ec = d/2, sem erro."""
+        pf = dict(secao="U", dim_a=50, t_perfil=5, dim_b=38, tf_perfil=7, apoio="pilar", theta=45,
+                  perfil_pilar=dict(nome="2UPN 80 duplo", d=80, bf=190, tw=6, tf=8))
+        s = P.sugerir_ligacao("gusset_contraventamento", pf, {"N": 50})
+        self.assertAlmostEqual(s["ec"], 40.0)
+
+    def test_gusset_ec_informado_vence_o_perfil(self):
+        """G6: `ec` informado (face real do pilar composto na direção da diagonal) não é trocado por d/2 do perfil."""
+        pf = dict(secao="U", dim_a=50, t_perfil=5, dim_b=38, tf_perfil=7, apoio="pilar", theta=45, ec=95.0,
+                  perfil_pilar=dict(nome="2UPN 80 duplo", d=80, bf=190, tw=6, tf=8))
+        self.assertAlmostEqual(P.sugerir_ligacao("gusset_contraventamento", pf, {"N": 50})["ec"], 95.0)
+
+    def test_motivo_solda_direta_cita_governante(self):
+        """G6: o motivo da troca para solda direta cita a verificação que governa a solda direta (e a que reprovou a
+        parafusada), não só "não passa"."""
+        s = P.sugerir_ligacao("chapa_simples_alma", dict(perfil_viga="UPN 120", perfil_suporte="W 200 x 26,6",
+                                                         apoio="alma_viga"), {"V": 45})
+        self.assertEqual(s["tipo_ligacao"], "solda_direta_alma")
+        self.assertIn("governa", s["motivo"])
+        self.assertIn("parafuso", s["motivo"])            # o que reprovou a chapa simples (cisalhamento dos parafusos)
+        self.assertRegex(s["motivo"], r"governa: (solda|alma|metal base)[^;]*taxa \d")
+
+    def test_solda_direta_contorna_extremidade(self):
+        """G6: o desenho da solda direta é um filete fechado em volta da ponta da alma (as duas faces e os retornos)."""
+        d = dict(perfil_viga="UPN 50", perfil_suporte="UPN 120", apoio="alma_viga")
+        d.update({k: v for k, v in P.sugerir_ligacao("solda_direta_alma", d, {"V": 20}).items()
+                  if v is not None and k not in ("tipo_ligacao", "motivo")})
+        sol = P.verificar_ligacao("solda_direta_alma", d, {"V": 0})["geometria"]["soldas"]
+        self.assertEqual(len(sol), 1)
+        pts = sol[0]["pontos"]
+        self.assertEqual(pts[0], pts[-1])                          # fechado
+        self.assertEqual(len({round(p[1], 3) for p in pts}), 2)    # as duas faces da alma
+        self.assertEqual(len({round(p[2], 3) for p in pts}), 2)    # topo e base (retornos)

@@ -9,12 +9,13 @@
 //   contrato; ponytail: medidas do esquema padrão do motor, esp 19 mm, borda 50 mm, sobra 100 mm).
 // - Modelo sem grupos (Ligações › Identificar nunca rodou): um marcador Pendente = "*" e o Render3D propõe em todas as juntas.
 // Desempenho: cache estático por (tipo, dados) — os grupos já são por assinatura (perfis + ângulo + condição), então é uma
-// chamada por grupo e nenhuma ao recarregar; no máximo MaxChamadas chamadas novas por carga (o resto fica Pendente).
+// pedido por grupo e nenhum ao recarregar; os pedidos novos vão juntos num POST /api/ligacoes/geometrias (G6, sem teto).
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using System.Windows.Media.Media3D;
 
 namespace NovoFtool
 {
@@ -32,8 +33,8 @@ namespace NovoFtool
             });
         }
 
+        static readonly HashSet<string> Flexiveis = new HashSet<string> { "chapa_simples_alma", "solda_direta_alma", "cantoneira_dupla_alma", "chapa_extremidade_flexivel", "apoio_cantoneira" };   // aceitam x_face (G6)
         static readonly Dictionary<string, JsonObject> cacheGeo = new Dictionary<string, JsonObject>();   // tipo|dados → geometria (null = o motor não desenha)
-        const int MaxChamadas = 40;   // ponytail: chamadas novas ao motor por carga; o resto vira proposta local
 
         // Tipo de ligação proposto para um grupo sem projeto (assinatura: tipo|seção|seção do apoio|papel do apoio|ângulo|condição|
         // material; emenda: emenda|seção|seção|ângulo|condição|material). null = proposta local (Render3D).
@@ -66,17 +67,43 @@ namespace NovoFtool
             var secoes = Json["secoes"] as JsonObject;
             double Prop(string secao, string k) { try { return (secoes?[secao]?["props"]?[k] as JsonValue)?.GetValue<double>() ?? 0; } catch { return 0; } }
             // seção da peça de apoio no nó: a barra com papel "pilar"; senão a outra barra mais alta
-            string Suporte(string no, string barra)
+            string SuporteBarra(string no, string barra)
             {
                 string melhor = null; double h = -1;
                 foreach (var kv in bj)
                 {
                     if (kv.Key == barra || ((string)kv.Value["ni"] != no && (string)kv.Value["nj"] != no)) continue;
-                    string sec = (string)kv.Value["secao"]; double hh = Prop(sec, "h");
-                    if ((string)kv.Value["params"]?["papel"] == "pilar") return sec;
-                    if (hh > h) { h = hh; melhor = sec; }
+                    double hh = Prop((string)kv.Value["secao"], "h");
+                    if ((string)kv.Value["params"]?["papel"] == "pilar") return kv.Key;
+                    if (hh > h) { h = hh; melhor = kv.Key; }
                 }
                 return melhor;
+            }
+            Vector3D Eixo(Barra3D q) => nosVista.TryGetValue(q.Ni, out No3D a) && nosVista.TryGetValue(q.Nj, out No3D c) ? new Vector3D(c.X - a.X, c.Y - a.Y, c.Z - a.Z) : new Vector3D();
+            // G6: face de contato do apoio que não é I (U, Ue, composto, tubo: a alma não fica no eixo) = até onde o perfil do
+            // apoio chega na direção da viga (mm do nó). O motor corta a viga e põe a chapa nela (x_face); I fica com o padrão.
+            double? XFace(string apoioId, Barra3D b, bool emI, bool gusset = false)
+            {
+                if (apoioId == null || !barras.TryGetValue(apoioId, out Barra3D q) || !(secoes?[(string)bj[apoioId]?["secao"] ?? ""] is JsonObject sj)) return null;
+                if ((string)sj["props"]?["tipo"] is "I" or null) return null;
+                var f = GeometriaPerfis.CriarContorno(Perfil3D.DoMotor(sj), 0.1);
+                if (f.Concreto || f.Lacos.Count == 0) return null;
+                Vector3D es = Eixo(q), xb = Eixo(b); if (es.Length < 1e-9 || xb.Length < 1e-9) return null;
+                es.Normalize(); xb.Normalize(); if (!emI) xb = -xb;   // da ponta da viga para dentro dela
+                if (gusset) { xb -= Vector3D.DotProduct(xb, es) * es; if (xb.Length < 1e-6) return null; xb.Normalize(); }   // gusset: no plano dele, ⟂ ao apoio
+                Vector3D vs = Modelo3D.EixoY(es, q.Rot + q.RotPerfil), us = Vector3D.CrossProduct(vs, es);
+                System.Windows.Point dc = GeometriaPerfis.Cardinal(f, q.Cardinal);
+                double ext = f.Lacos[0].Max(p => Vector3D.DotProduct(us * (p.X + dc.X) + vs * (p.Y + dc.Y), xb));
+                return ext > 0 ? Math.Round(ext * 1000, 1) : null;
+            }
+            // G6: eixo do apoio do gusset no mundo (o apoio_dir do motor é este eixo no referencial local): pilar e viga-pilar = o
+            // pilar (vertical); base = projeção horizontal da diagonal; viga = eixo da peça de apoio
+            Vector3D? ApoioMundo(string apoio, Barra3D b, string no, string bid, string apoioMotor)
+            {
+                if (apoio == "pilar" || apoio == "viga-pilar") return new Vector3D(0, 0, 1);
+                if (apoio == "base") { var e = Eixo(b); e.Z = 0; return e.Length > 1e-9 ? e : (Vector3D?)null; }
+                string sb = apoioMotor ?? SuporteBarra(no, bid);   // o membro do motor diz qual barra apoia
+                return sb != null && barras.TryGetValue(sb, out Barra3D q) ? Eixo(q) : (Vector3D?)null;
             }
             bool Vertical(Barra3D b) => nosVista.TryGetValue(b.Ni, out No3D a) && nosVista.TryGetValue(b.Nj, out No3D c)
                                         && Math.Abs(c.Z - a.Z) > 0.95 * Math.Sqrt((c.X - a.X) * (c.X - a.X) + (c.Y - a.Y) * (c.Y - a.Y) + (c.Z - a.Z) * (c.Z - a.Z));
@@ -96,43 +123,46 @@ namespace NovoFtool
                 if (forma == "U" && Prop(sec, "tf") > 0) o["tf_perfil"] = Prop(sec, "tf") * 1000;
                 return o;
             }
-            int chamadas = 0;
-            async Task<JsonObject> Geometria(string tl, JsonObject dados, JsonObject perfis)
+            // G6: uma passada coleta os pedidos que faltam no cache, um POST /api/ligacoes/geometrias resolve todos, a segunda
+            // passada monta as ligações (sem teto de chamadas)
+            Dictionary<string, (string tl, JsonObject dados, JsonObject perfis)> pedidos = null;
+            Task<JsonObject> Geometria(string tl, JsonObject dados, JsonObject perfis)
             {
                 string chave = tl + "|" + dados.ToJsonString() + "|" + (perfis?.ToJsonString() ?? "");
-                lock (cacheGeo) if (cacheGeo.TryGetValue(chave, out JsonObject g0)) return g0;
-                if (chamadas++ >= MaxChamadas) return null;   // não guarda: na próxima carga tenta de novo
-                JsonObject geo = await Uma(tl, dados.DeepClone().AsObject(), perfis?.DeepClone().AsObject());
-                // motor sem G5 recusa seção composta em medidas: tenta de novo com o nome
-                static JsonObject Nomes(JsonObject o) { if (o == null) return null; foreach (var k in o.Select(kv => kv.Key).ToList()) if (o[k] is JsonObject c && c["nome"] != null) o[k] = (string)c["nome"]; return o; }
-                if (geo == null && (dados.Any(kv => kv.Value is JsonObject) || perfis?.Any(kv => kv.Value is JsonObject) == true))
-                    geo = await Uma(tl, Nomes(dados.DeepClone().AsObject()), Nomes(perfis?.DeepClone().AsObject()));
-                lock (cacheGeo) cacheGeo[chave] = geo;
-                return geo;
+                lock (cacheGeo) if (cacheGeo.TryGetValue(chave, out JsonObject g0)) return Task.FromResult(g0);
+                if (pedidos != null) pedidos[chave] = (tl, (JsonObject)dados.DeepClone(), (JsonObject)perfis?.DeepClone());
+                return Task.FromResult<JsonObject>(null);
             }
-            async Task<JsonObject> Uma(string tl, JsonObject dados, JsonObject perfis)
+            async Task Lote()
             {
-                JsonObject geo = null;
-                try
+                if (pedidos.Count == 0) return;
+                var itens = new JsonArray();
+                foreach (var p in pedidos.Values) itens.Add(new JsonObject { ["tipo"] = p.tl, ["dados"] = p.dados.DeepClone(), ["perfis"] = p.perfis?.DeepClone() });
+                JsonArray res;
+                try { res = await Motor.Post("/api/ligacoes/geometrias", new JsonObject { ["itens"] = itens }) as JsonArray; } catch { return; }   // não guarda: tenta na próxima carga
+                if (res == null || res.Count != pedidos.Count) return;
+                int k = 0;
+                foreach (var chave in pedidos.Keys)
                 {
-                    if (perfis != null)   // proposta: o que o pré-dimensionamento do motor sugere para esses perfis
-                    {
-                        var sug = await Motor.Post("/api/ligacoes/sugerir", new JsonObject { ["tipo"] = tl, ["perfis"] = perfis.DeepClone(),
-                                                   ["esforcos"] = new JsonObject { ["N"] = 50, ["V"] = 50, ["M"] = 30 } }) as JsonObject;
-                        foreach (var kv in perfis) dados[kv.Key] = kv.Value?.DeepClone();
-                        if (sug != null) foreach (var kv in sug) if (kv.Value != null) dados[kv.Key] = kv.Value.DeepClone();
-                    }
-                    var res = await Motor.Post("/api/ligacoes/verificar", new JsonObject { ["tipo"] = tl, ["dados"] = dados,
-                                               ["esforcos"] = new JsonObject { ["N"] = 0, ["V"] = 0, ["Vz"] = 0, ["M"] = 0, ["Mz"] = 0, ["T"] = 0 } });
-                    geo = res?["geometria"] as JsonObject;
+                    var it = res[k++];
+                    var geo = it?["geometria"] as JsonObject;
                     // barra curta demais para a ligação (G2: ok = false + motivo/aviso): fora do teste de interferência
-                    if (geo != null && ((string)res["motivo"] ?? "").Contains("barra curta") || (res?["avisos"] as JsonArray)?.Any(a => ((string)a ?? "").Contains("barra curta")) == true)
-                        if (geo != null) geo["excluir_interferencia"] = true;
-                    if (geo != null && !(geo["chapas"] is JsonArray ca && ca.Count > 0) && !(geo["cantoneiras"] is JsonArray cc && cc.Count > 0)) geo = null;   // sem peças: proposta local
+                    if (geo != null && (((string)it["motivo"] ?? "").Contains("barra curta") || (it["avisos"] as JsonArray)?.Any(a => ((string)a ?? "").Contains("barra curta")) == true))
+                        geo["excluir_interferencia"] = true;
+                    if (geo != null && !(geo["chapas"] is JsonArray ca && ca.Count > 0) && !(geo["cantoneiras"] is JsonArray cc && cc.Count > 0) && !(geo["soldas"] is JsonArray sc && sc.Count > 0)) geo = null;   // sem peças: proposta local
+                    geo?.Parent?.AsObject().Remove("geometria");
+                    lock (cacheGeo) cacheGeo[chave] = geo;
                 }
-                catch { geo = null; }
-                return geo;
             }
+            pedidos = new Dictionary<string, (string, JsonObject, JsonObject)>();
+            await Passo();
+            await Lote();
+            pedidos = null;
+            r.Clear();
+            await Passo();
+            return r;
+            async Task Passo()
+            {
             int nProp = 0;
             foreach (JsonNode g in ga)
             {
@@ -164,9 +194,9 @@ namespace NovoFtool
                     {
                         var dados = proposta ? new JsonObject() : proj["dados"]?.DeepClone() as JsonObject ?? new JsonObject();
                         JsonObject perfis = null;
-                        string sup = Suporte(no, bid);
+                        string apoioId = (string)mb["apoio"] ?? SuporteBarra(no, bid), sup = apoioId == null ? null : (string)bj[apoioId]?["secao"];   // G6: a barra de apoio que o motor escolheu
                         bool emINo = b.Ni == idN;
-                        // G5: seção composta ("2UPN ... duplo") vai como medidas {d, bf, tw, tf} (mm); U leva abertura_y (±1): lado
+                        // G5: seção composta ("2UPN ... duplo") vai como medidas {d, bf, tw, tf} (mm, o motor G5 aceita; sem nova tentativa por nome); U leva abertura_y (±1): lado
                         // y local para onde abrem as mesas (contorno do U abre para +u; y = −u na ponta i, +u na ponta j)
                         JsonNode PerfilMotor(string s)
                         {
@@ -174,16 +204,20 @@ namespace NovoFtool
                             double tw = Prop(s, "tw") > 0 ? Prop(s, "tw") : Prop(s, "t");
                             return new JsonObject { ["nome"] = s, ["d"] = Prop(s, "h") * 1000, ["bf"] = Prop(s, "b") * 1000, ["tw"] = tw * 1000, ["tf"] = (Prop(s, "tf") > 0 ? Prop(s, "tf") : tw) * 1000 };
                         }
-                        bool ehU = (string)secoes?[sec ?? ""]?["props"]?["tipo"] == "U";
+                        bool ehU = (string)secoes?[sec ?? ""]?["props"]?["tipo"] is "U" or "Ue";
                         if (tl == "gusset_contraventamento")
                         {
                             if (proposta) perfis = PerfisGusset(sec, assin);
                             if (sup != null) { if (perfis != null) perfis["perfil_pilar"] = PerfilMotor(sup); else dados["perfil_pilar"] = PerfilMotor(sup); }
                             if (ehU) (perfis ?? dados)["abertura_y"] = emINo ? -1 : 1;
+                            // G6: apoio que não é I: ec (pilar) / eb (viga) = até onde o perfil chega na direção da diagonal
+                            string ap = (string)(perfis ?? dados)["apoio"];
+                            if (ap != "base" && XFace(apoioId, b, emINo, true) is double ef) (perfis ?? dados)[ap == "viga" ? "eb" : "ec"] = ef;
                         }
                         else
                         {
                             if (sec != null) dados["perfil_viga"] = PerfilMotor(sec);
+                            if (tl != null && Flexiveis.Contains(tl) && XFace(apoioId, b, emINo) is double xf) dados["x_face"] = xf;
                             if (sup != null) { dados["perfil_pilar"] = PerfilMotor(sup); dados["perfil_suporte"] = PerfilMotor(sup); }
                             if (tl == "emenda_pilar" && sec != null) dados["perfil_pilar"] = PerfilMotor(sec);
                             if (ehU) dados["abertura_y"] = emINo ? -1 : 1;
@@ -191,6 +225,10 @@ namespace NovoFtool
                         }
                         JsonObject geo = proposta && perfis == null ? null : await Geometria(tl, dados, perfis);
                         if (geo != null) lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]);
+                        // G6: o contrato tem o centroide do U no eixo (costas da alma em y = −abertura·xg); o WPF desenha o U pelo
+                        // retângulo envolvente (costas em u = −B/2): o Render3D anda a origem DeslU em u
+                        if (lig != null && ehU && tl != "gusset_contraventamento") lig.DeslU = Prop(sec, "xg") - Prop(sec, "b") / 2;
+                        if (lig != null && tl == "gusset_contraventamento") lig.ApoioMundo = ApoioMundo((string)(perfis ?? dados)["apoio"] ?? "viga-pilar", b, no, bid, (string)mb["apoio"]);
                     }
                     if (lig == null)
                     {
@@ -203,7 +241,7 @@ namespace NovoFtool
                     r.Add(lig);
                 }
             }
-            return r;
+            }
         }
     }
 

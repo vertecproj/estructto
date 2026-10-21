@@ -173,6 +173,7 @@ _BASE = {
     "aco_suporte": _e("Aço do apoio", "-", "A-572 GR.50", _ACOS),
     "terca_ou_travessa": _e("Terça/travessa de fechamento", "-", False),   # isenta do mínimo de 6.1.5.2
     "abertura_y": _e("Abertura do U (lado y)", "-", 1, [1, -1]),   # G5; ignorado em perfil I
+    "x_face": _e("Face do apoio (do nó)", "mm", 0, mn=0, mx=2000),   # G6; 0 = pelo perfil (apoio U: alma fora do eixo)
 }
 _PARAF = {
     "d": _e("Diâmetro do parafuso", "mm", 19.05, mn=10, mx=40),
@@ -428,8 +429,10 @@ def _t_apoio(sp, apoio):
     return sp["tf"] if apoio == "mesa_pilar" else sp["tw"]
 
 
-def _x_face(sp, apoio):
-    """Distância do nó (eixo do apoio) à face de contato."""
+def _x_face(sp, apoio, d=None):
+    """Distância do nó (eixo do apoio) à face de contato; `x_face` (dados, > 0) do chamador manda (G6)."""
+    if d and d.get("x_face", 0) > 0:
+        return d["x_face"]
     return sp["d"] / 2 if apoio == "mesa_pilar" else sp["tw"] / 2
 
 
@@ -574,9 +577,11 @@ def _cruz(u, v):
 
 
 def _chapa(nome, origem, u, v, larg, alt, t):
-    """Chapa retangular larg × alt; origem = canto no plano médio; ponto = origem + a·u + b·v."""
+    """Chapa retangular larg × alt; `origem` (argumento) = canto no plano médio; ponto = origem + a·u + b·v. No contrato
+    a origem vai para a face: o sólido é origem + [0, espessura]·normal (G6, como gusset e rígidas)."""
+    n = _cruz(u, v)
     return dict(nome=nome, contorno=[[0, 0], [larg / MM, 0], [larg / MM, alt / MM], [0, alt / MM]],
-                origem=_p(*origem), normal=_cruz(u, v), u=u, v=v, espessura=t / MM)
+                origem=_p(*(origem[i] - n[i] * t / 2 for i in range(3))), normal=n, u=u, v=v, espessura=t / MM)
 
 
 def _paraf(p, origem, eixo, pega):
@@ -723,7 +728,7 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
     r.avisos.append("apoio verificado só à pressão de contato dos parafusos; cortante/flexão local do apoio à parte")
 
     # geometria
-    xf = _x_face(sp, apoio)
+    xf = _x_face(sp, apoio, d)
     ab = _abertura(d, vg)
     yw = ab * (tw / 2 - vg["xg"]) if vg.get("forma") == "U" else 0.0   # plano médio da alma (U abre para ab·y)
     zt = vg["d"] / 2
@@ -835,7 +840,7 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
     if apoio == "alma_pilar":
         r.avisos.append("chapa soldada na alma do pilar: punção/flexão local da alma não verificada")
 
-    xf = _x_face(sp, apoio)
+    xf = _x_face(sp, apoio, d)
     zt = vg["d"] / 2
     zb = zt - base
     # I: chapa do lado +y da alma (plano médio da alma em y = 0). U: chapa nas costas da alma (face externa em y =
@@ -917,7 +922,7 @@ def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
         r.avisos.append(f"chapa de extremidade com t = {t / MM:g} mm > 10 mm: rótula duvidosa (Gerdau 4.1 usa 6,3 mm)")
     r.avisos.append("apoio verificado só à pressão de contato dos parafusos; flexão local da mesa/alma do apoio à parte")
 
-    xf = _x_face(sp, apoio)
+    xf = _x_face(sp, apoio, d)
     zt = vg["d"] / 2
     zb = zt - topo - Lp
     zs = [zt - topo - ev - i * s for i in range(n)]
@@ -946,7 +951,7 @@ def _apoio(d, e, tipo="apoio_cantoneira"):
     t_ap = _t_apoio(sp, apoio)
     enr = d["assento"] == "enrijecido"
     bs, fw = d["b_solda"], L.ELETRODOS[d["eletrodo"]] * MPa
-    xf = _x_face(sp, apoio)
+    xf = _x_face(sp, apoio, d)
     zt = dv / 2
     geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=[],
                recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=(xf + folga) / MM))])
@@ -1106,13 +1111,14 @@ def _solda_direta(d, e, tipo="solda_direta_alma"):
         r.val["e_centro_cisalhamento_mm"] = e_ / MM
         r.avisos.append(f"viga U: reação a {e_ / MM:.0f} mm do centro de cisalhamento — torção na viga não verificada")
     r.avisos.append("solda direta: ligação de campo soldada (sem montagem parafusada); confira o acesso à face interna")
-    xf = _x_face(sp, apoio)
+    xf = _x_face(sp, apoio, d)
     ab = _abertura(d, vg)
     yw = ab * (tw / 2 - vg.get("xg", tw / 2)) if vg.get("forma") == "U" else 0.0
     zt = vg["d"] / 2
-    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, yw + sg * tw / 2, zt - (vg["d"] - Lw) / 2),
-                                                      _p(xf, yw + sg * tw / 2, zt - (vg["d"] + Lw) / 2)])
-           for sg in (1, -1)]
+    # G6: um filete fechado contornando a ponta da alma (as duas faces, Lw cada, e os retornos de tw no topo e na base)
+    z1, z2, y1, y2 = zt - (vg["d"] - Lw) / 2, zt - (vg["d"] + Lw) / 2, yw + tw / 2, yw - tw / 2
+    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y1, z1), _p(xf, y1, z2), _p(xf, y2, z2), _p(xf, y2, z1),
+                                                      _p(xf, y1, z1)])]
     geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=sol,
                recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=(xf + d["folga"]) / MM))])
     if vg.get("forma") == "U":
@@ -1269,6 +1275,13 @@ def _sug_sd(perfis, esforcos):
     return _tentar("solda_direta_alma", cands, esforcos)
 
 
+def _governa(res):
+    """Verificação de maior taxa de um resultado: "nome (taxa 0,96)" (G6: o motivo da troca cita o que governa)."""
+    v = max((x for x in (res or {}).get("verificacoes") or [] if x.get("taxa") is not None), key=lambda x: x["taxa"],
+            default=None)
+    return f"{v['nome']} (taxa {v['taxa']:.2f})".replace(".", ",") if v else "—"
+
+
 def _com_solda_direta(tipo, sug):
     """G5: viga U baixa demais para parafusos, ou parafusada que não passa → sugere solda_direta_alma se ela passa;
     a resposta traz `tipo_ligacao` e `motivo`, e o chamador passa a verificar esse tipo."""
@@ -1288,9 +1301,13 @@ def _com_solda_direta(tipo, sug):
         try:
             if _perfil(_perfis_de(perfis)[0], "perfil_viga").get("forma") != "U" or                     TIPOS[tipo]["verificar"](c, esforcos)["ok"]:
                 return c
-            alt = solda(perfis, esforcos, f"{tipo} não passa com viga U: solda direta da alma")
+            r1 = TIPOS[tipo]["verificar"](c, esforcos)
+            alt = solda(perfis, esforcos, "")
             dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
-            return alt if TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)["ok"] else c
+            r2 = TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)
+            alt["motivo"] = (f"{tipo} não passa com viga U ({_governa(r1)}): solda direta da alma; "
+                             f"governa: {_governa(r2)}")
+            return alt if r2["ok"] else c
         except ValueError:
             return c
     return f

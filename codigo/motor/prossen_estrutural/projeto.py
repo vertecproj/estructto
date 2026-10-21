@@ -2547,6 +2547,26 @@ def sugerir_ligacao(tipo, perfis, esforcos):
     return _lig_ui(reg["sugerir"], dict(perfis or {}), dict(esforcos or {}))
 
 
+def geometrias_ligacoes(itens):
+    """Lote para o Realista do WPF: cada item {tipo, dados, perfis?} -> sugerir (se há perfis, esforços típicos N 50, V 50,
+    M 30) + verificar com esforços nulos. Devolve, na mesma ordem, {geometria, motivo, avisos} ou {erro}; um item ruim
+    não derruba o lote."""
+    nulos = dict(N=0, V=0, Vz=0, M=0, Mz=0, T=0)
+    saida = []
+    for it in itens or []:
+        try:
+            tipo, dados, perfis = it.get("tipo"), dict(it.get("dados") or {}), it.get("perfis")
+            if perfis:
+                dados.update(perfis)
+                sug = sugerir_ligacao(tipo, perfis, dict(N=50, V=50, M=30))
+                dados.update({k: v for k, v in (sug or {}).items() if v is not None})
+            r = verificar_ligacao(tipo, dados, nulos)
+            saida.append(dict(geometria=r.get("geometria"), motivo=r.get("motivo"), avisos=r.get("avisos") or []))
+        except Exception as e:   # noqa: BLE001 - o lote continua; o WPF cai na proposta local
+            saida.append(dict(erro=str(e)))
+    return saida
+
+
 def otimizar_ligacao(tipo, dados, esforcos):
     """Busca simples do menor detalhe que passa (`aco.ligacoes.otimizar`); o resultado vem como em verificar_ligacao."""
     r = _lig_ui(_ligacoes().otimizar, tipo, dados, esforcos)

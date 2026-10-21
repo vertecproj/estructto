@@ -52,6 +52,7 @@ Verificações de resistência não levam dica.
 Em mm, no **referencial local da ligação**: origem no nó; eixo x ao longo da barra que chega (sentido saindo do nó), z = eixo forte/alto do perfil
 (para cima na alma), y = x × z. Listas:
 - `chapas`: `[{"nome", "contorno": [[x,y],...] (polígono no plano da chapa), "origem": [x,y,z], "normal": [nx,ny,nz], "u": [ux,uy,uz] (eixo x do contorno), "espessura"}]`
+  (G6: `origem` é uma face da chapa; o sólido vai de `origem` até `origem + espessura·normal`.)
 - `cantoneiras`: `[{"perfil": "L76x6.3", "origem", "eixo", "u", "comprimento"}]`
 - `parafusos`: `[{"d", "comprimento", "origem", "eixo"}]` (eixo = direção do fuste, da cabeça para a porca)
 - `soldas`: `[{"tipo": "filete"|"penetracao", "perna", "pontos": [[x,y,z],...]}]` (cordão como polilinha)
@@ -59,3 +60,10 @@ Em mm, no **referencial local da ligação**: origem no nó; eixo x ao longo da 
 
 ## Testes
 Cada tipo tem pelo menos 1 exemplo resolvido de livro (`docs/v3/ligacoes/*.md`, com página) reproduzido no teste, ou cálculo à mão documentado no próprio teste.
+
+## Lote e face do apoio (G6)
+- `POST /api/ligacoes/geometrias` `{"itens": [{"tipo", "dados", "perfis"?}]}` → lista na mesma ordem de
+  `{"geometria", "motivo", "avisos"}` ou `{"erro"}`. Com `perfis`: sugerir (N 50, V 50, M 30) e depois verificar com esforços nulos.
+- Flexíveis: `x_face` (mm, opcional) = distância do nó à face de contato do apoio; manda na chapa e no plano de corte (sem cope).
+  Gusset: `ec`/`eb` informados não são trocados pela meia altura do perfil; `perfil_pilar`/`perfil_viga` aceitam `{d, bf, tw, tf}`.
+- `GET /api/ligacoes/grupos`: cada membro traz `apoio` (id da barra de apoio, quando há; não vai para o arquivo).

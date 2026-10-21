@@ -236,6 +236,7 @@ ROTAS = {
     ("GET", r"/api/ligacoes/tipos"): lambda s, a, q, c: projeto.tipos_ligacao(),
     ("POST", r"/api/ligacoes/verificar"): lambda s, a, q, c: projeto.verificar_ligacao((c or {}).get("tipo"), (c or {}).get("dados", {}), (c or {}).get("esforcos", {})),
     ("POST", r"/api/ligacoes/sugerir"): lambda s, a, q, c: projeto.sugerir_ligacao((c or {}).get("tipo"), (c or {}).get("perfis", {}), (c or {}).get("esforcos", {})),
+    ("POST", r"/api/ligacoes/geometrias"): lambda s, a, q, c: projeto.geometrias_ligacoes((c or {}).get("itens", [])),
     ("POST", r"/api/ligacoes/otimizar"): lambda s, a, q, c: projeto.otimizar_ligacao((c or {}).get("tipo"), (c or {}).get("dados", {}), (c or {}).get("esforcos", {})),
     ("POST", r"/api/ligacoes/memorial"): lambda s, a, q, c: projeto.memorial_ligacao((c or {}).get("tipo"), (c or {}).get("dados", {}), (c or {}).get("esforcos", {})),
     ("GET", r"/api/ligacoes/grupos"): lambda s, a, q, c: projeto.ligacoes_grupos(_modelo(s), s.estado["calculo"]),
