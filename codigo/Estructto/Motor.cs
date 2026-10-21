@@ -100,7 +100,10 @@ namespace NovoFtool
             Directory.CreateDirectory(pasta);
             string args = $"--porta {porta} --pasta \"{pasta}\"";
             // procura: motor\ ao lado do exe; motor\ instalado por usuário (%LOCALAPPDATA%\Estructto\motor); ESTRUCTTO_MOTOR (fonte)
-            var exe = new[] { Path.Combine(AppContext.BaseDirectory, "motor", "estructto-motor.exe"), Path.Combine(PastaMotorUsuario, "estructto-motor.exe") }.FirstOrDefault(File.Exists);
+            // só vale pacote completo (exe + _internal com os dados): pasta pela metade ou empacotamento antigo sem dados é pulado
+            var exe = new[] { Path.Combine(AppContext.BaseDirectory, "motor"), PastaMotorUsuario }
+                .Where(d => File.Exists(Path.Combine(d, "_internal", "prossen_estrutural", "dados", "cype_ed3_gramatica.json")))
+                .Select(d => Path.Combine(d, "estructto-motor.exe")).FirstOrDefault(File.Exists);
             var dev = Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR");
             ProcessStartInfo psi;
             if (exe != null) psi = new ProcessStartInfo(exe, args);
