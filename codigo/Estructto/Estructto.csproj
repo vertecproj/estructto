@@ -16,6 +16,9 @@
 
   <ItemGroup>
     <Compile Include="..\portico\src\Nucleo.cs" Link="Nucleo.cs" />
+    <!-- Janela de vento 2D do Bruno (origin/main 5d7133b/1f719d3): conflita com a JanelaVento 3D. O cálculo foi portado
+         para o motor Python (acoes/vento_barras.py, acoes/nbr8400.py); ver docs/v3/INTEGRACAO-BRUNO.md. -->
+    <Compile Remove="Vento.cs" />
     <EmbeddedResource Include="..\portico\perfis-gerdau.csv" LogicalName="perfis-gerdau.csv" />
     <EmbeddedResource Include="..\portico\perfis-outros.csv" LogicalName="perfis-outros.csv" />
     <EmbeddedResource Include="..\portico\chumbadores.csv" LogicalName="chumbadores.csv" />

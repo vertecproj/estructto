@@ -611,6 +611,7 @@ namespace Portico
         [Browsable(false)] public int CasoAtivo { get; set; }
         public bool ShouldSerializeCasos() { return Casos != null && Casos.Count > 0; }
         public bool ShouldSerializeCombinacoes() { return Combinacoes != null && Combinacoes.Count > 0; }
+        [Browsable(false)] public ParamVento Vento { get; set; }       // dados do vento (NBR 6123) usados para gerar os casos de vento; null = sem vento
 
         public Modelo()
         {
@@ -1336,6 +1337,284 @@ namespace Portico
         }
 
         public static readonly double[] Chapas = { 6.35, 8, 9.5, 12.7, 16, 19, 22.4, 25.4, 31.5, 38.1, 50.8 };   // espessuras comerciais, mm
+    }
+
+    // ---------- vento: ABNT NBR 6123:2023, barras prismaticas expostas (secao 8.1) ----------
+    // Vento horizontal no plano do portico, nos dois sentidos. Para cada barra:
+    //   Vk = V0 . S1 . S2(z) . S3 (secao 5), q = 0,613 Vk2 (4.2), forca por metro = Cf . q . K . c (8.1.1 e 8.1.2),
+    //   c = dimensao de referencia da secao (Tabela 26, Nota 1) e K = fator de comprimento finito (Tabela 28).
+    // Hipoteses do programa (documentadas em docs/VENTO.md):
+    //   - z = cota do ponto mais alto da barra acima do terreno (S2 constante na barra, lado seguro);
+    //   - barra inclinada: so a componente normal, F . sen2(alfa), alfa = angulo entre o vento e o eixo (mesmo criterio de 8.2);
+    //   - perfil I: Cf interpolado entre o I estreito (0,48c) e o H (c) da Tabela 26; tubo/barra retangular: interpolado
+    //     pela relacao profundidade/largura entre os retangulos da Tabela 26; cantoneira: 2,1 (maior |Cx| da Tabela 26);
+    //   - extremo da barra ligado a um apoio: l/c dobrado (8.1.3); l/c > 100: K = 1,0.
+    public class ParamVento
+    {
+        public double V0 { get; set; }          // m/s, Figura 1 (isopletas)
+        public double S1 { get; set; }          // 5.2: 1,0 plano; 0,9 vale protegido; outro valor calculado pelo projetista
+        public int Categoria { get; set; }      // 5.3.1: 1 a 5
+        public string Classe { get; set; }      // 5.3.2: A, B, C ou "" = automatica pela maior dimensao
+        public double S3 { get; set; }          // Tabela 4
+        public bool UsarK { get; set; }         // Tabela 28
+        public string Norma { get; set; }       // "6123" (NBR 6123:2023) ou "8400" (NBR 8400:1984, equipamentos de elevacao)
+        public double VServ { get; set; }       // NBR 8400: velocidade do vento limite de servico (m/s); Tabela 7 = 20 m/s (250 N/m2)
+        public int Grupo { get; set; }          // NBR 8400: grupo da estrutura (1 a 6), define Mx (Tabela 10)
+        public double Psi { get; set; }         // NBR 8400: coeficiente dinamico da carga de servico (Tabela 5)
+        public ParamVento() { V0 = 35; S1 = 1; Categoria = 3; Classe = ""; S3 = 1; UsarK = true; Norma = "6123"; VServ = 20; Grupo = 3; Psi = 1.15; }
+        public ParamVento Copiar() { return (ParamVento)MemberwiseClone(); }
+    }
+
+    public class VentoBarra
+    {
+        public Barra B;
+        public double Z, S2, Vk, Q;            // m, -, m/s, kN/m2
+        public double C, Cf, LC, K, Sen2, W;   // c (m), coeficiente, l/c usado no K, K, sen2(alfa), forca por metro normal a barra (kN/m)
+        public double Re;
+        public string Forma = "", Fonte = "";
+    }
+
+    public static class VentoNbr
+    {
+        static readonly double[] Zg = { 250, 300, 350, 420, 500 };   // Tabela 1
+        static readonly double[,] Bm = { { 1.10, 1.11, 1.12 }, { 1.00, 1.00, 1.00 }, { 0.94, 0.94, 0.93 }, { 0.86, 0.85, 0.84 }, { 0.74, 0.73, 0.71 } };
+        static readonly double[,] Pp = { { 0.06, 0.065, 0.07 }, { 0.085, 0.09, 0.10 }, { 0.10, 0.105, 0.115 }, { 0.12, 0.125, 0.135 }, { 0.15, 0.16, 0.175 } };
+        static readonly double[] Fr = { 1.00, 0.98, 0.95 };           // Tabela 2
+        public static readonly string[] Classes = { "A", "B", "C" };
+        public static readonly string[] Categorias = { "I", "II", "III", "IV", "V" };
+        public static readonly double[] S3Grupos = { 1.11, 1.06, 1.00, 0.95, 0.83 };   // Tabela 4, grupos 1 a 5
+
+        // 5.3.3: S2 = bm . Fr . (z/10)^p. A Tabela 3 comeca em 5 m ("<= 5"); na categoria V, S2 e constante ate 10 m; acima de zg, zg.
+        public static double S2(int categoria, int classe, double z)
+        {
+            int i = Math.Max(1, Math.Min(5, categoria)) - 1, j = Math.Max(0, Math.Min(2, classe));
+            z = Math.Max(z, i == 4 ? 10 : 5);
+            z = Math.Min(z, Zg[i]);
+            return Bm[i, j] * Fr[j] * Math.Pow(z / 10, Pp[i, j]);
+        }
+
+        // 5.3.2: classe pela maior dimensao horizontal ou vertical da superficie frontal
+        public static int ClassePorDimensao(double dim) { return dim <= 20 ? 0 : dim <= 50 ? 1 : 2; }
+
+        public static double Q(double vk) { return 0.613 * vk * vk / 1000; }   // 4.2, kN/m2
+
+        // Tabela 28: linha 0 = circular subcritico, 1 = circular acima do critico, 2 = faces planas. Interpolacao linear em l/c.
+        static readonly double[] KLc = { 2, 5, 10, 20, 40, 50, 100 };
+        static readonly double[,] KTab = { { 0.58, 0.62, 0.68, 0.74, 0.82, 0.87, 0.98 }, { 0.80, 0.80, 0.82, 0.90, 0.98, 0.99, 1.0 }, { 0.62, 0.66, 0.69, 0.81, 0.87, 0.90, 0.95 } };
+        public static double K(int linha, double lc)
+        {
+            if (lc > 100) return 1.0;
+            if (lc <= 2) return KTab[linha, 0];
+            for (int i = 1; i < KLc.Length; i++)
+                if (lc <= KLc[i]) return KTab[linha, i - 1] + (lc - KLc[i - 1]) / (KLc[i] - KLc[i - 1]) * (KTab[linha, i] - KTab[linha, i - 1]);
+            return 1.0;
+        }
+
+        // Tabela 27 (Re = 70 000 Vk d)
+        public static double CaCircular(double re) { return re < 4.2e5 ? 1.2 : re < 8.4e5 ? 0.6 : re < 2.3e6 ? 0.7 : 0.8; }
+
+        static double Interp(double x, double[] xs, double[] ys)
+        {
+            if (x <= xs[0]) return ys[0];
+            for (int i = 1; i < xs.Length; i++) if (x <= xs[i]) return ys[i - 1] + (x - xs[i - 1]) / (xs[i] - xs[i - 1]) * (ys[i] - ys[i - 1]);
+            return ys[ys.Length - 1];
+        }
+
+        // Coeficiente de forca e dimensao de referencia c (m) da secao com o vento no plano do portico.
+        // "fora" = largura da secao fora do plano (a que o vento ve); "plano" = profundidade no sentido do vento.
+        public static void Coeficiente(Secao s, bool deitado, double vk, out double cf, out double c, out double re, out string forma, out string fonte)
+        {
+            re = 0;
+            double h = s.H, bf = s.Bf > 0 ? s.Bf : s.H;
+            double fora = deitado ? h : bf, plano = deitado ? bf : h;
+            if (s.Forma == "TC" || s.Forma == "CIRC")
+            {
+                c = h; re = 70000 * vk * c; cf = CaCircular(re);
+                forma = "circular"; fonte = "Tabela 27, regime " + (re < 4.2e5 ? "subcrítico" : "acima do crítico") + " (Re = " + Num.Fmt(re / 1e5, 2) + "·10⁵)";
+                return;
+            }
+            if (s.Forma == "I")
+            {
+                double t = (Math.Max(0.48, Math.Min(1.0, bf / h)) - 0.48) / 0.52;
+                c = h;
+                if (!deitado) { cf = 0.9 + t * (1.9 - 0.9); fonte = "Tabela 26, perfil I com vento normal às mesas (90°), interpolado entre I (bf = 0,48d) e H (bf = d); c = d"; }
+                else { cf = 2.05 + t * (1.6 - 2.05); fonte = "Tabela 26, perfil I com vento paralelo às mesas (0°), interpolado entre I (bf = 0,48d) e H (bf = d); c = d"; }
+                forma = "perfil I"; return;
+            }
+            if (s.Forma == "U")
+            {
+                c = h;
+                if (!deitado) { cf = 0.6; fonte = "Tabela 26, perfil U com vento normal às abas (90°); c = altura"; }
+                else { cf = 2.05; fonte = "Tabela 26, perfil U com vento na alma (0°, maior valor); c = altura"; }
+                forma = "perfil U"; return;
+            }
+            if (s.Forma == "L")
+            {
+                c = h; cf = 2.1; forma = "cantoneira"; fonte = "Tabela 26, cantoneira de abas iguais: maior |Cx| entre as direções (2,1); c = aba";
+                return;
+            }
+            if (s.Forma == "TR" || s.Forma == "RET")
+            {
+                c = fora;
+                double r = fora > 0 ? plano / fora : 1;
+                cf = Interp(r, new[] { 0.5, 1.0, 2.0 }, new[] { 2.1, 2.0, 1.5 });
+                forma = s.Forma == "TR" ? "tubo retangular" : "barra retangular";
+                fonte = "Tabela 26, seção retangular, interpolado pela relação profundidade/largura = " + Num.Fmt(r, 2) + "; c = largura vista pelo vento";
+                return;
+            }
+            c = fora; cf = 2.0; forma = "seção genérica"; fonte = "seção sem forma conhecida: adotado Cf = 2,0 com c = altura informada";
+        }
+
+        // Terreno = menor cota entre os nos com apoio (ou do modelo); classe automatica pela maior dimensao do portico.
+        public static double Terreno(Modelo m)
+        {
+            double z = double.MaxValue;
+            foreach (No n in m.Nos) if (n.TemApoio) z = Math.Min(z, n.Y);
+            if (z == double.MaxValue) foreach (No n in m.Nos) z = Math.Min(z, n.Y);
+            return z == double.MaxValue ? 0 : z;
+        }
+
+        public static int Classe(Modelo m, ParamVento p)
+        {
+            int i = Array.IndexOf(Classes, p.Classe ?? "");
+            if (i >= 0) return i;
+            if (m.Nos.Count == 0) return 0;
+            double z0 = Terreno(m), alt = m.Nos.Max(n => n.Y) - z0, larg = m.Nos.Max(n => n.X) - m.Nos.Min(n => n.X);
+            return ClassePorDimensao(Math.Max(alt, larg));
+        }
+
+        public static List<VentoBarra> Calcular(Modelo m, ParamVento p)
+        {
+            var lista = new List<VentoBarra>();
+            double z0 = Terreno(m);
+            int classe = Classe(m, p);
+            foreach (Barra b in m.Barras)
+            {
+                Secao s = Biblioteca.AcharSecao(b.Secao);
+                No a = m.NoPorId(b.N1), e = m.NoPorId(b.N2);
+                if (s == null || a == null || e == null) continue;
+                double dx = e.X - a.X, dy = e.Y - a.Y, L = Math.Sqrt(dx * dx + dy * dy);
+                if (L < 1e-9) continue;
+                var v = new VentoBarra { B = b };
+                v.Z = Math.Max(a.Y, e.Y) - z0;
+                v.S2 = S2(p.Categoria, classe, v.Z);
+                v.Vk = p.V0 * p.S1 * v.S2 * p.S3;
+                v.Q = Q(v.Vk);
+                v.Sen2 = dy * dy / (L * L);
+                double cf, c, re; string forma, fonte;
+                Coeficiente(s, b.EixoFraco, v.Vk, out cf, out c, out re, out forma, out fonte);
+                v.Cf = cf; v.C = c; v.Re = re; v.Forma = forma; v.Fonte = fonte;
+                v.LC = c > 0 ? L / c : 1e9;
+                if (a.TemApoio || e.TemApoio) v.LC *= 2;   // 8.1.3: extremo ligado a placa/parede (base) impede o escoamento livre
+                bool circ = s.Forma == "TC" || s.Forma == "CIRC";
+                v.K = p.UsarK ? K(circ ? (re < 4.2e5 ? 0 : 1) : 2, v.LC) : 1.0;
+                v.W = v.Cf * v.Q * v.K * v.C * v.Sen2;
+                // 8.1.3 (ultimo paragrafo): acima do critico, conferir se o regime subcritico (Ca = 1,2) com a velocidade logo
+                // abaixo da critica (Re = 4,2e5) nao da forca maior. Se der, vale ela (Cf equivalente referido ao q de Vk).
+                if (circ && re >= 4.2e5 && c > 0)
+                {
+                    double vcr = 4.2e5 / (70000 * c), kSub = p.UsarK ? K(0, v.LC) : 1.0;
+                    double wSub = 1.2 * Q(vcr) * kSub * c * v.Sen2;
+                    if (wSub > v.W)
+                    {
+                        v.W = wSub; v.K = kSub; v.Cf = 1.2 * Q(vcr) / v.Q;
+                        v.Fonte += "; governa o regime subcrítico logo abaixo de Vcr = " + Num.Fmt(vcr, 1) + " m/s (Ca = 1,2 com q de Vcr; Cf equivalente)";
+                    }
+                }
+                lista.Add(v);
+            }
+            return lista;
+        }
+
+        // Caso de vento pelo nome (cria do tipo V se nao existir). Devolve o indice.
+        public static int GarantirCaso(Modelo m, string nome)
+        {
+            m.GarantirCasos();
+            for (int i = 0; i < m.Casos.Count; i++) if (m.Casos[i].Nome == nome) { m.Casos[i].Tipo = "V"; return i; }
+            m.AdicionarCaso(new CasoCarga { Nome = nome, Tipo = "V" });
+            return m.Casos.Count - 1;
+        }
+
+        // Regrava as cargas de barra do caso: carga perpendicular a barra, empurrando no sentido do vento
+        // (sentido +1 = para +X, -1 = para -X). As cargas de no do caso ficam como estao.
+        public static void Aplicar(Modelo m, List<VentoBarra> lista, int caso, int sentido)
+        {
+            int ativo = m.CasoAtivo;
+            m.AtivarCaso(caso);
+            foreach (Barra b in m.Barras) { b.QGlobalX = 0; b.QGlobalY = 0; b.QLocalIni = 0; b.QLocalFim = 0; }
+            foreach (VentoBarra v in lista)
+            {
+                No a = m.NoPorId(v.B.N1), e = m.NoPorId(v.B.N2);
+                double L = Math.Sqrt((e.X - a.X) * (e.X - a.X) + (e.Y - a.Y) * (e.Y - a.Y)), s = (e.Y - a.Y) / L;
+                // eixo local y = (-s, c): a carga positiva empurra para -s em X
+                double w = v.W * Math.Sign(-s * sentido);
+                v.B.QLocalIni = w; v.B.QLocalFim = w;
+            }
+            m.AtivarCaso(ativo);
+        }
+    }
+
+    // ---------- vento: ABNT NBR 8400:1984, equipamentos de levantamento (secao 5.5.4.1) ----------
+    // Pressao aerodinamica Pa = vw2/1,6 (N/m2). Vento limite de servico: vw = 20 m/s -> 250 N/m2 em qualquer altura (Tabela 7).
+    // Vento maximo (fora de servico): 800 N/m2 (0 a 20 m), 1100 (20 a 100 m), 1300 (acima de 100 m).
+    // Forca no plano do portico, por barra: w = C . Pa . c . sen2(alfa) (Fw = C.A.Pa com A = c.L). C pela Tabela 8.
+    // Hipoteses do programa (docs/VENTO.md): z = ponto mais alto da barra acima do terreno; perfis abertos e retangulares
+    // como "viga de alma cheia" com l/h = comprimento da barra / dimensao c vista pelo vento; tubo redondo como "elemento tubular";
+    // sem coeficiente de reducao por protecao (Tabela 9) e sem efeito de comprimento finito.
+    public static class Vento8400
+    {
+        public static readonly double[] Mx = { 1, 1, 1, 1.06, 1.12, 1.20 };   // Tabela 10, grupos 1 a 6
+        public static double PaServ(double vw) { return vw * vw / 1.6; }
+        public static double PaMax(double z) { return z <= 20 ? 800 : z <= 100 ? 1100 : 1300; }
+        public static double MxGrupo(int g) { return Mx[Math.Max(1, Math.Min(6, g)) - 1]; }
+
+        // Tabela 8: viga de alma cheia, C em funcao de l/h (interpolado; fora da faixa, o valor da ponta)
+        public static double CAlmaCheia(double lh)
+        {
+            double[] xs = { 2, 5, 10, 20 }, ys = { 1.2, 1.3, 1.4, 1.6 };
+            if (lh <= xs[0]) return ys[0];
+            for (int i = 1; i < xs.Length; i++) if (lh <= xs[i]) return ys[i - 1] + (lh - xs[i - 1]) / (xs[i] - xs[i - 1]) * (ys[i] - ys[i - 1]);
+            return ys[ys.Length - 1];
+        }
+        // Tabela 8: elemento tubular, d em m e Pa em N/m2
+        public static double CTubular(double d, double pa) { return d * Math.Sqrt(pa) / 10 <= 1 ? 1.2 : 0.7; }
+
+        // maximo = false: vento limite de servico; true: vento maximo fora de servico.
+        public static List<VentoBarra> Calcular(Modelo m, ParamVento p, bool maximo)
+        {
+            var lista = new List<VentoBarra>();
+            double z0 = VentoNbr.Terreno(m);
+            foreach (Barra b in m.Barras)
+            {
+                Secao s = Biblioteca.AcharSecao(b.Secao);
+                No a = m.NoPorId(b.N1), e = m.NoPorId(b.N2);
+                if (s == null || a == null || e == null) continue;
+                double dx = e.X - a.X, dy = e.Y - a.Y, L = Math.Sqrt(dx * dx + dy * dy);
+                if (L < 1e-9) continue;
+                var v = new VentoBarra { B = b };
+                v.Z = Math.Max(a.Y, e.Y) - z0;
+                double pa = maximo ? PaMax(v.Z) : PaServ(p.VServ);
+                v.Q = pa / 1000; v.Vk = Math.Sqrt(1.6 * pa); v.S2 = 0; v.K = 1; v.Re = 0;
+                v.Sen2 = dy * dy / (L * L);
+                double cf0, re0; string fonte0, forma;
+                VentoNbr.Coeficiente(s, b.EixoFraco, 0, out cf0, out v.C, out re0, out forma, out fonte0);
+                v.Forma = forma;
+                if (s.Forma == "TC" || s.Forma == "CIRC")
+                {
+                    v.Cf = CTubular(v.C, pa);
+                    v.Fonte = "Tabela 8, elemento tubular: d·√Pa/10 = " + Num.Fmt(v.C * Math.Sqrt(pa) / 10, 2) + (v.Cf > 1 ? " > 1" : " ≤ 1") + " → C = " + Num.Fmt(v.Cf, 1);
+                }
+                else
+                {
+                    v.LC = v.C > 0 ? L / v.C : 1e9;
+                    v.Cf = CAlmaCheia(v.LC);
+                    v.Fonte = "Tabela 8, viga de alma cheia, l/h = " + Num.Fmt(Math.Min(v.LC, 999), 1) + " (comprimento da barra / dimensão vista pelo vento) → C = " + Num.Fmt(v.Cf, 2);
+                }
+                v.W = v.Cf * v.Q * v.C * v.Sen2;
+                lista.Add(v);
+            }
+            return lista;
+        }
     }
 
     // ---------- verificacao simplificada das barras ----------

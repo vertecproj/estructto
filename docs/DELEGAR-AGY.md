@@ -31,6 +31,13 @@ Objetivo: **poupar tokens do Claude**. O Claude planeja, delega ao agy, confere 
   e pedir no fim um resumo curto (arquivos alterados, contagens, resultado dos testes).
 - Antes de deixar o agy mexer em código: backup da pasta (cópia na scratchpad) para poder comparar com `diff`.
 
+## PC do Bruno (20/10/2026)
+- `agy` em `C:\Users\Bruno Nietsche\AppData\Local\agy\bin\agy.exe` (fora do PATH do terminal do Claude).
+- `--dangerously-skip-permissions` é **bloqueado** pelo classificador do Claude Code. No lugar, o Bruno escolheu liberar só a pasta:
+  `C:\Users\Bruno Nietsche\.gemini\antigravity-cli\settings.json` → `permissions.allow` com `read_file(...ftool\**)` e
+  `write_file(...ftool\**)`. Sem regra de comando: compilar e testar fica com o Claude. A escrita com essa regra ainda não foi
+  testada até o fim (o Bruno pediu para o Claude finalizar a tarefa direto).
+
 ## Cuidados aprendidos
 - Saída de PDF por texto pode desalinhar colunas de tabela: conferir com a página renderizada (`pdftoppm -png`).
 - CSV do agy pode ter `;` dentro de campos de texto: validar antes de usar.

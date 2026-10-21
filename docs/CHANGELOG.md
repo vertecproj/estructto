@@ -2,6 +2,17 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 21/10/2026 — Integração do main do Bruno no produto 3D (branch wt-bruno)
+
+- Junta `origin/main` (f2c443d..1f719d3) sem perder nada; mapa commit → lugar novo em [v3/INTEGRACAO-BRUNO.md](v3/INTEGRACAO-BRUNO.md).
+- Motor: vento por barra da NBR 6123:2023 8.1 (`acoes/vento_barras.py`, `config.vento.tipo = "barras"`) e NBR 8400:1984 (vento de
+  serviço/máximo e combinações dos casos I/II/III, `acoes/nbr8400.py`, `config.combinacoes = "nbr8400"`; ELU × ν/γa1 para reproduzir as
+  tensões admissíveis). Placa: cada passo com as verificações da sua pior combinação; `seguranca` da solda (n = 0,577·FEXX/τ, informativo).
+  Testes `test_vento_barras_8400.py` (valores do `Testes.cs` do Bruno) e `test_placa_passos.py`. API/MCP documentados.
+- 3D: Ações › Vento com seletor "6123 · edificação / 6123 · por barra / 8400 · equipamentos"; Combinações com seletor NBR 8681 / NBR 8400;
+  JanelaPlaca com Trocar por família, − / + do diâmetro e do hef, origem do coeficiente e linha "Segurança" da solda.
+- `Vento.cs` (janela 2D do Bruno) fora do build; `Nucleo.cs`/`Testes.cs` dele intactos (241 testes).
+
 ## 21/10/2026 — Polimento de design v3: tokens, Barlow, família de ícones, faixa/rodapé e janelas (branch wt-design)
 
 - Crítica das capturas e decisões em `docs/v3/DESIGN-V3.md`; imagens curadas antes/depois em `docs/v3/design/`.
@@ -198,6 +209,34 @@ genérico dos tipos do contrato nos grupos. `JanelaLigacao.cs` retirada. Detalhe
   propriedades WPF (sai o WinForms), vista com HUD/diagramas/mapa de calor, placa de base refeita em 3 passos com 3D, janelas e tela inicial
   novas, Ctrl+K e entrada dinâmica no cursor. Cálculo inalterado (200 testes). Detalhe e decisões: [v2/RELATORIO.md](v2/RELATORIO.md).
 - Modo `--capturas` + `capturar.ps1` para conferência visual automática. Build passa a sair em `C:\dev\build\EstructtoV2`.
+- Placa → Fixação (pedido do Bruno): painel **Trocar chumbador** agrupado por família (linha do fabricante) → diâmetro → hef; a família
+  em uso abre, as outras ficam fechadas mostrando quantos passam e o menor que passa. No cartão, linha **Diâmetro** com − / + (troca o
+  diâmetro na mesma família, mantendo o hef mais próximo) e − / + do hef. Texto do coeficiente explica a origem ("recomendado pela
+  Walsywa para carga dinâmica com alto risco") e avisa quando o n digitado fica abaixo, com link "usar o recomendado". Só interface
+  (`JanelaPlaca.cs`); cálculo inalterado.
+- Placa → Solda (pedido do Bruno): linha **Segurança** "n = 0,577·FEXX / τ ≥ 1,92". Critério: a norma (AWS/AISC, tensões admissíveis)
+  não pede n separado; o limite τ ≤ 0,30·FEXX já embute n = 0,577/0,30 ≈ 1,92, então "passa" e "n ≥ 1,92" são a mesma condição.
+  É o mesmo `NEquiv` que o memorial já mostrava. Só interface.
+- **Correção (bug relatado pelo Bruno): a placa "aprovava" e ao reabrir voltava "não passa".** Causa: a janela fixava UMA combinação
+  ao abrir (a pior para a placa daquele momento, ex. carga giratória a 0°) e recalculava tudo nela; trocando chumbador/chapa, outra
+  combinação (180°) passava a mandar sem a janela perceber. Critério novo: com envoltória, **cada item é verificado na sua pior
+  combinação, reavaliada a cada mudança** — fixação = maior ApFix, chapa = maior espessura necessária, solda = maior τ — e o título
+  mostra qual combinação manda em cada um. Vale também para Trocar, régua de diâmetros, Sugerir, Dimensionar, "Aplicar também em",
+  desenho, relatório e memorial (`PlacaPior`/`EnvoltoriaPlaca` em `Acoes.cs`; `PiorCombinacao` em `JanelaPlaca.cs`). Motor inalterado
+  (200 testes). Conferido com cópia do modelo do Bruno: CBE 3/8" hef 47 em 230×250×16 agora já aparece "não passa" (fixação 176% a 180°). Build, capturas e 200 testes ok (SDK .NET 8 instalado no PC do Bruno).
+
+- **Vento NBR 6123:2023** (pedido do Bruno): botão "Vento NBR 6123" (aba Cargas) + comando `VENTO`. Janela com V0, S1, categoria,
+  classe (automática pela maior dimensão), S3 e prévia barra a barra; cria os casos `Vento → (0°)` e `Vento ← (180°)` e regera as
+  combinações. Motor `VentoNbr` (Nucleo.cs): S2 pela fórmula das Tabelas 1–2, q = 0,613 Vk², Cf da Tabela 26 / Ca da Tabela 27 (com
+  conferência do regime subcrítico), K da Tabela 28, barra inclinada × sen²α. Gerador de combinações: as duas direções de vento nunca
+  entram juntas. Memorial ganhou o bloco do vento. Critérios e hipóteses: [VENTO.md](VENTO.md). 225 testes (25 novos). Norma em
+  `referencias/` (fora do git). Ferramentas instaladas neste PC: Poppler (ler o PDF escaneado).
+
+- **Vento NBR 8400:1984** (pedido do Bruno): a janela do vento ganhou o seletor de norma (6123 ou 8400); o botão passou a se chamar
+  "Vento". Na 8400: vento limite de serviço (vw, padrão 20 m/s = 250 N/m²) e vento máximo (800/1100/1300 N/m² por altura), C da Tabela 8,
+  grupo (Mx) e ψ; quatro casos (serviço e máximo, dois sentidos) e combinações dos casos I, II e III da seção 5.6 (`Analise.GerarNbr8400`).
+  Memorial e capturas (`24-vento-8400.png`) atualizados. Motor `Vento8400` com 16 testes novos (241 passam). Critérios e hipóteses em
+  [VENTO.md](VENTO.md). Pendente: tensões admissíveis por caso (σe/1,5, /1,33, /1,1) não são distinguidas pelo programa.
 
 ## 19/10/2026 — Bruno
 

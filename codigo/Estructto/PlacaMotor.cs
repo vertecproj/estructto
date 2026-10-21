@@ -152,7 +152,13 @@ namespace NovoFtool
 
         // Verificações do governante por passo da janela (o motor agrupa igual em projeto._passo_placa).
         public static string PassoDe(string nome) => nome.StartsWith("solda") ? "solda" : nome.StartsWith("chapa") || nome.StartsWith("concreto: pressão de contato") ? "chapa" : "fixacao";
-        public IEnumerable<JsonNode> Verificacoes(string passo) => Lista(R?["verificacoes"]).Where(v => PassoDe(S(v, "nome")) == passo);
+        // Cada passo traz as verificações da SUA pior combinação (motor, passos[p].verificacoes; pedido do Bruno, be0a9e2);
+        // resposta antiga sem o campo: as do governante.
+        public IEnumerable<JsonNode> Verificacoes(string passo)
+        {
+            var a = J?["passos"]?[passo]?["verificacoes"];
+            return a != null ? Lista(a) : Lista(R?["verificacoes"]).Where(v => PassoDe(S(v, "nome")) == passo);
+        }
 
         // Resumo de uma variante (/api/placa_base/verificar com "variantes" e "triagem").
         public static (bool FixOk, double FixTaxa, bool Ok, double Taxa, double TNec, string Criterio) Resumo(JsonNode v)

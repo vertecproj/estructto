@@ -57,7 +57,7 @@ A diagonal pode ser L, 2L, U, tubo circular ou retangular, ou barra redonda. Ela
 - Até 4 barras (sufixos `_1` a `_4`), cada uma com seu ângulo em relação ao banzo.
 - **Banzo contínuo:** gusset soldado à face, a `e_banzo` do eixo. A solda e a borda do gusset recebem ΣN·cosθ (paralela), ΣN·senθ (normal) e o momento H·e_banzo.
 - **Banzo emendado:** os pedaços do banzo entram como barras a 0° e 180°, e a soma das forças é conferida.
-- Cada barra recebe as verificações da diagonal acima, com no mínimo 45 kN.
+- Cada barra recebe as verificações da diagonal acima, com no mínimo 45 kN (NBR 8800 6.1.5.2). Barra redonda tracionada (tirante) é exceção.
 - Eixos concorrentes: o momento no nó é desprezado (sem fadiga; Pfeil p.231–233).
 
 ### `tirante_barra_redonda`
@@ -73,7 +73,7 @@ A diagonal pode ser L, 2L, U, tubo circular ou retangular, ou barra redonda. Ela
 
 ### `cantoneira_simples_trelica`
 - Ligação por uma aba, com parafusos ou filetes. O mínimo é de 45 kN.
-- A excentricidade é desprezada na ligação (NBR 8800 6.1, ação estática; sob fadiga, aviso para usar modelo de pórtico).
+- A excentricidade é desprezada na ligação (NBR 8800 6.1.8.2, ação estática; sob fadiga, aviso para usar modelo de pórtico).
 - Na barra, a excentricidade entra assim:
   - **Tração:** pelo Ct = 1 − ec/lc, com ec = ȳ da aba ligada.
   - **Compressão:** pela E.1.4, pela função `nbr8800.ne_cantoneira_uma_aba` já existente.
@@ -114,9 +114,9 @@ Também há cálculos à mão no teste: UFM (equilíbrio e condição de α), fl
 
 ## Limitações e pendências
 
+- Conferidos no texto (docs/v3/ITENS-NORMA.md §3): mínimo de 45 kN = 6.1.5.2 (aplicado também ao `gusset_contraventamento`, com a exceção de tirante de barra redonda); excentricidade de cantoneiras = 6.1.8.2; 6.5.4.
+
 - **[confirmar] na NBR 8800:2008:**
-  - O subitem da 6.1 com a resistência mínima de 45 kN e a dispensa da excentricidade de cantoneiras. Só a Pfeil, p.232, cita "NBR 8800" sem número.
-  - A 6.5.4 (KL/r ≤ 25).
   - O teto de 0,90 do Ct, aplicado só a perfis abertos e barra redonda.
 - **Solda de barra redonda:** garganta 5/16·R (superfície curva), tirada do AISC 360 tab. J2.2, com aviso.
 - **Rasgo do tubo:** t_gusset + 2 mm.

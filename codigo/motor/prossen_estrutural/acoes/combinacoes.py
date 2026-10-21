@@ -148,7 +148,8 @@ def _grupos_variaveis(casos):
         if c.tipo == "Q":
             grupos.append([c])
         elif c.tipo == "V":
-            vento.setdefault(c.subtipo or "vento", []).append(c)
+            # vento máximo da NBR 8400 (acoes/nbr8400.py) é o mesmo vento: nunca junto com o de serviço
+            vento.setdefault("vento" if c.subtipo == "vento_maximo" else c.subtipo or "vento", []).append(c)
     return grupos + list(vento.values())
 
 

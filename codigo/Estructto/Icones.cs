@@ -141,6 +141,7 @@ namespace NovoFtool
                 // ---------------- cargas (ambar, como no canvas) ----------------
                 ["cargano"] = C(S(Y, "M16,4 V20"), S(Y, "M10,15 L16,21 L22,15"), S(L, "M4,27 H28"), Pt(L, 16, 27, 2.5)),
                 ["cargadist"] = C(Fa(Y, "M4,6 H28 V17 H4 Z"), S(Y, "M4,6 H28"), S(Y, "M7,6 V19 M16,6 V19 M25,6 V19"), S(Y, "M4,15 L7,19 L10,15 M13,15 L16,19 L19,15 M22,15 L25,19 L28,15"), S(L, "M3,26 H29")),
+                ["vento"] = TB("vento", L, Y, 1, 99),
                 ["cargamom"] = C(S(Y, "M9.6,22.4 A9,9 0 1 1 22.4,22.4"), Fb(Y, "M19.6,25.2 L25.9,24.5 L20.3,18.9 Z"), Pt(L, 16, 16, 2.5)),
                 ["peso"] = C(Du(Y, "M9,13 H23 L27,27 H5 Z"), S(Y, "M12.5,13 A3.5,3.5 0 1 1 19.5,13")),
                 ["limpar"] = C(S(Y, "M4,6 H22 M7,6 V16 M13,6 V16 M19,6 V16"), S(Y, "M4,14 L7,17 L10,14 M10,14 L13,17 L16,14 M16,14 L19,17 L22,14", 1.5), S(L, "M3,25 H20"), Xr(21, 18)),
@@ -219,7 +220,7 @@ namespace NovoFtool
             "sel","barra","no","medir","apagar","dividir","mover","copiar","espelhar","assist","dimens",
             "eixos","niveis","pilar","laje","ligacao","grupos","trelica","contrav","copiarpav","pilaresniv","3dcompleto","iso","dwg","dxf","step","casa","dinamica",
             "engaste","rotula","rolo","roloh","livre","rotulab","placa","parafuso","solda","eixo","pincel",
-            "cargano","cargadist","cargamom","peso","limpar",
+            "cargano","cargadist","cargamom","vento","peso","limpar",
             "calc","def","normal","cortante","momento","verif","comparar","reac","valores","unir","tirar","separar","selmembro","nomes","mais","menos",
             "zoomtudo","zoommais","zoommenos","3d","realista","painel","aplicar","ajuda",
             "grade","snap","ortho","polar","objsnap","rastro",

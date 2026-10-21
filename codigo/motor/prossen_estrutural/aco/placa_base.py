@@ -495,8 +495,22 @@ def _solda(secao, dados, esforcos, h):
                 LNec=L*min(1, tau/adm)/1000, massa=h*h/2*L*7850e-9,
                 espessura=t, t_chapa=chapa, h_min_norma=hn, abaixo_minimo=abaixo,
                 maior_que_parede=maior, NEquiv=_seg(.577*(adm/.30), tau, 1e-12),
+                seguranca=seguranca_solda(tau, adm),
                 passa=tau/adm <= 1 and not abaixo and not maior, eletrodo=el,
                 intermediarios=dict(b=b/1000, d=d/1000, c=c/1000, Iu=iu*1e-9))
+
+
+N_MIN_SOLDA = .577/.30   # ≈ 1,92: segurança que o admissível 0,30·FEXX já embute
+
+
+def seguranca_solda(tau, tau_adm):
+    """Critério do Bruno (origin/main 0cefecc), só informativo ao lado da verificação: n = 0,577·FEXX/τ ≥ 0,577/0,30.
+    0,577·FEXX = resistência ao corte do metal de solda por von Mises; o admissível AWS/AISC τ ≤ 0,30·FEXX (aqui
+    ``tau_adm``, MPa) já traz n ≈ 1,92, então "passa" e "n ≥ 1,92" são a mesma condição (não é critério novo).
+    → dict(n, n_min, passa, criterio, informativo)."""
+    n = _seg(.577*(tau_adm/.30), tau, 1e-12)
+    return dict(n=n, n_min=N_MIN_SOLDA, passa=n >= N_MIN_SOLDA-1e-9, informativo=True,
+                criterio='n = 0,577·FEXX / τ ≥ 0,577/0,30 ≈ 1,92 (equivale a τ ≤ 0,30·FEXX; informativo)')
 
 
 def perna_minima_contorno(secao, dados, esforcos):
@@ -1004,6 +1018,11 @@ def verificar_placa_base(dados, esforcos, secao):
         fu, fyb = _fu_fy(d['classe'], d['fub_chumbador'], d['fyb_chumbador'])
         # furo alargado da placa de base (AISC Manual tab. 14-2 / DG1 tab. 2.3), coerente com n_ef = 2 no corte
         dh = dm+(.0143 if dm <= .01905 else .0175 if dm <= .0223 else .0206 if dm <= .0381 else .0254 if dm <= .0445 else .0318)
+        # NBR 8800 tab. 12 (furo alargado): db+5 (db ≤ 24), 33 (27), db+8 (≥ 30) mm. ponytail: 24 < db < 30 → db+6
+        dh12 = dm+(.005 if dm <= .024 else .006 if dm < .030 else .008)
+        if dh > dh12+1e-9 and not d['arruela_soldada']:
+            avisos.append(f'Furo de {dh*1000:.1f} mm > furo alargado da NBR 8800 tab. 12 ({dh12*1000:.1f} mm): a 6.3.6.1 '
+                          'exige arruelas especialmente dimensionadas soldadas à placa (arruela_soldada).')
         lf = d['borda']-dh/2
         if lf <= 0 and f['Fv'] > 0:
             avisos.append('Furo alargado alcança a borda (lf ≤ 0): pressão de contato no furo NÃO verificada.')

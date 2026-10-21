@@ -63,11 +63,12 @@ Convenções:
 | 5.7.3 | Escoamento local da alma: 1,10(5k + ℓn)·fy·tw/γa1, ou 2,5k no topo |
 | 5.7.4 | Enrugamento: 0,66 ou 0,33·tw²[…]√(E·fy·tf/tw)/γa1 |
 | 5.7.6 | Flambagem da alma por compressão: 24tw³√(E·fy)/(h·γa1), só se `M_outra` > 0 (forças nas duas mesas) |
-| 5.7.7 | Painel: 0,6·fy·dc·tw/γa1, × (1,4 − Nc/Ny) se Nc > 0,4Ny. Demanda Σ(M/(H − tf)) − V_pilar |
-| 5.7.8 | Enrijecedores levam F − Rmín. Na compressão, coluna com faixa de 25tw (12tw no topo) e KL = 0,75h. Também b/t, t ≥ tfb/2 e b + tw/2 ≥ bfb/3 |
-| 5.7.9 | Chapa de reforço somada a tw no painel e na alma; (dz + wz)/t ≤ 90 |
+| 5.7.7.1 | Painel: VRd da 5.4.3 (Aw = dc·tw, λ = h/tw, kv com a = H − tf da viga), × (1,4 − Nc/Ny) se Nc > 0,4Ny. Demanda Σ(M/(H − tf)) − V_pilar |
+| 5.7.7.2 | Chapas de reforço dos dois lados da alma (`t_reforco` = espessura de cada uma), 150 mm além das mesas da viga; cada chapa pela 5.4.3 com λ = h/t (sem o (dz + wz)/t ≤ 90 do AISC 341). Somadas a tw em 5.7.3 a 5.7.6 |
+| 5.7.9 | Enrijecedores levam F − Rmín (5.7.9.1 tração; 5.7.9.2 a 5.7.9.4 compressão: faixa de 25tw, 12tw no topo, KL = 0,75h). 5.7.9.5: t ≥ b/15, t ≥ tfb/2, b + tw/2 ≥ bfb/3. Também b/t ≤ 0,56√(E/fy) (Q = 1 na coluna) |
+| 6.1.5.2 | Chapa de topo, flange plate e emendas: esforços escalados até max(√(V² + N²), M/braço) = 45 kN |
 
-**[confirmar]**: a numeração 5.7.2 a 5.7.9 segue a correspondência com AISC J10. Os coeficientes conferem com o Pfeil 6.3.6 (p. 180–183). Conferir os números de item no texto da norma.
+Numeração conferida no texto da NBR 8800:2008 (docs/v3/ITENS-NORMA.md §2). Os coeficientes conferem com o Pfeil 6.3.6 (p. 180–183).
 
 ### Flange plate
 - Força na chapa: |M|/(H + t) ± N/2.
