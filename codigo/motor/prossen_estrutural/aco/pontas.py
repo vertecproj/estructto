@@ -15,6 +15,13 @@ RAIO_COPE = 0.010
 _N_SELA = 72          # amostras do contorno do ramal na boca de peixe
 
 
+class BarraCurta(ValueError):
+    """Recuo + recorte alcançam o comprimento livre da barra."""
+
+    def __init__(self, msg="barra curta demais para a ligação"):
+        super().__init__(msg)
+
+
 def _dot(a, b):
     return sum(x * y for x, y in zip(a, b))
 
@@ -108,7 +115,7 @@ def _sela(m, ap):
 
 def _curta(dist, m):
     if dist >= m["comprimento"]:
-        raise ValueError("barra curta demais para a ligação")
+        raise BarraCurta()
 
 
 def pontas_do_no(no, membros, tipo_ligacao, params=None):

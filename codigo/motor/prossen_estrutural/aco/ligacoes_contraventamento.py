@@ -600,8 +600,30 @@ def _interface(v, nome, L_, Hpar, Vnor, M, c, b, fd):
 
 # ---------------------------------------------------------------- 1. gusset de contraventamento
 
-def _auto_gusset(d, info, c, theta):
-    """recuo, Lh e Lv automáticos: a região ligada fica a 2·tg das faces (folga da linha de dobra)."""
+def _x_ponta(tipo, dados, s=""):
+    """Posição da ponta da diagonal no eixo (m), pela geometria de pontas (pontas.py: face do apoio + folga)."""
+    d = dict(dados or {})
+    if s:   # nó de treliça: a barra s vira a "barra 1" para pontas_de
+        d.update(dim_a_1=d.get(f"dim_a{s}"), dim_b_1=d.get(f"dim_b{s}"), theta_1=d.get(f"theta{s}", 45.0))
+        t = math.radians(float(d["theta_1"]))
+        if abs(math.sin(t)) < 1e-6:   # barra ao longo do banzo: sem ponta de gusset
+            return 0.0
+    try:
+        pts = L.pontas_de(tipo, d, d.get("contexto_pontas"))
+    except ValueError:   # BarraCurta etc.: com_pontas trata; aqui só a posição
+        return 0.0
+    return pts[0]["plano"]["ponto"][0] if pts else 0.0
+
+
+def _ponta_em(x, barra=0):
+    """Ponta da diagonal no recuo usado no cálculo (desenho = cálculo)."""
+    return dict(barra=barra, extremo="i", plano=dict(ponto=[x, 0.0, 0.0], normal=[-1.0, 0.0, 0.0]), folga=0.0,
+                recortes=[])
+
+
+def _auto_gusset(d, info, c, theta, x_min=0.0):
+    """recuo, Lh e Lv automáticos: a região ligada fica a 2·tg das faces (folga da linha de dobra) e nunca antes da
+    ponta da diagonal (x_min, pontas.py)."""
     dirv, perp = _frame(theta)
     folga = 2 * c["tg"]
     eb, ec = d["eb"] * MM, d["ec"] * MM
@@ -613,7 +635,7 @@ def _auto_gusset(d, info, c, theta):
         req += [(ec + folga + hw * co) / s, (ec + hwm * co) / s - xw]
     if ap in ("viga-pilar", "viga", "base"):
         req += [(eb + folga + hw * s) / co, (eb + hwm * s) / co - xw]
-    recuo = d["recuo"] * MM or math.ceil(max(req) / 0.005) * 0.005
+    recuo = d["recuo"] * MM or math.ceil(max(req + [x_min]) / 0.005) * 0.005
     hmin = ec if ap in ("viga-pilar", "pilar") else -math.inf
     vmin = eb if ap != "pilar" else -math.inf
     pts = _regiao(info, recuo, dirv, perp)
@@ -635,7 +657,7 @@ def verificar_gusset(dados, esforcos):
         av.append(aviso)
     theta = math.radians(d["theta"])
     info = _membro(d, "", N, c, v, av)
-    recuo, Lh, Lv, pts = _auto_gusset(d, info, c, theta)
+    recuo, Lh, Lv, pts = _auto_gusset(d, info, c, theta, _x_ponta("gusset_contraventamento", dados))
     eb, ec, ap, tg = d["eb"] * MM, d["ec"] * MM, d["apoio"], c["tg"]
     dirv, perp = _frame(theta)
     reg = _regiao(info, recuo, dirv, perp)   # região ligada não pode invadir viga/pilar
@@ -704,7 +726,7 @@ def verificar_gusset(dados, esforcos):
                    comprimento=round((info["lc"] + FOLGA_RASGO * MM) / MM, 1),
                    largura=round(tg / MM + FOLGA_RASGO, 1)))] if info["sec"].startswith("tubo") else [],
                ponto_trabalho=[0.0, 0.0, 0.0], recuo=recuo / MM, Lh=Lh / MM, Lv=Lv / MM,
-               largura_whitmore=info["Lw"] / MM)
+               largura_whitmore=info["Lw"] / MM, pontas=[_ponta_em(recuo)])
     extra = dict(forcas_interface=forcas)
     if "dica" in info:
         extra["dica_barra"] = info["dica"]
@@ -737,6 +759,7 @@ def verificar_no_trelica(dados, esforcos):
         x_face = eb / sv if sv > 1e-6 else 0.0
         cs = abs(math.cos(th))
         auto = max((eb + 2 * tg + info["meia"] * cs) / sv, (eb + info["Lw"] / 2 * cs) / sv - info["xw"])             if sv > 1e-6 else 2 * tg
+        auto = max(auto, _x_ponta("no_trelica_gusset", dados, f"_{i}"))
         recuo = d[f"recuo_{i}"] * MM or math.ceil(auto / 0.005) * 0.005
         if Nd < 0:
             L1 = max(recuo + info["xw"] - x_face, 0.0)
@@ -793,7 +816,8 @@ def verificar_no_trelica(dados, esforcos):
                                     [a1[0] / MM, lado * tg / 2 / MM, a1[1] / MM]]))
     geo = dict(chapas=[_chapa("gusset", cont, tg)], cantoneiras=[], parafusos=par, soldas=sol, recortes=[],
                ponto_trabalho=[0.0, 0.0, 0.0],
-               barras={i: dict(recuo=m[1] / MM, largura_whitmore=m[0]["Lw"] / MM) for i, m in membros.items()})
+               barras={i: dict(recuo=m[1] / MM, largura_whitmore=m[0]["Lw"] / MM) for i, m in membros.items()},
+               pontas=[_ponta_em(m[1], int(i)) for i, m in membros.items()])   # cada uma no referencial da sua barra
     return _resultado(v, av, geo, forcas_interface=forcas_if)
 
 

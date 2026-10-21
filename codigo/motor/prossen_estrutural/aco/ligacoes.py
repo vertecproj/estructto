@@ -615,13 +615,17 @@ def _verificar_antigo(tipo, dados, esforcos):
 # Todo resultado de verificar traz geometria["pontas"] (m, referencial local da ligação). Contexto opcional em
 # dados["contexto_pontas"] = {tipo_no, comprimento (m), desloc, params}: o agrupamento passa o da barra real.
 BARRA_CURTA = "barra curta demais para a ligação"
+APOIO_SEM_PERFIL = "apoio sem perfil: ponta aproximada"
 _NO_APOIO = {"mesa_pilar": "viga_pilar_mesa", "alma_pilar": "viga_pilar_alma", "alma_viga": "viga_viga"}
 _NO_FAMILIA = {"contraventamento": "gusset_contraventamento", "emenda": "emenda"}
+_COM_APOIO = ("viga_pilar_mesa", "viga_pilar_alma", "viga_viga", "gusset_contraventamento")
 
 
 def perfil_pontas(v):
-    """Perfil do catálogo ou dict {d, bf, tw, tf} em mm → props (h, b, tw, tf em m); None se não há perfil."""
+    """Perfil do catálogo, dict {d, bf, tw, tf} em mm ou props já em m ({h, b, ...}) → props; None se não há perfil."""
     if isinstance(v, dict):
+        if "h" in v:
+            return v
         try:
             return dict(h=float(v["d"]) * MM, b=float(v["bf"]) * MM, tw=float(v["tw"]) * MM, tf=float(v["tf"]) * MM)
         except (KeyError, TypeError, ValueError):
@@ -632,14 +636,17 @@ def perfil_pontas(v):
         return None
 
 
-def pontas_de(tipo, dados, ctx=None):
-    """Pontas do tipo de ligação a partir dos perfis em `dados` (ver pontas.pontas_locais)."""
+def pontas_de(tipo, dados, ctx=None, aproximacao=None):
+    """Pontas do tipo de ligação a partir dos perfis em `dados` e do contexto (ver pontas.pontas_locais).
+    ctx: tipo_no, comprimento (livre, m), desloc, params, perfil_apoio (o agrupamento passa o do modelo).
+    aproximacao: lista que recebe APOIO_SEM_PERFIL quando o tipo pede apoio e não há perfil dele."""
     from . import pontas as _p
     d, ctx = dados or {}, ctx or {}
     reg = registro(tipo) or META.get(tipo, {})
     tipo_no = ctx.get("tipo_no") or _NO_APOIO.get(d.get("apoio")) or _NO_FAMILIA.get(reg.get("familia")) or         (reg.get("liga") or ["viga-pilar-mesa"])[0].replace("-", "_")
     barra = perfil_pontas(d.get("perfil_viga") or d.get("perfil_pilar"))
-    apoio = perfil_pontas(d.get("perfil_suporte") or (d.get("perfil_pilar") if d.get("perfil_viga") else None))
+    apoio = perfil_pontas(ctx.get("perfil_apoio") or d.get("perfil_suporte")
+                          or (d.get("perfil_pilar") if d.get("perfil_viga") else None))
     theta = None
     for s in ("", "_1"):   # diagonal: aba ligada/altura (dim_a) × dim_b, em mm; tirante: D
         a = d.get(f"dim_a{s}") or d.get("D_barra")
@@ -647,31 +654,53 @@ def pontas_de(tipo, dados, ctx=None):
             b = d.get(f"dim_b{s}") or a
             barra = dict(h=float(a) * MM, b=float(b) * MM)
             theta = math.radians(float(d.get(f"theta{s}", 45.0)))
+    params = dict(ctx.get("params") or {})
+    if tipo.startswith("chapa_topo") and "folga" not in params:   # chapa encostada: viga cortada a tp do apoio
+        params["folga"] = float(d.get("tp") or reg["entradas"]["tp"]["padrao"]) * MM
+    if d.get("folga") and "folga" not in params:   # folga viga–apoio do detalhe (mm) = folga da ponta
+        params["folga"] = float(d["folga"]) * MM
+    if aproximacao is not None and tipo_no in _COM_APOIO and (barra is None or apoio is None):
+        aproximacao.append(APOIO_SEM_PERFIL)
     return _p.pontas_locais(tipo_no, barra, apoio, comprimento=ctx.get("comprimento", math.inf), theta=theta,
-                            recuo=0.0 if tipo_no == "emenda" else None, desloc=ctx.get("desloc"),
-                            params=ctx.get("params"))
+                            recuo=0.0 if tipo_no == "emenda" else None, desloc=ctx.get("desloc"), params=params)
+
+
+def _recortes_ponta(pts):
+    """Copes sup/inf da ponta → campos recorte_*_h/_c (m) que os verificadores flexíveis já usam."""
+    out = {}
+    for c in (pts[0]["recortes"] if pts else []):
+        if c["tipo"] == "cope" and c["face"] in ("sup", "inf"):
+            out[f"recorte_{c['face']}_h"] = max(out.get(f"recorte_{c['face']}_h", 0.0), c["altura"])
+            out[f"recorte_{c['face']}_c"] = max(out.get(f"recorte_{c['face']}_c", 0.0), c["comprimento"])
+    return out
 
 
 def com_pontas(tipo, verificar):
-    """verificar(dados) → resultado com geometria["pontas"]. Barra curta (BARRA_CURTA) não derruba: o cálculo
-    segue sem o limite de comprimento e o resultado sai com ok = False, `motivo` e aviso (a barra fica no modelo)."""
+    """verificar(dados) → resultado com geometria["pontas"]. Barra curta (pontas.BarraCurta) não derruba: o cálculo
+    segue sem o limite de comprimento e o resultado sai com ok = False, `motivo` e aviso (a barra fica no modelo).
+    Os copes da ponta vão para o cálculo em dados["_recortes_ponta"] (m)."""
+    from .pontas import BarraCurta
+
     def f(dados):
         dados = dict(dados or {})
         ctx = dict(dados.get("contexto_pontas") or {})
-        motivo = None
+        motivo, aprox = None, []
         while True:
             try:
-                pts = pontas_de(tipo, dados, ctx)
+                pts = pontas_de(tipo, dados, ctx, aprox)
+                dados["_recortes_ponta"] = _recortes_ponta(pts)
                 r = verificar(dados)
                 break
-            except ValueError as ex:
-                if str(ex) != BARRA_CURTA or motivo:
+            except BarraCurta:
+                if motivo:
                     raise
-                motivo, ctx["comprimento"] = BARRA_CURTA, math.inf
+                motivo, ctx["comprimento"], aprox = BARRA_CURTA, math.inf, []
                 dados["contexto_pontas"] = ctx
         geo = r.get("geometria") or (geometria_basica(tipo, dados) if tipo in _TIPOS else None) or {}
         geo.setdefault("pontas", pts)
         r["geometria"] = geo
+        if aprox:
+            r.setdefault("avisos", []).append(APOIO_SEM_PERFIL)
         if motivo:
             r["ok"], r["motivo"] = False, motivo
             r.setdefault("avisos", []).append(f"{motivo}: recuo + recorte alcançam o comprimento da barra "

@@ -437,12 +437,49 @@ def _taxa(r):
     return math.inf if t is None or not math.isfinite(t) else float(t)
 
 
-def _contexto_pontas(modelo, tipo_no, mb):
-    """Geometria real da ponta para as pontas da ligação (aco/pontas.py): tipo do nó e comprimento da barra (m)."""
+def _apoio_no(modelo, mb):
+    """Perfil do apoio no nó: a outra barra do nó de maior altura (pilar contínuo, viga suporte); None se não há."""
+    ps = [modelo.secoes[b.secao].props for b in modelo.barras.values()
+          if b.id != mb["barra"] and mb["no"] in (b.ni, b.nj)]
+    return max((p for p in ps if "h" in p and "b" in p), key=lambda p: p["h"], default=None)
+
+
+def _contexto_base(modelo, tipo_no, mb):
     b = modelo.barras[mb["barra"]]
     a, c = modelo.nos[b.ni], modelo.nos[b.nj]
-    tipo = "gusset_contraventamento" if tipo_no == "no_trelica" else tipo_no
-    return dict(tipo_no=tipo, comprimento=math.dist((a.x, a.y, a.z), (c.x, c.y, c.z)))
+    # comprimento livre: entre nós menos os trechos rígidos das pontas (params desloc_i/desloc_j, m)
+    livre = math.dist((a.x, a.y, a.z), (c.x, c.y, c.z)) - float(b.params.get("desloc_i", 0.0)) -         float(b.params.get("desloc_j", 0.0))
+    ctx = dict(tipo_no="gusset_contraventamento" if tipo_no == "no_trelica" else tipo_no, comprimento=livre)
+    ap = _apoio_no(modelo, mb)
+    if ap is not None:
+        ctx["perfil_apoio"] = ap
+    return ctx
+
+
+def _recuo_ponta(modelo, barra, ponta):
+    """Recuo (m) da ponta (barra, ponta) pelo projeto do grupo dela; 0 sem projeto."""
+    for g in _grupos(modelo).values():
+        mb = next((m for m in g["membros"] if m["barra"] == barra and m["ponta"] == ponta), None)
+        proj = g.get("projeto") or {}
+        if mb is None or not proj.get("tipo_ligacao"):
+            continue
+        if proj["tipo_ligacao"] == "placa_base":
+            return float((proj.get("dados") or {}).get("esp") or 0.0)
+        try:
+            pts = _lig.pontas_de(proj["tipo_ligacao"], proj.get("dados"),
+                                 dict(_contexto_base(modelo, g["tipo"], mb), comprimento=math.inf))
+        except ValueError:
+            return 0.0
+        return pts[0]["plano"]["ponto"][0] if pts else 0.0
+    return 0.0
+
+
+def _contexto_pontas(modelo, tipo_no, mb):
+    """Geometria real da ponta (aco/pontas.py): tipo do nó, perfil do apoio e comprimento livre da barra menos o recuo
+    da outra ponta (barra curta quando recuo_i + recuo_j ≥ comprimento livre)."""
+    ctx = _contexto_base(modelo, tipo_no, mb)
+    ctx["comprimento"] -= _recuo_ponta(modelo, mb["barra"], "j" if mb["ponta"] == "i" else "i")
+    return ctx
 
 
 def dimensionar_grupo(modelo, calculo, grupo):

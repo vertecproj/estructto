@@ -993,6 +993,9 @@ def _apoio(d, e, tipo="apoio_cantoneira"):
 def _viga_viga(d, e):
     vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")
     rec = recortes_viga_viga(vg, sp, d["folga"], d["desnivel"])
+    rp = d.get("_recortes_ponta") or {}
+    # G2: Gerdau 3.3 manda onde dá recorte; onde não dá, vale o cope da ponta (pontas.py)
+    rec = {k: v or rp.get(k, 0.0) for k, v in rec.items()}
     dd = dict(d, apoio="alma_viga", **rec)
     if d["conector"] == "chapa_simples":
         res = _chapa_simples(dd, e, "viga_viga_recorte")
@@ -1138,7 +1141,14 @@ def _sug_vv(perfis, esforcos):
 
 def _fn(tipo, f):
     def verificar(dados, esforcos):
-        return f(_ler(tipo, dados), esforcos)
+        d = _ler(tipo, dados)
+        rp = (dados or {}).get("_recortes_ponta") or {}
+        if "recorte_sup_h" in d:   # G2: cope da ponta (pontas.py) entra nas verificações da viga recortada
+            for k, v in rp.items():
+                d[k] = max(d[k], v)
+        else:
+            d["_recortes_ponta"] = rp
+        return f(d, esforcos)
     verificar.__doc__ = f"{tipo}: verificar(dados, esforcos) -> resultado do contrato"
     return verificar
 

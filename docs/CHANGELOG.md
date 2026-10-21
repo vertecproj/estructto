@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G2, rodada 1): cope da ponta entra nas verificações da viga recortada; comprimento livre com desloc e recuo das duas pontas; gusset usa a ponta; perfil do apoio vindo do grupo; `BarraCurta`. Ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#g2-rodada-1).
 - 21/10/2026 — Frente G (G2): todas as ligações preenchem `geometria.pontas`; chapa de topo solda na largura real da ponta; barra curta vira aviso, ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#g2-pontas-nas-ligações).
 - 21/10/2026 — Frente G (G1): contrato de pontas e recortes no motor (`aco/pontas.py`), ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md).
 - 21/10/2026 — A pedido do usuário, manual v3 em [manual/](manual/README.md) e seção do produto no README atualizados para o fluxo só 3D, com aliases do código, vento integrado, ligações/grupos, placa NBR, exportação e limites/ART.
