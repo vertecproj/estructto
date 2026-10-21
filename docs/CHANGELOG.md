@@ -332,3 +332,4 @@ genérico dos tipos do contrato nos grupos. `JanelaLigacao.cs` retirada. Detalhe
 - Auditoria do motor de verificação (13 itens, 7 críticos) e correções: [historico/2026-10-18-AUDITORIA-VERIFICACAO.md](historico/2026-10-18-AUDITORIA-VERIFICACAO.md).
 - Padrão do memorial: [PADRAO-MEMORIAL.md](PADRAO-MEMORIAL.md). Prompt de correção da planilha: [historico/2026-10-18-PROMPT-memorial-excel.md](historico/2026-10-18-PROMPT-memorial-excel.md).
 - Análise do catálogo Walsywa (coeficiente baixo/alto risco, cones sobrepostos): [CHUMBADORES.md](CHUMBADORES.md).
+- C1: limites de projeto das ligações (docs/v3/LIGACOES-LIMITES.md, aco/ligacoes_limites.py)
