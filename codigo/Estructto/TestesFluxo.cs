@@ -33,8 +33,10 @@ namespace NovoFtool
         static string[] fluxosPedidos;
 
         // MainWindow → Capturas.Configurar: a própria janela do StartupUri roda os fluxos quando carrega.
-        internal static void ConfigurarFluxos(MainWindow w, string pasta, string fluxos)
+        static string raizArg, envMotorOriginal;
+        internal static void ConfigurarFluxos(MainWindow w, string pasta, string fluxos, string raiz = null)
         {
+            raizArg = raiz; envMotorOriginal = Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR");
             pastaSaida = Path.GetFullPath(pasta);
             Directory.CreateDirectory(pastaSaida);
             foreach (var f in Directory.GetFiles(pastaSaida, "fluxo-*")) File.Delete(f);
@@ -65,6 +67,31 @@ namespace NovoFtool
         }
 
         static readonly List<Rel> relatos = new List<Rel>();
+        static readonly HashSet<string> motoresVistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // o processo que o Motor.cs de fato abriu (o pacote ao lado do exe e o de %LOCALAPPDATA% ganham de ESTRUCTTO_MOTOR)
+        static string ProcessoMotor()
+        {
+            try
+            {
+                var p = Priv<Process>(typeof(Motor), "proc"); if (p == null || p.HasExited) return null;
+                var si = p.StartInfo;
+                return MotorEmpacotado() ? si.FileName + " (empacotado)" : si.FileName + " " + si.Arguments.Split(' ').Take(2).LastOrDefault() + " em " + si.WorkingDirectory + " (fonte)";
+            }
+            catch { return null; }
+        }
+        static bool MotorEmpacotado() { try { var p = Priv<Process>(typeof(Motor), "proc"); return p != null && !p.HasExited && Path.GetFileName(p.StartInfo.FileName).Equals("estructto-motor.exe", StringComparison.OrdinalIgnoreCase); } catch { return false; } }
+
+        // raiz do repositório (exemplos/, codigo/motor/testes/dados_cype): 3º argumento, ESTRUCTTO_MOTOR ou subindo das pastas
+        static string Raiz()
+        {
+            if (!string.IsNullOrEmpty(raizArg)) return Path.GetFullPath(raizArg);
+            string env = Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR");
+            if (!string.IsNullOrEmpty(env)) return Path.GetFullPath(Path.Combine(env, "..", ".."));
+            foreach (string ini in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
+                for (var d = new DirectoryInfo(ini); d != null; d = d.Parent)
+                    if (Directory.Exists(Path.Combine(d.FullName, "codigo", "motor", "testes", "dados_cype"))) return d.FullName;
+            throw new DirectoryNotFoundException("raiz do repositório não achada: passe-a como 3º argumento de --testes-fluxo");
+        }
         static readonly List<string> caixasVistas = new List<string>();   // texto das Caixa (mensagens modais) que apareceram
         static string respostaCaixa;                                      // botão a clicar na próxima Caixa (null = fechar)
 
@@ -73,15 +100,15 @@ namespace NovoFtool
             var sw = Stopwatch.StartNew();
             VigiarCaixas();
             w.DefinirRealista(false);   // determinístico: a vista analítica, como no programa recém-instalado (a config do usuário volta no fim)
-            {   // como as capturas: motor do worktree se ninguém disse outro
+            {   // como as capturas: motor do worktree se ninguém disse outro (não no fluxo F, que exige o pacote sozinho)
                 string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
+                if (!fluxosPedidos.Contains("F") && Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(Path.Combine(dev, "prossen_estrutural"))) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
             }
-            string motor = File.Exists(Path.Combine(AppContext.BaseDirectory, "motor", "estructto-motor.exe")) ? "empacotado (motor\\estructto-motor.exe)" : "fonte (ESTRUCTTO_MOTOR = " + Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") + ")";
+            string motor = "ESTRUCTTO_MOTOR = " + (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") ?? "(não definida)");
             var fluxos = new (string Id, string Titulo, Action<MainWindow, Rel> Corpo)[]
             {
                 ("A", "galpão do zero", FluxoGalpao), ("B", "edifício de 4 pavimentos", FluxoEdificio), ("C", "arquivos legados e CYPE", FluxoLegado),
-                ("D", "edição", FluxoEdicao), ("E", "robustez", FluxoRobustez),
+                ("D", "edição", FluxoEdicao), ("E", "robustez", FluxoRobustez), ("F", "só o motor empacotado (sem ESTRUCTTO_MOTOR)", FluxoEmpacotado),
             };
             try
             {
@@ -93,6 +120,7 @@ namespace NovoFtool
                     catch (Exception ex) { r.Checar(false, "fluxo interrompido: " + ex.GetType().Name + ": " + ex.Message + " | status: " + w.StatusMsg.Text); r.L(ex.ToString()); }
                     finally
                     {
+                        string pm = ProcessoMotor(); if (pm != null) motoresVistos.Add(pm);
                         respostaCaixa = null;
                         foreach (Window x in Application.Current.Windows.Cast<Window>().Where(x => x != w).ToList()) { try { x.Close(); } catch { } }
                         try { w.FecharEspaciaisSemPerguntar(); EsperarIdle(); } catch (Exception ex) { r.L("fechar: " + ex.Message); }
@@ -103,7 +131,8 @@ namespace NovoFtool
             finally
             {
                 var sb = new StringBuilder();
-                sb.AppendLine("Testes de fluxo do Estructto (--testes-fluxo) · motor " + motor + " · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+                sb.AppendLine("Testes de fluxo do Estructto (--testes-fluxo) · " + motor + " · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+                sb.AppendLine("Processo do motor que rodou: " + (motoresVistos.Count == 0 ? "—" : string.Join(" | ", motoresVistos)));
                 foreach (var r in relatos) sb.AppendLine("Fluxo " + r.Id + ": " + r.Ok + " ok, " + r.Falhas + " falhas, " + r.Conhecidos + " conhecidas [CONHECIDO]");
                 int ok = relatos.Sum(r => r.Ok), fa = relatos.Sum(r => r.Falhas), co = relatos.Sum(r => r.Conhecidos);
                 sb.AppendLine("Total: " + (ok + fa + co) + " conferências · " + ok + " ok · " + fa + " falhas · " + co + " conhecidas · " + (sw.ElapsedMilliseconds / 1000.0).ToString("0", CultureInfo.InvariantCulture) + " s");
@@ -308,6 +337,8 @@ namespace NovoFtool
             r.Exigir(Esperar(Inicio.Acoes.Novo(w, dados)), "novo projeto criado pelo assistente (Inicio.Acoes.Novo)");
             var d = w.EspacialAtivo;
             r.Exigir(d != null && File.Exists(dados.Arquivo), "documento aberto e gravado em " + dados.Arquivo);
+            if (envMotorOriginal != null)
+                r.Conhecido("E2E-08", !MotorEmpacotado(), "ESTRUCTTO_MOTOR definida: o motor da fonte é o que roda (rodou: " + ProcessoMotor() + ")");
             var v = w.vista3D;
             r.Checar(Niveis.Lista(d.Json).Count == 2, "2 níveis (Térreo e 6 m): " + string.Join(", ", Niveis.Lista(d.Json).Select(n => n.Nome + " " + Nf(n.Z))));
             r.Checar(v.PlanoAtual.Normal == 'Z' && Math.Abs(v.PlanoAtual.Valor - H) < 1e-9, "plano de trabalho no nível de 6 m (" + v.PlanoAtual.Nome + ")");
@@ -715,7 +746,7 @@ namespace NovoFtool
         // ================================================================ C) arquivos legados e CYPE
         static void FluxoLegado(MainWindow w, Rel r)
         {
-            string raiz = Path.GetFullPath(Path.Combine(Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") ?? Path.Combine(Environment.CurrentDirectory, "..", "motor"), "..", ".."));
+            string raiz = Raiz();
             r.L("raiz do repositório: " + raiz);
             var arqs = Directory.GetFiles(Path.Combine(raiz, "exemplos"), "guincho-*.estructto").Concat(Directory.GetFiles(Path.Combine(raiz, "exemplos"), "*.ftl")).OrderBy(x => x).ToList();
             r.Checar(arqs.Count >= 2, arqs.Count + " arquivos legados em exemplos/");
@@ -729,7 +760,14 @@ namespace NovoFtool
                 r.Checar(d.Origem == a, nome + ": marcado como convertido (Salvar não sobrescreve o antigo)");
                 if (nome.Contains("placa")) r.Checar(d.Placas.Count > 0 || MainWindow.GruposComPlaca(d).Any(), nome + ": placas de base vieram junto");
                 Esperar(w.CalcularEspacial());
-                r.Checar(w.EspacialAtivo.Calculado, nome + ": F5 (" + w.EspacialAtivo.Resumo() + " · status: " + w.StatusMsg.Text + " · avisos: " + string.Join("; ", w.EspacialAtivo.Avisos.Take(3)) + ")");
+                if (nome.EndsWith(".ftl"))
+                {   // o .ftl não traz apoios nem cargas (Ftl.cs): o usuário tem de ser avisado ao abrir e o F5 tem de explicar
+                    string st = w.StatusMsg.Text;
+                    r.Conhecido("E2E-10", w.EspacialAtivo.Avisos.Any(x => x.Contains("Apoios")) || caixasVistas.Any(x => x.Contains("Apoios")), nome + ": ao abrir, avisa que apoios e cargas do .ftl não são lidos (avisos: " + string.Join("; ", w.EspacialAtivo.Avisos.Take(3)) + ")");
+                    r.Checar(!w.EspacialAtivo.Calculado && st.Contains("mecanismo"), nome + ": sem apoios, o F5 recusa e aponta o mecanismo (" + st + ")");
+                    r.Conhecido("E2E-09", !st.Contains("{\""), nome + ": a mensagem do F5 é legível, sem o JSON cru do motor (" + st + ")");
+                }
+                else r.Checar(w.EspacialAtivo.Calculado, nome + ": F5 (" + w.EspacialAtivo.Resumo() + " · status: " + w.StatusMsg.Text + ")");
                 Foto(w, "C-" + Slug(Path.GetFileNameWithoutExtension(a)), () => w.vista3D.MostrarVista(VistaPadrao.Iso, false));
                 // salvar convertido em .estructto e reabrir
                 string novo = Path.Combine(pastaSaida, "fluxo-C-" + Slug(Path.GetFileNameWithoutExtension(a)) + " (3D).estructto");
@@ -891,6 +929,7 @@ namespace NovoFtool
             v.LimparSelecao();
 
             // MEDIR: distância entre (0; 0; 0) e (6; 0; 3) e entre dois nós da cópia
+            v.MostrarVista(VistaPadrao.Iso, false); v.Enquadrar(false); EsperarIdle();   // em planta topo e pé do pilar coincidem na tela
             Comando(w, "ME");
             r.Checar(v.Ferramenta == Ferramenta3D.Medir, "ME liga o Medir");
             v.Snap.Rastreio = false;
@@ -900,8 +939,11 @@ namespace NovoFtool
             r.Checar(v.Medidor.Res?.ValorTxt == "6,708 m", "MEDIR (0; 0; 0) → (6; 0; 3) = " + v.Medidor.Res?.ValorTxt + " (esperado 6,708 m)");
             Foto(w, "D-05-medir", () => { });
             v.Tecla(Key.Escape);
-            Clique(Q(0, 0, 3)); Clique(Q(6, 5, 3));
-            r.Checar(v.Medidor.Res?.ValorTxt == "7,810 m", "MEDIR (0; 0; 3) → (6; 5; 3) = " + v.Medidor.Res?.ValorTxt + " (esperado 7,810 m)");
+            var alvoM = J(w)["nos"].AsObject().Select(kv => Pos(J(w), kv.Key)).Where(p => Math.Abs(p.Z - 3) < 1e-9 && p.Y > 1).OrderByDescending(p => p.Y).ThenByDescending(p => p.X).First();
+            string espM = ((alvoM - Q(0, 0, 3)).Length).ToString("0.000", CultureInfo.GetCultureInfo("pt-BR")) + " m";
+            Clique(Q(0, 0, 3)); Clique(alvoM);
+            r.L("        medir 2: pontos " + string.Join(" → ", v.Medidor.Itens.Select(x => x.P.ToString())) + " · " + v.Medidor.Res?.Tipo + " " + v.Medidor.Res?.ValorTxt);
+            r.Checar(v.Medidor.Res?.ValorTxt == espM, "MEDIR (0; 0; 3) → " + alvoM + " = " + v.Medidor.Res?.ValorTxt + " (esperado " + espM + ")");
             v.Tecla(Key.Escape); v.Tecla(Key.Escape);
             v.Snap.Rastreio = true;
             r.Checar(v.Ferramenta == Ferramenta3D.Selecionar, "Esc em cascata sai do Medir");
@@ -1050,6 +1092,174 @@ namespace NovoFtool
             r.L("Realista: ligar " + tReal.ToString("0.00", CultureInfo.InvariantCulture) + " s · quadro DX " + (double.IsNaN(quadro) ? "— (sem GPU: render nativo)" : quadro.ToString("0.0", CultureInfo.InvariantCulture) + " ms") + " · captura " + tFoto.ToString("0.00", CultureInfo.InvariantCulture) + " s");
             r.Checar(tReal < 20 && (double.IsNaN(quadro) || quadro < 1000), "Realista no modelo grande: liga em " + tReal.ToString("0.0", CultureInfo.InvariantCulture) + " s, quadro " + (double.IsNaN(quadro) ? "nativo" : quadro.ToString("0", CultureInfo.InvariantCulture) + " ms"));
             w.DefinirRealista(real0);
+        }
+
+        // ================================================================ F) só o motor empacotado
+        // O pacote (motor\estructto-motor.exe, PyInstaller) já saiu sem dados, exemplos e módulos (erro "interno" no .ed3, catálogo
+        // vazio, exemplos e ligações sumidos) e os fluxos A–E, rodando com ESTRUCTTO_MOTOR, não viam. Este fluxo roda sem a variável
+        // e exige o processo empacotado: catálogo, 19 tipos de ligação, exemplos, cada modelo do novo projeto, .ed3 real, desenho,
+        // ligações, placa de base e relatório.
+        static void FluxoEmpacotado(MainWindow w, Rel r)
+        {
+            r.Exigir(envMotorOriginal == null && Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null, "ESTRUCTTO_MOTOR não definida (rode o fluxo F sem ela)");
+            Esperar(Motor.Get("/api/exemplos"));
+            r.L("processo do motor: " + ProcessoMotor());
+            r.Exigir(MotorEmpacotado(), "o motor que respondeu é o empacotado (estructto-motor.exe): " + ProcessoMotor());
+
+            // --- dados do pacote: catálogo, materiais, tipos de ligação (cada um com o próprio exemplo), memorial
+            foreach (string f in new[] { "", "W310", "Ue 200", "U 50x25", "HP250" })
+            {
+                int n = Esperar(Motor.Get("/api/catalogo?filtro=" + Uri.EscapeDataString(f))).AsArray().Count;
+                r.Checar(f == "" ? n >= 190 : n > 0, "catálogo do pacote: " + n + " perfis com \"" + f + "\"" + (f == "" ? " (fonte: 199; W, U, Ue, HP)" : ""));
+            }
+            var tipos = Esperar(Motor.Get("/api/ligacoes/tipos")).AsArray();
+            r.Checar(tipos.Count >= 19, tipos.Count + " tipos de ligação no pacote (fonte: 19)");
+            int okTipos = 0; var errosTipos = new List<string>();
+            foreach (var t in tipos)
+            {
+                string tp = (string)t["tipo"];
+                try
+                {
+                    var ex = t["exemplo"];
+                    var res = Esperar(Motor.Post("/api/ligacoes/verificar", new JsonObject { ["tipo"] = tp, ["dados"] = ex?["dados"]?.DeepClone() ?? new JsonObject(), ["esforcos"] = ex?["esforcos"]?.DeepClone() ?? new JsonObject() }));
+                    if (res?["taxa"] != null) okTipos++; else errosTipos.Add(tp + ": sem taxa");
+                }
+                catch (Exception e) { errosTipos.Add(tp + ": " + e.Message); }
+            }
+            r.Checar(okTipos == tipos.Count, "cada tipo de ligação verifica o próprio exemplo no pacote (" + okTipos + " de " + tipos.Count + ")" + (errosTipos.Count > 0 ? ": " + string.Join(" | ", errosTipos.Take(4)) : ""));
+            try
+            {
+                var t0 = tipos.First(x => (string)x["tipo"] == "chapa_topo_estendida");
+                var mem = Esperar(Motor.Post("/api/ligacoes/memorial", new JsonObject { ["tipo"] = "chapa_topo_estendida", ["dados"] = t0["exemplo"]["dados"].DeepClone(), ["esforcos"] = t0["exemplo"]["esforcos"].DeepClone() }));
+                r.Checar(mem != null && mem.ToJsonString().Length > 500, "memorial da chapa de topo pelo pacote (" + (mem?.ToJsonString().Length ?? 0) + " caracteres)");
+            }
+            catch (Exception e) { r.Checar(false, "memorial da chapa de topo pelo pacote: " + e.Message); }
+
+            // --- novo projeto com cada modelo da galeria (passo 3 com a grade padrão do modelo)
+            string pasta = Path.Combine(pastaSaida, "fluxo-F-projetos");
+            if (Directory.Exists(pasta)) Directory.Delete(pasta, true);
+            foreach (var mi in ModeloInicial.Todos)
+            {
+                w.FecharEspaciaisSemPerguntar(); EsperarIdle();
+                var dados = new NovoProjetoDados { Modelo = mi, Grade = mi.GradePadrao(), Nome = "F " + mi.Chave, Pasta = Path.Combine(pasta, mi.Chave), Cliente = "Cliente E2E", Engenheiro = "Eng. E2E",
+                                                   Empresa = "PROSSEN E2E", Material = mi.Material, Pilar = mi.Pilar, Viga = mi.Viga, Normas = new List<string> { "NBR 8800" } };
+                bool criou; try { criou = Esperar(Inicio.Acoes.Novo(w, dados)); } catch (Exception e) { r.Checar(false, "novo projeto \"" + mi.Titulo + "\": " + e.Message); continue; }
+                var d = w.EspacialAtivo;
+                if (!r.Checar(criou && d != null, "novo projeto \"" + mi.Titulo + "\" criado (" + w.StatusMsg.Text + ")")) continue;
+                if (mi.Gerador == null) { r.Checar(NBarras(w) == 0 && w.vista3D.EixosX.Length > 0, "\"" + mi.Titulo + "\": só grade (" + w.vista3D.EixosX.Length + " eixos X)"); continue; }
+                r.Checar(NBarras(w) > 0, "\"" + mi.Titulo + "\": " + NBarras(w) + " barras geradas pelo pacote");
+                Esperar(w.CalcularEspacial());
+                r.Checar(w.EspacialAtivo.Calculado && w.EspacialAtivo.PiorPorBarra.Count == NBarras(w), "\"" + mi.Titulo + "\": F5 no pacote (" + w.EspacialAtivo.Resumo() + ")");
+                Foto(w, "F-novo-" + mi.Chave, () => w.vista3D.MostrarVista(VistaPadrao.Iso, false));
+            }
+
+            // --- desenhar barras (linha de comando, coordenadas digitadas) num modelo em branco e calcular
+            w.FecharEspaciaisSemPerguntar(); EsperarIdle();
+            Esperar(w.NovoDocumento(null, "Desenho F"));
+            r.Exigir(w.EspacialAtivo != null, "modelo em branco");
+            Esperar(w.UsarSecao3D(PerfilCatalogo("W250", "W250x32.7", "W250x25.3")));
+            Comando(w, "L"); Comando(w, "0,0,0"); Comando(w, "@0,0,4"); AteCond(() => NBarras(w) == 1, 20, w);
+            Comando(w, "@6,0,0"); AteCond(() => NBarras(w) == 2, 20, w);
+            Comando(w, "@0,0,-4"); AteCond(() => NBarras(w) == 3, 20, w);
+            w.vista3D.Tecla(Key.Escape); w.vista3D.Tecla(Key.Escape);
+            var m = J(w);
+            r.Exigir(NBarras(w) == 3 && NNos(w) == 4, "pórtico desenhado pela linha de comando (" + NBarras(w) + " barras, " + NNos(w) + " nós)");
+            foreach (var pe in new[] { NoEm(m, 0, 0, 0), NoEm(m, 6, 0, 0) })
+                Esperar(w.EditarEspacial("no", pe, new JsonObject { ["apoio"] = new JsonArray(true, true, true, true, true, true) }));
+            string viga = BarraEntre(J(w), NoEm(J(w), 0, 0, 4), NoEm(J(w), 6, 0, 4));
+            Esperar(w.OperarEspacial(dd => dd.ComJanela(async () =>
+            {
+                await Motor.Post("/api/modelo/caso", new JsonObject { ["nome"] = "G1", ["tipo"] = "G" });
+                await Motor.Chamar("PATCH", "/api/config", new JsonObject { ["peso_proprio"] = "G1" });
+            }), "teste: caso G1"));
+            Esperar(w.OperarEspacial(dd => dd.Lote(new JsonArray(new JsonObject { ["tipo"] = "carga_distribuida", ["dados"] = new JsonObject { ["caso"] = "G1", ["barra"] = viga, ["q"] = new JsonArray(0.0, 0.0, -10.0) } })), "teste: carga"));
+            Esperar(w.CalcularEspacial());
+            r.Checar(w.EspacialAtivo.Calculado, "pórtico desenhado: F5 no pacote (" + w.StatusMsg.Text + ")");
+            var reac = Esperar(w.EspacialAtivo.Consultar("/api/resultados?alvo=reacoes"));
+            r.L("reações: " + reac?.ToJsonString().Substring(0, Math.Min(300, reac?.ToJsonString().Length ?? 0)));
+            Foto(w, "F-desenho", () => w.vista3D.MostrarVista(VistaPadrao.Iso, false));
+
+            // --- .ed3 real do CYPE com resultados gravados: importar, F5 e comparar
+            string ed3 = Path.Combine(Raiz(), "codigo", "motor", "testes", "dados_cype", "PIPERACK TESTE 4.ed3");
+            w.FecharEspaciaisSemPerguntar(); EsperarIdle();
+            Esperar(w.AbrirArquivo(ed3));
+            var dc = w.EspacialAtivo;
+            if (r.Checar(dc != null && dc.Json["barras"].AsObject().Count > 0, "PIPERACK TESTE 4.ed3 importado pelo pacote (" + (dc == null ? w.StatusMsg.Text : dc.Json["barras"].AsObject().Count + " barras") + ")"))
+            {
+                Esperar(w.CalcularEspacial());
+                r.Checar(w.EspacialAtivo.Calculado, "PIPERACK TESTE 4.ed3: F5 (" + w.StatusMsg.Text + ")");
+                try
+                {
+                    var cmp = Esperar(Motor.Post("/api/comparar_cype", new JsonObject { ["nome"] = Path.GetFileName(ed3), ["conteudo_base64"] = Convert.ToBase64String(File.ReadAllBytes(ed3)) }));
+                    var lin = cmp["tabela"]?.AsArray().Where(x => (string)x["grandeza"] == "desloc_max" && x["cype"] != null && x["nosso"] != null).ToList() ?? new List<JsonNode>();
+                    double dif = lin.Select(x => Math.Abs((double)x["cype"] - (double)x["nosso"]) / Math.Max(1e-12, Math.Abs((double)x["cype"]))).DefaultIfEmpty(double.NaN).Max() * 100;
+                    r.Checar(lin.Count > 0 && dif <= 5, "comparar CYPE pelo pacote: deslocamento máximo a " + Nf(dif, 2) + " % do CYPE");
+                }
+                catch (Exception e) { r.Checar(false, "comparar CYPE pelo pacote: " + e.Message); }
+            }
+
+            // --- exemplos do motor: abrir e calcular cada um
+            var exemplos = Esperar(Motor.Get("/api/exemplos")).AsArray().Select(x => x is JsonObject o ? (string)o["nome"] : (string)x).ToList();
+            r.Checar(exemplos.Count >= 4, exemplos.Count + " exemplos no pacote: " + string.Join(", ", exemplos));
+            foreach (string ex in exemplos)
+            {
+                w.FecharEspaciaisSemPerguntar(); EsperarIdle();
+                try { Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo(ex), "exemplo")); } catch (Exception e) { r.Checar(false, "exemplo " + ex + ": " + e.Message); continue; }
+                if (!r.Checar(w.EspacialAtivo != null && NBarras(w) > 0, "exemplo " + ex + " abriu (" + (w.EspacialAtivo == null ? w.StatusMsg.Text : NBarras(w) + " barras") + ")")) continue;
+                Esperar(w.CalcularEspacial());
+                r.Checar(w.EspacialAtivo.Calculado, "exemplo " + ex + ": F5 (" + w.EspacialAtivo.Resumo() + ")");
+            }
+
+            // --- ligações no galpão de exemplo: grupos, dimensionar todos, projetista do joelho, placa de base, relatório
+            w.FecharEspaciaisSemPerguntar(); EsperarIdle();
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo("galpao_aco"), "exemplo"));
+            Esperar(w.CalcularEspacial());
+            var dg = w.EspacialAtivo;
+            r.Exigir(dg != null && dg.Calculado, "galpao_aco calculado");
+            var ger = w.NovoGerenciadorLigacoes(dg); ger.Width = 1320; ger.Height = 780;
+            PrepararDialogoForaDaTela(ger); ger.Show(); EsperarIdle();
+            Esperar(ger.Carregar(true)); EsperarIdle();
+            var grupos = Esperar2(dg.Ligacoes("GET", "/api/ligacoes/grupos")).AsArray();
+            r.Checar(grupos.Count > 0, grupos.Count + " grupos de ligações no galpão de exemplo: " + string.Join(", ", grupos.Select(x => (string)x["tipo"]).Distinct()));
+            FotoDialogo(ger, "F-ligacoes-grupos");
+            var errosDim = new List<string>(); int okDim = 0;
+            foreach (var g in grupos)
+            {
+                string gid = (string)g["id"];
+                try { var dim = Esperar2(dg.Ligacoes("POST", "/api/ligacoes/grupos/" + gid + "/dimensionar")); if (dim?["governante"] != null || dim?["membros"] != null) okDim++; else errosDim.Add(gid + ": resposta sem governante/membros"); }
+                catch (Exception e) { errosDim.Add(gid + " " + (string)g["tipo"] + ": " + ComandosAnalise.MensagemMotor(e) + " " + e.Message.Substring(0, Math.Min(160, e.Message.Length))); }
+            }
+            r.Checar(errosDim.Count == 0, "dimensionar cada grupo pelo pacote (" + okDim + " de " + grupos.Count + ")" + (errosDim.Count > 0 ? ": " + string.Join(" | ", errosDim.Take(4)) : ""));
+            var gViga = grupos.FirstOrDefault(x => ((string)x["tipo"]).StartsWith("viga_pilar"));
+            if (r.Checar(gViga != null, "grupo viga–pilar no galpão de exemplo (" + (string)gViga?["id"] + ")"))
+            {
+                var t2 = w.CriarProjetistaGrupo(dg, gViga, ger); Esperar(t2);
+                var jg = t2.Result;
+                if (r.Checar(jg != null, "projetista do grupo abriu"))
+                {
+                    jg.Width = 1460; jg.Height = 880; PrepararDialogoForaDaTela(jg); jg.Show(); EsperarIdle();
+                    Esperar(jg.Escolher("chapa_topo_estendida")); EsperarIdle();
+                    if (jg.Resultado != null && !UiAnalise.Bool(jg.Resultado, "ok")) { Esperar(jg.Otimizar()); EsperarIdle(); }
+                    r.Checar(jg.Resultado?["taxa"] != null, "chapa de topo estendida calculada pelo pacote (taxa " + jg.Resultado?["taxa"] + ", " + (string)jg.Resultado?["criterio"] + ")");
+                    FotoDialogo(jg, "F-projetista");
+                    jg.Close();
+                }
+            }
+            var gBase = grupos.FirstOrDefault(x => (string)x["tipo"] == "base");
+            if (r.Checar(gBase != null, "grupo de bases no galpão de exemplo"))
+            {
+                var dimB = Esperar2(dg.Ligacoes("POST", "/api/ligacoes/grupos/" + (string)gBase["id"] + "/dimensionar"));
+                var jpl = w.PlacaDoGrupo(dg, gBase, dimB, out No nb);
+                if (r.Checar(jpl != null, "placa de base do grupo abriu"))
+                {
+                    PrepararDialogoForaDaTela(jpl); jpl.Show(); EsperarIdle();
+                    jpl.DimensionarTudo(); EsperarIdle();
+                    r.Checar(jpl.ResultadoMotor.Valido, "placa de base pelo pacote (taxa " + Nf(jpl.ResultadoMotor.Taxa) + ", " + jpl.Mensagem + ")");
+                    jpl.Close();
+                }
+            }
+            ger.Close(); EsperarIdle();
+            RelatorioPdf(w, r, "F-relatorio");
         }
     }
 }
