@@ -387,6 +387,7 @@ namespace NovoFtool
             }
 
             var mallChao = new MalhaDx(); Chao(c, mallChao);
+            Vista.SSAOSamplingRadius = (float)Math.Max(0.1, Math.Min(1.5, c.Raio * 0.012));   // V2: o raio do SSAO acompanha o tamanho da cena (0,3 m fixo borra plataformas de 30 m)
 
             faixas.Clear();
             Aplicar(mAco, mallAco); Aplicar(mConcreto, mallConc); Aplicar(mSel, mallSel); Aplicar(mParafusos, mallParaf); Aplicar(mSoldas, mallSolda); Aplicar(mChao, mallChao); Aplicar(mProp, mallProp); Aplicar(mPropDet, mallPropDet);
@@ -446,7 +447,7 @@ namespace NovoFtool
         void Chao(Cena3D c, MalhaDx m)
         {
             Rect3D cx = c.Caixa; double raio = c.Raio, z = c.Z0;
-            double xm = cx.X + cx.SizeX / 2, ym = cx.Y + cx.SizeY / 2, R = Math.Max(cx.SizeX, cx.SizeY) / 2 + raio * 1.3;
+            double xm = cx.X + cx.SizeX / 2, ym = cx.Y + cx.SizeY / 2, R = Math.Max(cx.SizeX, cx.SizeY) / 2 + raio * 0.9;   // V2: só modelo + margem (o ShadowMap3D cobre a cena inteira, chão incluso)
             Color cc = TemaPlant.CorChao3D, cf = TemaPlant.BgCanvas, cg = TemaPlant.CorGrade3D;   // a borda chega à cor do canvas (Expo) e some
             Color cfA = cf;
             Color4 CorR(double r, Color centro) { double t = Suave((r / R - 0.2) / 0.8); return Cor(Mistura(centro, cfA, t), Expo); }

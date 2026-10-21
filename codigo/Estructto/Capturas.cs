@@ -165,6 +165,19 @@ namespace NovoFtool
                 }
             }
             w.FecharEspaciaisSemPerguntar();
+            // regressão: obra real do usuário (plataforma elevada ~30 m), importada do CYPE; testes-aceite/ é gitignored (pula se faltar)
+            string ed3 = null;
+            for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null && ed3 == null; d = d.Parent) { string c = Path.Combine(d.FullName, "testes-aceite", "PLATAFORMA.ed3"); if (File.Exists(c)) ed3 = c; }
+            if (ed3 == null) ed3 = new[] { "C:/dev/wt/v5-vista/testes-aceite/PLATAFORMA.ed3" }.FirstOrDefault(File.Exists);
+            if (ed3 == null) return;
+            Esperar(w.AbrirTarefa(ed3)); EsperarIdle();
+            w.DefinirEstilo(EstiloVisual.Realista);
+            foreach (var (az, el, vn) in new[] { (-60.0, 38.0, "alto"), (-30.0, 10.0, "rasante") })
+            {
+                w.vista3D.Enquadrar(az, el, false); EsperarIdle();
+                CapturarPrincipal(w, "59-sombra-plataforma-" + vn);
+            }
+            w.FecharEspaciaisSemPerguntar();
         }
 
         // V1: seta e nó escolhido atrás de uma viga (pórtico 2x2 real). Sem "sempre visíveis" a viga os esconde (Realista DX e
