@@ -1,7 +1,7 @@
-"""Limites de projeto das ligações: faixa (min, max, passos) de cada parâmetro geométrico (docs/v3/LIGACOES-LIMITES.md).
+"""Limites de projeto das ligações: faixa dict(min, max, passos, unidade) de cada parâmetro geométrico (docs/v3/LIGACOES-LIMITES.md).
 
-Base do otimizador limitado (Frente C): ele só busca dentro destas faixas. Valores na unidade do parâmetro
-(mm nos tipos do catálogo; m na placa de base). `max`/`passos` None = sem limite / contínuo.
+Base do otimizador limitado (Frente C): ele só busca dentro destas faixas. Cada entrada é
+dict(min, max, passos, unidade) e vale na unidade do próprio parâmetro (mm no catálogo, m na placa de base). `max`/`passos` None = sem limite / contínuo.
 """
 import re
 
@@ -37,60 +37,75 @@ def _dim(p):
     return p if "h" in p and "b" in p else None
 
 
-def _menor(vals):
-    vals = [v for v in vals if v is not None]
-    return min(vals) if vals else None
+def _borda_min_mm(d_mm):
+    return L.distancia_min_borda(d_mm * L.MM) / L.MM
 
 
-def _borda_min(d):
-    return L.distancia_min_borda(d * L.MM) / L.MM
+def _f(mn, mx=None, passos=None, un="mm"):
+    return dict(min=mn, max=mx, passos=passos, unidade=un)
 
 
-def _placa_base(membros, dados):
-    ps = [_dim(m.get("perfil")) for m in membros]
-    ps = [p for p in ps if p]
+def _placa_base(ap, dados):
+    p = _dim(ap)   # na placa de base o pilar é a barra
     d = float(dados.get("diametro_mm") or 16)
-    bmin = max(_borda_min(d), 1.0) / 1000   # NBR 8800 Tab. 14: centro do furo à borda
+    bmin = _borda_min_mm(d) / 1000   # m
     borda = float(dados.get("borda") or bmin)
-    out = {"esp": (T_COMERCIAL[0] / 1000, T_COMERCIAL[-1] / 1000, tuple(t / 1000 for t in T_COMERCIAL)),
-           "diametro_mm": (D_CHUMBADOR[0], D_CHUMBADOR[-1], D_CHUMBADOR),
-           "borda": (bmin, None, None)}
-    if ps:   # placa ≥ pilar + 2·borda em cada direção
-        out["H"] = (max(p["h"] for p in ps) + 2 * borda, None, None)
-        out["B"] = (max(p["b"] for p in ps) + 2 * borda, None, None)
+    out = {"esp": _f(T_COMERCIAL[0] / 1000, T_COMERCIAL[-1] / 1000, tuple(t / 1000 for t in T_COMERCIAL), "m"),
+           "diametro_mm": _f(D_CHUMBADOR[0], D_CHUMBADOR[-1], D_CHUMBADOR),
+           "borda": _f(bmin, None, None, "m")}
+    if p:   # placa ≥ pilar + 2·borda em cada direção
+        out["H"] = _f(p["h"] + 2 * borda, None, None, "m")
+        out["B"] = _f(p["b"] + 2 * borda, None, None, "m")
     return out
 
 
-def limites(tipo, membros, dados=None):
-    """{parâmetro: (min, max, passos)} do tipo. `membros`: lista de {perfil: barra, perfil_apoio: apoio} (nome do
-    catálogo ou dict h, b, tw, tf em m). `dados` (opcional): valores atuais, p.ex. `d` para espaçamento e borda."""
-    membros, dados = membros or [], dados or {}
+def _gusset_minimo(dados):
+    """Lh, Lv automáticos (mm) = mínimo geométrico de _auto_gusset, lido do resultado com Lh = Lv = 0."""
+    from . import ligacoes_contraventamento as C
+    try:
+        g = C.verificar("gusset_contraventamento", dict(dados, Lh=0.0, Lv=0.0), {"N": 100.0})["geometria"]
+        return g["Lh"], g["Lv"]
+    except Exception:   # dados incompletos: piso do cálculo automático (0,05 m)
+        return 50.0, 50.0
+
+
+def limites(tipo, membro, dados=None):
+    """{parâmetro: dict(min, max, passos, unidade)} de UMA ligação. `membro`: {perfil: barra, perfil_apoio: apoio,
+    comp_viga, comp_pilar (m, livres)} com perfil = nome do catálogo ou dict h, b, tw, tf em m. `dados`
+    (opcional): valores atuais (`d`, `t` da chapa mais fina em mm, `apoio`, `gusset_na_alma`, `borda` da placa)."""
+    membro, dados = membro or {}, dados or {}
     if tipo == "placa_base":
-        return _placa_base(membros, dados)
+        return _placa_base(membro.get("perfil"), dados)
     reg = L.tipos_contrato().get(tipo)
     if reg is None:
         return {}
-    ap = [_dim(m.get("perfil_apoio")) for m in membros]
-    br = [_dim(m.get("perfil")) for m in membros]
-    bf_ap = _menor(p["b"] * 1000 for p in ap if p)
-    bf_br = _menor(p["b"] * 1000 for p in br if p)
-    livre = _menor((p["h"] - 2 * p["tf"]) * 1000 - 2 * FOLGA for p in ap if p and "tf" in p)   # entre mesas
+    ap, br = _dim(membro.get("perfil_apoio")), _dim(membro.get("perfil"))
+    bf_ap = ap["b"] * 1000 if ap else None
+    bf_br = br["b"] * 1000 if br else None
     d_atual = float(next((dados[k] for k in _DIAMETRO if dados.get(k)), 19.05))
+    t = float(dados.get("t") or 0)
+    s_max = min(24 * t, S_MAX) if t > 0 else S_MAX     # 6.3.12
+    e_max = min(12 * t, BORDA_MAX) if t > 0 else BORDA_MAX
     out = {}
     for k in reg["entradas"]:
         b = re.sub(r"_\d$", "", k)   # nó de treliça: e1_2 → e1
         if b in _ESPESSURA:
-            out[k] = (T_COMERCIAL[0], T_COMERCIAL[-1], T_COMERCIAL)
+            out[k] = _f(T_COMERCIAL[0], T_COMERCIAL[-1], T_COMERCIAL)
         elif b in _DIAMETRO:
-            out[k] = (D_PARAFUSO[0], D_PARAFUSO[-1], D_PARAFUSO)
+            out[k] = _f(D_PARAFUSO[0], D_PARAFUSO[-1], D_PARAFUSO)
         elif b in _ESPACAMENTO:
-            out[k] = (3 * d_atual, S_MAX, None)   # 6.3.9: ≥ 3d (nunca < 2,7d)
+            out[k] = _f(3 * d_atual, s_max)   # 6.3.9: ≥ 3d (nunca < 2,7d)
         elif b in _BORDA:
-            out[k] = (_borda_min(d_atual), BORDA_MAX, None)   # Tab. 14 (serra/tesoura), 6.3.12
+            out[k] = _f(_borda_min_mm(d_atual), e_max)   # Tab. 14 (serra/tesoura), 6.3.12
         elif k in _ATE_BF_APOIO.get(tipo, ()) and bf_ap:
-            out[k] = (2 * _borda_min(d_atual), bf_ap, None)
+            out[k] = _f(2 * _borda_min_mm(d_atual), bf_ap)
         elif b in _ATE_BF_BARRA and bf_br:
-            out[k] = (2 * _borda_min(d_atual), bf_br, None)
-        elif tipo in ("gusset_contraventamento",) and k in ("Lh", "Lv") and livre:
-            out[k] = (0.0, max(livre, 0.0), None)   # 0 = automático; gusset cabe entre as mesas do apoio
+            out[k] = _f(2 * _borda_min_mm(d_atual), bf_br)
+        elif tipo == "gusset_contraventamento" and k in ("Lh", "Lv"):
+            mn = _gusset_minimo(dados)[0 if k == "Lh" else 1]
+            comp = membro.get("comp_viga" if k == "Lh" else "comp_pilar")   # ao longo da viga / do pilar
+            mx = comp * 1000 if comp else 3000.0
+            if dados.get("gusset_na_alma") and ap:   # soldado na alma entre as mesas do apoio
+                mx = min(mx, (ap["h"] - 2 * ap["tf"]) * 1000 - 2 * FOLGA)
+            out[k] = _f(mn, max(mx, mn))
     return out
