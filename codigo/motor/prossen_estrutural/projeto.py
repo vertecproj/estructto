@@ -2566,7 +2566,12 @@ def geometrias_ligacoes(itens):
                 sug = sugerir_ligacao(tipo, perfis, dict(N=50, V=50, M=30))
                 dados.update({k: v for k, v in (sug or {}).items() if v is not None})
             r = verificar_ligacao(tipo, dados, nulos)
-            saida.append(dict(geometria=r.get("geometria"), motivo=r.get("motivo"), avisos=r.get("avisos") or []))
+            mot = r.get("motivo")
+            cab = next((v for v in r.get("verificacoes") or [] if v.get("nome", "").startswith("geometria: comprimento disponível")), None)
+            if cab and not cab["ok"]:   # G6 r3: não cabe no x_max → o WPF trata como barra curta, com o motivo
+                mot = (f"barra curta demais para a ligação: precisa {cab['solicitante']:.0f} mm, "
+                       f"disponível {cab['resistente']:.0f} mm")
+            saida.append(dict(geometria=r.get("geometria"), motivo=mot, avisos=r.get("avisos") or []))
         except Exception as e:   # noqa: BLE001 - o lote continua; o WPF cai na proposta local
             saida.append(dict(erro=str(e)))
     return saida

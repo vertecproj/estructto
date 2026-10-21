@@ -811,10 +811,12 @@ namespace NovoFtool
                 var la = new Ligacao3D(); la.Chapas.Add(new Ligacao3D.Chapa { Origem = new Vector3D(20, 0, -50), U = new Vector3D(1, 0, 0), Normal = new Vector3D(0, -1, 0), Espessura = 6,
                                                                               Contorno = new[] { new Point(0, 0), new Point(120, 0), new Point(120, 100), new Point(0, 100) } });
                 la.Parafusos.Add(new Ligacao3D.Parafuso { Origem = new Vector3D(40, 0, 0) }); la.Parafusos.Add(new Ligacao3D.Parafuso { Origem = new Vector3D(90, 0, 0) });
-                Ligacao3D.AparaEm(la, 50.5);
+                bool cortou = Ligacao3D.AparaEm(la, 50.5);
+                afirmar(!cortou && la.Parafusos.Count == 2 && la.Chapas[0].Contorno.Max(p => p.X) == 120, "AparaEm: parafuso além do meio → não corta nem apaga (pendente)");
+                la.Parafusos.RemoveAt(1); la.Parafusos[0].D = 16;
+                cortou = Ligacao3D.AparaEm(la, 70);
                 var cx = la.Chapas[0].Contorno.Select(p => 20 + p.X).ToList();
-                afirmar(Math.Abs(cx.Max() - 50.5) < 1e-9 && Math.Abs(cx.Min() - 20) < 1e-9 && la.Chapas[0].Contorno.Length == 4 && la.Parafusos.Count == 1,
-                        "AparaEm: chapa para no meio da barra curta (x ≤ 50,5 mm), parafuso além dele sai");
+                afirmar(cortou && Math.Abs(cx.Max() - 70) < 1e-9 && la.Parafusos.Count == 1, "AparaEm: só sobra de chapa sem parafuso é cortada (x ≤ 70 mm, borda 30 ≥ 1,5·d)");
             }
 
             var m = new MalhaDx();

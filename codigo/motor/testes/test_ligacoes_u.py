@@ -335,3 +335,29 @@ class TestChapaFaceContrato(unittest.TestCase):
         self.assertAlmostEqual(rg[0]["comprimento"] * 1000, geral["comprimento"], 6)
         xmax = max(p[0] for p in g["chapas"][0]["contorno"])           # a chapa inteira que entra no tubo cabe no rasgo
         self.assertGreaterEqual(rg[0]["comprimento"] * 1000, xmax - g["recuo"] + 2.0 - 1e-6)
+
+    def test_x_max_comprimento_disponivel(self):
+        """G6 r3: `x_max` (mm) = comprimento da barra disponível para a ligação desta ponta. A chapa/cantoneira/parafuso
+        mais longe do nó tem de caber; senão a verificação "geometria: comprimento disponível na barra" reprova e o lote
+        devolve o motivo "barra curta demais para a ligação" (o WPF mostra e não desenha peça cortada)."""
+        pf = dict(perfil_viga="W310x38.7", perfil_suporte="W360x51", apoio="alma_viga")
+        d = dict(pf); d.update({k: v for k, v in P.sugerir_ligacao("chapa_simples_alma", pf, {"V": 50}).items() if v is not None})
+        r = P.verificar_ligacao("chapa_simples_alma", dict(d, x_max=1000), {"V": 50})
+        v = next(x for x in r["verificacoes"] if x["nome"].startswith("geometria: comprimento disponível"))
+        self.assertTrue(v["ok"] and r["ok"])
+        alcance = v["solicitante"]
+        r2 = P.verificar_ligacao("chapa_simples_alma", dict(d, x_max=alcance - 10), {"V": 50})
+        self.assertFalse(r2["ok"])
+        lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=dict(pf, x_max=alcance - 10))])[0]
+        self.assertIn("barra curta demais para a ligação", lote["motivo"])
+        # as bordas da Tab. 14 continuam valendo no que passa (nenhuma verificação de borda reprova)
+        self.assertTrue(all(x["ok"] for x in r["verificacoes"] if "borda" in x["nome"]))
+
+    def test_x_max_no_gusset(self):
+        """G6 r3: gusset também respeita `x_max` (chapa e parafusos ao longo da diagonal)."""
+        pf = dict(secao="U", dim_a=50, t_perfil=5, dim_b=38, tf_perfil=7, apoio="pilar", theta=45, perfil_pilar="UPN 120")
+        g = P.geometrias_ligacoes([dict(tipo="gusset_contraventamento", dados={}, perfis=dict(pf, x_max=5000))])[0]
+        alc = max(p[0] for p in g["geometria"]["chapas"][0]["contorno"])
+        self.assertNotIn("barra curta", g.get("motivo") or "")
+        g2 = P.geometrias_ligacoes([dict(tipo="gusset_contraventamento", dados={}, perfis=dict(pf, x_max=alc / 3))])[0]
+        self.assertIn("barra curta demais para a ligação", g2["motivo"])

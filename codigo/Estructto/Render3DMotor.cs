@@ -183,6 +183,8 @@ namespace NovoFtool
             return r;
             async Task Passo()
             {
+            var pontasComLig = new Dictionary<(string, string), string>();   // (barra, nó) com ligação → barra de apoio
+            foreach (var m in ga.SelectMany(g => g["membros"]?.AsArray() ?? new JsonArray())) pontasComLig[((string)m["barra"], (string)m["no"])] = (string)m["apoio"];
             int nProp = 0;
             foreach (JsonNode g in ga)
             {
@@ -233,11 +235,20 @@ namespace NovoFtool
                             // G6: apoio que não é I: ec (pilar) / eb (viga) = até onde o perfil chega na direção da diagonal
                             string ap = (string)(perfis ?? dados)["apoio"];
                             if (ap != "base" && XFace(apoioId, b, emINo, true) is double ef) (perfis ?? dados)[ap == "viga" ? "eb" : "ec"] = ef;
+                            if (pontasComLig.ContainsKey((bid, emINo ? (string)bj[bid]?["nj"] : (string)bj[bid]?["ni"])))   // G6 r3: as duas pontas com ligação
+                                (perfis ?? dados)["x_max"] = Math.Round(Eixo(b).Length / 2 * 1000, 1);
                         }
                         else
                         {
                             if (sec != null) dados["perfil_viga"] = PerfilMotor(sec);
                             if (tl != null && Flexiveis.Contains(tl) && XFace(apoioId, b, emINo, false, no) is double xf) dados["x_face"] = xf;
+                            // G6 r3: a outra ponta também tem ligação → esta só pode usar até o meio da barra (o motor projeta dentro ou recusa)
+                            string noOutro = emINo ? (string)bj[bid]?["nj"] : (string)bj[bid]?["ni"];
+                            if (tl != null && Flexiveis.Contains(tl) && pontasComLig.TryGetValue((bid, noOutro), out string apOutro))
+                            {   // metade do vão livre entre as faces dos apoios, contada do nó
+                                double L = Eixo(b).Length * 1000, f1 = (dados["x_face"] as JsonValue)?.GetValue<double>() ?? 0, f2 = XFace(apOutro, b, !emINo, false, noOutro) ?? 0;
+                                dados["x_max"] = Math.Round(f1 + Math.Max(0, L - f1 - f2) / 2, 1);
+                            }
                             if (sup != null) { dados["perfil_pilar"] = PerfilMotor(sup); dados["perfil_suporte"] = PerfilMotor(sup); }
                             if (tl == "emenda_pilar" && sec != null) dados["perfil_pilar"] = PerfilMotor(sec);
                             if (ehU) dados["abertura_y"] = emINo ? -1 : 1;

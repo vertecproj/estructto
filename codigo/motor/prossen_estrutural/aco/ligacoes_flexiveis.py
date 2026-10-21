@@ -174,6 +174,7 @@ _BASE = {
     "terca_ou_travessa": _e("Terça/travessa de fechamento", "-", False),   # isenta do mínimo de 6.1.5.2
     "abertura_y": _e("Abertura do U (lado y)", "-", 1, [1, -1]),   # G5; ignorado em perfil I
     "x_face": _e("Face do apoio (do nó)", "mm", 0, mn=0, mx=2000),   # G6; 0 = pelo perfil (apoio U: alma fora do eixo)
+    "x_max": _e("Comprimento livre na barra", "mm", 0, mn=0, mx=100000),   # G6 r3; 0 = sem limite
 }
 _PARAF = {
     "d": _e("Diâmetro do parafuso", "mm", 19.05, mn=10, mx=40),
@@ -1315,6 +1316,19 @@ def _com_solda_direta(tipo, sug):
 
 # ---------------------------------------------------------------- registro (contrato §Registro)
 
+def _alcance(g):
+    """Maior x local (mm, ao longo da barra a partir do nó) de chapas, cantoneiras e parafusos da geometria."""
+    xs = []
+    for c in g.get("chapas") or []:
+        o, u, n = c["origem"], c["u"], c["normal"]
+        v = c.get("v") or _cruz(n, u)
+        xs += [o[0] + u[0] * a + v[0] * b for a, b in c["contorno"]]
+    for c in g.get("cantoneiras") or []:
+        xs += [c["origem"][0], c["origem"][0] + c["eixo"][0] * c["comprimento"]]
+    xs += [p["origem"][0] for p in g.get("parafusos") or []]
+    return max(xs, default=0.0)
+
+
 def _fn(tipo, f):
     def verificar(dados, esforcos):
         d = _ler(tipo, dados)
@@ -1324,7 +1338,16 @@ def _fn(tipo, f):
                 d[k] = max(d[k], v)
         else:
             d["_recortes_ponta"] = rp
-        return f(d, esforcos)
+        r = f(d, esforcos)
+        if d.get("x_max", 0) > 0 and isinstance(r.get("geometria"), dict):   # G6 r3: a ligação cabe na barra?
+            alc = _alcance(r["geometria"])
+            ok = alc <= d["x_max"] / MM + 1e-6
+            r["verificacoes"].append(dict(nome="geometria: comprimento disponível na barra", item="detalhamento",
+                                          solicitante=round(alc, 1), resistente=round(d["x_max"] / MM, 1), unidade="mm",
+                                          taxa=alc / (d["x_max"] / MM), ok=ok))
+            r["ok"] = r["ok"] and ok
+            r["taxa"] = max(r["taxa"], alc / (d["x_max"] / MM))
+        return r
     verificar.__doc__ = f"{tipo}: verificar(dados, esforcos) -> resultado do contrato"
     return verificar
 

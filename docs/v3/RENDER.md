@@ -190,6 +190,11 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
 - Rodada 2: barra curta só pelos recuos (B1110 12,5 mm, B1452 15 mm). Nas outras, as chapas de cada ponta param no meio da
   barra (`Ligacao3D.AparaEm`; parafusos além saem): B1091 (101 mm) e B1125 (97,5 mm) entram no teste, 0 pares. Close-up do gusset
   num nó sem viga–pilar (galpão: N2-1-1); caixão/tubo só em pilar vertical (galpão: nenhum).
+- Rodada 3: quando a outra ponta também tem ligação, o WPF manda `x_max` (mm do nó = face + metade do vão livre entre as faces;
+  gusset: L/2). O motor (flexíveis e gusset) verifica "geometria: comprimento disponível na barra" e o pré-dimensionamento
+  escolhe o que cabe. Se nada cabe, o lote devolve o motivo "barra curta demais para a ligação: precisa X, disponível Y" e o
+  Realista mostra a barra como curta. `AparaEm` virou só guarda: corta sobra de chapa sem parafuso; se cortaria parafuso
+  ou borda (1,5·d), não corta e a ligação fica pendente (barra curta). Desenho = cálculo.
 - Resultado (21/10/2026, r1): PLATAFORMA 0 pares; fora do teste só barras curtas (nós a < 200 mm): B1091 (101 mm), B1110 (12,5),
   B1125 (97,5), B1452 (15). Galpão 0 pares, nada fora. Lote ≤ 500 itens por POST (`MAX_LOTE_LIGACOES`).
 

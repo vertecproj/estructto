@@ -397,8 +397,9 @@ namespace NovoFtool
                 cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
                 // G6 r2: chapas das duas pontas que se alcançariam (barra curta, ex.: B1091 de 101 mm) param no meio da barra
                 double meio = (d - a).Length / 2 * 1000;
-                foreach (bool ei in new[] { true, false })   // no-op em barra comum (a chapa não chega ao meio)
-                    if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lq) && lq.Pendente == null) Ligacao3D.AparaEm(lq, meio);
+                foreach (bool ei in new[] { true, false })   // no-op em barra comum; o motor já projeta dentro do x_max (G6 r3)
+                    if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lq) && lq.Pendente == null && !Ligacao3D.AparaEm(lq, meio))
+                        lq.Excluir = true;   // cortaria parafuso/borda: pendente → barra curta demais para a ligação (gerenciador)
                 bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6
                              || new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir);
                 if (curta) lock (Curtas) Curtas.Add(Exportador.IdBarra(b));

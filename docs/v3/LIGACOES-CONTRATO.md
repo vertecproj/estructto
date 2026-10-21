@@ -67,3 +67,5 @@ Cada tipo tem pelo menos 1 exemplo resolvido de livro (`docs/v3/ligacoes/*.md`, 
 - Flexíveis: `x_face` (mm, opcional) = distância do nó à face de contato do apoio; manda na chapa e no plano de corte (sem cope).
   Gusset: `ec`/`eb` informados não são trocados pela meia altura do perfil; `perfil_pilar`/`perfil_viga` aceitam `{d, bf, tw, tf}`.
 - `GET /api/ligacoes/grupos`: cada membro traz `apoio` (id da barra de apoio, quando há; não vai para o arquivo).
+- `x_max` (mm, opcional; flexíveis e gusset): alcance máximo da ligação ao longo da barra (chapas, cantoneiras, parafusos);
+  verificação "geometria: comprimento disponível na barra". No lote, se reprova: motivo "barra curta demais para a ligação: …".

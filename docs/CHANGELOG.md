@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G6 r3): `x_max` — o motor projeta a ligação dentro do comprimento disponível ou recusa com motivo; o Realista não apaga mais parafusos (AparaEm só guarda). Interferência 0/0. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente G (G6 r2): chapas param no meio de barra curta (B1091, B1125 voltam ao teste); fora do teste só B1110 e B1452; close-ups do gusset e do caixão/tubo nos nós certos. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente G (G6 r1): rasgo do gusset cortado no tubo (Realista e DWG/STEP); canto de UPN e viga U na mesa pelo motor; sem exclusões além de barra curta; setas de carga fora do Realista sem "Cargas sempre visíveis"; lote ≤ 500. PLATAFORMA e galpão 0 pares. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente G (G6): Realista pede as ligações ao motor num lote (`POST /api/ligacoes/geometrias`, sem o teto de 40; PLATAFORMA 1,4 s); gusset orientado pelo apoio real; U pelo centroide; chapa do contrato com origem na face; `x_face`/`ec` para apoio que não é I; gusset do telhado no beiral apoiado na tesoura; motivo da solda direta cita o que governa e o filete contorna a ponta da alma; teste de interferência com 3 raios. Interferência: PLATAFORMA 0 (5 pares com motivo), galpão 0. Ver [v3/RENDER.md](v3/RENDER.md).

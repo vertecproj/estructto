@@ -187,6 +187,7 @@ _GUSSET = {
     "L_flambagem": _e("Comprimento de Thornton", "mm", 0.0, min=0.0, max=2000.0, ajuda="0 = calculado"),
     "b_interface": _e("Filete da interface", "mm", 6.0, min=2.0, max=30.0),
     "fator_ductilidade": _e("Fator de ductilidade", "-", 1.25, min=1.0, max=1.4),
+    "x_max": _e("Comprimento livre na barra", "mm", 0.0, min=0.0, max=100000.0, ajuda="G6: 0 = sem limite"),
 }
 
 _NO = {
@@ -729,6 +730,9 @@ def verificar_gusset(dados, esforcos):
                ponto_trabalho=[0.0, 0.0, 0.0], recuo=recuo / MM, Lh=Lh / MM, Lv=Lv / MM,
                largura_whitmore=info["Lw"] / MM, pontas=[_ponta_em(recuo)])
     geo.update(_orientacao(ap, dirv, perp))
+    if d.get("x_max"):   # G6 r3: chapa e parafusos cabem no trecho da diagonal disponível para esta ponta?
+        alc = max([p[0] for p in geo["chapas"][0]["contorno"]] + [p["origem"][0] for p in par])
+        v.append(_vf("geometria: comprimento disponível na barra", alc, d["x_max"], "mm", "detalhamento"))
     for r in geo["recortes"]:   # G6: o rasgo também vai na ponta do tubo (m), para o Realista e a exportação abrirem o tubo
         if r["tipo"] == "rasgo":
             geo["pontas"][0]["recortes"].append(dict(tipo="rasgo", largura=r["parametros"]["largura"] * MM,
