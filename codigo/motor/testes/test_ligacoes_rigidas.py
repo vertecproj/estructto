@@ -310,5 +310,44 @@ class TestTiposEGeometria(unittest.TestCase):
                 self.assertTrue(r["ok"], (d, [v["nome"] for v in r["verificacoes"] if not v["ok"]]))
 
 
+class TestMesaPilarEnrijecida(unittest.TestCase):
+    """EN 1993-1-8 tab. 6.4 / fig. 6.11: linha de parafusos junto ao enrijecedor de continuidade, com bs > bc.
+
+    Chapa de topo ajustada W250x25.3 (H = 257, tf = 8,4) em W310x38.7 (bf = 165, tw = 5,8, tf = 9,7), d = 3/4",
+    pf = 30, g = max(50; 2,7·19,05 + 6,1) = 57,4 mm, M = 40 kN·m, V = 30 kN.
+    Linha interna: z = 128,5 − 8,4 − 30 = 90,1 mm; eixo da mesa (enrijecedor) 124,3 mm.
+    m = bc = (57,4 − 5,8)/2 = 25,8 mm; e = (165 − 57,4)/2 = 53,8 mm; m + e = 79,6 mm.
+    t_enr = 9,5: m2 = 124,3 − 90,1 − 4,75 = 29,4 mm > bc (o modelo antigo ignorava o enrijecedor).
+    λ1 = 25,8/79,6 = 0,325; λ2 = 29,4/79,6 = 0,370. Pela aproximação de Jaspart, α = 6,60: o maior α com
+    λ1,lim = 1,25/(α − 2,75) > λ1; λ2,lim = 1,08, então λ2 fica dentro da curva.
+    leff = min(2π·25,8 = 162,4; 6,60·25,8 = 170,4) = 162,4 mm por parafuso. Sem enrijecedor: p = 3,5·bc = 90,5.
+    T_chapa da mesa ∝ p·(1 + δ), com δ = 1 − dh/p e dh = 20,6:
+      sem:  90,5·(1 + 0,772) = 160,4 → 72,46 kN (valor do motor);
+      com: 162,4·(1 + 0,873) = 304,2 → 72,46·304,2/160,4 = 137,4 kN.
+    A taxa da flexão da mesa do pilar sai de 93,3/72,5 = 1,29 para 93,3/137,4 = 0,68."""
+    D = dict(perfil_viga="W250x25.3", perfil_pilar="W310x38.7")
+
+    def mesa(self, **k):
+        r = lg.verificar_ligacao("chapa_topo_ajustada", dict(self.D, **k), {"M": 40, "V": 30})
+        return next(v for v in r["verificacoes"] if "flexão da mesa do pilar" in v["nome"]), r
+
+    def test_alfa_e_leff(self):
+        self.assertLess(rel(lr.alfa_en(0.325, 0.370), 6.60), 0.005)
+        self.assertLess(rel(lr.leff_junto_enrijecedor(0.0258, 0.0294, 0.0538), 2 * math.pi * 0.0258), 1e-9)
+        self.assertEqual(lr.alfa_en(0.05, 0.05), 8.0)
+        self.assertIsNone(lr.alfa_en(0.9, 0.9))   # enrijecedor longe: não conta
+
+    def test_sem_enrijecedor_igual(self):
+        v, _ = self.mesa()
+        self.assertLess(rel(v["resistente"], 72.46), 0.001)
+        self.assertGreater(v["taxa"], 1.28)
+
+    def test_com_enrijecedor_bs_maior_que_bc(self):
+        v, r = self.mesa(t_enr_pilar=9.5)
+        self.assertLess(rel(v["resistente"], 137.4), 0.005)
+        self.assertLess(v["taxa"], 0.69)
+        self.assertTrue(r["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()

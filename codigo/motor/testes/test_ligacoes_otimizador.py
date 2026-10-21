@@ -59,6 +59,23 @@ class TestOtimizadorLimitado(unittest.TestCase):
         self.assertIsNone(r["motivo"])
         self.assertEqual(r["params"], {k: v[1] for k, v in r["mudancas"].items()})
 
+    def test_w250_em_w310_m40_resolve_com_enrijecedor_do_pilar(self):
+        # sem enrijecedor a mesa do pilar governa (1,29); o último degrau põe enrijecedor ≥ tf da viga (8,4 → 9,5+)
+        d = dict(perfil_viga="W250x25.3", perfil_pilar="W310x38.7")
+        r = L.otimizar("chapa_topo_ajustada", d, {"M": 40, "V": 30})
+        self.assertTrue(r["ok"], r["motivo"])
+        self.assertIn(r["dados"]["t_enr_pilar"], T_COMERCIAL)
+        self.assertGreaterEqual(r["dados"]["t_enr_pilar"], 8.4)
+        self.assertEqual(fora_dos_limites("chapa_topo_ajustada", r), [])
+
+    def test_motivo_cita_verificacao_que_governa_os_dados_originais(self):
+        d = dict(perfil_viga="W250x25.3", perfil_pilar="W310x38.7")
+        r = L.otimizar("chapa_topo_ajustada", d, {"M": 400, "V": 30})
+        self.assertFalse(r["ok"])
+        pior = max(r["resultado"]["verificacoes"], key=lambda x: x["taxa"])
+        self.assertEqual(r["verificacao_limitante"], pior["nome"])
+        self.assertIn(f"{pior['taxa']:.2f}", r["motivo"])
+
     def test_mais_parafusos_compacta_o_espacamento_em_vez_de_reprovar_a_chapa(self):
         # causa raiz do "erro pela medida das chapas": n + 1 com s fixo passava da alma (taxa inf) e era descartado
         r = L.otimizar("cantoneira_dupla_alma", PFEIL_9_10_2, {"V": 210.0})

@@ -91,6 +91,10 @@ def limites(tipo, membro, dados=None):
         b = re.sub(r"_\d$", "", k)   # nó de treliça: e1_2 → e1
         if b in _ESPESSURA:
             out[k] = _f(T_COMERCIAL[0], T_COMERCIAL[-1], T_COMERCIAL)
+        elif k in ("t_enr_pilar", "t_reforco"):   # 0 = sem; enrijecedor ≥ tf da viga (otimizador, C2)
+            tmin = br["tf"] * 1000 if (br and k == "t_enr_pilar") else 0.0
+            ps = tuple(x for x in T_COMERCIAL if x >= tmin - 1e-9)
+            out[k] = _f(ps[0], ps[-1], ps)
         elif b in _DIAMETRO:
             out[k] = _f(D_PARAFUSO[0], D_PARAFUSO[-1], D_PARAFUSO)
         elif b in _ESPACAMENTO:

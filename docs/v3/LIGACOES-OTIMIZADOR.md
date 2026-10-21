@@ -25,6 +25,10 @@ Código: `codigo/motor/prossen_estrutural/aco/ligacoes.py` (`otimizar`, `_botoes
   não move ficam presos à faixa do candidato: o mínimo 3d sobe com o diâmetro.
 - `geometria impossível` (ValueError) só descarta o candidato.
 - Depois de passar, desce cada item enquanto continuar passando (mínimo local de material).
+- **Último degrau, com pilar (tipos com `t_enr_pilar`):** se ainda não passa e o usuário não pôs enrijecedor, refaz a
+  busca com `t_enr_pilar` 12,5 → 16 + `t_reforco` 9,5 → 19 + reforço 16 (como `ligacoes_rigidas._buscar`).
+  A espessura é sempre comercial e ≥ tf da viga (faixa em `limites`). A largura do enrijecedor é a do cálculo,
+  (bf − tw)/2 − 10 mm do pilar, então nunca passa de (bf − tw)/2.
 
 ## Resultado
 
@@ -32,7 +36,8 @@ Código: `codigo/motor/prossen_estrutural/aco/ligacoes.py` (`otimizar`, `_botoes
 continuam: o C# (`JanelaLigacaoProjeto.Otimizar`) não mudou.
 
 - `ok = True`: `params` = campos alterados com o valor novo, e `motivo = None`.
-- `ok = False`: **nada muda**. `dados` = os dados de entrada, `mudancas = {}`, `passos = []` e `resultado` = verificação
+- `ok = False`: **nada muda**. `motivo` e `verificacao_limitante` citam a verificação que governa os dados
+  ORIGINAIS, com a taxa deles (a mesma de `resultado`), e a taxa a que a busca chegou. `dados` = os dados de entrada, `mudancas = {}`, `passos = []` e `resultado` = verificação
   dos dados originais (`None` se os dados são inválidos). `motivo` cita a verificação limitante, a taxa a que se chegou
   e o limite atingido: item no topo da faixa ou "próximo degrau viola disposição construtiva ou geometria".
 - Faixa vazia (ex.: apoio mais estreito que a chapa mínima, `bp` mínimo > `bf`): para antes de buscar, e o motivo
@@ -49,5 +54,23 @@ continuam: o C# (`JanelaLigacaoProjeto.Otimizar`) não mudou.
 ## Limitações
 
 - Busca gulosa (um ou dois degraus por vez), não global.
-- Reforços do pilar (`t_enr_pilar`, `t_reforco`) não entram na busca: mesa do pilar reprovada sai como "sem solução".
 - Na chapa de topo estendida, o enrijecedor da chapa (`t_enrijecedor`, padrão vazio) pode ser criado com 4,75 mm.
+
+## Mesa do pilar enrijecida (ligacoes_rigidas.py, rodada 1)
+
+Com a linha de parafusos junto ao enrijecedor de continuidade, o modelo antigo só contava o enrijecedor quando
+bs < bc. Para bs ≥ bc, o enrijecedor não aumentava nada, e o aço não tinha resistência associada. Agora há também o
+padrão de charneiras da EN 1993-1-8:
+
+- tab. 6.4, "linha adjacente a enrijecedor", linha isolada: leff = min(2π·m; α·m) por parafuso;
+- m = bc (furo → face da alma), m2 = bs (furo → face do enrijecedor), e = (bf − g)/2;
+- λ1 = m/(m + e), λ2 = m2/(m + e);
+- α da fig. 6.11, pela aproximação analítica de Jaspart: λ1,lim = 1,25/(α − 2,75); λ2,lim = α·λ1,lim/2;
+  λ2 = λ2,lim + (1 − λ2,lim)·((λ1,lim − λ1)/λ1,lim)^(α/√2). Toma-se o maior α em [4,45; 8] cuja curva contém o ponto;
+  sem curva, o enrijecedor não conta.
+- leff entra como largura tributária p do T-stub (Mp = p·t²/4·fy/γa1, mesma convenção por parafuso). Vale o maior
+  entre os padrões sem e com enrijecedor.
+- ponytail: m e m2 são geométricos, sem descontar 0,8r nem 0,8a√2.
+
+Exemplo do teste: W250x25.3 em W310x38.7, M = 40 kN·m, t_enr = 9,5 mm. α = 6,60 e leff = 2πm = 162 mm.
+A mesa do pilar resiste 72,5 kN sem enrijecedor e 137,4 kN com ele: a taxa vai de 1,29 para 0,68.

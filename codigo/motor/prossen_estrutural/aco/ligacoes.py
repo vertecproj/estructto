@@ -941,12 +941,16 @@ def _botoes_limitados(tipo, campos, lim, cur):
     return out
 
 
-def otimizar(tipo, dados, esforcos, max_passos=60, membro=None):
+_ENR_PILAR = (dict(t_enr_pilar=12.5), dict(t_enr_pilar=16.0, t_reforco=9.5), dict(t_enr_pilar=19.0, t_reforco=16.0))
+
+
+def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False):
     """Busca LIMITADA (docs/v3/LIGACOES-OTIMIZADOR.md): só valores dentro de ligacoes_limites.limites; degraus na
     ordem de material espessura → diâmetro → nº de parafusos → chapa maior (empate da pior taxa dentro de 2 %).
     Disposição construtiva é restrição: candidato que reprova uma que o atual não reprova tenta os espaçamentos no
     mínimo (3d) e, se continuar reprovando, é descartado; "geometria impossível" (ValueError) também descarta.
-    Depois de passar, desce cada item enquanto continuar passando. Sem solução: dados como vieram, ok = False e
+    Depois de passar, desce cada item enquanto continuar passando. Ainda sem solução e com pilar: tenta os
+    enrijecedores do pilar (_ENR_PILAR, t ≥ tf da viga). Sem solução: dados como vieram, ok = False e
     `motivo` com a verificação limitante e o limite atingido.
     `membro` (opcional): perfis para os limites; padrão = perfis de `dados`.
     → {ok, params, motivo, verificacao_limitante, limite_atingido, dados, resultado, passos, mudancas}"""
@@ -1063,14 +1067,29 @@ def otimizar(tipo, dados, esforcos, max_passos=60, membro=None):
         cur = cand
         proibidas &= _construtivas(r)   # restrição atendida não volta a ser violada
     if not r["ok"]:
-        ruins = [x for x in r.get("verificacoes", []) if x.get("taxa", 0.0) > 1 + 1e-9] or r.get("verificacoes", [])
+        if not _sem_pilar and any(c["nome"] == "t_enr_pilar" for c in campos) and cur.get("perfil_pilar") \
+                and not original.get("t_enr_pilar"):
+            # último degrau: enrijecedores de continuidade (+ reforço da alma), como em ligacoes_rigidas._buscar
+            from .ligacoes_limites import T_COMERCIAL, _dim
+            vg = _dim(cur.get("perfil_viga"))
+            tfb = vg["tf"] / MM if vg else 0.0   # t do enrijecedor ≥ tf da viga (comercial)
+            for pp in _ENR_PILAR:
+                pp = dict(pp, t_enr_pilar=next((t for t in T_COMERCIAL if t >= max(pp["t_enr_pilar"], tfb) - 1e-9), 50.0))
+                r2 = otimizar(tipo, {**original, **pp}, esforcos, max_passos, membro, _sem_pilar=True)
+                if r2["ok"]:
+                    r2["mudancas"] = {k: [original.get(k), v] for k, v in r2["dados"].items() if original.get(k) != v}
+                    r2["params"] = {k: v[1] for k, v in r2["mudancas"].items()}
+                    return r2
+        r_or = rodar(original) or r   # motivo pela verificação que governa os dados ORIGINAIS (= resultado devolvido)
+        ruins = [x for x in r_or.get("verificacoes", []) if x.get("taxa", 0.0) > 1 + 1e-9] or r_or.get("verificacoes", [])
         pior = max(ruins, key=lambda x: x["taxa"] if math.isfinite(x["taxa"]) else 1e9, default=None)
         topo = [f"{n} = {_fmt(cur.get(n))} {(lim(cur).get(n) or {}).get('unidade', '')}".rstrip() for n, _p, lista in botoes
                 if _num(cur.get(n)) and float(cur[n]) >= lista[-1] - 1e-9]
         topo += [f"{n}: próximo degrau viola disposição construtiva ou geometria" for n in dict.fromkeys(barrados)
                  if not any(t.startswith(n + " =") for t in topo)]
         nome = pior["nome"] if pior else "?"
-        return falha(f"sem solução dentro dos limites: '{nome}' fica com taxa {_nota(r):.2f}"
+        return falha(f"sem solução dentro dos limites: '{nome}' governa com taxa {_nota(r_or):.2f} nos dados atuais; "
+                     f"a busca chegou a {_nota(r):.2f}"
                      + (f"; no limite: {', '.join(topo)}" if topo else "; nenhum degrau dentro dos limites reduz a taxa")
                      + " — nada alterado", nome, topo)
     mudou = True   # descida: menos material enquanto passa (do item mais caro para o mais barato)

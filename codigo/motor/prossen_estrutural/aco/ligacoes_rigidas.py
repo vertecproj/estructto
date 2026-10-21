@@ -73,6 +73,37 @@ def tstub(T, p, t, b, a, d, dh, fy, FtRd):
                 T_chapa=T_chapa, T_parafuso=T_paraf, Tcap=min(T_chapa, T_paraf))
 
 
+def alfa_en(l1, l2):
+    """α da EN 1993-1-8 fig. 6.11 (linha junto a enrijecedor), pela aproximação analítica de Jaspart (1991) das curvas:
+    λ1,lim = 1,25/(α − 2,75); λ2,lim = α·λ1,lim/2; λ2 = λ2,lim + (1 − λ2,lim)·((λ1,lim − λ1)/λ1,lim)^(α/√2) para
+    λ1 < λ1,lim. Devolve o maior α em [4,45; 8] cuja curva contém o ponto (λ1, λ2); None se nem a de 4,45 contém
+    (enrijecedor longe demais: não conta)."""
+    def dentro(a):
+        l1l = 1.25 / (a - 2.75)
+        if l1 >= l1l:
+            return False
+        l2l = a * l1l / 2
+        return l2 <= l2l + (1 - l2l) * ((l1l - l1) / l1l) ** (a / math.sqrt(2)) + 1e-12
+    if dentro(8.0):
+        return 8.0
+    if not dentro(4.45):
+        return None
+    lo, hi = 4.45, 8.0
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if dentro(mid) else (lo, mid)
+    return lo
+
+
+def leff_junto_enrijecedor(m, m2, e):
+    """Comprimento efetivo por parafuso da mesa do pilar com a linha junto a um enrijecedor (EN 1993-1-8 tab. 6.4,
+    "linha adjacente a enrijecedor"): leff = min(2π·m, α·m) (padrões circular e não circular, linha isolada).
+    m: furo → face da alma; m2: furo → face do enrijecedor; e: furo → borda livre da mesa (m). None se α não se aplica.
+    ponytail: m e m2 geométricos, sem descontar 0,8·r / 0,8·a·√2 (a favor de λ menor, α maior; leff limitado a 2πm)."""
+    a = alfa_en(m / (m + e), m2 / (m + e))
+    return None if a is None else min(2 * math.pi * m, a * m)
+
+
 def momento_efetivo(M, N, braco):
     """Momento nos parafusos tracionados com tração axial: M + N⁺·braço/2 (N dividida entre as mesas,
     CBCA 6.4 caso 2: Nd = 2·(0,2·Mmax)/(H − tf) equivale a 0,2·Mmax)."""
@@ -559,6 +590,10 @@ def _chapa_topo(d, e, estendida_padrao):
                 bs_ = abs(abs(L["z"]) - (H / 2 - tf / 2)) - tsc / 2
                 if db / 2 < bs_ < bc:
                     ops.append(((pil["b"] - pil["tw"]) / 2, bs_, 1.25 * bs_))
+                if bs_ > db / 2 and bc > db / 2:   # canto alma + enrijecedor (EN 1993-1-8 tab. 6.4, fig. 6.11)
+                    leff = leff_junto_enrijecedor(bc, bs_, (pil["b"] - g) / 2)
+                    if leff:
+                        ops.append((leff, bc, (pil["b"] - g) / 2))
             cands = [(tstub(0.0, o[0], pil["tf"], o[1], o[2], db, dh, fyc, FtRd), o) for o in ops]
             L["pilar"], L["pc"] = max(cands, key=lambda c: c[0]["Tcap"])
             L["Tcap"] = min(L["Tcap"], L["pilar"]["Tcap"])
