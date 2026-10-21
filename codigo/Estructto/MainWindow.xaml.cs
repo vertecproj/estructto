@@ -295,14 +295,14 @@ namespace NovoFtool
                 Grupo("Gerar",
                     Botao("3d", "Gerar 3D", () => AbrirGerador3D(), "Edifício, galpão ou pórtico gerado pelo motor (abre numa aba nova)."),
                     Botao("assist", "Assistente", () => AbrirAssistente(null), "Viga contínua, pórtico, treliça ou galpão a partir de poucas medidas, com prévia; o resultado abre em 3D.", null, true),
-                    Botao("cype", "Importar CYPE", () => ComandosAnalise.AbrirCype(this), "Importa uma obra do CYPE 3D (.ed3) ou compara os resultados com os do CYPE.", null, true)),
-                Grupo("Grade",
-                    Botao("eixo", "Grade", () => ExecutarComando("GRADE"), "Grade estrutural como no Plant 3D: eixos em X (1, 2, 3…), filas em Y (A, B, C…) e níveis (0,@6,@6). Os cruzamentos atraem o cursor; cada nível vira um plano de trabalho (PgUp/PgDn).", "GR")));
-            abaModelo.Groups.Add(GrupoPlanos());   // níveis e planos de trabalho (PlanosTrabalho.cs)
+                    Botao("cype", "Importar CYPE", () => ComandosAnalise.AbrirCype(this), "Importa uma obra do CYPE 3D (.ed3) ou compara os resultados com os do CYPE.", null, true)));
+            var planos = GrupoPlanos();   // níveis e planos de trabalho (PlanosTrabalho.cs) + a grade estrutural (GR)
+            planos.Items.Insert(0, Botao("eixo", "Grade", () => ExecutarComando("GRADE"), "Grade estrutural como no Plant 3D: eixos em X (1, 2, 3…), filas em Y (A, B, C…) e níveis (0,@6,@6). Os cruzamentos atraem o cursor; cada nível vira um plano de trabalho (PgUp/PgDn).", "GR", true));
+            abaModelo.Groups.Add(planos);
             MontarDesenho3D();                       // Barras (Selecionar, Barra, Pilar, Medir) e Configurações (Desenho3D.cs)
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Chapas",
-                Botao("cargadist", "Laje (carga em área)", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Carga em área: painel Propriedades (sem escolha) › Carga em área. O motor não tem elemento de placa: a laje distribui p (kN/m²) nas vigas.", true); },
-                      "Laje/chapa de piso como carga em área nas vigas de um nível (o motor não tem elemento de placa).")));
+                Botao("cargadist", "Laje", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Carga em área: painel Propriedades (sem escolha) › Carga em área. O motor não tem elemento de placa: a laje distribui p (kN/m²) nas vigas.", true); },
+                      "Laje/chapa de piso como carga em área nas vigas de um nível (o motor não tem elemento de placa).", null, true)));
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Modificar",
                 Botao("mover", "Mover", () => ExecutarComando("MOVER"), "Ponto base e segundo ponto (atração, ORTO, @dx,dy,dz). Escolha antes ou depois (Enter termina a escolha).", "M", true),
                 Botao("copiar", "Copiar", () => ExecutarComando("COPIAR"), "Ponto base e destinos, várias cópias até Enter.", "CO", true),
@@ -314,10 +314,10 @@ namespace NovoFtool
                 Botao("estender", "Estender", () => ExecutarComando("ESTENDER"), "Barra limite e depois as barras: a ponta perto do clique vai até o limite.", "EX", true),
                 Botao("unir", "Unir nós", () => ExecutarComando("UNIR"), "Funde nós coincidentes (painel).", "J", true),
                 Botao("apagar", "Apagar", () => ExecutarComando("APAGAR"), "Apaga a seleção (nós levam as barras ligadas).", "E / Del", true),
-                Botao("pincel", "Copiar propriedades", () => ExecutarComando("COPIARPROPRIEDADES"), "Perfil, material e giro de uma barra para outras.", "MA", true),
-                Botao("propriedades", "Propriedades em lote", () => AbrirEdicaoEsp("propriedades"), "Seção, material, giro e apoio de toda a seleção (painel).", "PR", true)));
+                Botao("pincel", "Copiar props.", () => ExecutarComando("COPIARPROPRIEDADES"), "Perfil, material e giro de uma barra para outras.", "MA", true),
+                Botao("propriedades", "Em lote", () => AbrirEdicaoEsp("propriedades"), "Seção, material, giro e apoio de toda a seleção (painel).", "PR", true)));
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Apoios",
-                Botao("engaste", "Engaste", () => ExecutarComando("ENGASTE"), "Trava os 6 graus de liberdade dos nós escolhidos."),
+                Botao("engaste", "Engaste", () => ExecutarComando("ENGASTE"), "Trava os 6 graus de liberdade dos nós escolhidos.", null, true),
                 Botao("rotula", "Articulado", () => ExecutarComando("ROTULA"), "Trava as translações dos nós escolhidos (giros livres).", null, true),
                 Botao("livre", "Livre", () => ExecutarComando("LIVRE"), "Tira o apoio dos nós escolhidos.", null, true),
                 Botao("rotulab", "Rótulas na barra", () => ExecutarComando("ROTULAR"), "Liga/desliga a rótula nas duas pontas das barras escolhidas.", "RB", true)));

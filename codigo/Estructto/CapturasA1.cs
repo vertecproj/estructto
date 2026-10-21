@@ -19,7 +19,7 @@ namespace NovoFtool
         {
             var log = new StringBuilder();
             void Ok(bool c, string m) { log.AppendLine((c ? "ok    " : "FALHA ") + m); if (!c) { File.WriteAllText(Path.Combine(pastaSaida, "54-a1.txt"), log.ToString(), new UTF8Encoding(false)); throw new InvalidOperationException("54-a1: " + m); } }
-            void Ate(Func<bool> cond, string oque) { var lim = DateTime.Now.AddSeconds(60); while (!cond() && DateTime.Now < lim) { EsperarIdle(); System.Threading.Thread.Sleep(20); } Ok(cond(), oque); }
+            void Ate(Func<bool> cond, string oque) { var lim = DateTime.Now.AddSeconds(60); while ((!cond() || w.OcupadoEsp) && DateTime.Now < lim) { EsperarIdle(); System.Threading.Thread.Sleep(20); } Ok(cond(), oque); }
             int Nb() => w.EspacialAtivo.Json["barras"].AsObject().Count;
             int Nn() => w.EspacialAtivo.Json["nos"].AsObject().Count;
 
@@ -36,7 +36,7 @@ namespace NovoFtool
             w.ExecutarComando("L");
             Ok(v.Ferramenta == Ferramenta3D.Barra, "L liga a Barra");
             var c = new Point(v.ActualWidth / 2, v.ActualHeight / 2);
-            v.SimularOrbita(c, c + new Vector(170, -70));
+            v.SimularOrbita(c, c + new Vector(170, 60));
             Ok(v.Ferramenta == Ferramenta3D.Barra && v.NomeVista == "Órbita", "Shift + arrastar orbitou e a Barra continua ligada");
             CapturarPrincipal(w, "54-a1-orbita");
 
@@ -49,8 +49,10 @@ namespace NovoFtool
             w.ExecutarComando("@2,0,0");
             Ate(() => Nb() == 4, "@2,0,0: barra criada pela linha de comando (4 barras)");
             string nova = d.Json["barras"].AsObject().Last().Key;
-            var pb = v.PontasBarra(nova);
-            Ok(pb != null && Math.Abs((pb.Value.B - pb.Value.A).Length - 2) < 1e-6, "barra " + nova + " com 2,000 m");
+            Point3D X(string id) { var n = w.EspacialAtivo.Json["nos"][id]; return new Point3D((double)n["x"], (double)n["y"], (double)n["z"]); }
+            Point3D pa = X((string)d.Json["barras"][nova]["ni"]), pz = X((string)d.Json["barras"][nova]["nj"]);
+            Ate(() => v.PontasBarra(nova) != null, "a vista mostra a barra nova");
+            Ok(Math.Abs((pz - pa).Length - 2) < 1e-6 && Math.Abs(pa.Z - 5) < 1e-9, "barra " + nova + " de " + pa + " a " + pz + " (2,000 m esperado)");
             v.MoverTela(v.Tela(new Point3D(3.5, 1.2, 0)));
             CapturarPrincipal(w, "54-a1-linha-de-comando");
             v.Tecla(Key.Escape); v.Tecla(Key.Escape);
@@ -68,6 +70,7 @@ namespace NovoFtool
             // grade estrutural e PgUp: o plano sobe para o nível da grade
             Esperar(w.AplicarGrade(new[] { -2.5, 0, 2.5 }, new[] { -1.5, 1.5 }, new[] { 0.0, 2.5, 5 }));
             Ok(v.EixosX.Length == 3 && v.EixosY.Length == 2, "grade: 3 eixos e 2 filas na vista");
+            Ok(w.EspacialAtivo.Json["pavimentos"].AsObject().Count == 2, "grade: níveis 2,5 e 5 viraram pavimentos (um lote)");
             w.ExecutarComando("NIVEL +");
             Ok(v.PlanoAtual.Normal == 'Z' && Math.Abs(v.PlanoAtual.Valor - 2.5) < 1e-9, "PgUp (NIVEL +): plano de trabalho em z = 2,5");
             w.ExecutarComando("ISO");

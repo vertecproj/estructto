@@ -183,7 +183,7 @@ namespace NovoFtool
 
         void MontarSecaoDesenho3D()
         {
-            cbSecao3D = new F.ComboBox { Header = "Seção", IsEditable = false, Width = 190,
+            cbSecao3D = new F.ComboBox { Header = "Seção", IsEditable = false, Width = 150,
                 ToolTip = Dica("Seção", "Seção das barras e pilares desenhados: as do modelo, ou um perfil do catálogo do motor (entra no modelo ao escolher).") };
             cbSecao3D.DropDownOpened += (s, e) => ListarSecoes3D();
             cbSecao3D.SelectionChanged += (s, e) =>
@@ -194,7 +194,7 @@ namespace NovoFtool
             };
             tgApoioBase3D = new F.ToggleButton { Header = "Apoio na base", Icon = Icone("engaste", 16), LargeIcon = Icone("engaste", 32), Size = F.RibbonControlSize.Middle,
                 ToolTip = Dica("Apoio na base", "Nó novo desenhado no nível mais baixo nasce engastado (6 GL travados).") };
-            cbMaterial3D = new F.ComboBox { Header = "Material", IsEditable = false, Width = 190, ToolTip = Dica("Material", "Material das próximas barras: os do modelo (vazio = o da última barra).") };
+            cbMaterial3D = new F.ComboBox { Header = "Material", IsEditable = false, Width = 150, ToolTip = Dica("Material", "Material das próximas barras: os do modelo (vazio = o da última barra).") };
             cbMaterial3D.DropDownOpened += (s, e) =>
             {
                 cbMaterial3D.Items.Clear();
@@ -205,7 +205,7 @@ namespace NovoFtool
             var tbGiro = new F.TextBox { Header = "Giro (°)", Text = "0", Width = 150, ToolTip = Dica("Giro da seção", "Rotação do perfil em torno do próprio eixo nas próximas barras (Angle do Plant 3D). Ctrl+R no desenho soma 90°.") };
             void LerGiro() { if (Num.Ler(tbGiro.Text, out double g)) giro3D = g; tbGiro.Text = Num.Fmt(giro3D, 1); }
             tbGiro.LostFocus += (s, e) => LerGiro(); tbGiro.KeyDown += (s, e) => { if (e.Key == Key.Enter) LerGiro(); };
-            cbCardinal3D = new F.ComboBox { Header = "Ponto cardinal", IsEditable = false, Width = 190,
+            cbCardinal3D = new F.ComboBox { Header = "Cardinal", IsEditable = false, Width = 150,
                 ToolTip = Dica("Ponto cardinal (justificação)", "Onde o eixo desenhado passa na seção: 1 a 9 da caixa da seção (7 8 9 em cima, 1 2 3 embaixo, como o teclado numérico) ou o centroide. Guardado por barra no .estructto (o desenho deslocado do perfil fica para o Realista); a análise usa o eixo.") };
             foreach (string c in Cardinais) cbCardinal3D.Items.Add(c);
             cbCardinal3D.SelectedIndex = 4;

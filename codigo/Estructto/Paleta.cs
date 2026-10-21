@@ -154,7 +154,7 @@ namespace NovoFtool
         {
             RegistrarExtras();
             var tem = new HashSet<string>(cmds.Where(c => c.Cmd != null).Select(c => c.Cmd));
-            return Comandos.Where(c => c != "DI" && c != "DIST" && !tem.Contains(c)).ToList();
+            return Cmds3D.Select(c => c.Nome).Where(c => !tem.Contains(c)).ToList();   // aliases são sinônimos do mesmo item
         }
 
         List<string> Recentes()

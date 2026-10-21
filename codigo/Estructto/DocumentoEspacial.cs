@@ -1094,6 +1094,7 @@ namespace NovoFtool
 
         // Para as capturas e testes: o documento espacial ativo e um jeito de fechar todos sem perguntar.
         internal DocumentoEspacial EspacialAtivo => Esp;
+        internal bool OcupadoEsp => espRodando;   // capturas: operação no motor em andamento
         internal Task EditarEspacial(string tipo, string id, JsonObject campos) => Espacial(d => d.Editar(tipo, id, campos), "Editado: " + tipo + " " + id + ".");
         internal Task DesfazerEspacial() => TrocarEspacial(true);
         internal Task OperarEspacial(Func<DocumentoEspacial, Task> f, string msg) => Espacial(f, msg);
