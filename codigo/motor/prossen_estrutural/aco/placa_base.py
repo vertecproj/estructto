@@ -1018,6 +1018,11 @@ def verificar_placa_base(dados, esforcos, secao):
         fu, fyb = _fu_fy(d['classe'], d['fub_chumbador'], d['fyb_chumbador'])
         # furo alargado da placa de base (AISC Manual tab. 14-2 / DG1 tab. 2.3), coerente com n_ef = 2 no corte
         dh = dm+(.0143 if dm <= .01905 else .0175 if dm <= .0223 else .0206 if dm <= .0381 else .0254 if dm <= .0445 else .0318)
+        # NBR 8800 tab. 12 (furo alargado): db+5 (db ≤ 24), 33 (27), db+8 (≥ 30) mm. ponytail: 24 < db < 30 → db+6
+        dh12 = dm+(.005 if dm <= .024 else .006 if dm < .030 else .008)
+        if dh > dh12+1e-9 and not d['arruela_soldada']:
+            avisos.append(f'Furo de {dh*1000:.1f} mm > furo alargado da NBR 8800 tab. 12 ({dh12*1000:.1f} mm): a 6.3.6.1 '
+                          'exige arruelas especialmente dimensionadas soldadas à placa (arruela_soldada).')
         lf = d['borda']-dh/2
         if lf <= 0 and f['Fv'] > 0:
             avisos.append('Furo alargado alcança a borda (lf ≤ 0): pressão de contato no furo NÃO verificada.')

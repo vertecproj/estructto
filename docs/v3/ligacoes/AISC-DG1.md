@@ -71,7 +71,12 @@ Caminhos possíveis, sem somar caminhos de rigidez diferente:
 | Barra de cisalhamento (*shear lug*) | (a) Pressão no concreto à frente da barra, sobre a área embutida abaixo do graute. (b) Flexão da barra em balanço, Mu = Vu·(G + h_emb/2), t ≥ √(4 Mu γa1/(fy·W)). (c) Cone de corte do concreto à frente da barra, com tensão uniforme 4φ√f'c (psi) na área projetada (ACI 349). (d) Solda barra–placa | Os coeficientes de (a) e (c) estão **a conferir** no DG1/ACI 349 |
 | Chumbadores ao corte | Fv,Rd por chumbador (NBR 6.3.3.2). Com furo alargado, o DG1 recomenda contar **só 2 chumbadores**, ou usar arruela-chapa soldada à placa para que todos trabalhem. Se houver graute, considerar a flexão da haste com braço ≈ espessura do graute + t/2 | Interação com a tração pela NBR 6.3.3.4 |
 
-Furos alargados para chumbadores (DG1 tab. 2.3): furo ≈ d + 5/16" a d + 1/2" e arruela-chapa espessa. Dado [DG1-memória].
+Furos alargados para chumbadores (DG1 2ª ed. tab. 2.3 = AISC Manual 15ª ed. tab. 14-2), diâmetro do chumbador → furo
+na placa: 3/4 → 1 5/16; 7/8 → 1 9/16; 1 → 1 13/16; 1¼ → 2 1/16; 1½ → 2 5/16; 1¾ → 2¾; 2 → 3¼; 2½ → 3¾ pol
+(acréscimo de 9/16" a 1¼"). Arruela-chapa espessa sobre o furo. O `placa_base.py` usa esses acréscimos
+(+14,3 / 17,5 / 20,6 / 25,4 / 31,8 mm). Esses furos excedem o furo alargado da NBR 8800 tab. 12 (db + 5 mm até
+24 mm); a 6.3.6.1 então exige arruelas especialmente dimensionadas soldadas à placa, e o motor avisa quando
+`arruela_soldada` não está marcada.
 
 ### 1.6 Chumbador no concreto (ACI 318 cap. 17)  [DG1-memória]
 

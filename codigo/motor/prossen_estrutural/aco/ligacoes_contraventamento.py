@@ -29,7 +29,7 @@ MM = 1e-3
 TAN30 = math.tan(math.radians(30))
 SECOES = ["L", "2L", "U", "tubo_circular", "tubo_retangular", "barra_redonda"]
 APOIOS = ["viga-pilar", "pilar", "viga", "base"]
-N_MINIMO = 45.0             # kN — NBR 8800 6.1 [confirmar subitem]; Pfeil p.232
+N_MINIMO = L.F_MINIMA       # kN — NBR 8800 6.1.5.2 (p. 63); Pfeil p.238
 FOLGA_RASGO = 2.0           # mm — rasgo do tubo = t_gusset + 2 mm. ponytail: valor usual de fábrica
 ACOS = list(materiais.ACOS)
 _PRE = "NBR 8800 "
@@ -623,6 +623,11 @@ def verificar_gusset(dados, esforcos):
     N = _esf(esforcos)["N"]
     c = _comum(d)
     v, av = [], list(c["avisos"])
+    # 6.1.5.2: mínimo de 45 kN; tirante de barra redonda é exceção
+    _k, aviso = L.fator_minimo_6152(N, isenta=d["secao"] == "barra_redonda")
+    if aviso:
+        N = math.copysign(N_MINIMO, N or 1.0)
+        av.append(aviso)
     theta = math.radians(d["theta"])
     info = _membro(d, "", N, c, v, av)
     recuo, Lh, Lv, pts = _auto_gusset(d, info, c, theta)
@@ -714,9 +719,11 @@ def verificar_no_trelica(dados, esforcos):
     pts_all, regs, membros, H, V = [], [], {}, 0.0, 0.0
     for i in ativos:
         Ni = forcas[i]
-        Nd = math.copysign(max(abs(Ni), N_MINIMO), Ni or 1.0)
-        if abs(Ni) < N_MINIMO:
-            av.append(f"barra {i}: ligação dimensionada para o mínimo de 45 kN (NBR 8800 6.1; Pfeil p.232)")
+        # 6.1.5.2: tirante de barra redonda é exceção ao mínimo de 45 kN
+        _k, aviso = L.fator_minimo_6152(Ni, isenta=d[f"secao_{i}"] == "barra_redonda" and Ni >= 0)
+        Nd = math.copysign(N_MINIMO, Ni or 1.0) if aviso else Ni
+        if aviso:
+            av.append(f"barra {i}: {aviso}")
         info = _membro(d, f"_{i}", Nd, c, v, av, rot=f" {i}")
         th = math.radians(d[f"theta_{i}"])
         # direção a partir do banzo: (cos, sin) no referencial (h ao longo do banzo, v para o gusset)
@@ -866,16 +873,17 @@ def verificar_cantoneira_simples(dados, esforcos):
     N = _esf(esforcos)["N"]
     c = _comum(d)
     v, av = [], list(c["avisos"])
-    Nd = math.copysign(max(abs(N), N_MINIMO), N or 1.0)
-    if abs(N) < N_MINIMO:
-        av.append("ligação dimensionada para o mínimo de 45 kN (NBR 8800 6.1; Pfeil p.232)")
+    _k, aviso = L.fator_minimo_6152(N)                 # 6.1.5.2
+    Nd = math.copysign(N_MINIMO, N or 1.0) if aviso else N
+    if aviso:
+        av.append(aviso)
     info = _membro(d, "", Nd, c, v, av)
     if d["fadiga"]:
-        av.append("barra sob fadiga: a excentricidade da ligação NÃO pode ser desprezada (NBR 8800 6.1) — "
+        av.append("barra sob fadiga: a excentricidade da ligação NÃO pode ser desprezada (NBR 8800 6.1.8.2) — "
                   "use modelo de pórtico com o momento N·ec")
     else:
         av.append("cantoneira sob ação estática: excentricidade entre os centroides da barra e da ligação "
-                  "desprezada na ligação (NBR 8800 6.1 [confirmar subitem]); na barra entra por E.1.4 (compressão) "
+                  "desprezada na ligação (NBR 8800 6.1.8.2); na barra entra por E.1.4 (compressão) "
                   "e Ct (tração)")
     a, t = d["dim_a"] * MM, d["t_perfil"] * MM
     b = (d["dim_b"] or d["dim_a"]) * MM

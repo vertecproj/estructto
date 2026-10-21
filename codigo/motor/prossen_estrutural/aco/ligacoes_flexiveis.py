@@ -171,6 +171,7 @@ _BASE = {
     "apoio": _e("Apoio", "-", "mesa_pilar", _APOIOS),
     "aco_viga": _e("Aço da viga", "-", "A-572 GR.50", _ACOS),
     "aco_suporte": _e("Aço do apoio", "-", "A-572 GR.50", _ACOS),
+    "terca_ou_travessa": _e("Terça/travessa de fechamento", "-", False),   # isenta do mínimo de 6.1.5.2
 }
 _PARAF = {
     "d": _e("Diâmetro do parafuso", "mm", 19.05, mn=10, mx=40),
@@ -291,7 +292,7 @@ def _ler(tipo, dados):
     return out
 
 
-def _esforcos(esf, r):
+def _esforcos(esf, r, d):
     esf = dict(esf or {})
     try:
         V, N = abs(float(esf.get("V", 0.0))), float(esf.get("N", 0.0))
@@ -302,6 +303,11 @@ def _esforcos(esf, r):
     outros = [k for k in ("Vz", "M", "Mz", "T") if abs(float(esf.get(k, 0.0) or 0.0)) > 1e-9]
     if outros:
         r.avisos.append(f"ligação flexível: {', '.join(outros)} ignorados (rótula; só V e N são transmitidos)")
+    # NBR 8800 6.1.5.2: força de cálculo (resultante de V e N) mínima de 45 kN; terças e travessas isentas
+    k, aviso = L.fator_minimo_6152(math.hypot(V, N), isenta=d["terca_ou_travessa"])
+    if aviso:
+        V, N = (V * k, N * k) if math.isfinite(k) else (L.F_MINIMA, 0.0)
+        r.avisos.append(aviso)
     if V == 0 and N == 0:
         r.avisos.append("sem esforços: só as disposições construtivas foram verificadas")
     return V, N
@@ -554,7 +560,7 @@ def _geo_recortes(d, x_ponta):
 
 def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
     r = _Col()
-    V, N = _esforcos(e, r)
+    V, N = _esforcos(e, r, d)
     vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")
     b1, b2, ta = _cantoneira(d["cantoneira"])
     p = _parafuso(d, r)
@@ -694,7 +700,7 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
 
 def _chapa_simples(d, e, tipo="chapa_simples_alma"):
     r = _Col()
-    V, N = _esforcos(e, r)
+    V, N = _esforcos(e, r, d)
     vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")
     p = _parafuso(d, r)
     db, dh, dn = p["db"], p["dh"], p["dn"]
@@ -793,7 +799,7 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
 
 def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
     r = _Col()
-    V, N = _esforcos(e, r)
+    V, N = _esforcos(e, r, d)
     vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")
     p = _parafuso(d, r)
     db, dh, dn = p["db"], p["dh"], p["dn"]
@@ -868,7 +874,7 @@ def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
 
 def _apoio(d, e, tipo="apoio_cantoneira"):
     r = _Col()
-    V, N = _esforcos(e, r)
+    V, N = _esforcos(e, r, d)
     if N != 0:
         r.avisos.append("apoio em cantoneira/consolo não transmite N: força normal ignorada (prever outro caminho)")
     vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")

@@ -1,7 +1,8 @@
 # Itens de norma "a conferir": verificação (2026-10-21)
 
-Este documento confere os itens marcados "a conferir" em `ENTREGA.md` e `STATUS.md`. O código do motor não foi alterado. Os achados
-estão em `codigo/motor/testes/test_itens_norma_verif.py`: os testes `IN0x` são `expectedFailure` e falham hoje.
+Este documento confere os itens marcados "a conferir" em `ENTREGA.md` e `STATUS.md`. Os achados estão em
+`codigo/motor/testes/test_itens_norma_verif.py`. Os achados IN01 a IN08 foram corrigidos no motor (ver "Correções"); os testes
+`IN0x` passam e não há mais `expectedFailure`.
 
 ## Fontes
 
@@ -65,7 +66,7 @@ Sumário e texto de [8800], com conferência em [CYPE] `unmetcomp.dll` ("ABNT NB
 
 - O `placa_base.py` usa estes acréscimos ao diâmetro: ≤ 3/4" +14,3; ≤ 7/8" +17,5; ≤ 1½" +20,6; ≤ 1¾" +25,4; acima +31,8 mm.
 - Esses valores são exatamente os da [DG1] tab. 2.3 / Manual tab. 14-2: 3/4→1 5/16; 7/8→1 9/16; 1→1 13/16; 1¼→2 1/16; 1½→2 5/16; 1¾→2¾; 2→3¼; 2½→3¾ pol.
-- O `AISC-DG1.md` §1.5 ("d + 5/16" a d + 1/2"") está desatualizado e deve ser corrigido.
+- O `AISC-DG1.md` §1.5 foi corrigido com a tab. 2.3 / 14-2.
 - [8800] tab. 12 (p. 83), furo alargado para parafusos: db + 5 (db ≤ 24), 33 (db = 27), db + 8 (db ≥ 30) mm. [Pfeil] fig. 3.7, p. 67, traz o mesmo.
 - [8800] 6.3.6.1 (p. 82) permite furos maiores em placas de base, **com arruelas especialmente dimensionadas soldadas à placa**.
 - Os furos do AISC excedem a tab. 12. A NBR então exige a arruela soldada, mas o motor aceita `arruela_soldada = False` só com o aviso do DG1. Isso é a pendência IN06 (aviso).
@@ -94,6 +95,46 @@ Sumário e texto de [8800], com conferência em [CYPE] `unmetcomp.dll` ("ABNT NB
 | IN06 | MÉDIO | `placa_base.cisalhamento_base` | aviso de que furo maior que a tab. 12 exige arruela soldada × só o aviso do DG1 | [8800] 6.3.6.1 p. 82 |
 | IN07 | BAIXO | `ligacoes_rigidas.cisalhamento_painel` | a 5.7.7.1 de 2008 escreve FSd na condição de 0,4·Npℓ; o motor usa a compressão do pilar (AISC J10.6, PR 2022), que é a intenção. Documentar | [8800], [UFMG] p. 29 |
 | IN08 | MÉDIO | `ligacoes_flexiveis`, `ligacoes_rigidas` | mínimo de 45 kN (6.1.5.2) não aplicado | [8800] 6.1.5.2 |
+
+## Correções (2026-10-21)
+
+- **IN01**: `verificar_gusset` aplica 45 kN (`ligacoes.fator_minimo_6152`). Exceção: barra redonda (tirante). O
+  `no_trelica_gusset` passou a isentar barra redonda tracionada, como manda a 6.1.5.2.
+  `cantoneira_simples_trelica` segue com o mínimo.
+- **IN08**:
+  - `ligacoes_flexiveis`: a resultante √(V² + N²) vai a 45 kN, com os dois esforços escalados. Sem esforço,
+    usa V = 45 kN. A entrada `terca_ou_travessa` isenta terças e travessas de fechamento.
+  - `ligacoes_rigidas` (chapa de topo, flange plate, emendas): a força da ligação é max(√(V² + N²), M/braço).
+    Abaixo de 45 kN, N, V e M são escalados.
+  - O painel isolado (`painel_alma_pilar`) não é ligação e fica sem o mínimo.
+  - As exceções de 6.1.5.2 (travejamento de barras compostas, terças, travessas) não se aplicam às rígidas
+    deste módulo.
+- **IN02**: `cisalhamento_painel` usa a 5.4.3.1.1 (λ = h/tw, kv com a = H − tf da viga). O caso 400×4,75 dá
+  317,5 kN. Almas compactas (todos os W/HP do catálogo usados nos testes) não mudam.
+- **IN03**: novo mínimo t ≥ b/15 (5.7.9.5). O b/t ≤ 0,56√(E/fy) fica, porque justifica Q = 1 na coluna do
+  enrijecedor.
+- **IN05**:
+  - A chapa de reforço agora são duas, uma de cada lado da alma. `t_reforco` é a espessura de cada uma.
+  - As chapas se estendem 150 mm além das mesas da viga.
+  - Cada chapa entra no painel pela 5.4.3, com λ = (dc − 2tf)/t. Nas verificações locais (5.7.3 a 5.7.6),
+    o motor soma 2t a tw.
+  - O limite (dz + wz)/t ≤ 90 saiu: é do AISC 341, e a flambagem já entra pela 5.4.3.
+  - Efeito no teste existente: `test_tipo_painel_enrijecedor_e_reforco` passa a contar duas chapas.
+- **IN04**: itens corrigidos:
+  - enrijecedores: 5.7.9.1, 5.7.9.2 a 5.7.9.4 e 5.7.9.5;
+  - reforço: 5.7.7.2;
+  - furos na mesa: 5.4.2.5;
+  - 6.1.5.2 / 6.1.8.2 em `ligacoes_contraventamento`.
+- **IN06**: em `placa_base`, quando o furo excede a tab. 12 e `arruela_soldada` é falso, o motor emite um
+  aviso citando a 6.3.6.1. Fica como aviso, não reprovação: a regra de 2 chumbadores efetivos do DG1 continua
+  valendo sem a arruela.
+- **IN07**: documentado na docstring de `cisalhamento_painel` e na COBERTURA de `ligacoes_rigidas`.
+  - O texto de 2008 escreve FSd na condição de 0,4·Npℓ.
+  - O motor usa a compressão do pilar (AISC J10.6, PR 2022), que é a intenção da norma.
+- **Valores de livro**: nenhum mudou.
+  - Pfeil 3.5.2 (D2) já usava 45 kN no nó de treliça.
+  - Os exemplos de ligação flexível e rígida têm forças acima de 45 kN.
+  - Os painéis do Pfeil e do CBCA têm alma compacta.
 
 ## Sem verificar
 - Texto oficial da NBR 14762:2010. As tabelas 11/14 foram conferidas só contra as fontes do módulo.

@@ -205,7 +205,7 @@ class TestPilarLocal(unittest.TestCase):
         self.assertTrue(com["ok"], [v for v in com["verificacoes"] if not v["ok"]])
         nomes = [c["nome"] for c in com["geometria"]["chapas"]]
         self.assertEqual(nomes.count("enrijecedor do pilar"), 4)
-        self.assertEqual(nomes.count("chapa de reforço da alma"), 1)
+        self.assertEqual(nomes.count("chapa de reforço da alma"), 2)   # 5.7.7.2: dos dois lados da alma
 
 
 class TestTiposEGeometria(unittest.TestCase):

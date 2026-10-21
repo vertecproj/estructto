@@ -51,6 +51,20 @@ _BORDA = [  # (db mm, cortada com serra/tesoura, laminada/maçarico)
     (22.225, 38, 29), (24, 42, 31), (25.4, 44, 32), (27, 50, 38), (28.575, 50, 38), (30, 53, 39),
     (31.75, 57, 42), (36, 64, 46)]
 COMPRIMENTO_LONGA = 1.270  # NBR 8800 6.3.8: ligação por contato mais longa → Fv,Sd e Fc,Sd × 1,25
+F_MINIMA = 45.0  # kN — NBR 8800:2008 6.1.5.2 (p. 63): resistência mínima de ligações
+ISENCOES_6152 = ("diagonais e montantes de travejamento de barras compostas, tirantes de barras redondas, "
+                 "travessas de fechamento e terças")
+
+
+def fator_minimo_6152(F, isenta=False):
+    """NBR 8800 6.1.5.2: ligação com força de cálculo F < 45 kN é dimensionada para 45 kN, exceto as de
+    ISENCOES_6152 (isenta=True). Retorna (fator ≥ 1 para os esforços, aviso ou ""). F = 0 → fator inf:
+    o chamador aplica 45 kN na direção principal da ligação."""
+    F = abs(F)
+    if isenta or F >= F_MINIMA:
+        return 1.0, ""
+    return (F_MINIMA / F if F > 0 else math.inf), \
+        f"força de cálculo {F:.1f} kN < 45 kN: ligação dimensionada para o mínimo de 45 kN (NBR 8800 6.1.5.2)"
 
 _LIM = "NBR 8800:2024 não confirmada em fonte pública (texto final): mantida a 2008"
 COBERTURA = [

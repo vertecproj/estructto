@@ -26,18 +26,22 @@ from ..materiais import E_ACO
 from ..modelo import MPa
 from . import ligacoes as lg
 from .ligacoes import GA1, GA2, MM
+from .nbr8800 import _cortante
 
 EDICAO = "NBR 8800:2008"
-_C = "[confirmar numeração 5.7.x no texto da norma; segue AISC J10]"
 COBERTURA = [
     dict(norma="NBR 8800", edicao="2008", item="6.3.3 / 6.3.5", verificacao="chapa de topo ajustada e estendida: "
          "parafusos tracionados e chapa como T-stub (Struik–de Back), distribuição plástica Σn·T·h",
          limitacao="linhas internas junto à mesa comprimida só ao cortante; mesa do pilar como T-stub com largura "
                    "tributária (sem charneiras); enrijecedor da extensão só reduz b"),
-    dict(norma="NBR 8800", edicao="2008", item="5.7.2 a 5.7.9", verificacao="pilar: flexão local da mesa, "
-         "escoamento e enrugamento da alma, flambagem da alma, painel ao cisalhamento, enrijecedores e reforço",
-         limitacao="painel sem a parcela de deformação (5.7.7 a); soldas de enrijecedor e reforço não dimensionadas; "
-                   + _C),
+    dict(norma="NBR 8800", edicao="2008", item="5.7.2 a 5.7.7 / 5.7.9", verificacao="pilar: flexão local da mesa, "
+         "escoamento e enrugamento da alma, flambagem da alma, painel ao cisalhamento (5.7.7.1 com VRd da 5.4.3), "
+         "chapas de reforço dos dois lados da alma (5.7.7.2) e enrijecedores (5.7.9)",
+         limitacao="painel sem a parcela de deformação; na condição de 0,4·Npℓ usa a compressão do pilar (intenção da "
+                   "5.7.7.1; ver ITENS-NORMA IN07); soldas de enrijecedor e reforço não dimensionadas"),
+    dict(norma="NBR 8800", edicao="2008", item="6.1.5.2", verificacao="força de cálculo mínima de 45 kN "
+         "(chapa de topo, flange plate, emendas): esforços escalados até max(√(V² + N²), M/braço) = 45 kN",
+         limitacao="sem isenção (terças e travessas de fechamento não usam ligação rígida neste módulo)"),
     dict(norma="NBR 8800", edicao="2008", item="6.5.3 / 6.5.4 / 6.5.6", verificacao="flange plate soldada ou "
          "parafusada; emendas de viga e pilar com talas parafusadas (divisão do momento de Pfeil 9.1–9.3)",
          limitacao="emenda só de perfis iguais; talas internas da mesa não previstas; ligação por atrito não tratada"),
@@ -116,7 +120,7 @@ def ct_soldas_longitudinais(Lw, largura):
     return 1.0 if Lw >= 2 * largura else 0.87 if Lw >= 1.5 * largura else 0.75
 
 
-# NBR 8800 5.7 — forças localizadas no pilar (numeração [confirmar] no texto: segue AISC J10.1–J10.6)
+# NBR 8800:2008 5.7 — forças localizadas no pilar (numeração conferida no texto: docs/v3/ITENS-NORMA.md §2)
 def flexao_local_mesa(tf, fy, extremidade=False):
     return (0.5 if extremidade else 1.0) * 6.25 * tf ** 2 * fy / GA1                       # 5.7.2
 
@@ -138,10 +142,16 @@ def flambagem_alma_compressao(tw, h, fy, extremidade=False):
     return (0.5 if extremidade else 1.0) * 24 * tw ** 3 * math.sqrt(E_ACO * fy) / (h * GA1)  # 5.7.6
 
 
-def cisalhamento_painel(dc, tw, fy, Nc=0.0, Ny=math.inf):
-    """5.7.7 (sem considerar a deformação do painel): 0,6·fy·dc·tw/γa1, × (1,4 − Nc/Ny) se Nc > 0,4·Ny."""
+def cisalhamento_painel(dc, tw, fy, Nc=0.0, Ny=math.inf, h=None, a=None):
+    """5.7.7.1 (sem considerar a deformação do painel): VRd da 5.4.3.1.1 com Aw = dc·tw, λ = h/tw e kv com
+    a = distância entre as mesas da viga (sem h: alma compacta, VRd = 0,6·fy·dc·tw/γa1); × (1,4 − Nc/Ny) se
+    Nc > 0,4·Ny. Nc é a compressão do pilar (o texto de 2008 escreve FSd; AISC J10.6 e PR 2022: ITENS-NORMA IN07)."""
     f = 1.0 if Nc <= 0.4 * Ny else 1.4 - Nc / Ny
-    return 0.6 * fy * dc * tw * f / GA1
+    if h is None:
+        return 0.6 * fy * dc * tw * f / GA1
+    lam = h / tw
+    kv = 5.0 if a is None or a / h > 3 or a / h > (260 / lam) ** 2 else 5 + 5 / (a / h) ** 2
+    return _cortante(dc * tw, lam, kv, E_ACO, fy, "5.4.3.1.1")["VRd"] * f
 
 
 # ---------------------------------------------------------------- entradas
@@ -173,7 +183,7 @@ _E_PILAR = {
     "t_enr_pilar": _ent("Enrijecedor do pilar (t)", "mm", 0.0, 0.0, 50.0,
                         descricao="espessura dos enrijecedores de continuidade do pilar; 0 = sem"),
     "t_reforco": _ent("Chapa de reforço da alma", "mm", 0.0, 0.0, 50.0,
-                      descricao="espessura da chapa de reforço (doubler) do painel; 0 = sem"),
+                      descricao="espessura de cada chapa de reforço (doubler), uma de cada lado da alma (5.7.7.2); 0 = sem"),
     "M_outra": _ent("Momento da viga oposta", "kN·m", 0.0, 0.0, 1e5,
                     descricao="momento da viga do outro lado no mesmo sentido (soma no painel); 0 = unilateral"),
     "V_pilar": _ent("Cortante do pilar", "kN", 0.0, 0.0, 1e5, descricao="cortante do pilar junto ao nó (alivia o painel)"),
@@ -245,6 +255,20 @@ def _esforcos(esforcos, avisos, usados=("N", "V", "M")):
     if ign:
         avisos.append(f"esforços {', '.join(ign)} não considerados por esta ligação (plano forte apenas)")
     return e
+
+
+def _minimo_6152(e, braco, avisos):
+    """NBR 8800 6.1.5.2: força de cálculo da ligação = max(√(V² + N²), |M|/braço); abaixo de 45 kN os
+    esforços são escalados até 45 kN (sem esforço: V = 45 kN). Altera e no lugar."""
+    k, aviso = lg.fator_minimo_6152(max(math.hypot(e["V"], e["N"]), abs(e["M"]) / braco))
+    if not aviso:
+        return
+    if math.isfinite(k):
+        for c in ("N", "V", "M"):
+            e[c] *= k
+    else:
+        e["V"] = lg.F_MINIMA
+    avisos.append(aviso)
 
 
 def _perfil(v, campo):
@@ -347,12 +371,13 @@ def _comprimento_parafuso(pega, db):
 
 def _pilar(R, d, pil, fyc, Ft, Fc, ln, bfb, tfb, H, M, soldada, geo, x_face):
     """NBR 8800 5.7: forças das mesas da viga no pilar (Ft tração, Fc compressão), painel de alma,
-    enrijecedores de continuidade (5.7.8) e chapa de reforço (5.7.9). Acrescenta a geometria."""
+    enrijecedores de continuidade (5.7.9) e chapas de reforço (5.7.7.2). Acrescenta a geometria."""
     dc, bfc, twc, tfc, rc = pil["h"], pil["b"], pil["tw"], pil["tf"], pil.get("r", 0.0)
     k = tfc + rc
     hc = dc - 2 * k
     ext = d["topo_pilar"]
     ts, td = d["t_enr_pilar"] * MM, d["t_reforco"] * MM
+    tr2 = 2 * td                                       # 5.7.7.2: chapas dos dois lados da alma
     bilateral = d["M_outra"] > 0
     loc = []
     if soldada and Ft > 0:
@@ -360,12 +385,12 @@ def _pilar(R, d, pil, fyc, Ft, Fc, ln, bfb, tfb, H, M, soldada, geo, x_face):
     for F, lado in ((Ft, "tração"), (Fc, "compressão")):
         if F > 0:
             loc.append((f"escoamento local da alma do pilar ({lado})", "5.7.3", F,
-                        escoamento_local_alma(twc + td, k, ln, fyc, ext)))
+                        escoamento_local_alma(twc + tr2, k, ln, fyc, ext)))
     if Fc > 0:
-        loc.append(("enrugamento da alma do pilar", "5.7.4", Fc, enrugamento_alma(twc + td, tfc, dc, ln, fyc, ext)))
+        loc.append(("enrugamento da alma do pilar", "5.7.4", Fc, enrugamento_alma(twc + tr2, tfc, dc, ln, fyc, ext)))
         if bilateral:
             loc.append(("flambagem da alma do pilar por compressão", "5.7.6", Fc,
-                        flambagem_alma_compressao(twc + td, hc, fyc, ext)))
+                        flambagem_alma_compressao(twc + tr2, hc, fyc, ext)))
     if ts <= 0:
         for nome, item, F, Rd in loc:
             R.res(nome, item, F, Rd)
@@ -377,16 +402,19 @@ def _pilar(R, d, pil, fyc, Ft, Fc, ln, bfb, tfb, H, M, soldada, geo, x_face):
             Fs = max(F - Rmin, 0.0) if math.isfinite(Rmin) else F
             if lado == "tração":
                 Rs = Lc * ts * fyc / GA1
-            else:  # 5.7.8: coluna com faixa de alma 25tw (12tw no topo), KL = 0,75h
+            else:  # 5.7.9.2 a 5.7.9.4: coluna com faixa de alma 25tw (12tw no topo), KL = 0,75h
                 faixa = (12 if ext else 25) * twc
                 A = 2 * bs * ts + faixa * twc
                 Ist = ts * (2 * bs + twc) ** 3 / 12
                 Rs = min(Lc * ts * fyc / GA1, compressao_chapa(A, 0.75 * hc, math.sqrt(Ist / A), fyc))
-            R.res(f"enrijecedores do pilar ({lado}): F − Rmín(5.7.2 a 5.7.6)", "5.7.8", Fs, Rs)
-        R.maximo("enrijecedor do pilar: b/t ≤ 0,56√(E/fy)", "5.7.8 / tabela F.1 (grupo 3)", bs / ts * MM,
+            R.res(f"enrijecedores do pilar ({lado}): F − Rmín(5.7.2 a 5.7.6)",
+                  "5.7.9.1" if lado == "tração" else "5.7.9.2 a 5.7.9.4", Fs, Rs)
+        # Q = 1 na coluna do enrijecedor (compressao_chapa) exige b/t ≤ 0,56√(E/fy); 5.7.9.5 exige t ≥ b/15
+        R.maximo("enrijecedor do pilar: b/t ≤ 0,56√(E/fy)", "5.7.9 / tabela F.1 (grupo 3)", bs / ts * MM,
                  0.56 * math.sqrt(E_ACO / fyc) * MM)
-        R.minimo("enrijecedor do pilar: t ≥ tf da viga / 2", "5.7.8", tfb / 2, ts)
-        R.minimo("enrijecedor do pilar: b + tw/2 ≥ bf da viga / 3", "5.7.8", bfb / 3, bs + twc / 2)
+        R.minimo("enrijecedor do pilar: t ≥ b/15", "5.7.9.5", bs / 15, ts)
+        R.minimo("enrijecedor do pilar: t ≥ tf da viga / 2", "5.7.9.5", tfb / 2, ts)
+        R.minimo("enrijecedor do pilar: b + tw/2 ≥ bf da viga / 3", "5.7.9.5", bfb / 3, bs + twc / 2)
         for zf in (H / 2 - tfb / 2, -(H / 2 - tfb / 2)):
             for s in (1, -1):
                 xc = x_face - dc / 2
@@ -401,18 +429,30 @@ def _pilar(R, d, pil, fyc, Ft, Fc, ln, bfb, tfb, H, M, soldada, geo, x_face):
                                                            [xc + dc / 2 - tfc, s * bfc / 2, zf]]),
                                   _solda("filete", bw_s, [[xc - (dc / 2 - tfc), s * twc / 2, zf],
                                                            [xc - (dc / 2 - tfc), s * bfc / 2, zf]])]
-    # painel de alma (5.7.7); demanda = Σ forças das mesas − cortante do pilar
+    # painel de alma (5.7.7.1); demanda = Σ forças das mesas − cortante do pilar
     Vp = abs(M) / (H - tfb) + d["M_outra"] / (H - tfb) - d["V_pilar"]
     Ny = pil["A"] * fyc
-    R.res("cisalhamento do painel de alma do pilar" + (" (com chapa de reforço)" if td else ""), "5.7.7",
-          max(Vp, 0.0), cisalhamento_painel(dc, twc + td, fyc, d["N_pilar"], Ny))
+    a = H - tfb                                        # 5.7.7.1: a = distância entre as mesas da viga
+    VRd = cisalhamento_painel(dc, twc, fyc, d["N_pilar"], Ny, hc, a)
+    if td > 0:   # 5.7.7.2: duas chapas (dos dois lados da alma) dimensionadas pela 5.4 (λ = h/t de cada chapa)
+        hp = dc - 2 * tfc
+        VRd += 2 * cisalhamento_painel(hp, td, fyc, d["N_pilar"], Ny, hp, a)
+    R.res("cisalhamento do painel de alma do pilar" + (" (com chapas de reforço)" if td else ""),
+          "5.7.7.1 / 5.4.3" + (" / 5.7.7.2" if td else ""), max(Vp, 0.0), VRd)
     if td > 0:
-        R.maximo("chapa de reforço: (dz + wz)/t ≤ 90", "5.7.9", (H - tfb + dc - 2 * tfc) / td * MM, 90 * MM)
-        geo["chapas"].append(_chapa("chapa de reforço da alma", [[-(dc / 2 - tfc), -(H / 2)], [dc / 2 - tfc, -(H / 2)],
-                                                                  [dc / 2 - tfc, H / 2], [-(dc / 2 - tfc), H / 2]],
-                                    [x_face - dc / 2, twc / 2, 0], [0, 1, 0], [1, 0, 0], td))
-        R.avisos.append("chapa de reforço: soldar às mesas do pilar com penetração total ou filete que desenvolva "
-                        "0,6·fy·t (5.7.9); flambagem do painel (AISC 341) não verificada")
+        # 5.7.7.2: estendidas 150 mm além das forças das mesas. A flambagem da chapa entra pela 5.4.3; o limite
+        # (dz + wz)/t ≤ 90 do AISC 341 não é da NBR e saiu
+        zr = H / 2 - tfb / 2 + 0.150
+        for s in (1, -1):
+            geo["chapas"].append(_chapa("chapa de reforço da alma",
+                                        [[-(dc / 2 - tfc), -zr], [dc / 2 - tfc, -zr], [dc / 2 - tfc, zr],
+                                         [-(dc / 2 - tfc), zr]], [x_face - dc / 2, s * twc / 2, 0], [0, s, 0],
+                                        [1, 0, 0], td))
+        R.avisos.append("chapas de reforço (5.7.7.2): uma de cada lado da alma, estendidas 150 mm além das mesas da "
+                        "viga; soldar às mesas do pilar para desenvolver a parcela da força cortante de cada chapa "
+                        "(solda não dimensionada)")
+        if ext:
+            R.avisos.append("nó no topo do pilar: confira se cabe a extensão de 150 mm das chapas de reforço (5.7.7.2)")
 
 
 def _pilar_props(d, R):
@@ -477,6 +517,7 @@ def _chapa_topo(d, e, estendida_padrao):
     if enr and ts <= 0:
         raise ValueError("t_enrijecedor: obrigatório (> 0) com enrijecedor_chapa")
     e = _esforcos(e, av)
+    _minimo_6152(e, H - tf, av)
     M, N, V = e["M"], e["N"], e["V"]
     if bp > bf + 0.025 + 1e-9:
         av.append(f"bp = {bp / MM:.0f} mm > bf + 25 mm: largura efetiva do T-stub limitada a {(bf + 0.025) / MM:.0f} mm "
@@ -634,7 +675,6 @@ def verificar_flange_plate(dados, esforcos):
     R = _R()
     av = R.avisos
     e = _esforcos(esforcos, av)
-    M, N, V = e["M"], e["N"], e["V"]
     vg = _perfil(d["perfil_viga"], "perfil_viga")
     H, bf, tw, tf = vg["h"], vg["b"], vg["tw"], vg["tf"]
     fyb, fub_v = _aco(d["aco_viga"])
@@ -642,6 +682,8 @@ def verificar_flange_plate(dados, esforcos):
     fw = lg.ELETRODOS[d["eletrodo"]] * MPa
     t, bpl, folga = d["t_mesa"] * MM, (d["b_chapa"] or bf / MM) * MM, d["folga"] * MM
     braco = H + t
+    _minimo_6152(e, braco, av)
+    M, N, V = e["M"], e["N"], e["V"]
     Fc = abs(M) / braco + max(-N, 0) / 2
     Ft = abs(M) / braco + max(N, 0) / 2
     pil, fyc, fuc = _pilar_props(d, R)
@@ -672,7 +714,7 @@ def verificar_flange_plate(dados, esforcos):
         Afn, Afg = (bf - 2 * dn) * tf, bf * tf
         Yt = 1.0 if fyb / fub_v <= 0.8 else 1.1
         if fub_v * Afn < Yt * fyb * Afg:   # Pfeil eqs. 6.8b / 6.9
-            R.res("viga: furos na mesa tracionada (fu·Afn·W/Afg)", "5.4.2 (furos na mesa)", abs(M),
+            R.res("viga: furos na mesa tracionada (fu·Afn·W/Afg)", "5.4.2.5", abs(M),
                   fub_v * Afn / Afg * vg["Wx"] / GA1, "kN·m")
         _espacamento(R, s, db, min(t, tf), "mesa, longitudinal")
         _espacamento(R, g, db, min(t, tf), "mesa, gabarito")
@@ -772,9 +814,10 @@ def _emenda(d, esforcos, pilar):
     R = _R()
     av = R.avisos
     e = _esforcos(esforcos, av)
-    M, N, V = e["M"], e["N"], e["V"]
     pf_ = _perfil(d["perfil"], "perfil")
     H, bf, tw, tf = pf_["h"], pf_["b"], pf_["tw"], pf_["tf"]
+    _minimo_6152(e, H, av)
+    M, N, V = e["M"], e["N"], e["V"]
     fyb, fub_v = _aco(d["aco_perfil"])
     fyp, fup = _aco(d["aco_chapa"])
     Af, Aw = bf * tf, (H - 2 * tf) * tw
@@ -830,7 +873,7 @@ def _emenda(d, esforcos, pilar):
         Afn = (bf - nl * dnm) * tf
         Yt = 1.0 if fyb / fub_v <= 0.8 else 1.1
         if fub_v * Afn < Yt * fyb * Af:
-            R.res("viga: furos na mesa tracionada (fu·Afn·W/Afg)", "5.4.2 (furos na mesa)", abs(M),
+            R.res("viga: furos na mesa tracionada (fu·Afn·W/Afg)", "5.4.2.5", abs(M),
                   fub_v * Afn / Af * pf_["Wx"] / GA1, "kN·m")
     # --- alma
     dba, fuba, altaa, dha, _f, FvRda, a1 = _par(dict(d, d_mm=d["d_alma_mm"]))
