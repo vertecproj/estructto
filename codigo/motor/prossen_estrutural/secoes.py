@@ -530,11 +530,16 @@ def _secao_linha(lin):
     return s
 
 
+# Nomes da linha antiga do WPF (perfis-gerdau.csv) = mesmas dimensões da bitola com designação Gerdau atual
+_ALIAS_ANTIGOS = {"W250X62": "HP250x62", "W360X44": "W360x44.6", "W360X57.8": "W360x58"}
+
+
 def catalogo(nome):
     """Perfil por nome: W/HP Gerdau ('W200x26.6') ou PFF NBR 6355 ('Ue 150x60x20x2,00') nos CSV antigos (nomes
     já salvos em modelos continuam resolvendo, com as mesmas propriedades), senão o catálogo novo
     (dados/perfis/*.csv: IPE, HEA, UPN, cantoneiras, T, chata, tubos...). Retorna Secao em m."""
     chave = _chave(nome)
+    chave = _chave(_ALIAS_ANTIGOS.get(chave, chave))
     for caminho, monta in ((_CSV, _secao_gerdau), (_CSV_PFF, _secao_pff)):
         for lin in _ler_csv(caminho):
             if _chave(lin["nome"]) == chave:

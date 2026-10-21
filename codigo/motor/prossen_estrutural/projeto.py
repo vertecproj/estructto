@@ -1055,9 +1055,6 @@ def validar(modelo):
             if b.tipo == "pff" and p.get("tipo") not in ("Ue", "U"):
                 add("aviso", "secao_incompativel", f"barra {b.id}: perfil formado a frio exige seção Ue/U "
                     f"(seção '{sec.nome}')", ref)
-            if b.tipo == "aco" and p.get("tipo") in ("retangular", "circular"):
-                add("aviso", "secao_incompativel", f"barra {b.id}: seção maciça '{sec.nome}' sem verificação "
-                    "de aço", ref)
         _val_trechos_cortante(
             b.params, lambda campo, msg: add("erro", "param_invalido", f"{campo}: {msg}", ref),
             _comprimento(m, b), sec)
