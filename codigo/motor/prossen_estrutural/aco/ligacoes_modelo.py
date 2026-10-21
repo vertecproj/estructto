@@ -374,23 +374,8 @@ _ESFORCOS_LIG = {
 }
 
 
-def _esf_contrato(e):
-    """Esforços da ponta (eixos locais do solver: z = eixo forte) na convenção do contrato das ligações
-    (docs/v3/LIGACOES-CONTRATO.md): V = cortante no plano da alma (Vz local), M = momento no plano forte (My)."""
-    return dict(N=e["N"], V=e["Vz"], Vz=e["Vy"], M=e["My"], Mz=e["Mz"], T=e["T"])
-
-
-def _registrar_contrato():
-    """Tipos das famílias do contrato (flexíveis, rígidas, contraventamento) entram em VERIFICADORES com os esforços
-    que cada um declara em `esforcos`."""
-    from . import ligacoes_flexiveis, ligacoes_rigidas, ligacoes_contraventamento
-    for mod in (ligacoes_flexiveis, ligacoes_rigidas, ligacoes_contraventamento):
-        for tipo, t in mod.TIPOS.items():
-            if tipo not in _ESFORCOS_LIG:
-                _ESFORCOS_LIG[tipo] = (lambda ks: lambda e: {k: v for k, v in _esf_contrato(e).items() if k in ks})(tuple(t.get("esforcos") or ("N", "V", "M")))
-
-
-_registrar_contrato()
+# Tipos do contrato (flexíveis, rígidas, contraventamento): verificador() monta um genérico com esforcos_contrato();
+# não entram em VERIFICADORES (um caminho só).
 
 
 def _verif_lig(tipo):
