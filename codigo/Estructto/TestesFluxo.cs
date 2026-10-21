@@ -20,6 +20,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using Portico;
@@ -31,22 +32,19 @@ namespace NovoFtool
         // ================================================================ entrada
         static string[] fluxosPedidos;
 
-        // App.xaml.cs: a janela é criada aqui (sem StartupUri) e roda os fluxos quando carrega.
-        internal static void IniciarFluxos(string pasta, string fluxos)
+        // MainWindow → Capturas.Configurar: a própria janela do StartupUri roda os fluxos quando carrega.
+        internal static void ConfigurarFluxos(MainWindow w, string pasta, string fluxos)
         {
             pastaSaida = Path.GetFullPath(pasta);
             Directory.CreateDirectory(pastaSaida);
             foreach (var f in Directory.GetFiles(pastaSaida, "fluxo-*")) File.Delete(f);
             fluxosPedidos = (string.IsNullOrWhiteSpace(fluxos) ? "A,B,C,D,E" : fluxos).ToUpperInvariant().Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
             GuardarConfigUsuario();
-            var w = new MainWindow();
             Ativo = true;   // modo de teste: sem modais de recuperação, janelas sem animação (como --capturas)
             w.WindowStartupLocation = WindowStartupLocation.Manual;
             w.Left = -10000; w.Top = -10000; w.Width = 1600; w.Height = 900;
             w.ShowActivated = false; w.ShowInTaskbar = false;
             w.Loaded += (s, e) => w.Dispatcher.BeginInvoke(new Action(() => RodarFluxos(w)), DispatcherPriority.ApplicationIdle);
-            Application.Current.MainWindow = w;
-            w.Show();
         }
 
         sealed class Rel
@@ -74,6 +72,7 @@ namespace NovoFtool
         {
             var sw = Stopwatch.StartNew();
             VigiarCaixas();
+            w.DefinirRealista(false);   // determinístico: a vista analítica, como no programa recém-instalado (a config do usuário volta no fim)
             {   // como as capturas: motor do worktree se ninguém disse outro
                 string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
@@ -312,7 +311,7 @@ namespace NovoFtool
             var v = w.vista3D;
             r.Checar(Niveis.Lista(d.Json).Count == 2, "2 níveis (Térreo e 6 m): " + string.Join(", ", Niveis.Lista(d.Json).Select(n => n.Nome + " " + Nf(n.Z))));
             r.Checar(v.PlanoAtual.Normal == 'Z' && Math.Abs(v.PlanoAtual.Valor - H) < 1e-9, "plano de trabalho no nível de 6 m (" + v.PlanoAtual.Nome + ")");
-            r.Conhecido("E2E-01", v.EixosX.Length == 5 && v.EixosY.Length == 2, "a grade do novo projeto aparece na vista (eixos X " + v.EixosX.Length + ", filas Y " + v.EixosY.Length + "; esperado 5 e 2)");
+            r.Checar(v.EixosX.Length == 5 && v.EixosY.Length == 2, "a grade do novo projeto aparece na vista (eixos X " + v.EixosX.Length + ", filas Y " + v.EixosY.Length + "; esperado 5 e 2)");
             if (v.EixosX.Length != 5)
             {   // contorno do usuário: GR com as mesmas posições
                 Esperar(w.AplicarGrade(xs, ys, new[] { 0.0, H }));
@@ -326,6 +325,7 @@ namespace NovoFtool
             Esperar(w.UsarSecao3D(pPilar));
             w.ApoioBase3D = true;
             w.UsarFerramenta3D(Ferramenta3D.Pilar);
+            w.GirarDesenho3D(90);   // Ctrl+R: eixo forte no plano do pórtico (YZ), a tesoura chega na mesa do pilar
             v.MostrarVista(VistaPadrao.Topo, false); v.Enquadrar(false); v.ZoomFator(0.7); EsperarIdle();
             Point T(double x, double y, double z) => v.Tela(new Point3D(x, y, z));
             var snaps = new List<string>();
@@ -337,6 +337,7 @@ namespace NovoFtool
             }
             r.L("atração nos cliques do Pilar: " + string.Join(", ", snaps.Distinct()));
             w.ApoioBase3D = false;
+            w.GirarDesenho3D(270);   // volta a 0° para as próximas barras
             v.Tecla(Key.Escape);
             var m = J(w);
             bool pilaresOk = xs.All(x => ys.All(y => NoEm(m, x, y, 0) is string a && NoEm(m, x, y, H) is string b && BarraEntre(m, a, b) != null));
@@ -361,20 +362,39 @@ namespace NovoFtool
             bool vigasOk = xs.All(x => NoEm(m, x, 6, Hc) is string c && BarraEntre(m, NoEm(m, x, 0, H), c) != null && BarraEntre(m, c, NoEm(m, x, 12, H)) != null);
             r.Exigir(vigasOk && NBarras(w) == 20 && NNos(w) == 25, "vigas de cobertura digitadas ligadas aos topos dos pilares (" + NBarras(w) + " barras, " + NNos(w) + " nós; esperado 20 e 25)");
 
-            // --- vigas de beiral com a Barra e atração nos nós (cliques) no plano de 6 m
+            // --- vigas de beiral com a Barra e atração nos nós (cliques 3 px ao lado) no plano de 6 m, primeiro em planta
             Esperar(w.UsarSecao3D(pBeiral));
-            w.UsarFerramenta3D(Ferramenta3D.Barra);
-            v.MostrarVista(VistaPadrao.Topo, false); EsperarIdle();
-            var atr = new List<string>();
-            foreach (double y in ys)
+            void Beirais(string ondeFoto)
             {
-                foreach (double x in xs) { v.MoverTela(T(x, y, H) + new Vector(3, -2)); atr.Add(v.TipoAtracao ?? "—"); Esperar(v.ClicarTela(T(x, y, H) + new Vector(3, -2))); AteCond(() => true, 5, w); }
+                w.UsarFerramenta3D(Ferramenta3D.Barra); EsperarIdle();
+                var atr = new List<string>();
+                foreach (double y in ys)
+                {
+                    foreach (double x in xs) { v.MoverTela(T(x, y, H) + new Vector(3, -2)); atr.Add(v.TipoAtracao + " z=" + Nf(v.PontoCursor?.Z ?? double.NaN)); Esperar(v.ClicarTela(T(x, y, H) + new Vector(3, -2))); AteCond(() => true, 5, w); }
+                    v.Tecla(Key.Escape);
+                }
                 v.Tecla(Key.Escape);
+                r.L("atração perto dos topos (3 px ao lado, " + ondeFoto + "): " + string.Join(", ", atr.Distinct()));
             }
-            v.Tecla(Key.Escape);
-            r.L("atração perto dos topos (3 px ao lado): " + string.Join(", ", atr.Distinct()));
+            v.MostrarVista(VistaPadrao.Topo, false); EsperarIdle();
+            Beirais("planta");
             m = J(w);
-            r.Checar(NBarras(w) == 28 && NNos(w) == 25, "8 vigas de beiral pela atração nos nós, sem nó novo (" + NBarras(w) + " barras, " + NNos(w) + " nós)");
+            foreach (var kv in m["nos"].AsObject().Where(kv => Math.Abs((double)kv.Value["z"]) < 1e-9 && NoEm(m, (double)kv.Value["x"], (double)kv.Value["y"], H) == null))
+                r.L("        nó novo no pé, fora do plano de 6 m: " + kv.Key + " (" + Nf((double)kv.Value["x"], 6) + "; " + Nf((double)kv.Value["y"], 6) + "; " + Nf((double)kv.Value["z"], 6) + ")");
+            bool BeiraisNoTopo() { var mm = J(w); var bs = mm["barras"].AsObject().Where(kv => (string)kv.Value["secao"] == pBeiral).ToList(); return bs.Count == 8 && bs.All(kv => Math.Abs(Pos(mm, (string)kv.Value["ni"]).Z - H) < 1e-9 && Math.Abs(Pos(mm, (string)kv.Value["nj"]).Z - H) < 1e-9); }
+            r.L("        beirais: " + string.Join("; ", m["barras"].AsObject().Where(kv => (string)kv.Value["secao"] == pBeiral).Select(kv => kv.Key + " " + Pos(m, (string)kv.Value["ni"]) + " → " + Pos(m, (string)kv.Value["nj"]))));
+            bool beiralPlanta = NBarras(w) == 28 && NNos(w) == 25 && BeiraisNoTopo();
+            r.Conhecido("E2E-04", beiralPlanta, "planta, plano 6 m: Barra com atração Extremidade nos topos dos pilares liga em z = 6 m (" + NBarras(w) + " barras, " + NNos(w) + " nós, no topo: " + BeiraisNoTopo() + ")");
+            if (!beiralPlanta)
+            {   // contorno do usuário: desfaz e desenha em isométrica, onde topo e pé não coincidem na tela
+                Foto(w, "A-03a-beiral-errado", () => v.MostrarVista(VistaPadrao.Iso, false));
+                for (int i = 0; i < 20 && NBarras(w) > 20; i++) { Comando(w, "U"); AteCond(() => true, 5, w); }
+                r.Checar(NBarras(w) == 20 && NNos(w) == 25, "Ctrl+Z tirou as barras de beiral erradas (" + NBarras(w) + " barras, " + NNos(w) + " nós)");
+                v.MostrarVista(VistaPadrao.Iso, false); v.Enquadrar(false); EsperarIdle();
+                Beirais("isométrica");
+            }
+            m = J(w);
+            r.Checar(NBarras(w) == 28 && NNos(w) == 25 && BeiraisNoTopo(), "8 vigas de beiral em z = 6 m pela atração nos nós, sem nó novo (" + NBarras(w) + " barras, " + NNos(w) + " nós)");
             r.Checar(Duplicadas(m) == 0 && Soltos(m) == 0, "sem barras repetidas nem nós soltos");
             Foto(w, "A-03-porticos", () => v.MostrarVista(VistaPadrao.Iso, false));
 
@@ -529,7 +549,12 @@ namespace NovoFtool
                     jpl.Close();
                 }
             }
-            var gJoelho = grupos.FirstOrDefault(x => ((string)x["tipo"]).StartsWith("viga_pilar"));
+            // joelho = ponta da tesoura (viga inclinada W310 que nasce no topo do pilar), não o beiral
+            var mj = J(w);
+            var tesouraNoTopo = new HashSet<string>(mj["barras"].AsObject().Where(kv => (string)kv.Value["secao"] == pViga && Pos(mj, (string)kv.Value["ni"]).Z != Pos(mj, (string)kv.Value["nj"]).Z
+                && Math.Min(Pos(mj, (string)kv.Value["ni"]).Z, Pos(mj, (string)kv.Value["nj"]).Z) > H - 1e-9 && Math.Min(Pos(mj, (string)kv.Value["ni"]).Z, Pos(mj, (string)kv.Value["nj"]).Z) < H + 1e-9).Select(kv => kv.Key));
+            var gJoelho = grupos.Where(x => ((string)x["tipo"]).StartsWith("viga_pilar")).OrderByDescending(x => x["membros"].AsArray().Count(mb => tesouraNoTopo.Contains((string)mb["barra"]))).FirstOrDefault();
+            r.L("        tesouras no topo dos pilares: " + string.Join(", ", tesouraNoTopo) + " · grupo escolhido " + (string)gJoelho?["id"] + ": " + string.Join(", ", gJoelho?["membros"]?.AsArray().Select(mb => (string)mb["barra"] + "/" + (string)mb["ponta"]) ?? new string[0]));
             r.Checar(gJoelho != null, "grupo da ligação pilar–viga (joelho): " + (string)gJoelho?["id"] + " " + (string)gJoelho?["tipo"]);
             if (gJoelho != null)
             {
@@ -538,9 +563,21 @@ namespace NovoFtool
                 r.Exigir(jg != null, "projetista do grupo do joelho abriu");
                 jg.Width = 1460; jg.Height = 880; PrepararDialogoForaDaTela(jg); jg.Show(); EsperarIdle();
                 Esperar(jg.Escolher("chapa_topo_estendida")); EsperarIdle();
-                if (jg.Resultado != null && !Bool(jg.Resultado, "ok")) { Esperar(jg.Otimizar()); EsperarIdle(); }
+                if (jg.Resultado != null && !UiAnalise.Bool(jg.Resultado, "ok")) { Esperar(jg.Otimizar()); EsperarIdle(); }
                 FotoDialogo(jg, "A-13-joelho-chapa-topo");
-                r.Checar(jg.Resultado != null && Bool(jg.Resultado, "ok"), "chapa de topo estendida no joelho passa (pior membro)");
+                r.L("        joelho: taxa " + jg.Resultado?["taxa"] + " · " + (string)jg.Resultado?["criterio"] + " · reprovam: " + string.Join(" | ", jg.Resultado?["verificacoes"]?.AsArray().Where(x => !UiAnalise.Bool(x, "ok")).Select(x => (string)x["nome"] + " " + x["solicitante"] + "/" + x["resistente"] + " " + (string)x["unidade"] + " (" + (string)x["item"] + ")") ?? new string[0]));
+                r.L("        joelho, dados: " + jg.Resultado?["dados"]?.ToJsonString() + " · esforços: " + jg.Resultado?["esforcos"]?.ToJsonString());
+                bool okOtim = jg.Resultado != null && UiAnalise.Bool(jg.Resultado, "ok");
+                r.Conhecido("E2E-05", okOtim, "Otimizar resolve a chapa de topo estendida no joelho (taxa " + jg.Resultado?["taxa"] + ", " + (string)jg.Resultado?["criterio"] + ")");
+                if (!okOtim && ((string)jg.Resultado?["criterio"] ?? "").Contains("perna máxima"))
+                {   // contorno do usuário: baixa a perna da solda que passou do máximo (a espessura mais fina) à mão
+                    var dimin = new JsonObject();
+                    foreach (var x in jg.Resultado["verificacoes"].AsArray().Where(x => !UiAnalise.Bool(x, "ok") && ((string)x["nome"]).Contains("perna máxima")))
+                        dimin[((string)x["nome"]).Contains("alma") ? "b_alma" : "b_mesa"] = Math.Floor((double)x["resistente"]);
+                    r.L("        contorno: " + dimin.ToJsonString());
+                    jg.DefinirDados(dimin); Esperar(jg.CalcularAgora()); EsperarIdle();
+                }
+                r.Checar(jg.Resultado != null && UiAnalise.Bool(jg.Resultado, "ok"), "chapa de topo estendida no joelho passa (pior membro; taxa " + jg.Resultado?["taxa"] + ")");
                 Esperar(jg.AplicarAoGrupo()); EsperarIdle();
                 var gj = Esperar2(d.Ligacoes("GET", "/api/ligacoes/grupos")).AsArray().First(x => (string)x["id"] == (string)gJoelho["id"]);
                 r.Checar((string)gj["projeto"]?["tipo_ligacao"] == "chapa_topo_estendida", "projeto gravado no grupo do joelho (" + (string)gj["projeto"]?["tipo_ligacao"] + ")");
@@ -567,7 +604,7 @@ namespace NovoFtool
             // --- salvar (.estructto), fechar, reabrir e comparar; F5 de novo dá os mesmos números
             d = w.EspacialAtivo;
             string arq = Path.Combine(pasta, "Galpao E2E.estructto");
-            string antes = d.Json.ToJsonString(), gradeAntes = d.Grade?.ToJsonString();
+            string antes = d.Json.ToJsonString(), gradeAntes = d.Json["config"]?["grade"]?.ToJsonString();
             double taxaAntes = TaxaMax(d);
             var taxas0 = d.PiorPorBarra.ToDictionary(kv => kv.Key, kv => DocumentoEspacial.Taxa(kv.Value));
             r.Exigir(w.SalvarEspacialEm(arq), "salvo em " + arq);
@@ -577,7 +614,7 @@ namespace NovoFtool
             var d2 = w.EspacialAtivo;
             r.Exigir(d2 != null, "reaberto");
             r.Checar(JsonNode.DeepEquals(JsonNode.Parse(antes), d2.Json), "modelo reaberto igual ao salvo (nós, barras, cargas, ligações e config)");
-            r.Checar(d2.Grade?.ToJsonString() == gradeAntes, "grade estrutural voltou");
+            r.Checar(gradeAntes != null && d2.Json["config"]?["grade"]?.ToJsonString() == gradeAntes, "grade estrutural (config.grade) voltou");
             r.Checar(v.EixosX.Length == 5, "eixos da grade na vista depois de reabrir");
             Esperar(w.CalcularEspacial());
             r.Checar(d2.Calculado && d2.PiorPorBarra.Count == taxas0.Count && taxas0.All(kv => d2.PiorPorBarra.TryGetValue(kv.Key, out var l) && Rel9(kv.Value, DocumentoEspacial.Taxa(l))),
@@ -646,14 +683,14 @@ namespace NovoFtool
                 stSismo = st.Text;
                 FotoDialogo(jan, "B-03-sismo");
             });
-            var casosE = J(w)["casos"].AsObject().Where(kv => (string)kv.Value["tipo"] == "E").Select(kv => kv.Key).ToList();
+            var casosE = J(w)["casos"].AsObject().Where(kv => (string)kv.Value["tipo"] == "S").Select(kv => kv.Key).ToList();
             r.Checar(mudouS && casosE.Count >= 2, "sismo gerado: " + stSismo + " · casos " + string.Join(", ", casosE));
 
             // --- F5, modal, estabilidade
             Esperar(w.CalcularEspacial());
             d = w.EspacialAtivo;
             r.Exigir(d.Calculado, "F5 calculou (" + w.StatusMsg.Text + ")");
-            r.Checar(d.Combinacoes.Any(c => c.Contains("S")), "combinações com sismo (" + d.Combinacoes.Count() + " combinações)");
+            r.Checar(d.Combinacoes.Any(c => c.Contains("SX")) && d.Combinacoes.Any(c => c.Contains("SY")), "combinações com sismo SX e SY (" + d.Combinacoes.Count() + " combinações)");
             Foto(w, "B-04-aproveitamento", () => v.MostrarVista(VistaPadrao.Iso, false));
             var modal = Esperar(d.Consultar("/api/modal?n=6"));
             var per = modal?["periodos_s"]?.AsArray().Select(x => (double)x).ToList() ?? new List<double>();
@@ -663,7 +700,10 @@ namespace NovoFtool
             var est = Esperar(d.Consultar("/api/estabilidade"));
             var gz = (est?["gama_z"] as JsonObject)?.Select(kv => UiAnalise.D(kv.Value, "valor")).Where(x => !double.IsNaN(x)).ToList() ?? new List<double>();
             r.L("estabilidade: " + est?.ToJsonString().Substring(0, Math.Min(400, est?.ToJsonString().Length ?? 0)));
-            r.Checar(gz.Count > 0 && gz.All(x => x >= 1 && x < 2), "γz por direção: " + string.Join(", ", gz.Select(x => Nf(x))));
+            // aço: o motor usa B2 (NBR 8800 anexo D) no lugar do γz (NBR 6118, só concreto)
+            var b2 = (est?["B2"] as JsonObject)?.Select(kv => (kv.Key, UiAnalise.D(kv.Value, "max"))).Where(x => !double.IsNaN(x.Item2)).ToList() ?? new List<(string, double)>();
+            r.Checar((bool?)est?["aplicavel"] == true && gz.Count == 0 && b2.Count == 2 && b2.All(x => x.Item2 >= 1 && x.Item2 < 2),
+                     "estabilidade global do edifício de aço: B2 (NBR 8800 D.2.3) por direção " + string.Join(", ", b2.Select(x => x.Item1 + " " + Nf(x.Item2))) + "; γz vazio (só concreto)");
             var je = new JanelaEstabilidade(est); PrepararDialogoForaDaTela(je); je.Owner = w; je.Show(); EsperarIdle();
             FotoDialogo(je, "B-06-estabilidade"); je.Close();
 
@@ -689,7 +729,7 @@ namespace NovoFtool
                 r.Checar(d.Origem == a, nome + ": marcado como convertido (Salvar não sobrescreve o antigo)");
                 if (nome.Contains("placa")) r.Checar(d.Placas.Count > 0 || MainWindow.GruposComPlaca(d).Any(), nome + ": placas de base vieram junto");
                 Esperar(w.CalcularEspacial());
-                r.Checar(w.EspacialAtivo.Calculado, nome + ": F5 (" + w.EspacialAtivo.Resumo() + ")");
+                r.Checar(w.EspacialAtivo.Calculado, nome + ": F5 (" + w.EspacialAtivo.Resumo() + " · status: " + w.StatusMsg.Text + " · avisos: " + string.Join("; ", w.EspacialAtivo.Avisos.Take(3)) + ")");
                 Foto(w, "C-" + Slug(Path.GetFileNameWithoutExtension(a)), () => w.vista3D.MostrarVista(VistaPadrao.Iso, false));
                 // salvar convertido em .estructto e reabrir
                 string novo = Path.Combine(pastaSaida, "fluxo-C-" + Slug(Path.GetFileNameWithoutExtension(a)) + " (3D).estructto");
@@ -702,6 +742,7 @@ namespace NovoFtool
             // --- CYPE (.ed3 dos testes do motor): importar, F5 e comparar com os resultados gravados pelo CYPE
             var ed3s = Directory.GetFiles(Path.Combine(raiz, "codigo", "motor", "testes", "dados_cype"), "*.ed3").OrderBy(x => Path.GetFileName(x) == "novo.ed3" ? 0 : 1).ToList();
             r.Checar(ed3s.Count > 0, ed3s.Count + " obras .ed3");
+            bool semResultadosVisto = false, fotoCype = false;
             foreach (string e in ed3s)
             {
                 string nome = Path.GetFileName(e);
@@ -715,7 +756,15 @@ namespace NovoFtool
                 if (nome == "novo.ed3") Foto(w, "C-cype-novo", () => w.vista3D.MostrarVista(VistaPadrao.Iso, false));
                 JsonNode cmp;
                 try { cmp = Esperar(Motor.Post("/api/comparar_cype", new JsonObject { ["nome"] = nome, ["conteudo_base64"] = Convert.ToBase64String(File.ReadAllBytes(e)) })); }
-                catch (Exception ex) { r.Checar(false, nome + ": /api/comparar_cype: " + ComandosAnalise.MensagemMotor(ex)); continue; }
+                catch (Exception ex)
+                {   // obra sem resultados gravados pelo CYPE: o motor recusa; o usuário tem de ler o porquê
+                    string det = null; try { det = (string)JsonNode.Parse(ex.Message)?["detalhe"]; } catch { }
+                    string tela = ComandosAnalise.MensagemMotor(ex);
+                    r.Checar(det != null && det.Contains("resultados"), nome + ": comparar recusado pelo motor: " + det);
+                    if (!semResultadosVisto) r.Conhecido("E2E-06", tela.Contains("resultados"), nome + ": a janela Comparar CYPE mostra o motivo (mostra: " + tela + ")");
+                    semResultadosVisto = true;
+                    continue;
+                }
                 var tab = cmp["tabela"]?.AsArray().ToList() ?? new List<JsonNode>();
                 r.Checar(tab.Count > 0, nome + ": comparação com " + tab.Count + " linhas (válido = " + cmp["valido"] + ")");
                 // deslocamentos e reações relevantes (≥ 5 % do maior da grandeza) devem bater; esforço é conferido por ordem de grandeza
@@ -730,10 +779,11 @@ namespace NovoFtool
                     string txt = nome + ": " + grp.Key + " — " + rel.Count + " valores relevantes, maior diferença " + pior.ToString("0.0", CultureInfo.InvariantCulture) + " %" +
                                  (piorL != null ? " (" + (string)piorL["hipotese"] + ": CYPE " + Nf((double)piorL["cype"], 4) + " × " + Nf((double)piorL["nosso"], 4) + ")" : "");
                     r.L("        " + txt);
-                    if (nome == "novo.ed3") r.Checar(pior <= 5, txt);
+                    if ((bool?)cmp["valido"] == true) r.Checar(pior <= 5, txt);
                 }
-                if (nome == "novo.ed3")
+                if ((bool?)cmp["valido"] == true && !fotoCype)
                 {
+                    fotoCype = true;
                     var jc = new JanelaCype(c => Motor.Post("/api/comparar_cype", c), c => Motor.Post("/api/importar_cype", c));
                     PrepararDialogoForaDaTela(jc); jc.Owner = w; jc.Show(); jc.Mostrar(nome, cmp, null); EsperarIdle();
                     FotoDialogo(jc, "C-cype-comparar"); jc.Close();
@@ -846,6 +896,7 @@ namespace NovoFtool
             v.Snap.Rastreio = false;
             void Clique(Point3D p) { v.MoverTela(T(p) + new Vector(2, 2)); Esperar(v.ClicarTela(T(p) + new Vector(2, 2))); EsperarIdle(); }
             Clique(Q(0, 0, 0)); Clique(Q(6, 0, 3));
+            r.L("        medir: pontos " + string.Join(" → ", v.Medidor.Itens.Select(x => x.P.ToString() + (x.Barra != null ? " [barra " + x.Barra.Nome + "]" : ""))) + " · " + v.Medidor.Res?.Tipo + " " + v.Medidor.Res?.ValorTxt + " · plano " + v.PlanoAtual.Nome);
             r.Checar(v.Medidor.Res?.ValorTxt == "6,708 m", "MEDIR (0; 0; 0) → (6; 0; 3) = " + v.Medidor.Res?.ValorTxt + " (esperado 6,708 m)");
             Foto(w, "D-05-medir", () => { });
             v.Tecla(Key.Escape);
@@ -886,7 +937,7 @@ namespace NovoFtool
             string msg = w.StatusMsg.Text;
             r.L("motor morto durante o F5: status = " + msg + " · calculado = " + w.EspacialAtivo.Calculado);
             bool msgClara = w.EspacialAtivo.Calculado || (msg.Contains("motor", StringComparison.OrdinalIgnoreCase) && (msg.Contains("encerr") || msg.Contains("reinici") || msg.Contains("parou") || msg.Contains("de novo") || msg.Contains("F5")));
-            r.Conhecido("E2E-03", msgClara, "motor morto durante o F5: mensagem clara ou cálculo refeito (status: " + msg + ")");
+            r.Checar(msgClara, "motor morto durante o F5: mensagem clara ou cálculo refeito (status: " + msg + ")");
             Esperar(w.CalcularEspacial());
             r.Checar(w.EspacialAtivo.Calculado, "F5 seguinte recupera (" + w.StatusMsg.Text + ")");
             // edição com o motor morto: o documento não pode perder a alteração
