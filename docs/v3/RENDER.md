@@ -145,9 +145,12 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
   que bate; apoio U/L/tubo: a viga para na face; enrijecedores só em pilar I; chapa de topo não passa da face de pilar estreito.
 - Gusset do motor: o contrato desenha o apoio no plano xz local; no mundo o referencial gira em torno de x até o apoio real
   e a chapa encosta na face da diagonal. Se ainda entra numa peça do nó, a chapa anda no plano dela até a face (`FolgaGusset`).
-- DWG/DXF/STEP (`Exportador.Pecas`): as barras saem cortadas pelos planos de `Juntas` (regra das juntas, folga 12 mm); só o
-  plano principal (o 2º plano e a boca de peixe deixariam tampas fora de um plano, e o STEP facetado quer faces planas).
-  As chapas das ligações continuam fora da exportação.
+- DWG/DXF/STEP (`Exportador.Pecas`): as peças são as do Realista (`Render3D.Construir`, estático): barras com todos os
+  cortes, chapas, cantoneiras e parafusos (camadas LIGACOES/PARAFUSOS), em faces triangulares (mm).
+- Modelo sem pontas do motor (Review Focus 3): `Juntas(..., v5: false)` dá os planos da v0.4 (`JuntasV04` no teste); as regras
+  novas do fallback só valem com pontas. Sempre: esquadria não sobrescrita no 2º passe e 0,3·L só em diagonal.
+- G5 (opcional): `excluir_interferencia` tira a peça do teste; gusset com `apoio_dir` usa o referencial do motor sem adivinhar.
+  O teste de interferência também amostra o interior das faces (chapas em cruz).
 - `Estructto.exe --testes-interferencia <arquivo|galpao> [pasta]`: abre o modelo (galpao = assistente de novo projeto),
   identifica, monta o Realista com as ligações e lista os pares de sólidos (barras, chapas, cantoneiras; parafusos e soldas
   não) que se interpenetram mais de 1 mm (`Render3DGeometria.Interferencias`: AABB e pontos das arestas dentro da outra

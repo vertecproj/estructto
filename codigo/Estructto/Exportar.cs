@@ -25,7 +25,7 @@ using F = Fluent;
 namespace NovoFtool
 {
     // Uma barra pronta para exportar: nome (id da barra), seção, eixo (mm) e sólido extrudado (mm).
-    public sealed class Peca { public string Id, Secao; public Point3D A, B; public Solido Solido; }
+    public sealed class Peca { public string Id, Secao; public Point3D A, B; public Solido Solido; public bool Barra = true, Trecho; }   // Trecho: pedaço do cope de uma barra (sólido fechado à parte, sem linha analítica)   // Barra = false: chapa, cantoneira ou parafuso de ligação (sem linha analítica)
 
     public static class Exportador
     {
@@ -35,43 +35,56 @@ namespace NovoFtool
 
         public static string IdBarra(Barra3D b) => b.Origem is RefMotor r ? r.Id : b.Origem is Barra b2 ? "B" + b2.Id : "B" + b.Id;
 
-        // ponytail: seção sem dados = quadrado de 100 mm (a Vista3D usa um lado proporcional ao modelo)
+        // As peças são as mesmas do Realista (Render3D.Construir): barras com todos os cortes das pontas (plano, 2º plano
+        // "angulo", cope, boca de peixe; pontas do motor quando a vista tem as ligações), chapas, cantoneiras e parafusos das
+        // ligações. Cada sólido vira faces triangulares (mm). ponytail: seção sem dados = quadrado de 100 mm.
         public static List<Peca> Pecas(Modelo3D m, Func<string, Perfil3D> perfil)
         {
-            var nos = m.Nos.ToDictionary(n => n.Id);
+            var nos = new Dictionary<int, No3D>(); foreach (No3D n in m.Nos) nos[n.Id] = n;
             var formas = new Dictionary<string, GeometriaPerfis.Contorno>();
-            var r = new List<Peca>();
             GeometriaPerfis.Contorno Forma(string sec)
             {
                 if (formas.TryGetValue(sec ?? "", out var f)) return f;
                 Perfil3D p = null; try { p = perfil?.Invoke(sec ?? ""); } catch { }
                 return formas[sec ?? ""] = GeometriaPerfis.CriarContorno(p, 0.1);
             }
-            // pontas cortadas como no Realista (regra das juntas; ligações com pontas do motor quando a vista as tem)
             Point3D Pn(int id) => new Point3D(nos[id].X, nos[id].Y, nos[id].Z);
-            var cortes = Render3DGeometria.Juntas(m,
-                b => nos.ContainsKey(b.Ni) && nos.ContainsKey(b.Nj) ? (Pn(b.Ni), Pn(b.Nj)) : (new Point3D(), new Point3D()), b => Forma(b.Secao),
-                (b, emI) => Forma(b.Secao).Concreto ? 0 : 0.012, (b, emI) => double.NaN);
-            foreach (Barra3D b in m.Barras)
+            var cena = new Cena3D
             {
-                if (!nos.TryGetValue(b.Ni, out No3D ni) || !nos.TryGetValue(b.Nj, out No3D nj)) continue;
-                Point3D a = new Point3D(ni.X, ni.Y, ni.Z), c = new Point3D(nj.X, nj.Y, nj.Z);
-                if ((c - a).Length < 1e-9) continue;
-                string sec = b.Secao ?? ""; var f = Forma(sec);
-                cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
-                r.Add(new Peca
+                Mod = m, Forma = Forma, Cor = _ => System.Windows.Media.Colors.Gray, Selecionada = _ => false, Apoio = _ => 0,
+                Pontos = b => nos.ContainsKey(b.Ni) && nos.ContainsKey(b.Nj) ? (Pn(b.Ni), Pn(b.Nj)) : (new Point3D(), new Point3D()),
+            };
+            var col = new List<Render3D.Peca3D>();
+            Render3D.Construir(cena, col);
+            var r = new List<Peca>();
+            foreach (var pc in col)
+            {
+                MalhaDx malha = pc.M; var sol = new Solido();
+                for (int t = 0; t + 2 < malha.T.Count; t += 3)
+                    sol.Lados.Add(new[] { 0, 1, 2 }.Select(k => { var v = malha.P[malha.T[t + k]]; return new Point3D(Math.Round(v.X * Mm, 3), Math.Round(v.Y * Mm, 3), Math.Round(v.Z * Mm, 3)); }).ToArray());
+                if (pc.Barra is Barra3D b)   // a barra vem com o sólido (Peca3D.Barra): ids repetidos não se confundem
                 {
-                    Id = IdBarra(b), Secao = sec, A = new Point3D(a.X * Mm, a.Y * Mm, a.Z * Mm), B = new Point3D(c.X * Mm, c.Y * Mm, c.Z * Mm),
-                    Solido = GeometriaPerfis.Extrudar(f, a, c, b.Rot + b.RotPerfil, Mm, b.Cardinal, ci, cj),
-                });
+                    sol.Concreto = Forma(b.Secao).Concreto;
+                    r.Add(new Peca { Id = IdBarra(b), Secao = b.Secao ?? "", A = new Point3D(nos[b.Ni].X * Mm, nos[b.Ni].Y * Mm, nos[b.Ni].Z * Mm), B = new Point3D(nos[b.Nj].X * Mm, nos[b.Nj].Y * Mm, nos[b.Nj].Z * Mm), Solido = sol, Trecho = pc.Trecho });
+                }
+                else r.Add(new Peca { Id = pc.Nome, Secao = pc.Tipo == "parafuso" ? "PARAFUSOS" : "LIGACOES", Barra = false, Solido = sol });
             }
             return r;
+        }
+
+        // Volume (mm³) de um sólido de faces planas (divergência; faces orientadas para fora).
+        public static double Volume(Solido s)
+        {
+            double v = 0;
+            foreach (Point3D[] f in s.Lados.Concat(s.TampaI).Concat(s.TampaJ).Concat(s.Triangulos.Count > 0 && s.Lados.Count == 0 ? s.Triangulos : new List<Point3D[]>()))
+                for (int k = 1; k + 1 < f.Length; k++) v += Vector3D.DotProduct((Vector3D)f[0], Vector3D.CrossProduct((Vector3D)f[k], (Vector3D)f[k + 1])) / 6;
+            return v;
         }
 
         // ================= DWG / DXF =================
 
         // ponytail: vírgula também vira _ (o DXF com vírgula no nome da camada perde a camada no ezdxf)
-        public static string CamadaDe(Peca p) => (p.Solido.Concreto ? "CONCRETO_" : "ACO_") + Regex.Replace(p.Secao.Length == 0 ? "SEM_SECAO" : p.Secao, "[<>/\\\\\":;?*|=`,]", "_");
+        public static string CamadaDe(Peca p) => !p.Barra ? p.Secao : (p.Solido.Concreto ? "CONCRETO_" : "ACO_") + Regex.Replace(p.Secao.Length == 0 ? "SEM_SECAO" : p.Secao, "[<>/\\\\\":;?*|=`,]", "_");
 
         // Uma POLYFACE MESH por barra (ACadSharp não gera ACIS para 3DSOLID) na camada da seção + uma LINE por barra na
         // camada ANALITICO. Unidades mm, versão AC1032 (2018).
@@ -104,7 +117,7 @@ namespace NovoFtool
                 foreach (Point3D[] f in p.Solido.Lados.Concat(p.Solido.Triangulos))
                     pm.Faces.Add(new VertexFaceRecord { Index1 = Ix(f[0]), Index2 = Ix(f[1]), Index3 = Ix(f[2]), Index4 = f.Length > 3 ? Ix(f[3]) : (short)0 });
                 doc.Entities.Add(pm);
-                doc.Entities.Add(new Line(new XYZ(p.A.X, p.A.Y, p.A.Z), new XYZ(p.B.X, p.B.Y, p.B.Z)) { Layer = analitica });
+                if (p.Barra && !p.Trecho) doc.Entities.Add(new Line(new XYZ(p.A.X, p.A.Y, p.A.Z), new XYZ(p.B.X, p.B.Y, p.B.Z)) { Layer = analitica });
             }
             if (dxf) DxfWriter.Write(arq, doc, false);
             else DwgWriter.Write(arq, doc);
@@ -185,7 +198,7 @@ namespace NovoFtool
                     faces.Add(E("FACE_SURFACE(''," + L(bounds) + ",#" + pl + ",.T.)"));
                 }
                 foreach (Point3D[] q in p.Solido.Lados) Face(new[] { q });
-                Face(p.Solido.TampaI); Face(p.Solido.TampaJ);
+                if (p.Solido.TampaI.Count > 0) Face(p.Solido.TampaI); if (p.Solido.TampaJ.Count > 0) Face(p.Solido.TampaJ);
                 int shell = E("CLOSED_SHELL(''," + L(faces) + ")");
                 int brep = E("FACETED_BREP(" + S(nome) + ",#" + shell + ")");
                 int sr = E("FACETED_BREP_SHAPE_REPRESENTATION(" + S(nome) + ",(#" + brep + ",#" + eixo + "),#" + geo + ")");
@@ -270,14 +283,82 @@ namespace NovoFtool
             Perfil3D PerfilEsp(string nome) => esp.Json["secoes"]?[nome] is JsonObject s ? Perfil3D.DoMotor(s) : null;
             Perfil3D Perfil2D(string nome) => Perfil3D.DoCatalogo(Biblioteca.AcharSecao(nome));
 
+            {   // cope do motor: viga I 300 (pontas: plano a 50 mm, cope de 40 × 100 mm na mesa de cima) chega em viga I 400 contínua;
+                // o sólido exportado perde o volume do cope (= malha do Realista ± 1 %) e a chapa da ligação sai junto
+                var mc = new Modelo3D(); mc.Nos.Add(new No3D { Id = 1 }); mc.Nos.Add(new No3D { Id = 2, X = 4 }); mc.Nos.Add(new No3D { Id = 3, Y = -3 }); mc.Nos.Add(new No3D { Id = 4, Y = 3 });
+                var vg = new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "I300" };
+                mc.Barras.Add(vg); mc.Barras.Add(new Barra3D { Id = 2, Ni = 3, Nj = 1, Secao = "I400" }); mc.Barras.Add(new Barra3D { Id = 3, Ni = 1, Nj = 4, Secao = "I400" });
+                var lg = new Ligacao3D { No = 1, Barra = 1, Nome = "teste cope", Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.05, 0, 0), N = new Vector3D(-1, 0, 0) } };
+                lg.Ponta.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "cope", Posicao = "topo", Altura = 40, Comprimento = 100 });
+                lg.Chapas.Add(new Ligacao3D.Chapa { Nome = "chapa simples", Origem = new Vector3D(10, 3, -100), Normal = new Vector3D(0, 1, 0), U = new Vector3D(0, 0, 1), Espessura = 10, Contorno = new[] { new System.Windows.Point(0, 0), new System.Windows.Point(200, 0), new System.Windows.Point(200, 100), new System.Windows.Point(0, 100) } });
+                mc.Ligacoes.Add(lg);
+                Perfil3D Pf(string sec) => sec == "I300" ? new Perfil3D { Forma = "I", H = 0.3, B = 0.15, Tw = 0.006, Tf = 0.01 } : new Perfil3D { Forma = "I", H = 0.4, B = 0.2, Tw = 0.008, Tf = 0.012 };
+                var pc = Exportador.Pecas(mc, Pf);
+                Cena3D Cena(Modelo3D md, Func<string, Perfil3D> pf) => new Cena3D { Mod = md, Forma = s => GeometriaPerfis.CriarContorno(pf(s), 0.1), Cor = _ => System.Windows.Media.Colors.Gray, Selecionada = _ => false, Apoio = _ => 0,
+                    Pontos = b => { No3D p = md.Nos.First(n => n.Id == b.Ni), q = md.Nos.First(n => n.Id == b.Nj); return (new Point3D(p.X, p.Y, p.Z), new Point3D(q.X, q.Y, q.Z)); } };
+                var pvs = pc.Where(p => p.Barra && p.Id == Exportador.IdBarra(vg)).ToList();
+                double A = 0.15 * 0.01 * 2 + 0.006 * 0.28, Acope = 0.15 * 0.01 + 0.006 * 0.03;   // seção e o que o cope tira (mesa + 30 mm de alma)
+                double esperado = (A * (4 - 0.05) - Acope * 0.1) * 1e9, vol = pvs.Sum(p => Exportador.Volume(p.Solido));
+                var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(mc, Pf), col);
+                double volRealista = col.Where(x => x.Barra == vg).Sum(x => Render3DGeometria.Fechada(x.M).Volume) * 1e9;
+                Ok("exportar: viga com cope do motor, volume " + (vol / 1e3).ToString("0", CultureInfo.InvariantCulture) + " cm³ = Realista " + (volRealista / 1e3).ToString("0", CultureInfo.InvariantCulture) + " = esperado " + (esperado / 1e3).ToString("0", CultureInfo.InvariantCulture) + " (± 1 %)",
+                   Math.Abs(vol / esperado - 1) < 0.01 && Math.Abs(vol / volRealista - 1) < 0.01);
+                Ok("exportar: viga com cope = " + pvs.Count + " sólidos (trecho do cope + resto), cada um estanque (toda aresta em 2 faces) e com volume finito",
+                   pvs.Count == 2 && pvs.All(p => Exportador.Fechado(p.Solido) && double.IsFinite(Exportador.Volume(p.Solido)) && Exportador.Volume(p.Solido) > 0));
+                // tubo Ø 114 em tubo Ø 168 (boca de peixe, modelo com pontas) e gusset do motor num tubo: chapa sobre a superfície
+                var mt = new Modelo3D(); mt.Nos.Add(new No3D { Id = 1 }); mt.Nos.Add(new No3D { Id = 2, X = 4 }); mt.Nos.Add(new No3D { Id = 3, X = 2 }); mt.Nos.Add(new No3D { Id = 4, X = 3, Z = 1.732 });
+                mt.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 3, Secao = "TC168" }); mt.Barras.Add(new Barra3D { Id = 2, Ni = 3, Nj = 2, Secao = "TC168" }); var br = new Barra3D { Id = 3, Ni = 3, Nj = 4, Secao = "TC114" }; mt.Barras.Add(br);
+                mt.Ligacoes.Add(new Ligacao3D { No = 1, Barra = 1, Nome = "marca v5", Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.001, 0, 0), N = new Vector3D(-1, 0, 0) } });   // modelo com pontas: regras novas
+                Perfil3D Pt(string sec) => new Perfil3D { Forma = "TC", H = sec == "TC168" ? 0.168 : 0.114, Tw = 0.006 };
+                var pt = Exportador.Pecas(mt, Pt).Where(p => p.Barra && p.Id == Exportador.IdBarra(br)).ToList();
+                Ok("exportar: tubo com boca de peixe estanque e com volume finito (" + pt.Count + " sólido)", pt.Count == 1 && Exportador.Fechado(pt[0].Solido) && double.IsFinite(Exportador.Volume(pt[0].Solido)) && Exportador.Volume(pt[0].Solido) > 0);
+                var mg = new Modelo3D(); mg.Nos.Add(new No3D { Id = 1 }); mg.Nos.Add(new No3D { Id = 2, Z = 3 }); mg.Nos.Add(new No3D { Id = 3, Z = 1.5 }); mg.Nos.Add(new No3D { Id = 4, X = 2, Z = 3.5 });
+                mg.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 3, Secao = "W" }); mg.Barras.Add(new Barra3D { Id = 2, Ni = 3, Nj = 2, Secao = "W" }); var dg = new Barra3D { Id = 3, Ni = 3, Nj = 4, Secao = "TC114" }; mg.Barras.Add(dg);
+                var lgg = new Ligacao3D { No = 3, Barra = 3, Nome = "gusset tubo", Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.3, 0, 0), N = new Vector3D(-1, 0, 0) } };
+                lgg.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, 5, 0), Normal = new Vector3D(0, -1, 0), U = new Vector3D(1, 0, 0), Espessura = 10,
+                                                     Contorno = new[] { new System.Windows.Point(150, -150), new System.Windows.Point(600, -150), new System.Windows.Point(600, 150), new System.Windows.Point(150, 150) } });   // como o motor: chapa no eixo (rasgaria o tubo)
+                mg.Ligacoes.Add(lgg);
+                Perfil3D Pg(string sec) => sec == "W" ? new Perfil3D { Forma = "I", H = 0.25, B = 0.25, Tw = 0.009, Tf = 0.014 } : new Perfil3D { Forma = "TC", H = 0.114, Tw = 0.006 };
+                var cg = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(mg, Pg), cg);
+                var tubo = cg.First(x => x.Barra == dg); var chg = cg.First(x => x.Tipo == "chapa");
+                var ig = Render3DGeometria.Interferencias(new[] { tubo.M, chg.M });
+                Ok("gusset do motor num tubo: chapa sobre a superfície (R + esp/2 do eixo), sem interferência com o tubo (" + ig.Count + " pares)", ig.Count == 0);
+                // ids repetidos (duas barras com o mesmo id do motor): cada sólido fica com a sua barra
+                var md = new Modelo3D(); md.Nos.Add(new No3D { Id = 1 }); md.Nos.Add(new No3D { Id = 2, X = 3 }); md.Nos.Add(new No3D { Id = 3, Y = 5 }); md.Nos.Add(new No3D { Id = 4, X = 3, Y = 5 });
+                md.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W", Origem = new RefMotor { Id = "B1" } }); md.Barras.Add(new Barra3D { Id = 2, Ni = 3, Nj = 4, Secao = "W", Origem = new RefMotor { Id = "B1" } });
+                var pd = Exportador.Pecas(md, Pg);
+                Ok("exportar: ids repetidos — 2 peças de barra, cada uma na sua posição (y 0 e 5000 mm)", pd.Count(p => p.Barra) == 2 && pd.Select(p => p.A.Y).OrderBy(y => y).SequenceEqual(new[] { 0.0, 5000.0 }) && pd.All(p => p.Solido.Lados.SelectMany(q => q).All(q => Math.Abs(q.Y - p.A.Y) < 200)));
+                Ok("exportar: chapa da ligação sai como peça (" + pc.Count(p => !p.Barra) + ")", pc.Any(p => !p.Barra && p.Id.Contains("chapa simples") && Math.Abs(Exportador.Volume(p.Solido) - 200 * 100 * 10) < 1));
+                string arqC = Path.Combine(pasta, "cope.dwg"); Exportador.Cad(arqC, pc, false);
+                var dc = DwgReader.Read(arqC); var errC = new List<string>(); Exportador.ConferirStep(Exportador.Step(pc, "cope", "cope.stp"), errC);
+                Ok("exportar: DWG com " + dc.Entities.OfType<PolyfaceMesh>().Count() + " malhas (barras + chapa) e STEP sem erro", dc.Entities.OfType<PolyfaceMesh>().Count() == pc.Count && errC.Count == 0);
+            }
+
+            {   // Review Focus 3: modelo sem pontas do motor (guincho .estructto, galpão do motor) = planos de corte da v0.4
+                var gal = new DocumentoEspacial { Json = JsonNode.Parse(File.ReadAllText(Path.Combine(raiz, "codigo", "motor", "exemplos", "galpao_aco.json"))).AsObject() };
+                Perfil3D PerfilGal(string nome) => gal.Json["secoes"]?[nome] is JsonObject s ? Perfil3D.DoMotor(s) : null;
+                foreach (var (nome, mod, perfil) in new[] { ("guincho", guincho, (Func<string, Perfil3D>)Perfil2D), ("galpao_aco", gal.ParaVista(), PerfilGal) })
+                {
+                    var nos = mod.Nos.ToDictionary(n => n.Id);
+                    Func<Barra3D, (Point3D, Point3D)> pts = b => (new Point3D(nos[b.Ni].X, nos[b.Ni].Y, nos[b.Ni].Z), new Point3D(nos[b.Nj].X, nos[b.Nj].Y, nos[b.Nj].Z));
+                    Func<Barra3D, GeometriaPerfis.Contorno> fm = b => GeometriaPerfis.CriarContorno(perfil(b.Secao ?? ""), 0.1);
+                    Func<Barra3D, bool, double> fg = (b, emI) => fm(b).Concreto ? 0 : 0.012, nan = (b, emI) => double.NaN;
+                    var novo = Render3DGeometria.Juntas(mod, pts, fm, fg, nan); var v04 = Render3DGeometria.JuntasV04(mod, pts, fm, fg, nan);
+                    int dif = v04.Count(kv => !novo.TryGetValue(kv.Key, out Corte k) || (k.P - kv.Value.P).Length > 1e-9 || (k.N - kv.Value.N).Length > 1e-9) + novo.Keys.Count(k => !v04.ContainsKey(k))
+                              + novo.Values.Count(k => k.Extra != null || k.Raio > 0);
+                    Ok("sem pontas (v0.4): " + nome + " com os mesmos " + v04.Count + " planos de corte da v0.4 (" + dif + " diferentes)", dif == 0 && v04.Count > 0);
+                }
+            }
+
             foreach (var (nome, mod, perfil) in new[] { ("guincho", guincho, (Func<string, Perfil3D>)Perfil2D), ("edificio", edificio, PerfilEsp) })
             {
                 var pecas = Exportador.Pecas(mod, perfil);
-                Ok(nome + ": uma peça por barra (" + pecas.Count + ")", pecas.Count == mod.Barras.Count && pecas.Count > 0);
+                Ok(nome + ": uma peça por barra (" + pecas.Count(p => p.Barra && !p.Trecho) + ") + " + pecas.Count(p => !p.Barra) + " de ligação", pecas.Count(p => p.Barra && !p.Trecho) == mod.Barras.Count && pecas.Count > 0);
                 Ok(nome + ": sólidos fechados e orientados", pecas.All(p => Exportador.Fechado(p.Solido)));
                 var camadas = new HashSet<string>(pecas.Select(Exportador.CamadaDe)) { Exportador.CamadaAnalitica };
                 double x0 = mod.Nos.Min(n => n.X) * 1000, x1 = mod.Nos.Max(n => n.X) * 1000, y0 = mod.Nos.Min(n => n.Y) * 1000, y1 = mod.Nos.Max(n => n.Y) * 1000, z0 = mod.Nos.Min(n => n.Z) * 1000, z1 = mod.Nos.Max(n => n.Z) * 1000;
-                double folga = pecas.SelectMany(p => p.Solido.TampaI.SelectMany(q => q).Select(q => (q - p.A).Length).Concat(p.Solido.TampaJ.SelectMany(q => q).Select(q => (q - p.B).Length))).Max() + 1e-6;
+                double Dseg(Point3D q, Point3D a, Point3D b) { Vector3D ab = b - a; double t = Math.Max(0, Math.Min(1, Vector3D.DotProduct(q - a, ab) / ab.LengthSquared)); return (q - (a + ab * t)).Length; }
+                double folga = pecas.Where(p => p.Barra).SelectMany(p => p.Solido.Lados.SelectMany(q => q).Select(q => Dseg(q, p.A, p.B))).Max() + 1e-3;   // meia seção
 
                 foreach (bool dxf in new[] { false, true })
                 {
@@ -286,7 +367,7 @@ namespace NovoFtool
                     CadDocument d = dxf ? DxfReader.Read(arq) : DwgReader.Read(arq);
                     string t = nome + (dxf ? " DXF" : " DWG");
                     var linhas = d.Entities.OfType<Line>().ToList(); var malhas = d.Entities.OfType<PolyfaceMesh>().ToList();
-                    Ok(t + ": " + linhas.Count + " linhas e " + malhas.Count + " malhas = barras", linhas.Count == pecas.Count && malhas.Count == pecas.Count);
+                    Ok(t + ": " + linhas.Count + " linhas e " + malhas.Count + " malhas = barras", linhas.Count == pecas.Count(p => p.Barra && !p.Trecho) && malhas.Count == pecas.Count);
                     Ok(t + ": linhas na camada " + Exportador.CamadaAnalitica, linhas.All(l => l.Layer?.Name == Exportador.CamadaAnalitica));
                     var lidas = new HashSet<string>(d.Layers.Select(l => l.Name));
                     Ok(t + ": " + camadas.Count + " camadas (seção/tipo + analítica)", camadas.All(lidas.Contains) && malhas.Select(p => p.Layer?.Name).Distinct().Count() == camadas.Count - 1);
@@ -295,10 +376,10 @@ namespace NovoFtool
                     var pl = linhas.SelectMany(l => new[] { l.StartPoint, l.EndPoint }).ToList();
                     bool Perto(double a, double b) => Math.Abs(a - b) < 1e-6;
                     Ok(t + ": caixa das linhas = caixa dos nós (mm)", Perto(pl.Min(p => p.X), x0) && Perto(pl.Max(p => p.X), x1) && Perto(pl.Min(p => p.Y), y0) && Perto(pl.Max(p => p.Y), y1) && Perto(pl.Min(p => p.Z), z0) && Perto(pl.Max(p => p.Z), z1));
-                    var pm = malhas.SelectMany(p => p.Vertices.Select(v => v.Location)).ToList();
+                    var pm = malhas.Where(p => p.Layer?.Name != "LIGACOES" && p.Layer?.Name != "PARAFUSOS").SelectMany(p => p.Vertices.Select(v => v.Location)).ToList();
                     Ok(t + ": caixa das malhas = caixa dos nós ± meia seção (" + folga.ToString("0.#", CultureInfo.InvariantCulture) + " mm)",
                         pm.Min(p => p.X) >= x0 - folga && pm.Max(p => p.X) <= x1 + folga && pm.Min(p => p.Y) >= y0 - folga && pm.Max(p => p.Y) <= y1 + folga && pm.Min(p => p.Z) >= z0 - folga && pm.Max(p => p.Z) <= z1 + folga &&
-                        pm.Min(p => p.X) <= x0 + 1e-6 && pm.Max(p => p.X) >= x1 - 1e-6 && pm.Min(p => p.Y) <= y0 + 1e-6 && pm.Max(p => p.Y) >= y1 - 1e-6 && pm.Min(p => p.Z) <= z0 + 1e-6 && pm.Max(p => p.Z) >= z1 - 1e-6);
+                        pm.Min(p => p.X) <= x0 + folga && pm.Max(p => p.X) >= x1 - folga && pm.Min(p => p.Y) <= y0 + folga && pm.Max(p => p.Y) >= y1 - folga && pm.Min(p => p.Z) <= z0 + folga && pm.Max(p => p.Z) >= z1 - folga);   // pontas cortadas: o extremo fica a menos de meia seção do nó
                 }
 
                 string stp = Exportador.Step(pecas, nome, nome + ".stp");
@@ -309,7 +390,7 @@ namespace NovoFtool
                 int esperado = 13 + 7 + pecas.Sum(p =>
                 {
                     var lacos = p.Solido.Lados.Concat(p.Solido.TampaI).Concat(p.Solido.TampaJ).ToList();
-                    return lacos.SelectMany(l => l).Distinct().Count() + 2 * lacos.Count + 5 * (p.Solido.Lados.Count + 2) + 4 + 5 + 1 + 4;
+                    return lacos.SelectMany(l => l).Distinct().Count() + 2 * lacos.Count + 5 * (p.Solido.Lados.Count + (p.Solido.TampaI.Count > 0 ? 1 : 0) + (p.Solido.TampaJ.Count > 0 ? 1 : 0)) + 4 + 5 + 1 + 4;
                 });
                 Ok(nome + " STEP: " + nEnt + " entidades (esperado " + esperado + ")", nEnt == esperado);
                 Ok(nome + " STEP: referências resolvidas" + (erros.Count > 0 ? " — " + string.Join("; ", erros.Take(5)) : ""), erros.Count == 0);

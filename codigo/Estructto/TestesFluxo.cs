@@ -1380,14 +1380,15 @@ namespace NovoFtool
                 var v = w.vista3D;
                 if (!v.UsandoDx) throw new InvalidOperationException("Render3D (Direct3D 11) indisponível: sem placa de vídeo");
                 sb.AppendLine("ligações na vista: " + v.ModeloAtual.Ligacoes.Count + " (com pontas do motor: " + v.ModeloAtual.Ligacoes.Count(l => l.Ponta != null) + ")");
-                Render3D.Coleta = new List<(string, MalhaDx)>();
+                Render3D.Coleta = new List<Render3D.Peca3D>();
                 v.DefinirLigacoes(v.ModeloAtual.Ligacoes); EsperarIdle();   // remonta a cena guardando os sólidos
-                var col = Render3D.Coleta; Render3D.Coleta = null;
+                var todos = Render3D.Coleta; Render3D.Coleta = null;
+                var col = todos.Where(x => !x.Excluir).ToList();   // parafusos atravessam as chapas; barras curtas demais para a ligação (motor ou WPF)
+                sb.AppendLine("fora do teste: " + todos.Count(x => x.Excluir && x.Tipo != "parafuso") + " sólidos (barras curtas demais para a ligação: " + string.Join(", ", Render3D.Curtas) + ")");
                 var sw = Stopwatch.StartNew();
-                var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList());
+                var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList()).Where(x => col[x.A].Barra == null || col[x.A].Barra != col[x.B].Barra).ToList();   // trechos do cope da mesma barra encostam
                 pares = r.Count;
                 sb.AppendLine(col.Count + " sólidos · " + pares + " pares com interseção > 1 mm · " + sw.ElapsedMilliseconds + " ms");
-                var porId = v.ModeloAtual.Barras.Where(b => b.Origem is RefMotor).ToDictionary(b => "barra " + ((RefMotor)b.Origem).Id);
                 string Ponta(Barra3D b, int no)   // diagnóstico: corte e ligação da ponta de b no nó
                 {
                     bool emI = b.Ni == no; Render3D.CortesColeta.TryGetValue((b, emI), out Corte k); Render3D.LigsColeta.TryGetValue((b.Id, emI), out Ligacao3D l);
@@ -1398,15 +1399,10 @@ namespace NovoFtool
                 foreach (var (a, b, p) in r.OrderByDescending(x => x.Prof))
                 {
                     sb.AppendLine("  " + (p * 1000).ToString("0.0", CultureInfo.InvariantCulture) + " mm  " + col[a].Nome + "  ×  " + col[b].Nome);
-                    if (porId.TryGetValue(col[a].Nome, out Barra3D ba) && porId.TryGetValue(col[b].Nome, out Barra3D bb))
+                    if (col[a].Barra is Barra3D ba && col[b].Barra is Barra3D bb)
                         foreach (int no in new[] { ba.Ni, ba.Nj }.Intersect(new[] { bb.Ni, bb.Nj })) sb.AppendLine("      " + Ponta(ba, no) + "  |  " + Ponta(bb, no));
-                    foreach (var (bar, lig) in new[] { (col[a].Nome, col[b].Nome), (col[b].Nome, col[a].Nome) })
-                    {
-                        var mn = System.Text.RegularExpressions.Regex.Match(lig, " nó (\\S+) ");
-                        if (!porId.TryGetValue(bar, out Barra3D bx) || !mn.Success) continue;
-                        var nv = v.ModeloAtual.Nos.FirstOrDefault(n => n.Origem is RefMotor rm && rm.Id == mn.Groups[1].Value);
-                        if (nv != null && (bx.Ni == nv.Id || bx.Nj == nv.Id)) sb.AppendLine("      " + Ponta(bx, nv.Id));
-                    }
+                    foreach (var (bar, lig) in new[] { (col[a], col[b]), (col[b], col[a]) })
+                        if (bar.Barra is Barra3D bx && lig.Lig != null && (bx.Ni == lig.Lig.No || bx.Nj == lig.Lig.No)) sb.AppendLine("      " + Ponta(bx, lig.Lig.No));
                 }
 
                 // close-ups: o 1º nó de cada caso

@@ -37,6 +37,10 @@ namespace NovoFtool
         // angulo com Folga em mm, boca_peixe). null = modelo/ligação sem pontas: vale a regra das juntas (Render3DGeometria.Juntas).
         public sealed class PontaMotor { public Vector3D P, N; public readonly List<Recorte> Recortes = new List<Recorte>(); }
         public PontaMotor Ponta;
+        // G5 (opcionais, tolerante se faltarem): excluir_interferencia (barra curta que o motor marcou: fora do teste de
+        // interferência); gusset com apoio_dir (direção do apoio no referencial local) e lado (+1/−1: lado y da chapa). Com
+        // apoio_dir o Render3D usa o referencial do motor como veio, sem adivinhar.
+        public bool Excluir; public Vector3D? ApoioDir; public double Lado = double.NaN;
 
         // Recorte "recuo" da barra dada ("viga" = a que chega; "pilar" = a contínua). Folga (m) = vão entre a ponta e a face
         // da peça contínua; XPonta (m) = posição da ponta a partir do nó (o motor manda x_ponta). NaN = sem recorte: vale a regra das juntas.
@@ -67,6 +71,15 @@ namespace NovoFtool
                 l.Recortes.Add(new Recorte { Barra = (string)r["barra"], Tipo = (string)r["tipo"], Folga = D(pr, "folga", double.NaN), XPonta = D(pr, "x_ponta", double.NaN), Altura = D(pr, "altura"), Comprimento = D(pr, "comprimento"), Posicao = (string)pr?["posicao"] ?? "topo" });
             }
             var pm = (g["pontas"] as JsonArray)?.FirstOrDefault(p => D(p, "barra", -1) == 0 && p?["plano"] != null);
+            bool B(JsonNode n, string k) { try { return n?[k] is JsonValue v && v.TryGetValue(out bool x) && x; } catch { return false; } }
+            var gus = (g["chapas"] as JsonArray)?.FirstOrDefault(c => (string)c?["nome"] == "gusset");
+            l.Excluir = B(g, "excluir_interferencia") || B(pm, "excluir_interferencia");
+            foreach (var n in new[] { g, gus, pm })
+            {
+                if (n?["apoio_dir"] is JsonArray ad && ad.Count >= 3) l.ApoioDir = V3(ad);
+                var ld = n?["lado"];
+                if (ld is JsonValue lv) { if (lv.TryGetValue(out double x)) l.Lado = Math.Sign(x); else if (lv.TryGetValue(out string t)) l.Lado = t.StartsWith("-") ? -1 : 1; }
+            }
             if (pm != null)
             {
                 l.Ponta = new PontaMotor { P = V3(pm["plano"]["ponto"]), N = V3(pm["plano"]["normal"]) };

@@ -102,6 +102,16 @@ namespace NovoFtool
                 string chave = tl + "|" + dados.ToJsonString() + "|" + (perfis?.ToJsonString() ?? "");
                 lock (cacheGeo) if (cacheGeo.TryGetValue(chave, out JsonObject g0)) return g0;
                 if (chamadas++ >= MaxChamadas) return null;   // não guarda: na próxima carga tenta de novo
+                JsonObject geo = await Uma(tl, dados.DeepClone().AsObject(), perfis?.DeepClone().AsObject());
+                // motor sem G5 recusa seção composta em medidas: tenta de novo com o nome
+                static JsonObject Nomes(JsonObject o) { if (o == null) return null; foreach (var k in o.Select(kv => kv.Key).ToList()) if (o[k] is JsonObject c && c["nome"] != null) o[k] = (string)c["nome"]; return o; }
+                if (geo == null && (dados.Any(kv => kv.Value is JsonObject) || perfis?.Any(kv => kv.Value is JsonObject) == true))
+                    geo = await Uma(tl, Nomes(dados.DeepClone().AsObject()), Nomes(perfis?.DeepClone().AsObject()));
+                lock (cacheGeo) cacheGeo[chave] = geo;
+                return geo;
+            }
+            async Task<JsonObject> Uma(string tl, JsonObject dados, JsonObject perfis)
+            {
                 JsonObject geo = null;
                 try
                 {
@@ -115,10 +125,12 @@ namespace NovoFtool
                     var res = await Motor.Post("/api/ligacoes/verificar", new JsonObject { ["tipo"] = tl, ["dados"] = dados,
                                                ["esforcos"] = new JsonObject { ["N"] = 0, ["V"] = 0, ["Vz"] = 0, ["M"] = 0, ["Mz"] = 0, ["T"] = 0 } });
                     geo = res?["geometria"] as JsonObject;
+                    // barra curta demais para a ligação (G2: ok = false + motivo/aviso): fora do teste de interferência
+                    if (geo != null && ((string)res["motivo"] ?? "").Contains("barra curta") || (res?["avisos"] as JsonArray)?.Any(a => ((string)a ?? "").Contains("barra curta")) == true)
+                        if (geo != null) geo["excluir_interferencia"] = true;
                     if (geo != null && !(geo["chapas"] is JsonArray ca && ca.Count > 0) && !(geo["cantoneiras"] is JsonArray cc && cc.Count > 0)) geo = null;   // sem peças: proposta local
                 }
                 catch { geo = null; }
-                lock (cacheGeo) cacheGeo[chave] = geo;
                 return geo;
             }
             int nProp = 0;
@@ -153,12 +165,28 @@ namespace NovoFtool
                         var dados = proposta ? new JsonObject() : proj["dados"]?.DeepClone() as JsonObject ?? new JsonObject();
                         JsonObject perfis = null;
                         string sup = Suporte(no, bid);
-                        if (tl == "gusset_contraventamento") { if (proposta) perfis = PerfisGusset(sec, assin); if (sup != null) { if (perfis != null) perfis["perfil_pilar"] = sup; else dados["perfil_pilar"] = sup; } }
+                        bool emINo = b.Ni == idN;
+                        // G5: seção composta ("2UPN ... duplo") vai como medidas {d, bf, tw, tf} (mm); U leva abertura_y (±1): lado
+                        // y local para onde abrem as mesas (contorno do U abre para +u; y = −u na ponta i, +u na ponta j)
+                        JsonNode PerfilMotor(string s)
+                        {
+                            if ((string)secoes?[s ?? ""]?["props"]?["tipo"] != "dupla") return s;
+                            double tw = Prop(s, "tw") > 0 ? Prop(s, "tw") : Prop(s, "t");
+                            return new JsonObject { ["nome"] = s, ["d"] = Prop(s, "h") * 1000, ["bf"] = Prop(s, "b") * 1000, ["tw"] = tw * 1000, ["tf"] = (Prop(s, "tf") > 0 ? Prop(s, "tf") : tw) * 1000 };
+                        }
+                        bool ehU = (string)secoes?[sec ?? ""]?["props"]?["tipo"] == "U";
+                        if (tl == "gusset_contraventamento")
+                        {
+                            if (proposta) perfis = PerfisGusset(sec, assin);
+                            if (sup != null) { if (perfis != null) perfis["perfil_pilar"] = PerfilMotor(sup); else dados["perfil_pilar"] = PerfilMotor(sup); }
+                            if (ehU) (perfis ?? dados)["abertura_y"] = emINo ? -1 : 1;
+                        }
                         else
                         {
-                            if (sec != null) dados["perfil_viga"] = sec;
-                            if (sup != null) { dados["perfil_pilar"] = sup; dados["perfil_suporte"] = sup; }
-                            if (tl == "emenda_pilar" && sec != null) dados["perfil_pilar"] = sec;
+                            if (sec != null) dados["perfil_viga"] = PerfilMotor(sec);
+                            if (sup != null) { dados["perfil_pilar"] = PerfilMotor(sup); dados["perfil_suporte"] = PerfilMotor(sup); }
+                            if (tl == "emenda_pilar" && sec != null) dados["perfil_pilar"] = PerfilMotor(sec);
+                            if (ehU) dados["abertura_y"] = emINo ? -1 : 1;
                             if (proposta) { perfis = new JsonObject(); foreach (var kv in dados) perfis[kv.Key] = kv.Value?.DeepClone(); dados = new JsonObject(); }
                         }
                         JsonObject geo = proposta && perfis == null ? null : await Geometria(tl, dados, perfis);
@@ -170,6 +198,7 @@ namespace NovoFtool
                         lig = new Ligacao3D { No = idN, Barra = b.Id, Nome = (string)g["nome"] ?? "", Pendente = tipoNo + "|" + string.Join("|", assin) };
                     }
                     lig.Proposta = proposta;
+                    if (mb["excluir_interferencia"] is JsonValue ev && ev.TryGetValue(out bool ex) && ex) lig.Excluir = true;   // G5: barra curta marcada no membro
                     if (proposta) nProp++;
                     r.Add(lig);
                 }
