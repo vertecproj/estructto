@@ -130,6 +130,10 @@ namespace NovoFtool
     public sealed class Corte
     {
         public Point3D P; public Vector3D N; public double Recuo; public Barra3D Contra; public bool Esquadria;
+        // Face: distância do nó à face da peça contínua, medida na normal da face (= ao longo da barra se ela chega perpendicular).
+        // Inclinada: barra inclinada contra pilar; o plano de corte é paralelo à face do pilar (N = normal da face, horizontal), não perpendicular à barra.
+        public double Face; public bool Inclinada;
+        public bool NaMesa;   // a barra chega na face da mesa do pilar (eixo forte); falso = chega na ponta das mesas, ligação na alma (eixo fraco)
     }
 
     public static class Render3DGeometria
@@ -183,10 +187,25 @@ namespace NovoFtool
                 {
                     double fixo = recuoFixo(q.B, q.EmI);
                     if (continuas.Contains(q) && double.IsNaN(fixo)) continue;
-                    double recuo = double.IsNaN(fixo) ? ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max() + folga(q.B, q.EmI) : fixo;
+                    double fd = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max();
+                    double recuo = double.IsNaN(fixo) ? fd + folga(q.B, q.EmI) : fixo;
                     recuo = Math.Min(recuo, 0.3 * q.L);
                     if (recuo <= 1e-6) continue;
-                    cortes[(q.B, q.EmI)] = new Corte { P = q.No + q.D * recuo, N = q.D, Recuo = recuo, Contra = continuas.Contains(q) ? null : top.B };
+                    var k = new Corte { P = q.No + q.D * recuo, N = q.D, Recuo = recuo, Face = fd, Contra = continuas.Contains(q) ? null : top.B };
+                    // viga inclinada (água do telhado) contra pilar: a chapa fica rente à face do pilar (vertical) e a viga é cortada nesse plano;
+                    // a folga (espessura da chapa) conta na normal da face, não ao longo da barra.
+                    if (top.Rank == 3 && q.Rank == 2 && k.Contra != null)
+                    {
+                        Vector3D nf = q.D - Vector3D.DotProduct(q.D, top.D) * top.D; double cs = nf.Length;
+                        if (cs > 0.5 && cs < 1 - 1e-6)
+                        {
+                            nf /= cs;
+                            k.N = nf; k.Inclinada = true; k.Face = fd * cs;
+                            k.P = q.No + q.D * fd + nf * (recuo - fd);
+                        }
+                    }
+                    k.NaMesa = top.F.H * Math.Abs(Vector3D.DotProduct(q.D, top.U)) <= top.F.B * Math.Abs(Vector3D.DotProduct(q.D, top.V));
+                    cortes[(q.B, q.EmI)] = k;
                 }
             }
             return cortes;
@@ -430,6 +449,51 @@ namespace NovoFtool
             afirmar(cortes.TryGetValue((diag, true), out Corte cd) && cd.Recuo > 0.10 && cd.Contra == pilar, "diagonal recua além da face do pilar");
             afirmar(cortes.TryGetValue((r1, false), out Corte c1) && c1.Esquadria && cortes.TryGetValue((r2, true), out Corte c2) && c2.Esquadria, "cumeeira: esquadria nos dois banzos");
             afirmar(Math.Abs(Vector3D.DotProduct(c1.N, new Vector3D(1, 0, 0))) > 0.99, "plano da esquadria vertical na cumeeira simétrica");
+
+            foreach (double rotPilar in new[] { 0.0, 90 })   // viga inclinada (≈ 10 %) contra pilar de eixo forte e de eixo fraco: chapa rente à face, viga termina nela
+            {
+                var md = new Modelo3D();
+                md.Nos.Add(new No3D { Id = 1 }); md.Nos.Add(new No3D { Id = 2, Z = 6 }); md.Nos.Add(new No3D { Id = 3, X = 10, Z = 7 });
+                var pl = new Barra3D { Id = 1, Ni = 1, Nj = 2, Rot = rotPilar }; var vg = new Barra3D { Id = 2, Ni = 2, Nj = 3 };
+                md.Barras.AddRange(new[] { pl, vg });
+                var nd = md.Nos.ToDictionary(n => n.Id);
+                Func<Barra3D, (Point3D, Point3D)> pts = b => (new Point3D(nd[b.Ni].X, 0, nd[b.Ni].Z), new Point3D(nd[b.Nj].X, 0, nd[b.Nj].Z));
+                Func<Barra3D, Contorno> frm = b => b == pl ? fPilar : fViga;
+                Func<Barra3D, bool, double> fg = (b, emI) => 0.012;
+                var cs = Juntas(md, pts, frm, fg, (b, emI) => double.NaN);
+                string rt = rotPilar == 0 ? "eixo forte" : "eixo fraco";
+                Corte kj = cs[(vg, true)];
+                bool forte = rotPilar == 0;
+                double meia = forte ? 0.15 : 0.10;   // meia profundidade do pilar na direção da viga (H/2 ou B/2)
+                afirmar(kj.Inclinada && Math.Abs(kj.N.Z) < 1e-9 && kj.NaMesa == forte && Math.Abs(kj.Face - meia) < 1e-9, "viga inclinada / pilar " + rt + ": corte vertical (paralelo à face), Face = " + meia);
+                var lg = LigacoesAmostra.Gerar(md, cs, frm, fg).FirstOrDefault(q => q.Barra == vg.Id);
+                afirmar(lg != null, "viga inclinada / pilar " + rt + ": ligação gerada");
+                if (lg != null)
+                {
+                    // segunda passada como no Render3D: recortes da ligação mandam na ponta da viga
+                    var cs2 = Juntas(md, pts, frm, (b, emI) => { double r = lg.RecuoDe("viga"); return double.IsNaN(r) ? fg(b, emI) : r; }, (b, emI) => { double x = lg.PontaDe("viga"); return double.IsNaN(x) ? lg.RecuoDe("pilar") : x; });
+                    Corte k2 = cs2[(vg, true)];
+                    var (pa, pc) = pts(vg); Vector3D ev = pc - pa; ev.Normalize();
+                    var (o, lx, ly, lz) = LigacoesAmostra.Referencial(pa, ev, Modelo3D.EixoY(ev, 0), k2);
+                    Point3D W(Vector3D p) => o + (lx * p.X + ly * p.Y + lz * p.Z) / 1000;
+                    var ch = lg.Chapas[0];
+                    Vector3D wv = Vector3D.CrossProduct(ch.Normal, ch.U);
+                    var cantos = ch.Contorno.Select(p => W(ch.Origem + ch.U * p.X + wv * p.Y)).ToList();
+                    double esp = ch.Espessura / 1000;
+                    if (forte)   // chapa de topo na mesa: toda a chapa em x = H/2; viga termina na face externa da chapa, parafusos saem dela
+                    {
+                        double gap = cantos.Max(p => Math.Abs(Math.Abs(p.X) - meia)) * 1000;
+                        afirmar(gap < 1, "viga inclinada / pilar " + rt + ": chapa rente à mesa do pilar, folga " + gap.ToString("0.00") + " mm (< 1 mm)");
+                        afirmar(Math.Abs(k2.P.X - (meia + esp)) < 1e-3 && lg.Parafusos.All(pf => Math.Abs(W(pf.Origem).X - (meia + esp)) < 1e-3), "viga inclinada / pilar " + rt + ": viga termina na chapa e parafusos saem da face externa dela");
+                    }
+                    else         // chapa simples na alma: começa na face da alma (x = tw/2); viga para 12 mm depois
+                    {
+                        double gap = Math.Abs(cantos.Min(p => Math.Abs(p.X)) - fPilar.Tw / 2) * 1000;
+                        afirmar(gap < 1, "viga inclinada / pilar " + rt + ": chapa começa na face da alma, folga " + gap.ToString("0.00") + " mm (< 1 mm)");
+                        afirmar(Math.Abs(Math.Abs(k2.P.X) - (fPilar.Tw / 2 + 0.012)) < 1e-3, "viga inclinada / pilar " + rt + ": viga para 12 mm da alma");
+                    }
+                }
+            }
 
             var m = new MalhaDx();
             Vector3D e = new Vector3D(1, 0, 0), v = new Vector3D(0, 0, 1), u = Vector3D.CrossProduct(v, e);

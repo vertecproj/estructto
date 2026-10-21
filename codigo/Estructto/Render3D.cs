@@ -355,9 +355,10 @@ namespace NovoFtool
                 if (!barras.TryGetValue(l.Barra, out Barra3D b)) continue;
                 var (a, d) = c.Pontos(b); Vector3D e = d - a; if (e.Length < 1e-9) continue; e.Normalize();
                 bool emI = l.No == b.Ni;
-                Vector3D x = emI ? e : -e, z = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), y = Vector3D.CrossProduct(x, z);   // contrato: y = x × z (canhoto)
                 Point dc = GeometriaPerfis.Cardinal(forma(b), b.Cardinal);
-                Point3D o = (emI ? a : d) + Vector3D.CrossProduct(z, e) * dc.X + z * dc.Y;   // origem no eixo do perfil deslocado
+                cortes.TryGetValue((b, emI), out Corte kl);
+                var (o, x, y, z) = LigacoesAmostra.Referencial((emI ? a : d) + Vector3D.CrossProduct(Modelo3D.EixoY(e, b.Rot + b.RotPerfil), e) * dc.X + Modelo3D.EixoY(e, b.Rot + b.RotPerfil) * dc.Y,
+                                                               emI ? e : -e, Modelo3D.EixoY(e, b.Rot + b.RotPerfil), kl);   // contrato: y = x × z (canhoto); origem no eixo do perfil deslocado
                 Point3D W(Vector3D p) => o + (x * p.X + y * p.Y + z * p.Z) / 1000;
                 Vector3D Wv(Vector3D p) { Vector3D r = x * p.X + y * p.Y + z * p.Z; if (r.Length > 1e-12) r.Normalize(); return r; }
                 foreach (var ch in l.Chapas)
