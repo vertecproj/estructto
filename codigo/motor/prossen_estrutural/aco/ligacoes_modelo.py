@@ -317,15 +317,14 @@ def editar(modelo, dados):
             del grupos[gid]
         return dict(grupo=destino)
     if acao == "unir":
-        ids = list(d.get("grupos") or [])
+        ids = list(dict.fromkeys(d.get("grupos") or []))  # repetido sairia duas vezes do pop (KeyError no meio da mudança)
         if len(ids) < 2:
-            raise ValueError("grupos: informe 2 ou mais")
+            raise ValueError("grupos: informe 2 ou mais (distintos)")
         alvo = _grupo(modelo, ids[0])
-        for gid in ids:
+        for gid in ids:  # tudo conferido antes de mudar qualquer grupo
             _livre(_grupo(modelo, gid), gid)
         for gid in ids[1:]:
-            if gid != ids[0]:
-                alvo["membros"] += grupos.pop(gid)["membros"]
+            alvo["membros"] += grupos.pop(gid)["membros"]
         alvo["manual"] = True
         return dict(grupo=ids[0])
     raise ValueError(f"acao '{acao}' desconhecida; use renomear, travar, projeto, mover, dividir ou unir")

@@ -12,6 +12,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Media3D;
 using Portico;
 using F = Fluent;
 
@@ -76,10 +77,11 @@ namespace NovoFtool
         {
             var (sn, sb) = Selecao(m, nos, barras);
             var N = Col(m, "nos");
-            foreach (string id in sn) Pos(N[id], t.P(Xyz(N[id])));
-            foreach (var c in Lista(m, "cargas_nodais").Where(c => sn.Contains((string)c["no"]))) c["F"] = F6(c["F"], t);
             var bs = Col(m, "barras");
             var levadas = bs.Where(kv => sn.Contains((string)kv.Value["ni"]) && sn.Contains((string)kv.Value["nj"])).Select(kv => kv.Key).ToHashSet();
+            foreach (string id in levadas) GirarSecao(m, bs[id].AsObject(), Xyz(N[(string)bs[id]["ni"]]), Xyz(N[(string)bs[id]["nj"]]), t);   // antes de mover os nós
+            foreach (string id in sn) Pos(N[id], t.P(Xyz(N[id])));
+            foreach (var c in Lista(m, "cargas_nodais").Where(c => sn.Contains((string)c["no"]))) c["F"] = F6(c["F"], t);
             foreach (var c in Lista(m, "cargas_distribuidas").Concat(Lista(m, "cargas_pontuais")).Where(c => levadas.Contains((string)c["barra"]))) Vetores(c, t);
             foreach (string id in sn)
             {
@@ -90,7 +92,8 @@ namespace NovoFtool
             return m;
         }
 
-        // Uma cópia da seleção por transformação. Barras copiadas levam seção, material, rot, params e cargas; nós novos que
+        // Uma cópia da seleção por transformação. Barras copiadas levam seção, material, params e cargas, com rot e cardinal
+        // transformados (GirarSecao); nós novos que
         // caem sobre nós existentes (1 mm) fundem com eles; barra que repetiria uma existente (mesmos nós) não é criada.
         public static JsonObject Copiar(JsonObject m, IEnumerable<string> nos, IEnumerable<string> barras, IEnumerable<Transf> ts)
         {
@@ -120,6 +123,7 @@ namespace NovoFtool
                     if (ni == nj || AcharBarra(B, ni, nj) != null) continue;
                     string novo = idB.Novo();
                     var o = B[id].DeepClone().AsObject(); o["id"] = novo; o["ni"] = ni; o["nj"] = nj;
+                    GirarSecao(m, o, Xyz(N[(string)B[id]["ni"]]), Xyz(N[(string)B[id]["nj"]]), t);
                     B[novo] = o;
                     foreach (var c in cd.Concat(cp).Where(c => (string)c["barra"] == id))
                         Add(m, c.Parent == m["cargas_pontuais"] ? "cargas_pontuais" : "cargas_distribuidas", c, x => { x["barra"] = novo; Vetores(x, t); });
@@ -218,6 +222,72 @@ namespace NovoFtool
             if (apoio != null) foreach (string id in sn) Col(m, "nos")[id]["apoio"] = new JsonArray(apoio.Select(x => (JsonNode)x).ToArray());
             return m;
         }
+
+        // ---------- giro da seção (rot) e ponto cardinal sob a transformação ----------
+
+        static double[] Cr(double[] a, double[] b) => new[] { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
+        static double Dt(double[] a, double[] b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+        // Eixos locais do motor (solver._rotacao, rot = 0): x = ni→nj; y = Z × x (barra vertical: +Y global); z = x × y.
+        // A Vista3D desenha a seção em (u, v) = (y, z) locais do motor (GeometriaPerfis, Modelo3D.EixoY). null = comprimento nulo.
+        public static (double[] X, double[] Y, double[] Z)? Triedro(double[] a, double[] b)
+        {
+            double[] x = { b[0] - a[0], b[1] - a[1], b[2] - a[2] }; double l = Math.Sqrt(Dt(x, x));
+            if (l < 1e-12) return null;
+            for (int i = 0; i < 3; i++) x[i] /= l;
+            double h = Math.Sqrt(x[0] * x[0] + x[1] * x[1]);
+            double[] y = h < 1e-9 ? new double[] { 0, 1, 0 } : new[] { -x[1] / h, x[0] / h, 0 };
+            return (x, y, Cr(x, y));
+        }
+
+        // rot (rad) e params.cardinal da barra levada por t (a, b = pontas antes). Giro próprio (rotação, translação): o eixo
+        // local y vai junto (t.V) — barra horizontal não muda; vertical soma o ângulo com o sinal de ni→nj. Espelho (det −1):
+        // o triedro do motor é direito e não pode espelhar; fica z' = M·z e y' = −M·y, ou seja a seção desenhada sai com
+        // u → −u, que é o espelho exato de I, caixão, tubo e retângulo (simétricos em u). U (simétrico em v) leva +180° e L
+        // +90° para a forma voltar ao espelho: exato no U e na cantoneira de abas iguais (abas desiguais trocam de lado:
+        // ponytail). O cardinal acompanha (u → −u troca 1↔3, 4↔6, 7↔9; o giro extra gira a caixa).
+        public static void GirarSecao(JsonObject m, JsonObject barra, double[] a, double[] b, Transf t)
+        {
+            var e0 = Triedro(a, b); var e1 = Triedro(t.P(a), t.P(b));
+            if (e0 == null || e1 == null) return;
+            double rot = barra["rot"] is JsonValue rv && rv.TryGetValue(out double r0) ? r0 : 0;
+            var (_, y0, z0) = e0.Value; var (_, y1, z1) = e1.Value;
+            double c = Math.Cos(rot), s = Math.Sin(rot);
+            double[] y = { c * y0[0] + s * z0[0], c * y0[1] + s * z0[1], c * y0[2] + s * z0[2] };
+            double[] yt = t.V(y);
+            int card = DocumentoEspacial.CardinalDe(barra), novoCard = card;
+            if (t.Reflete)
+            {
+                yt = yt.Select(v => -v).ToArray();
+                string forma = m["secoes"]?[(string)barra["secao"] ?? ""]?["props"]?["tipo"] is JsonValue fv && fv.TryGetValue(out string fs) ? fs : null;
+                double extra = forma == "U" || forma == "Ue" ? Math.PI : forma == "L" ? Math.PI / 2 : 0;
+                var (su, sv) = CardinalSinais(card);
+                double eu = -su, ev = sv;   // u → −u
+                if (extra == Math.PI) { eu = -eu; ev = -ev; } else if (extra > 0) { (eu, ev) = (ev, -eu); }   // caixa no triedro girado de −extra
+                if (card != 10) novoCard = CardinalDe((int)eu, (int)ev);
+                yt = Girado(yt, e1.Value.X, extra);
+            }
+            double r = Math.Atan2(Dt(yt, z1), Dt(yt, y1));
+            double dr = Math.IEEERemainder(r - rot, 2 * Math.PI);
+            if (Math.Abs(dr) > 1e-12) { r = Math.IEEERemainder(r, 2 * Math.PI); barra["rot"] = Math.Abs(r) < 1e-12 ? 0.0 : Math.Round(r, 12); }
+            if (novoCard != card)
+            {
+                var p = barra["params"] as JsonObject ?? (JsonObject)(barra["params"] = new JsonObject());
+                if (novoCard == 5) p.Remove("cardinal"); else p["cardinal"] = novoCard;
+            }
+        }
+
+        // y girado de ang em torno do eixo x (regra da mão direita): y·cos + (x × y)·sen.
+        static double[] Girado(double[] y, double[] x, double ang)
+        {
+            if (ang == 0) return y;
+            var z = Cr(x, y); double c = Math.Cos(ang), s = Math.Sin(ang);
+            return new[] { c * y[0] + s * z[0], c * y[1] + s * z[1], c * y[2] + s * z[2] };
+        }
+
+        // Cardinal 1..9 ↔ sinais (su, sv) na caixa da seção (GeometriaPerfis.Cardinal: 1/4/7 = lado +u, 1/2/3 = base, −v).
+        static (int su, int sv) CardinalSinais(int k) { int col = (k - 1) % 3, lin = (k - 1) / 3; return (col == 0 ? 1 : col == 1 ? 0 : -1, lin == 0 ? -1 : lin == 1 ? 0 : 1); }
+        static int CardinalDe(int su, int sv) => (sv == -1 ? 0 : sv == 0 ? 1 : 2) * 3 + (su == 1 ? 0 : su == 0 ? 1 : 2) + 1;
 
         // ---------- auxiliares ----------
 
@@ -572,7 +642,7 @@ namespace NovoFtool
                     });
                     Vetor(p); p.Campo("n", "Cópias", "1"); break;
                 case "espelhar":
-                    p = new PainelEdicao("Espelhar", "Cópia espelhada em relação a um plano X = a, Y = b ou Z = c. O giro (rot) da seção não muda.", f, async x =>
+                    p = new PainelEdicao("Espelhar", "Cópia espelhada em relação a um plano X = a, Y = b ou Z = c. O giro (rot) e o cardinal se ajustam para a seção sair espelhada (U, L).", f, async x =>
                     {
                         int e = Array.IndexOf(new[] { "X", "Y", "Z" }, x.Texto("plano")); double c = x.D("valor");
                         await rodar("Espelhado em " + x.Texto("plano") + " = " + Num.Fmt(c, 3), m => GeometriaEdicao.Copiar(m, nos(), bs(), new[] { GeometriaEdicao.Espelho(e, c) }));
@@ -748,6 +818,85 @@ namespace NovoFtool
             Ok("espelho na reta y = x: (2,0,5) → (0,2,5)", Perto(esp[0], 0) && Perto(esp[1], 2) && Perto(esp[2], 5));
             var cot = GeometriaEdicao.LerCotas("0,@6,@6,@7.5");
             Ok("grade 0,@6,@6,@7.5 → 0 6 12 19,5", cot.Length == 4 && Perto(cot[3], 19.5) && Perto(cot[1], 6));
+
+            // giro (rot) e cardinal sob rotação e espelho: os pontos da seção desenhada (GeometriaPerfis, como a Vista3D) da
+            // barra transformada = os pontos da seção original transformados. U e L (abas iguais) com giro e cardinal.
+            var ms = JsonNode.Parse(@"{""secoes"":{
+                ""U1"":{""nome"":""U1"",""props"":{""tipo"":""U"",""h"":0.2,""b"":0.08,""tw"":0.006,""tf"":0.01}},
+                ""L1"":{""nome"":""L1"",""props"":{""tipo"":""L"",""h"":0.1,""b"":0.1,""t"":0.008}},
+                ""I1"":{""nome"":""I1"",""props"":{""tipo"":""I"",""h"":0.3,""b"":0.15,""tw"":0.006,""tf"":0.01}}}}").AsObject();
+            List<Point3D> Secao(JsonNode b, double[] a, double[] c)
+            {
+                var f = GeometriaPerfis.CriarContorno(Perfil3D.DoMotor(ms["secoes"][(string)b["secao"]] as JsonObject), 0.1);
+                var e = new System.Windows.Media.Media3D.Vector3D(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+                var v = Modelo3D.EixoY(e, (double)(b["rot"] ?? 0.0) * 180 / Math.PI); e.Normalize();
+                var u = System.Windows.Media.Media3D.Vector3D.CrossProduct(v, e);
+                var dc = GeometriaPerfis.Cardinal(f, DocumentoEspacial.CardinalDe(b));
+                var o = new Point3D(a[0], a[1], a[2]);
+                return f.Lacos.SelectMany(l => l).Select(q => o + u * (q.X + dc.X) + v * (q.Y + dc.Y)).ToList();
+            }
+            bool Mesmos(List<Point3D> x, List<Point3D> y) => x.Count == y.Count && x.All(p => y.Any(q => (p - q).Length < 1e-9)) && y.All(p => x.Any(q => (p - q).Length < 1e-9));
+            Point3D P3(double[] p) => new Point3D(p[0], p[1], p[2]);
+            var casos = new (string nome, string sec, double[] a, double[] c, double rot, int card)[]
+            {
+                ("U vertical para cima", "U1", new double[] { 1, 2, 0 }, new double[] { 1, 2, 3 }, 0.3, 1),
+                ("L vertical para baixo", "L1", new double[] { 2, 1, 3 }, new double[] { 2, 1, 0 }, 0.2, 3),
+                ("U inclinado", "U1", new double[] { 0, 0, 3 }, new double[] { 4, 1, 4 }, 0.5, 8),
+                ("L horizontal", "L1", new double[] { 0, 0, 3 }, new double[] { 6, 0, 3 }, 0, 7),
+                ("I horizontal", "I1", new double[] { 0, 0, 3 }, new double[] { 0, 5, 3 }, 0, 4),
+            };
+            var transf = new (string nome, Transf t)[]
+            {
+                ("rotação 37°", GeometriaEdicao.Rotacao(1, -2, 37)), ("espelho X = 3", GeometriaEdicao.Espelho(0, 3)),
+                ("espelho na reta (0,0)-(1;0,3)", GeometriaEdicao.EspelhoReta(0, 0, 1, 0.3)), ("espelho Z = 5", GeometriaEdicao.Espelho(2, 5)),
+            };
+            foreach (var (cnome, sec, a, c, rot, card) in casos)
+                foreach (var (tn, t) in transf)
+                {
+                    var b = new JsonObject { ["secao"] = sec, ["rot"] = rot, ["params"] = new JsonObject { ["cardinal"] = card } };
+                    var antes = Secao(b, a, c).Select(p => P3(t.P(new[] { p.X, p.Y, p.Z }))).ToList();
+                    GeometriaEdicao.GirarSecao(ms, b, a, c, t);
+                    Ok("seção " + cnome + " × " + tn + ": desenho = transformado (rot " + Num.Fmt((double)b["rot"] * 180 / Math.PI, 1) + "°, cardinal " + DocumentoEspacial.CardinalDe(b) + ")",
+                       Mesmos(Secao(b, t.P(a), t.P(c)), antes));
+                }
+            var bv = new JsonObject { ["secao"] = "U1", ["rot"] = 0.3 };
+            GeometriaEdicao.GirarSecao(ms, bv, new double[] { 0, 0, 0 }, new double[] { 0, 0, 3 }, GeometriaEdicao.Rotacao(0, 0, 37));
+            Ok("rotação: pilar para cima soma o ângulo ao rot", Perto((double)bv["rot"], 0.3 + 37 * Math.PI / 180));
+            bv = new JsonObject { ["secao"] = "U1", ["rot"] = 0.3 };
+            GeometriaEdicao.GirarSecao(ms, bv, new double[] { 0, 0, 3 }, new double[] { 0, 0, 0 }, GeometriaEdicao.Rotacao(0, 0, 37));
+            Ok("rotação: pilar para baixo (nj embaixo) subtrai", Perto((double)bv["rot"], 0.3 - 37 * Math.PI / 180));
+            var bh = new JsonObject { ["secao"] = "I1", ["rot"] = 0.0 };
+            GeometriaEdicao.GirarSecao(ms, bh, new double[] { 0, 0, 3 }, new double[] { 6, 0, 3 }, GeometriaEdicao.Espelho(0, 3));
+            Ok("espelho: viga I fica com rot 0 (sem virar de cabeça para baixo)", Perto((double)bh["rot"], 0));
+            var m18 = GeometriaEdicao.Mover(Portico(), sem, sem, GeometriaEdicao.Rotacao(0, 0, 90));
+            Ok("Mover/Rotacionar: pilar B1 recebe rot = 90°", Perto((double)m18["barras"]["B1"]["rot"], Math.PI / 2) && Perto((double)m18["barras"]["B3"]["rot"], 0));
+
+            // níveis: renomear mantém diafragma e a ordem; z novo opcional
+            var mp = JsonNode.Parse(@"{""pavimentos"":{""P1"":{""nome"":""P1"",""z"":3,""diafragma"":false},""P2"":{""nome"":""P2"",""z"":6,""diafragma"":true}}}").AsObject();
+            Niveis.Renomear(mp, "P1", "Mezanino", 3.2);
+            var pv = mp["pavimentos"].AsObject();
+            Ok("renomear nível: nome novo, diafragma false mantido, z 3,2, ordem", pv["P1"] == null && (bool)pv["Mezanino"]["diafragma"] == false && Perto((double)pv["Mezanino"]["z"], 3.2) && pv.First().Key == "Mezanino" && (string)pv["Mezanino"]["nome"] == "Mezanino");
+            bool recusou = false; try { Niveis.Renomear(mp, "Mezanino", "P2"); } catch (ArgumentException) { recusou = true; }
+            Ok("renomear nível para um nome existente é recusado", recusou && pv["Mezanino"] != null);
+
+            // grade estrutural: posições ↔ config.grade (vãos, x0/y0, nomes)
+            var gj = GradeEstrutural.Json(new[] { 2.5, -2.5, 0 }, new[] { 0.0, 5 });
+            var (gx, gy, gnx, gny) = GradeEstrutural.Ler(gj);
+            Ok("grade: (−2,5; 0; 2,5) → x0 −2,5, vãos 2,5 2,5, eixos 1 2 3; filas A B", gx.Length == 3 && Perto(gx[0], -2.5) && Perto(gx[2], 2.5) && Perto((double)gj["x"][0], 2.5) && gnx[2] == "3" && gny[1] == "B" && gj["y0"] == null);
+            var (wx, wy, _, wny) = GradeEstrutural.Ler(JsonNode.Parse(@"{""x"":[6,6],""y"":[],""nomes_x"":[""1"",""2"",""3""],""nomes_y"":[""A""]}"));
+            Ok("grade do Novo projeto (vãos, sem fila): 3 eixos, 1 fila em y = 0", wx.Length == 3 && Perto(wx[2], 12) && wy.Length == 1 && wny[0] == "A");
+
+            // contêiner antigo: cardinal inválido vira aviso (não trava), válido vai a params.cardinal; grade migra
+            var avisos = new List<string>();
+            var mod = Portico();
+            DocumentoEspacial.Migrar(JsonNode.Parse(@"{""grade"":{""x"":[0,6],""y"":[0]},""cardinal"":{""B1"":""x"",""B2"":2,""B3"":12,""B9"":3}}").AsObject(), mod, avisos);
+            Ok("migrar: B2 cardinal 2 em params, 3 avisos, grade em config.grade", DocumentoEspacial.CardinalDe(mod["barras"]["B2"]) == 2 && avisos.Count == 3 && GradeEstrutural.Ler(mod["config"]["grade"]).X.Length == 2);
+
+            // salvar atômico: troca o arquivo existente, sem sobrar o temporário
+            string arqT = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "estructto-atomico-" + Guid.NewGuid().ToString("N") + ".estructto");
+            Config.GravarAtomico(arqT, "um"); Config.GravarAtomico(arqT, "dois");
+            Ok("gravar atômico: conteúdo novo, sem .tmp", System.IO.File.ReadAllText(arqT) == "dois" && !System.IO.File.Exists(arqT + ".tmp"));
+            System.IO.File.Delete(arqT);
 
             sb.AppendLine(falhas == 0 ? "TODOS PASSARAM" : falhas + " FALHA(S)");
             return sb.ToString();

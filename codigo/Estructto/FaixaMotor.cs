@@ -1,4 +1,4 @@
-﻿// Botões da faixa que abrem as janelas do motor Python (ComandosAcoes, ComandosAnalise; REVISAO-TELAS 3.2).
+// Botões da faixa que abrem as janelas do motor Python (ComandosAcoes, ComandosAnalise; REVISAO-TELAS 3.2).
 // Antes de abrir, o modelo 2D vai para o motor (MotorModelo.Enviar, docs/UNIFICACAO-MOTOR.md); as janelas que dependem
 // do cálculo (estabilidade, verificação) calculam antes, com o brilho de progresso na barra de status. Erro do motor = toast.
 using System;
@@ -43,18 +43,21 @@ namespace NovoFtool
             finally { StatusBotoes.Children.Remove(barra); Mouse.OverrideCursor = antes; motorRodando = false; }
         }
 
-        async void ComMotor(bool calcular, Action<Window> abrir)
+        // abrir devolve Task (as janelas de análise buscam no motor antes de abrir): a fila do Motor.Exclusivo fica presa até a
+        // busca terminar (antes, com async void, a trava soltava no primeiro await e outra aba podia trocar o modelo do servidor).
+        void ComMotor(bool calcular, Action<Window> abrir) => _ = ComMotor(calcular, w => { abrir(w); return Task.CompletedTask; });
+        internal async Task ComMotor(bool calcular, Func<Window, Task> abrir)
         {
-            if (Esp != null && !calcular) { JanelaMotorEsp(abrir); return; }   // CargasEspacial.cs: edita o modelo espacial
-            if (Esp != null) { if (await GarantirCalculoEsp()) abrir(this); return; }   // janelas de resultado: o cálculo do documento 3D
-            if (await PrepararMotor(calcular)) abrir(this);
+            if (Esp != null && !calcular) { await JanelaMotorEsp(abrir); return; }   // CargasEspacial.cs: edita o modelo espacial
+            if (Esp != null) { if (await GarantirCalculoEsp()) await JanelaMotorEsp(abrir); return; }   // janelas de resultado: o cálculo do documento 3D
+            if (await PrepararMotor(calcular)) await abrir(this);
         }
 
         // Vento, Sismo, Pavimentos e Casos do motor: o que a janela mudou no motor vai para M.MotorExtra (arquivo, desfazer,
         // "modificado"); o próximo MotorModelo.Enviar devolve ao motor. As janelas são modais: nada envia no meio.
         async void ComMotorExtra(Action<Window> abrir)
         {
-            if (Esp != null) { JanelaMotorEsp(abrir); return; }   // CargasEspacial.cs: edita o modelo espacial
+            if (Esp != null) { _ = JanelaMotorEsp(w => { abrir(w); return Task.CompletedTask; }); return; }   // CargasEspacial.cs: edita o modelo espacial
             if (!await PrepararMotor(false)) return;
             string antes;
             try { antes = await Motor.Exclusivo(MotorModelo.LerExtra); } catch (Exception ex) { ErroMotor(ex); return; }
@@ -81,12 +84,12 @@ namespace NovoFtool
             {
                 string id = vista3D.Selecao.Barras.FirstOrDefault();
                 if (id == null) { MostrarToast("Selecione uma barra (clique nela) e repita."); return; }
-                ComMotor(true, w => ComandosAnalise.AbrirVerificarBarra(w, id));
+                _ = ComMotor(true, w => ComandosAnalise.AbrirVerificarBarra(w, id));
                 return;
             }
             b ??= Vista.Sel.OfType<Barra>().FirstOrDefault();
             if (b == null) { MostrarToast("Selecione uma barra (clique nela) e repita."); return; }
-            ComMotor(true, w => ComandosAnalise.AbrirVerificarBarra(w, "b" + b.Id));
+            _ = ComMotor(true, w => ComandosAnalise.AbrirVerificarBarra(w, "b" + b.Id));
         }
 
         // Ligação: tipo parafuso, solda_filete, chapa_simples ou ligacao_tracao (não depende do modelo).
@@ -100,7 +103,7 @@ namespace NovoFtool
             string txt = System.IO.Path.ChangeExtension(png, ".txt");
             cbMotor ??= CriarCbMotor();   // legado escondido: Interno + motor (fora da faixa)
             cbMotor.SelectedIndex = 1;
-            ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras);
+            _ = ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras);
             for (int i = 0; i < 1200; i++)   // ate 2 min
             {
                 var j = OwnedWindows.OfType<JanelaVerificacaoBarras>().FirstOrDefault();

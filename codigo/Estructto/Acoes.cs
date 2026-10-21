@@ -54,8 +54,8 @@ namespace NovoFtool
             tmDica.Tick += (s, e) => AtualizarDica(); tmDica.Start();
             PreviewKeyDown += Tecla;
             PreviewTextInput += TextoDigitado;
-            Closing += (s, e) => { if (!PodeFecharTudo()) e.Cancel = true; else { Config.ApagarRecuperacao(); foreach (var x in docs) x.Esp?.Descartar(); } };
-            autoSalvar.Tick += (s, e) => { if (alterado && Esp != null) Config.SalvarRecuperacao(Esp.ParaContainer(), Esp.Arquivo ?? Esp.Origem); };   // contêiner do documento ativo
+            Closing += (s, e) => { if (!PodeFecharTudo()) e.Cancel = true; else foreach (var x in docs) { Config.ApagarRecuperacao(x.Esp?.Chave); x.Esp?.Descartar(); } };
+            autoSalvar.Tick += (s, e) => SalvarRecuperacoes();
             autoSalvar.Start();
         }
 
@@ -262,11 +262,24 @@ namespace NovoFtool
             return false;
         }
 
-        void OferecerRecuperacao()
+        // Uma cópia de recuperação por documento alterado (cada aba na sua; a cópia de uma aba não pisa na de outra).
+        internal void SalvarRecuperacoes()
         {
-            string txt, orig;
-            if (!Config.LerRecuperacao(out txt, out orig)) return;
-            var r = Caixa.Mostrar(this, "Recuperar o modelo?", "O Estructto fechou sem salvar da última vez" + (orig != null ? " (" + System.IO.Path.GetFileName(orig) + ")" : "") + ".",
+            GuardarDoc();
+            foreach (var x in docs)
+                if (x.Alterado && x.Esp != null) Config.SalvarRecuperacao(x.Esp.Chave, x.Esp.ParaContainer(), x.Esp.Arquivo ?? x.Esp.Origem);
+        }
+
+        async void OferecerRecuperacao()
+        {
+            foreach (var (chave, txt, orig) in Config.LerRecuperacoes()) await OferecerRecuperacao(chave, txt, orig);
+        }
+
+        // Uma cópia por vez. A cópia só sai depois de o documento recuperado abrir: antes ele grava a cópia dele (chave nova) e só
+        // então a antiga é apagada; se a abertura falhar, a cópia fica para a próxima vez. Descartar apaga. true = recuperado.
+        internal async Task<bool> OferecerRecuperacao(string chave, string txt, string orig, bool perguntar = true)
+        {
+            var r = !perguntar ? MessageBoxResult.Yes : Caixa.Mostrar(this, "Recuperar o modelo?", "O Estructto fechou sem salvar da última vez" + (orig != null ? " (" + System.IO.Path.GetFileName(orig) + ")" : "") + ".",
                 "Existe uma cópia salva automaticamente. Recuperar abre essa cópia; descartar apaga a cópia.",
                 new[] { ("Recuperar", MessageBoxResult.Yes, true), ("Descartar", MessageBoxResult.No, false) }, "↺", JanelaEscura.BAzul);
             if (r == MessageBoxResult.Yes)
@@ -275,9 +288,16 @@ namespace NovoFtool
                 Func<Task<DocumentoEspacial>> criar = txt.TrimStart().StartsWith("<")
                     ? () => DocumentoEspacial.DeModelo2D(Modelo.DeXml(txt), null, titulo)   // cópia antiga (2D)
                     : () => DocumentoEspacial.DeTexto(txt, titulo);
-                _ = AbrirEspacial(criar, "recuperando o modelo").ContinueWith(_ => { if (Esp != null) { alterado = true; AtualizarTitulo(); Log("Modelo recuperado. Salve para não perder."); } }, TaskScheduler.FromCurrentSynchronizationContext());
+                var d = await AbrirEspacial(criar, "recuperando o modelo", null, !perguntar);
+                if (d == null) { Log("A cópia de recuperação não abriu e foi mantida (" + Config.PastaRecuperacao + ")."); return false; }
+                alterado = true; AtualizarTitulo();
+                Config.SalvarRecuperacao(d.Chave, d.ParaContainer(), orig);
+                Config.ApagarRecuperacao(chave);
+                Log("Modelo recuperado. Salve para não perder.");
+                return true;
             }
-            Config.ApagarRecuperacao();
+            if (r == MessageBoxResult.No) Config.ApagarRecuperacao(chave);
+            return false;
         }
 
         // ================= janelas =================
