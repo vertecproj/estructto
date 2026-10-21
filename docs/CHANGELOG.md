@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G2, rodada 2): comprimento do cope medido do plano de corte (sem dupla contagem); apoio da ponta = barra contínua do nó. Ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#revisão-2).
 - 21/10/2026 — Frente G (G2, rodada 1b): viga–viga com recorte usa max(Gerdau 3.3, cope da ponta) e a ponta desenha o mesmo; exemplo vai a 1,197.
 - 21/10/2026 — Frente G (G2, rodada 1): cope da ponta entra nas verificações da viga recortada; comprimento livre com desloc e recuo das duas pontas; gusset usa a ponta; perfil do apoio vindo do grupo; `BarraCurta`. Ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#g2-rodada-1).
 - 21/10/2026 — Frente G (G2): todas as ligações preenchem `geometria.pontas`; chapa de topo solda na largura real da ponta; barra curta vira aviso, ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#g2-pontas-nas-ligações).

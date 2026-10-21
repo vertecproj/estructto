@@ -117,7 +117,9 @@ class TestCopeNoCalculo(unittest.TestCase):
         """Recorte = max(Gerdau 3.3, cope da ponta); a ponta desenha o mesmo (W310x38.7 em W250x73, V = 100 kN)."""
         e = _EX["viga_viga_recorte"]
         r = L.verificar_ligacao("viga_viga_recorte", e["dados"], e["esforcos"])
-        self.assertAlmostEqual(r["taxa"], 1.197, places=3)
+        # cope da ponta medido do plano: 254/2 − 8,6/2 − 10 + 12 = 124,7 mm (Gerdau: 122,7) → ≈ Gerdau (1,046)
+        self.assertAlmostEqual(r["taxa"], 1.082, places=3)
+        self.assertAlmostEqual(r["valores"]["recorte_sup_c_mm"], 124.7, places=1)
         copes = {c["face"]: c for c in r["geometria"]["pontas"][0]["recortes"]}
         for f in ("sup", "inf"):
             self.assertAlmostEqual(copes[f]["altura"] * 1e3, r["valores"][f"recorte_{f}_h_mm"])
@@ -154,6 +156,25 @@ class TestComprimentoLivre(unittest.TestCase):
         ctx = lm._contexto_pontas(m, g["tipo"], mb)
         self.assertAlmostEqual(ctx["comprimento"], 6 - 0.75)
         self.assertAlmostEqual(ctx["perfil_apoio"]["h"], secoes.catalogo("W310x38.7").props["h"])
+
+
+class TestApoioDoNo(unittest.TestCase):
+    def test_viga_viga_prefere_continua(self):
+        """Nó viga–viga: viga mestra W310 contínua, duas secundárias W360 (mais altas) chegando.
+        O apoio é a contínua (_classificar_no), não a barra mais alta."""
+        m = P.novo_modelo()
+        P.gerar_estrutura(m, {"tipo": "portico_plano", "material": "A-572 GR.50",
+                              "secoes": {"pilar": "W310x38.7", "viga": "W360x51"}, "vaos_x": [6], "alturas": [3]})
+        for k, (x, y) in dict(a=(-3, 0), c=(0, 0), b=(3, 0), s=(0, 3), t=(2, -2)).items():
+            P.adicionar(m, "no", {"id": "V" + k, "x": x, "y": y + 10, "z": 3})
+        for ni, nj, sec in (("Va", "Vc", "W310x38.7"), ("Vc", "Vb", "W310x38.7"), ("Vs", "Vc", "W360x51"),
+                            ("Vt", "Vc", "W360x51")):
+            P.adicionar(m, "barra", {"ni": ni, "nj": nj, "secao": sec, "material": "A-572 GR.50"})
+        mbs = [x for x in lm.membros(m) if x["no"] == "Vc"]
+        self.assertEqual(len(mbs), 2)
+        for x in mbs:
+            self.assertEqual(x["tipo"], "viga_viga")
+            self.assertAlmostEqual(lm._apoio_no(m, x)["h"], secoes.catalogo("W310x38.7").props["h"])
 
 
 class TestGussetUsaPonta(unittest.TestCase):

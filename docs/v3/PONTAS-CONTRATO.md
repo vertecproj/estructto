@@ -32,7 +32,7 @@ Recorte = {tipo:"cope"|"angulo"|"esquadria"|"boca_peixe", ...}
 | Tipo | Distância do plano ao nó, no eixo da barra | Recortes |
 |---|---|---|
 | viga_pilar_mesa | `h_apoio/2 + folga` | — |
-| viga_pilar_alma, viga_viga | `tw_apoio/2 + folga` | `cope` em cada mesa que invade a mesa do apoio: `altura = tf_apoio + folga`, `comprimento = bf_apoio/2 + folga`, `raio = 0,010` |
+| viga_pilar_alma, viga_viga | `tw_apoio/2 + folga` | `cope` em cada mesa que invade a mesa do apoio: `altura = tf_apoio + cope_folga_alt`, `comprimento = bf_apoio/2 − tw_apoio/2 − folga + cope_folga_comp` (medido do plano de corte, Revisão 2), `raio = 0,010` |
 | gusset_contraventamento | até a face do apoio (borda do gusset) + folga: `ext_apoio/sen θ + (b_diag/2)/tg θ + folga` | — (sem limite 0,3·L) |
 | esquadria | plano no nó, normal pela bissetriz, folga 0 | `esquadria` |
 | boca_peixe | `√(R² − r²)` (fundo da sela), folga 0 | `boca_peixe` com raio do receptor |
@@ -69,7 +69,7 @@ Todo resultado de `verificar` (19 tipos de `tipos_ligacao()` e `placa_base`) tra
 - `pontas.BarraCurta(ValueError)` é a exceção de barra curta. `com_pontas` captura a classe, não o texto.
 - Comprimento livre (grupo): `dist(nós) − desloc_i − desloc_j` (params da barra, m). Desse valor ainda sai o recuo da outra ponta, tirado do projeto do grupo dela. A barra é curta quando `recuo_i + recuo_j (+ recorte) ≥ comprimento livre`.
 - O grupo passa `contexto_pontas.perfil_apoio`: a outra barra do nó de maior altura. Se o tipo pede apoio e não há perfil, sai o aviso `apoio sem perfil: ponta aproximada`.
-- Os copes `sup`/`inf` da ponta vão para o cálculo dos flexíveis (`chapa_simples_alma`, `cantoneira_dupla_alma`, `viga_viga_recorte`) como `recorte_*_h/_c`. Valem o maior entre a entrada e a ponta. No `viga_viga_recorte`, altura e comprimento valem `max(Gerdau 3.3, cope da ponta)`. Os mesmos valores voltam para a ponta (`geometria.pontas`), então o desenho é igual ao cálculo, do lado conservador. O exemplo (W310x38.7 em W250x73, V = 100 kN) passa de 1,046 a 1,197 porque o cope da ponta é mais comprido. Verificações que passam a rodar na viga recortada:
+- Os copes `sup`/`inf` da ponta vão para o cálculo dos flexíveis (`chapa_simples_alma`, `cantoneira_dupla_alma`, `viga_viga_recorte`) como `recorte_*_h/_c`. Valem o maior entre a entrada e a ponta. No `viga_viga_recorte`, altura e comprimento valem `max(Gerdau 3.3, cope da ponta)`. Os mesmos valores voltam para a ponta (`geometria.pontas`), então o desenho é igual ao cálculo, do lado conservador. O exemplo (W310x38.7 em W250x73, V = 100 kN) fica em 1,082 (Gerdau puro: 1,046). Com o cope da ponta medido do plano de corte, o comprimento é 124,7 mm, contra 122,7 mm do Gerdau. Verificações que passam a rodar na viga recortada:
   - início de escoamento por flexão na seção do fim do recorte (NBR 8800 5.4 / 6.5; Gerdau 3.4.2);
   - flambagem local da alma recortada (AISC Manual 13ª ed. p. 9-7, Cheng–Yura; sem item na NBR);
   - colapso por rasgamento com a altura de alma reduzida (NBR 8800 6.5.6).
@@ -82,4 +82,8 @@ Todo resultado de `verificar` (19 tipos de `tipos_ligacao()` e `placa_base`) tra
 ### Dívida
 
 - Flange plate e emendas: a distância da borda até a ponta da barra (furos e soldas contra o plano de corte) não é conferida pela ponta. Os módulos continuam com a geometria própria.
-- Comprimento do cope no G1 (`bf_apoio/2 + folga`, medido do plano de corte) sai maior que o do Gerdau 3.3 (`bf/2 − tw/2 + 10 − folga`, medido da ponta). O `viga_viga_recorte` usa o maior dos dois, do lado conservador. Ainda falta alinhar as duas regras, para não recortar mais que o necessário.
+
+### Revisão 2
+
+- O comprimento do cope é medido do plano de corte: `bf_apoio/2 − tw_apoio/2 − folga + cope_folga_comp`. O valor antigo, `bf/2 + folga`, contava duas vezes a distância do eixo do apoio até o plano.
+- O apoio da ponta no agrupamento é a barra de apoio que `_classificar_no` escolhe (contínua > pilar > viga suporte), guardada em `membro.apoio`. A barra mais alta do nó só vale quando não há essa indicação.

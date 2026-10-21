@@ -49,7 +49,8 @@ class TestPontas(unittest.TestCase):
         ms = [_m(1, X, PILAR, Z, continuo=True), _m(3, Y, VIGA, Z, desloc=[0, 0, e])]
         p = pontas_do_no([0, 0, 3], ms, "viga_viga")
         self.assertEqual(p[0]["recortes"], [dict(tipo="cope", face="sup", altura=PILAR["tf"] + 0.012,
-                                                 comprimento=0.165 / 2 + 0.012, raio=0.010)])
+                                                 comprimento=0.165 / 2 - PILAR["tw"] / 2 - 0.012 + 0.012,
+                                                 raio=0.010)])   # do plano de corte
 
     def test_diagonal_no_gusset(self):
         L2 = secoes.secao_cantoneira(0.0508, 0.0508, 0.00635).props
@@ -138,7 +139,7 @@ class TestPontas(unittest.TestCase):
         c = pontas_do_no([0, 0, 3], ms, "viga_viga",
                          dict(cope_folga_alt=0.02, cope_folga_comp=0.03, raio_cope=0.002))[0]["recortes"][0]
         self.assertAlmostEqual(c["altura"], PILAR["tf"] + 0.02)
-        self.assertAlmostEqual(c["comprimento"], 0.165 / 2 + 0.03)
+        self.assertAlmostEqual(c["comprimento"], 0.165 / 2 - PILAR["tw"] / 2 - 0.012 + 0.03)
         self.assertAlmostEqual(c["raio"], 0.010)
 
     def test_erros_claros(self):

@@ -61,7 +61,7 @@ def _copes(m, ap, params):
 
     face: sup/inf quando a mesa invadida está acima/abaixo da viga; esq/dir quando a invasão é
     pelas bordas das mesas da viga (viga mais larga que o vão livre entre as mesas do apoio)."""
-    w, pa = ap["eixo_d"], _perfil(ap, "h", "b", "tf")
+    w, pa = ap["eixo_d"], _perfil(ap, "h", "b", "tf", "tw")
     e = _dot(_add(m.get("desloc", [0, 0, 0]), ap.get("desloc", [0, 0, 0]), -1), w)
     ext, livre = _meia_largura(m, w), pa["h"] / 2 - pa["tf"]
     vert = _dot(w, m["eixo_d"])
@@ -74,7 +74,8 @@ def _copes(m, ap, params):
             else:
                 face = "esq" if lado * lat > 0 else "dir"
             out.append(dict(tipo="cope", face=face, altura=pa["tf"] + params["cope_folga_alt"],
-                            comprimento=pa["b"] / 2 + params["cope_folga_comp"], raio=params["raio_cope"]))
+                            comprimento=pa["b"] / 2 - pa["tw"] / 2 - params["folga"] + params["cope_folga_comp"],
+                            raio=params["raio_cope"]))
     return out
 
 

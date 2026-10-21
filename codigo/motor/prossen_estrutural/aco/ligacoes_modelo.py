@@ -87,7 +87,8 @@ def _membro(m, no, e, tipo, apoio=None, ang=0, cond=None):
     assin = "|".join(str(x) for x in (tipo, b.secao, sec_ap, papel_ap, ang, cond, b.material))
     rot = TIPOS[tipo][0]
     nome = f"{rot} {b.secao}" + (f" → {sec_ap}" if sec_ap else "") + (f" {ang}°" if tipo in ("emenda",) and ang else "")
-    return dict(no=no, barra=b.id, ponta=e["ponta"], tipo=tipo, assinatura=assin, nome=nome)
+    return dict(no=no, barra=b.id, ponta=e["ponta"], tipo=tipo, assinatura=assin, nome=nome,
+                apoio=apoio["b"].id if apoio else None)
 
 
 def _emenda(m, nid, a, c):
@@ -438,7 +439,14 @@ def _taxa(r):
 
 
 def _apoio_no(modelo, mb):
-    """Perfil do apoio no nó: a outra barra do nó de maior altura (pilar contínuo, viga suporte); None se não há."""
+    """Perfil do apoio da ponta no nó: a barra de apoio escolhida por _classificar_no (contínua > pilar > viga
+    suporte); se ela não indica nenhuma, a outra barra do nó de maior altura; None se não há."""
+    ends = [dict(b=b, ponta=p) for b in modelo.barras.values() if b.tipo != "concreto"
+            for p, n in (("i", b.ni), ("j", b.nj)) if n == mb["no"]]
+    lig = next((x for x in _classificar_no(modelo, mb["no"], ends)
+                if x["barra"] == mb["barra"] and x["ponta"] == mb["ponta"]), None)
+    if lig and lig.get("apoio") is not None:
+        return modelo.secoes[modelo.barras[lig["apoio"]].secao].props
     ps = [modelo.secoes[b.secao].props for b in modelo.barras.values()
           if b.id != mb["barra"] and mb["no"] in (b.ni, b.nj)]
     return max((p for p in ps if "h" in p and "b" in p), key=lambda p: p["h"], default=None)
