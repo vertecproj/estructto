@@ -32,6 +32,39 @@ def exemplo():
 
 
 class TestModelo(unittest.TestCase):
+    def test_id_automatico_apos_remocao_e_id_explicito(self):
+        """N1 rodada 2: cache de ids não pode repetir id (remove + add explícito mantém o tamanho da lista)."""
+        m = Modelo()
+        for _ in range(5):
+            m.add(CargaDistribuida("G1", "b", (0, 0, -1)))
+        m.cargas_distribuidas.pop(0)                                   # remove cd1
+        m.add(CargaDistribuida("G1", "b", (0, 0, -1), id="cd6"))       # explícito, lista volta a ter 5
+        m.add(CargaDistribuida("G1", "b", (0, 0, -1)))
+        self.assertEqual(m.cargas_distribuidas[-1].id, "cd7")
+        self.assertEqual(len({c.id for c in m.cargas_distribuidas}), len(m.cargas_distribuidas))
+
+    def test_id_automatico_apos_editar_e_remover_pela_api(self):
+        from prossen_estrutural import projeto
+        m = exemplo()   # tem cd1 em G1/b2
+        projeto.remover(m, "carga_distribuida", "cd1")
+        projeto.adicionar(m, "carga_distribuida", {"id": "cd9", "caso": "G1", "barra": "b2", "q": [0, 0, -2]})
+        projeto.editar(m, "carga_distribuida", "cd9", {"q": [0, 0, -3]})
+        m.add(CargaDistribuida("G1", "b2", (0, 0, -1)))
+        self.assertEqual(m.cargas_distribuidas[-1].id, "cd10")
+
+    def test_add_carga_em_lote_e_linear(self):
+        """N1: ids automáticos sem varrer a lista a cada item (5000 cargas levavam 10 s); ids seguem sequenciais e sem reuso."""
+        import time
+        m = Modelo()
+        t = time.time()
+        for _ in range(5000):
+            m.add(CargaDistribuida("G1", "b", (0, 0, -1)))
+        self.assertLess(time.time() - t, 2)
+        self.assertEqual(m.cargas_distribuidas[-1].id, "cd5000")
+        m.cargas_distribuidas.pop()          # lista mudou por fora: não reaproveita o 5000
+        m.add(CargaDistribuida("G1", "b", (0, 0, -1)))
+        self.assertEqual(m.cargas_distribuidas[-1].id, "cd5001")
+
     def test_ids_atribuidos_sem_reaproveitar(self):
         """ESPEC §5: ids cn<n>/cd<n>/cp<n>; contador = maior já usado + 1; não reaproveita."""
         m = exemplo()

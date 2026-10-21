@@ -55,6 +55,7 @@ namespace NovoFtool
             };
             TemaPlant.RegistrarTokens(this);   // tokens antes de a janela abrir (StartupUri)
             base.OnStartup(e);
+            if (e.Args.Length == 0) Motor.Aquecer();   // só uso normal: os modos de teste escolhem o próprio motor
             ThemeManager.Current.ChangeTheme(this, "Dark.Cobalt");
             TemaPlant.AplicarFluent(this);   // cores do AutoCAD Plant 3D por cima do tema escuro
             if (!e.Args.Contains("--capturas")) TemaPlant.AplicarAcento(this, Config.Opcoes.Acento);   // Arquivo › Opções

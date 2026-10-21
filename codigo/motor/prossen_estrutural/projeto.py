@@ -738,6 +738,7 @@ def editar(modelo, tipo, id, dados):  # noqa: A002
         col[id] = novo
     else:
         col[pos] = novo
+    modelo._max_lista.clear()  # troca no mesmo lugar não muda o tamanho da lista: cache de ids vale menos que a verdade
     return _el_dict(novo)
 
 

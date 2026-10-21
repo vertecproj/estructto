@@ -22,3 +22,7 @@ docs/v3/LOCK
 testes-aceite/
 graphify-out/
 .superpowers/
+
+# saida de build criada por OutDir com barras invertidas mal escapadas
+codigo/Estructto/devbuild*/
+codigo/motor/p.out

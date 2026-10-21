@@ -29,6 +29,7 @@ namespace NovoFtool
         public static bool Configurar(MainWindow w, string[] args)
         {
             if (args == null) return false;
+            if (args.Length >= 3 && args[1] == "--testes-novo") { ConfigurarNovo(w, args[2]); return true; }   // TestesNovo.cs
             if (args.Length >= 3 && args[1] == "--testes-comandos") { ConfigurarComandos(w, args[2]); return true; }   // TestesComandos.cs
             if (args.Length >= 3 && args[1] == "--testes-fluxo") { ConfigurarFluxos(w, args[2], args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null); return true; }   // TestesFluxo.cs
             for (int i = 1; i < args.Length; i++)

@@ -134,17 +134,24 @@ class Modelo:
 
     def __post_init__(self):
         self._ultimo_id = {}  # prefixo -> maior número já atribuído (não reaproveita)
+        self._max_lista = {}  # prefixo -> (len da lista, maior número nela): add em lote sem varrer a lista a cada item
 
     def add(self, obj):
         if type(obj) in _CARGAS:
             lista, pref = _CARGAS[type(obj)]
             lista = getattr(self, lista)
             if not obj.id:
-                usados = [int(mt.group(1)) for c in lista
-                          if (mt := re.fullmatch(pref + r"(\d+)", c.id))]
-                n = max(usados + [self._ultimo_id.get(pref, 0)]) + 1
+                vis = self._max_lista.get(pref)
+                if vis is None or vis[0] != len(lista):  # lista mudou por fora (from_dict, remoção): varre de novo
+                    usados = [int(mt.group(1)) for c in lista
+                              if (mt := re.fullmatch(pref + r"(\d+)", c.id))]
+                    vis = (len(lista), max(usados, default=0))
+                n = max(vis[1], self._ultimo_id.get(pref, 0)) + 1
                 self._ultimo_id[pref] = n
                 obj.id = f"{pref}{n}"
+                self._max_lista[pref] = (len(lista) + 1, n)
+            else:
+                self._max_lista.pop(pref, None)  # id explícito: o maior número pode mudar; a próxima automática varre de novo
             lista.append(obj)
             return obj
         destino = {No: self.nos, Material: self.materiais, Secao: self.secoes,

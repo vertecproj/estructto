@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente N1: novo arquivo lento. Causa: id automático de carga em `Modelo.add` era O(n²) (grade 20×20: 12 s só no lote). Cache no motor, motor aquecido ao abrir, teto de 200 barras na prévia, auto-teste `--testes-novo`. Detalhe em [v3/NOVO-ARQUIVO.md](v3/NOVO-ARQUIVO.md).
 - 21/10/2026 — A pedido do usuário, manual v3 em [manual/](manual/README.md) e seção do produto no README atualizados para o fluxo só 3D, com aliases do código, vento integrado, ligações/grupos, placa NBR, exportação e limites/ART.
 
 ## 21/10/2026 — Vista 3D: chapa do joelho rente à mesa do pilar (branch wt-joelho)

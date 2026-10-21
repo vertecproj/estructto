@@ -141,6 +141,14 @@ def _int(q, chave, padrao):
         raise projeto.ErroEntrada(f"{chave}: número inteiro esperado", chave) from None
 
 
+def _limpar_historico(srv):
+    """N1: o WPF acabou de criar o documento e já tem o modelo do motor; começa sem desfazer/refazer/cálculo sem reabrir o arquivo."""
+    srv.estado["desfazer"].clear()
+    srv.estado["refazer"].clear()
+    srv.estado["calculo"] = None
+    return {"ok": True}
+
+
 def _novo(srv, m):
     srv.estado.update(modelo=m, calculo=None)
     srv.estado["desfazer"].clear()
@@ -206,6 +214,7 @@ ROTAS = {
     ("GET", r"/api/modelo/(?P<tipo>[a-z_]+)"): lambda s, a, q, c: projeto.listar(_modelo(s), a["tipo"], dict(q) or None),
     ("PATCH", r"/api/modelo/(?P<tipo>[a-z_]+)/(?P<id>[^/]+)"): lambda s, a, q, c: projeto.editar(_modelo(s), a["tipo"], a["id"], c or {}),
     ("DELETE", r"/api/modelo/(?P<tipo>[a-z_]+)/(?P<id>[^/]+)"): lambda s, a, q, c: projeto.remover(_modelo(s), a["tipo"], a["id"], cascata=bool(_bool(q, "cascata"))),
+    ("POST", r"/api/historico/limpar"): lambda s, a, q, c: _limpar_historico(s),
     ("POST", r"/api/desfazer"): lambda s, a, q, c: _trocar(s, "desfazer", "refazer"),
     ("POST", r"/api/refazer"): lambda s, a, q, c: _trocar(s, "refazer", "desfazer"),
     ("PATCH", r"/api/config"): lambda s, a, q, c: projeto.configurar(_modelo(s), c or {}),
