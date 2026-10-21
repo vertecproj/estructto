@@ -104,6 +104,8 @@ namespace NovoFtool
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
             g.ColumnDefinitions.Add(new ColumnDefinition());
             var r = T(rot, 12, BFraco); r.VerticalAlignment = VerticalAlignment.Center; r.Margin = new Thickness(0, 0, 10, 0); g.Children.Add(r);
+            // o mesmo campo é reaproveitado quando o passo é remontado (voltar/avançar): solta do painel antigo antes
+            if (ed.Parent is Panel antigo) antigo.Children.Remove(ed);
             var sp = new StackPanel(); sp.Children.Add(ed);
             if (sub != null) sp.Children.Add(T(sub, 10.5, TemaPlant.BTexto3));
             if (dica != null) ed.ToolTip = dica;
@@ -181,6 +183,7 @@ namespace NovoFtool
             sp.Children.Add(Linha(modelo.RotY, c["ey"]));
             sp.Children.Add(Linha(modelo.RotZ, c["ez"]));
             resumoGrade.Margin = new Thickness(0, 0, 0, 12); resumoGrade.TextWrapping = TextWrapping.Wrap;
+            if (resumoGrade.Parent is Panel antigoResumo) antigoResumo.Children.Remove(resumoGrade);   // passo remontado
             sp.Children.Add(resumoGrade);
             if (modelo.Gerador != null)
             {
