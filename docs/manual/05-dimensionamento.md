@@ -1,33 +1,24 @@
-# 5. Aba Dimensionamento
+# 5. Verificar e dimensionar barras
 
-Taxa de aproveitamento = solicitação / resistência. **Taxa maior que 1 = barra reprovada.**
+A taxa de aproveitamento compara solicitação e resistência ou o limite de cada critério. **Taxa maior que 1 reprova.** A cor ou uma taxa favorável não assegura que todos os fenômenos relevantes tenham sido cobertos.
 
-## Verificar
+## Revisar a verificação
 
-| Botão | O que faz |
-|---|---|
-| **Verificação de barras** | Lista todas as barras com taxa, critério determinante, item da norma e combinação crítica; ordenável e filtrável; duplo clique abre a barra (capturas 42-verificacao-barras, 42-verificacao-barras-reprovadas). Calcula o modelo antes |
-| **Mapa de aproveitamento** | Colore as barras pela taxa (captura 36-mapa-calor) |
-| **Verificar barra** | Abre a barra selecionada: critério × item da norma × combinação × Sd ≤ Rd (capturas 43-verificar-barra-aco, 43-verificar-barra-concreto). No motor Interno, abre a janela antiga com a lista de perfis da família |
+1. Calcule com F5 e abra **Verificação de barras** ou **Tabelas › Verificação**.
+2. Ordene pela taxa e localize critério, item de norma e combinação que governam.
+3. Selecione a barra e abra **Verificar barra** para examinar solicitações, resistências e avisos.
+4. Confira seção, material, eixos, rótulas, comprimentos de flambagem e travamentos. Corrija a hipótese ou seção e recalcule.
 
-Normas verificadas pelo motor Python: aço laminado e soldado (NBR 8800), perfis formados a frio (NBR 14762), concreto armado
-(NBR 6118). Itens e limitações: [página 11](11-limitacoes.md).
+**Mapa de aproveitamento** (`CALOR`, `MAPA`, `APROV`) localiza barras críticas na vista, inclusive no Realista. Use os valores e critérios detalhados para decidir a intervenção.
 
-## Otimizar
+O motor cobre conjuntos de verificações de aço laminado/soldado (NBR 8800), perfis formados a frio (NBR 14762) e concreto (NBR 6118). Confira escopo e edição declarados no resultado. Itens classificados como **não verificado** não constituem aprovação.
 
-- **Dimensionar**: troca cada barra pelo perfil mais leve da mesma família que passa, considerando a envoltória; recalcula e repete até estabilizar. Com barras selecionadas (aba Barra), atua só nelas. Roda no cálculo interno.
-- **Catálogo de perfis**: perfis do motor com A, I, W, Z, r, J, Cw (captura 46-catalogo).
+## Dimensionamento automático
 
-## Critérios
+`DIMENSIONAR` tenta ajustar perfis do catálogo na mesma família em todo o modelo. `DIMSEL` limita a operação às barras selecionadas. A rotina calcula, aumenta perfis reprovados e tenta reduzir os pouco aproveitados, repetindo até oito rodadas. Cada rodada pode ser desfeita com Ctrl+Z.
 
-- **Segurança**: coeficiente "n" mínimo (motor Interno).
-- **Flecha L/**: flecha admissível = vão / número (motor Interno). No motor Python a flecha é verificada à parte, em ELS, só em vigas.
+A busca usa uma estimativa por massa e taxa; não garante perfil ótimo nem menor massa global. Mudanças de rigidez redistribuem esforços. Ao terminar, confira novamente cálculo, flechas, estabilidade, travamentos, ligações e bases.
 
-## Como ler uma reprovação
+O **Catálogo de perfis** ajuda a consultar propriedades geométricas. Alterações de seção não definem automaticamente todos os parâmetros de flambagem e ligação. Flechas são verificadas em ELS para as situações de vigas cobertas pelo motor; confira o limite adequado ao uso.
 
-1. Abra **Verificação de barras** e ordene pela taxa.
-2. Veja o critério e o item. Esbeltez, FLT, interação, cortante e flecha pedem soluções diferentes.
-3. Abra **Verificar barra** e confira Sd e Rd, e a combinação crítica.
-4. Troque o perfil (ou use **Dimensionar**) e calcule de novo.
-
-Itens "não verificado" também reprovam: o motor não aprova o que não sabe verificar (ver limitações).
+Veja [Limitações](11-limitacoes.md), em especial a fórmula simplificada de distorcional de perfis Ue e os tipos de seção fora do escopo.

@@ -1,28 +1,20 @@
-# 9. Importar e comparar CYPE (.ed3)
+# 9. Importar e comparar CYPE 3D
 
-O Estructto lê arquivos `.ed3` do CYPE 3D. A leitura é só leitura: a obra do CYPE não é alterada.
+O Estructto lê arquivos **.ed3** do CYPE 3D. A importação é de leitura: o arquivo de origem permanece preservado.
 
 ## Importar
 
-1. Aba **Modelo** › **Importar CYPE** (ou Arquivo › Abrir, escolhendo `.ed3`).
-2. Escolha o arquivo (captura 45-cype-importar).
-3. O modelo vira um **documento espacial** e substitui o modelo do motor (Desfazer volta).
-4. Leia os avisos da importação: vão para o painel Avisos e para o histórico.
+1. Use **Importar CYPE 3D** na tela inicial, **Arquivo › Importar** ou **Arquivo › Abrir** com `.ed3`.
+2. Escolha o arquivo. O modelo importado abre como documento espacial numa nova aba.
+3. Leia os avisos no histórico e no painel Avisos. Confira geometria, seções, materiais, apoios, rótulas, cargas e parâmetros de verificação.
+4. Salve o resultado como `.estructto` ou `.json` e calcule com F5.
+
+A conversão não assegura equivalência de todas as hipóteses. Ligações, presilhas e parâmetros fora do escopo exigem revisão e verificações complementares.
 
 ## Comparar
 
-Na mesma janela, **Comparar** roda o cálculo do Estructto e confronta com os resultados gravados pelo CYPE no arquivo
-(captura 45-cype-comparar). A tabela traz hipótese × grandeza × CYPE × Estructto × diferença em %, cobrindo
-deslocamentos, reações e esforços, além das taxas de aproveitamento e dos avisos.
+Na ferramenta **Comparar com CYPE**, selecione a obra e clique em **Comparar**. O programa calcula no motor e confronta os resultados disponíveis no arquivo: hipótese, grandeza, CYPE, Estructto e diferença percentual. A comparação pode incluir deslocamentos, reações, esforços e taxas, conforme os dados gravados.
 
-Como ler:
-- Diferença pequena em deslocamentos e reações indica o mesmo modelo e a mesma análise.
-- Diferença em taxas é esperada quando o critério de norma difere (edição da norma, hipóteses). Veja o aviso da linha.
-- Use a comparação como conferência de lógica, não como prova de projeto.
+Confira primeiro unidades, orientação dos eixos, cargas, vínculos e hipóteses de análise. Depois examine diferenças de critérios e edições de norma. Coincidência de resultados em um caso não valida todo o projeto; discrepâncias precisam ser explicadas antes do uso.
 
-O CYPE 2016 é referência de lógica e de interface. Nenhum código dele é copiado.
-
-## Pela IA
-
-`modelo_importar_cype` importa; `cype_comparar` compara. Ver [página 10](10-uso-com-ia.md). Caminhos: pasta de trabalho do
-servidor ou `C:\CYPE Ingenieros\Projetos\`.
+Pela IA, `modelo_importar_cype` e `cype_comparar` atendem esse fluxo; veja [Uso com IA](10-uso-com-ia.md). Consulte as [limitações](11-limitacoes.md).

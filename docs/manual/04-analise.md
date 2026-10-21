@@ -1,29 +1,33 @@
-# 4. Aba Análise
+# 4. Calcular e interpretar resultados
 
-## Calcular
+## Preparar e calcular
 
-**F5** (ou Ctrl+F9, `CALC`) ou o botão Calcular na barra de acesso rápido. O cálculo é sempre o do motor Python.
-Corrija os avisos do modelo antes de calcular; sem isso o cálculo não roda.
+Revise nós conectados, apoios, rótulas, materiais, seções, casos e combinações. Consulte **Avisos**; clique num item para localizar o elemento e corrija erros de validação. Use **Calcular**, **F5**, **Ctrl+F9** ou `CALC`. Um mecanismo ou matriz singular exige revisar vínculos e conectividade antes de aproveitar resultados.
+
+O cálculo é feito pelo motor Python. Alterações do modelo ou das ações invalidam o cálculo anterior: calcule novamente antes de verificar barras, ligações ou emitir relatório.
 
 ## Resultado mostrado
 
-A lista **Mostrar** escolhe o caso, a combinação ou a envoltória. No motor Python, "envoltória ELU" é o padrão: cada ponto do
-diagrama é o valor de maior módulo entre máximo e mínimo (com sinal). A deformada usa a envoltória ELS.
+Na lista **Mostrar**, escolha uma combinação ou **Envoltória ELU (motor)**. Na envoltória, cada estação do diagrama mostra o extremo de maior módulo, preservando o sinal. Não são desenhadas simultaneamente as curvas máxima e mínima. A deformada da envoltória usa ELS.
 
-## Diagramas
+Uma envoltória pode reunir extremos de combinações diferentes. Para examinar equilíbrio e simultaneidade, selecione uma combinação específica e confira as reações e os esforços correspondentes.
 
-**Deformada**, **Normal** (kN, tração positiva), **Cortante** (kN), **Momento** (kN·m, desenhado do lado tracionado).
-**Ampliar** e **Reduzir** mudam a escala. Passe o mouse sobre o desenho para ler valores (captura 37-inspecao-mouse).
-No documento espacial, o eixo local y da vista é o eixo z local do motor; M_y negativo no vão de viga sai para baixo (lado tracionado).
+| Resultado | Leitura |
+|---|---|
+| Normal (`N`) | kN; tração positiva |
+| Cortante (`Q`) | Vz local, em kN |
+| Momento (`MOMENTO`) | My local, em kN·m; diagrama do lado tracionado |
+| Deformada (`DEF`) | deslocamentos com escala visual ajustável |
+| Aproveitamento (`CALOR`) | pior taxa da verificação da barra |
 
-## Modos de vibração
+O eixo de desenho do diagrama corresponde ao z local do motor. Para barras com giro e esforços nos demais eixos, confira os resultados tabulados e a verificação completa. A deformada desenhada liga os nós deslocados por segmentos; ela não mostra a elástica interna da barra.
 
-Botão **Modos de vibração**: frequências, períodos e massa participante dos primeiros modos (captura 40-modal).
-Escolher um modo mostra a forma modal (captura 40-modal-modo3).
+## Tabelas e estabilidade
 
-## Estabilidade
+**Tabelas** reúne nós, barras e verificação. Confira deslocamentos, esforços extremos, combinação crítica e reações nos resultados do cálculo. A escala do diagrama muda apenas sua apresentação.
 
-Botão **Estabilidade**: calcula o modelo no motor e mostra γz e deslocamentos-limite (NBR 6118 e 8800), com régua de 1,0 a 1,4
-(captura 41-estabilidade). γz acima de 1,1 pede majoração dos esforços ou análise de segunda ordem (captura 41-estabilidade-majorada).
-Vale para edifícios com 4 pavimentos ou mais (aviso abaixo disso). P-Δ global de segunda ordem completo não é implementado
-no pórtico plano.
+Em **Modos de vibração**, examine frequências, períodos, massa participante e formas modais disponíveis. Uma análise modal não substitui a avaliação dinâmica da ação.
+
+Em **Estabilidade**, examine os indicadores e avisos do motor. O critério γz para edifícios tem domínio de aplicação, incluindo a indicação de quatro pavimentos ou mais. Um valor alto exige que o projetista avalie efeitos de segunda ordem e o método apropriado. Não trate o indicador como uma análise global completa de segunda ordem.
+
+Continue em [Verificação e dimensionamento](05-dimensionamento.md). A aprovação numérica depende da validade das hipóteses e das [limitações](11-limitacoes.md).
