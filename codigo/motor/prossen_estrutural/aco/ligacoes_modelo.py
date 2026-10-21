@@ -102,8 +102,47 @@ def _emenda(m, nid, a, c):
     return mb
 
 
-def _classificar_no(m, nid, ends):
-    """Pontas de barra num nó → membros de ligação (lista)."""
+def _classificar_no(m, nid, ends, motivos=None):
+    """Pontas de barra num nó → membros de ligação (lista). `motivos` (dict): recebe {nid: texto} quando o nó fica
+    sem ligação ou alguma ponta é recusada (ex.: ângulo pequeno demais)."""
+    recusas = []
+    out = _classificar(m, nid, ends, recusas)
+    if motivos is not None and (recusas or not out):
+        motivos[nid] = "; ".join(recusas) or _motivo_vazio(m, nid, ends)
+    return out
+
+
+def _motivo_vazio(m, nid, ends):
+    if len(ends) < 2:
+        return "ponta livre: 1 barra, sem apoio"
+    papeis = sorted(e.get("papel", "?") for e in ends)
+    return f"só barras contínuas ou pilar que termina ({', '.join(papeis)}): sem ligação a dimensionar"
+
+
+_ANG_MIN = 20   # ° entre a barra e o apoio abaixo do qual a chapa/gusset não cabe (Review Focus 2)
+
+
+def _plano_vertical(e, continuo):
+    """Barra de treliça `e` e banzo contínuo num plano vertical (normal quase horizontal)."""
+    if not (continuo and e["b"].params.get("trelica")):
+        return False
+    a, c = e["d"], continuo[0]["d"]
+    n = (a[1] * c[2] - a[2] * c[1], a[2] * c[0] - a[0] * c[2], a[0] * c[1] - a[1] * c[0])
+    L = math.sqrt(_dot(n, n))
+    return L > 1e-9 and abs(n[2]) / L < 0.5
+
+
+def _anexar(m, nid, e, tipo, ap, out, recusas):
+    """Ligação da ponta `e` no apoio `ap`; ângulo < _ANG_MIN → recusada com motivo (não vira ligação)."""
+    ang = _ang(e["d"], ap["d"]) if ap else 0
+    if ap is not None and ang < _ANG_MIN:
+        recusas.append(f"{e['b'].id}: ângulo {ang}° com {ap['b'].id} < {_ANG_MIN}° — {TIPOS[tipo][0].lower()} "
+                       "impossível")
+        return
+    out.append(_membro(m, nid, e, tipo, ap, ang))
+
+
+def _classificar(m, nid, ends, recusas):
     no = m.nos[nid]
     apoiado = _apoiado(no)
     if not apoiado and len(ends) < 2:
@@ -143,15 +182,19 @@ def _classificar_no(m, nid, ends):
         if id(e) in passa:
             continue
         b, papel = e["b"], e["papel"]
-        if apoiado and papel != "diagonal":
+        if apoiado and (papel != "diagonal" or so_trelica and not b.params.get("trelica")):
+            # pilar inclinado sozinho no apoio (classe "diagonal" pela geometria) também é base
             cond = "rotulada" if _rotulada(b, e["ponta"]) or not (no.apoio[3] and no.apoio[4]) else "rigida"
             out.append(_membro(m, nid, e, "base", None, _ang(e["d"], (0, 0, 1)), cond))
         elif papel == "diagonal":
             ap = (continuo[0] if continuo else apoio_pilar or next((x for x in ends if x["papel"] == "viga"), None))
-            tipo = "no_trelica" if so_trelica else "gusset_contraventamento"
+            # treliça com banzo contínuo comum (barra "trelica" sobre banzo, sem pilar, plano vertical); o
+            # contraventamento em X da cobertura também é "trelica", mas fica no plano do telhado → gusset
+            tipo = ("no_trelica" if so_trelica or _plano_vertical(e, continuo) and not pilares
+                    else "gusset_contraventamento")
             if ap is not None and apoiado:
                 ap = dict(ap, papel="base")   # gusset no pé do pilar ≠ gusset no topo
-            out.append(_membro(m, nid, e, tipo, ap, _ang(e["d"], ap["d"]) if ap else 0))
+            _anexar(m, nid, e, tipo, ap, out, recusas)
         elif papel == "viga":
             if apoio_pilar is not None:
                 _ex, ey, ez = eixos_locais(m, apoio_pilar["b"].id)
@@ -160,13 +203,14 @@ def _classificar_no(m, nid, ends):
             else:
                 ap = continuo[0] if continuo else max((x for x in ends if x is not e and x["papel"] == "viga"),
                                                       key=lambda x: m.secoes[x["b"].secao].A, default=None)
-                out.append(_membro(m, nid, e, "viga_viga", ap, _ang(e["d"], ap["d"]) if ap else 0))
+                _anexar(m, nid, e, "viga_viga", ap, out, recusas)
         # pilar que termina sem apoio (topo, pilar sobre viga): o pilar é o apoio das vigas; sem ligação própria
     return out
 
 
-def membros(modelo):
-    """Todas as ligações do modelo, sem agrupar: [{no, barra, ponta, tipo, assinatura, nome}]."""
+def membros(modelo, motivos=None):
+    """Todas as ligações do modelo, sem agrupar: [{no, barra, ponta, tipo, assinatura, nome}].
+    `motivos` (dict, opcional) recebe {nó: motivo} dos nós sem ligação ou com ponta recusada."""
     m = modelo
     pontas = {}
     for b in m.barras.values():
@@ -177,7 +221,7 @@ def membros(modelo):
     out = []
     for nid in m.nos:
         if nid in pontas:
-            out += _classificar_no(m, nid, pontas[nid])
+            out += _classificar_no(m, nid, pontas[nid], motivos)
     return out
 
 
@@ -209,7 +253,8 @@ def identificar(modelo):
     - grupo travado ou manual mantém os membros que ainda existem; nos outros, membro cuja assinatura mudou sai;
     - membro sem grupo vai para o primeiro grupo não travado com a mesma assinatura, ou para um grupo novo;
     - grupo vazio é apagado. → {"grupos": n, "membros": n, "novos": [ids]}"""
-    novos = membros(modelo)
+    sem_tipo = {}
+    novos = membros(modelo, sem_tipo)
     por_chave = {_chave(n): n for n in novos}
     grupos = _grupos(modelo)
     colocados = set()
@@ -240,7 +285,8 @@ def identificar(modelo):
         colocados.add(k)
     for gid in [k for k, g in grupos.items() if not g["membros"]]:
         del grupos[gid]
-    return dict(grupos=len(grupos), membros=len(colocados), novos=[g for g in criados if g in grupos])
+    return dict(grupos=len(grupos), membros=len(colocados), novos=[g for g in criados if g in grupos],
+                sem_tipo=sem_tipo)
 
 
 def _grupo(modelo, gid):

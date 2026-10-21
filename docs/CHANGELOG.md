@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G3): pilar inclinado no apoio vira base, treliça sobre banzo comum vira nó de treliça, ângulo < 20° recusado com motivo; todo nó tem tipo ou motivo (`sem_tipo`). Ver [v3/LIGACOES-GRUPOS.md](v3/LIGACOES-GRUPOS.md#1-identificar).
 - 21/10/2026 — Frente G (G2, rodada 2): comprimento do cope medido do plano de corte (sem dupla contagem); apoio da ponta = barra contínua do nó. Ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#revisão-2).
 - 21/10/2026 — Frente G (G2, rodada 1b): viga–viga com recorte usa max(Gerdau 3.3, cope da ponta) e a ponta desenha o mesmo; exemplo vai a 1,197.
 - 21/10/2026 — Frente G (G2, rodada 1): cope da ponta entra nas verificações da viga recortada; comprimento livre com desloc e recuo das duas pontas; gusset usa a ponta; perfil do apoio vindo do grupo; `BarraCurta`. Ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#g2-rodada-1).

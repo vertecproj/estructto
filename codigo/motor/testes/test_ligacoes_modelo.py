@@ -138,5 +138,82 @@ class TestPior(unittest.TestCase):
         self.assertAlmostEqual(r["taxa_max"], mao)
 
 
+def _vazio():
+    """Modelo só com as seções/material do pórtico (nós e barras montados à mão no teste)."""
+    m = P.novo_modelo()
+    P.gerar_estrutura(m, {"tipo": "portico_plano", "material": ACO, "secoes": W, "vaos_x": [6], "alturas": [3]})
+    m.nos.clear()
+    m.barras.clear()
+    return m
+
+
+def _monta(m, nos, barras, apoios=()):
+    from prossen_estrutural.modelo import Barra, No
+    for nid, xyz in nos.items():
+        m.add(No(nid, *xyz, apoio=(True,) * 6 if nid in apoios else (False,) * 6))
+    for bid, (ni, nj, papel, params) in barras.items():
+        m.add(Barra(bid, ni, nj, W[papel], ACO, params=dict(params)))
+    return m
+
+
+def _tipos_no(m, nid):
+    return sorted(x["tipo"] for x in lm.membros(m) if x["no"] == nid)
+
+
+class TestNosInclinados(unittest.TestCase):
+    """G3: nós inclinados e de base; todo nó tem tipo ou motivo."""
+
+    def test_mao_francesa(self):
+        m = _monta(_vazio(), {"A": (0, 0, 0), "D": (0, 0, 2.2), "B": (0, 0, 3), "E": (0.8, 0, 3), "C": (4, 0, 3)},
+                   {"P1": ("A", "D", "pilar", {}), "P2": ("D", "B", "pilar", {}), "V1": ("B", "E", "viga", {}),
+                    "V2": ("E", "C", "viga", {}), "MF": ("D", "E", "viga", {"rotula_i": True, "rotula_j": True})},
+                   apoios=("A",))
+        self.assertEqual(_tipos_no(m, "D"), ["gusset_contraventamento"])
+        self.assertEqual(_tipos_no(m, "E"), ["gusset_contraventamento"])
+
+    def test_banzo_inclinado_trelica(self):
+        """Cobertura 10°: banzo contínuo (barra comum) + diagonal e montante de treliça → nó de treliça."""
+        t = math.tan(math.radians(10))
+        m = _monta(_vazio(), {"S0": (0, 0, 3), "S1": (2, 0, 3 + 2 * t), "S2": (4, 0, 3 + 4 * t),
+                              "I1": (2, 0, 2.5), "I2": (4, 0, 2.5)},
+                   {"B1": ("S0", "S1", "viga", {}), "B2": ("S1", "S2", "viga", {}),
+                    "M1": ("I1", "S1", "viga", {"trelica": True}), "D1": ("I2", "S1", "viga", {"trelica": True}),
+                    "I": ("I1", "I2", "viga", {})})
+        self.assertEqual(_tipos_no(m, "S1"), ["no_trelica", "no_trelica"])
+
+    def test_rampa_papel_viga(self):
+        m = _monta(_vazio(), {"A": (0, 0, 0), "B": (0, 0, 3), "C": (5, 0, 0), "D": (5, 0, 6.5)},
+                   {"P1": ("A", "B", "pilar", {}), "P2": ("C", "D", "pilar", {}),
+                    "R": ("B", "D", "viga", {"papel": "viga"})}, apoios=("A", "C"))
+        self.assertIn(_tipos_no(m, "B")[0], ("viga_pilar_mesa", "viga_pilar_alma"))
+        self.assertNotIn("gusset_contraventamento", [x["tipo"] for x in lm.membros(m)])
+
+    def test_pilar_inclinado_base(self):
+        m = _monta(_vazio(), {"A": (0, 0, 0), "B": (1, 0, 3), "C": (5, 0, 3), "D": (5, 0, 0)},
+                   {"P1": ("A", "B", "pilar", {}), "V": ("B", "C", "viga", {}), "P2": ("D", "C", "pilar", {})},
+                   apoios=("A", "D"))
+        self.assertEqual(_tipos_no(m, "A"), ["base"])
+
+    def test_diagonal_angulo_pequeno_motivo(self):
+        """Review Focus 2: 2 vigas colineares + diagonal a ~11° da viga → sem ligação, motivo cita o ângulo."""
+        m = _monta(_vazio(), {"A": (0, 0, 3), "B": (3, 0, 3), "C": (6, 0, 3), "D": (8, 0, 4)},
+                   {"V1": ("A", "B", "viga", {}), "V2": ("B", "C", "viga", {}), "DG": ("B", "D", "viga", {})})
+        mot = {}
+        self.assertEqual([x for x in lm.membros(m, mot) if x["no"] == "B"], [])
+        self.assertIn("ângulo", mot["B"])
+        r = lm.identificar(m)
+        self.assertIn("ângulo", r["sem_tipo"]["B"])
+
+    def test_plataforma_todos_nos(self):
+        raiz = os.path.join(os.path.dirname(__file__), "..", "..", "..", "testes-aceite")
+        if not os.path.exists(os.path.join(raiz, "PLATAFORMA.ed3")):
+            self.skipTest("testes-aceite/PLATAFORMA.ed3 ausente")
+        m = P.importar_cype("PLATAFORMA.ed3", pasta=os.path.abspath(raiz))
+        mot = {}
+        com_tipo = {x["no"] for x in lm.membros(m, mot)}
+        aco = {n for b in m.barras.values() if b.tipo != "concreto" for n in (b.ni, b.nj)}
+        self.assertEqual(aco - com_tipo - set(mot), set())
+
+
 if __name__ == "__main__":
     unittest.main()
