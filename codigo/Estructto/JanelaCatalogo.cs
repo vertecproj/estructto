@@ -28,8 +28,14 @@ namespace NovoFtool
         int colOrd = 2; bool desc;
         List<JsonNode> vis = new List<JsonNode>();
 
-        public JanelaCatalogo(JsonNode lista, Func<string, Task<JsonNode>> buscarPerfil)
+        readonly JsonNode arvore;
+        readonly TreeView tv = new TreeView { Width = 250, Margin = new Thickness(0, 0, 10, 0), Background = Brushes.Transparent, BorderThickness = new Thickness(0) };
+        HashSet<string> noPerfis; // perfis do nó escolhido na árvore (null = todos)
+
+        // arvore: GET /api/catalogo?formato=arvore (nivel1 > familias > series > perfis); null = só o filtro por família.
+        public JanelaCatalogo(JsonNode lista, Func<string, Task<JsonNode>> buscarPerfil, JsonNode arvore = null)
         {
+            this.arvore = arvore;
             todos = Lista(lista).ToList();
             this.buscarPerfil = buscarPerfil;
             Moldar(this, "Catálogo de perfis", 1180, 700);
@@ -47,6 +53,7 @@ namespace NovoFtool
             DockPanel.SetDock(lblConta, Dock.Right); barraF.Children.Add(lblConta);
             barraF.Children.Add(hostFiltro);
             DockPanel.SetDock(barraF, Dock.Top); esq.Children.Add(barraF);
+            if (arvore != null) { hostFiltro.Visibility = Visibility.Collapsed; MontarArvore(); DockPanel.SetDock(tv, Dock.Left); esq.Children.Insert(0, tv); }
             esq.Children.Add(hostTabela);
             corpo.Children.Add(esq);
             Grid.SetColumn(hostPerfil, 1); corpo.Children.Add(hostPerfil);
@@ -60,6 +67,41 @@ namespace NovoFtool
         // API das capturas
         public Task Escolher(string nome) { sel = nome; Montar(); return Carregar(nome); }
         public void Filtrar(string fam, string texto) { familia = fam ?? ""; busca = texto ?? ""; Montar(); }
+
+        // Árvore nível 1 > família > série; escolher um nó filtra a tabela pelos perfis abaixo dele.
+        void MontarArvore()
+        {
+            TreeViewItem No(string txt, HashSet<string> ps, bool aberto) => new TreeViewItem { Header = Tx(txt + " (" + ps.Count + ")", 12, TemaPlant.BTexto1), Tag = ps, IsExpanded = aberto, Foreground = TemaPlant.BTexto1 };
+            IEnumerable<string> Pf(JsonNode n) => Lista(n).Select(x => x.ToString());
+            var raiz = new TreeViewItem { Header = Tx("Todos os perfis (" + todos.Count + ")", 12, TemaPlant.BTexto1, FontWeights.SemiBold), Tag = null, IsExpanded = true, Foreground = TemaPlant.BTexto1 };
+            foreach (var n1 in Lista(arvore))
+            {
+                var fams = Lista(n1["familias"]).ToList();
+                var a = No(S(n1, "nivel1"), new HashSet<string>(fams.SelectMany(f => Lista(f["series"]).SelectMany(se => Pf(se["perfis"])))), true);
+                foreach (var f in fams)
+                {
+                    var ss = Lista(f["series"]).ToList();
+                    var b = No(S(f, "nome"), new HashSet<string>(ss.SelectMany(se => Pf(se["perfis"]))), false);
+                    foreach (var se in ss) b.Items.Add(No(S(se, "nome"), new HashSet<string>(Pf(se["perfis"])), false));
+                    a.Items.Add(b);
+                }
+                raiz.Items.Add(a);
+            }
+            tv.Items.Add(raiz);
+            tv.SelectedItemChanged += (o, e) => { noPerfis = (tv.SelectedItem as TreeViewItem)?.Tag as HashSet<string>; Montar(); };
+        }
+
+        // API das capturas: seleciona o nó pelo caminho de títulos (sem a contagem), ex.: EscolherNo("Gerdau (ABNT)", "W/HP", "W")
+        public void EscolherNo(params string[] caminho)
+        {
+            ItemsControl c = tv.Items[0] as TreeViewItem;
+            foreach (var t in caminho)
+            {
+                var it = c.Items.OfType<TreeViewItem>().First(x => ((TextBlock)x.Header).Text.StartsWith(t + " ("));
+                (c as TreeViewItem).IsExpanded = true; c = it;
+            }
+            ((TreeViewItem)c).IsSelected = true;
+        }
 
         async Task Carregar(string nome)
         {
@@ -82,6 +124,7 @@ namespace NovoFtool
 
             IEnumerable<JsonNode> q = todos;
             if (familia != "") q = q.Where(n => S(n, "familia") == familia);
+            if (noPerfis != null) q = q.Where(n => noPerfis.Contains(S(n, "nome")));
             if (busca != "")
             {
                 string b = busca.Replace(" ", "").Replace(",", ".");
@@ -93,7 +136,7 @@ namespace NovoFtool
             };
             vis = (desc ? q.OrderByDescending(chave) : q.OrderBy(chave)).ToList();
             lblConta.Text = vis.Count + " de " + todos.Count;
-            if (vis.Count == 0) { hostTabela.Child = Vazio("busca", "Nenhum perfil encontrado", "Mude a busca ou a família."); }
+            if (vis.Count == 0) { hostTabela.Child = Vazio("busca", "Nenhum perfil encontrado", "Mude a busca ou o nó da árvore."); }
             else
             {
                 var cols = new[] { new Col("Perfil", 0), new Col("Família", 70), new Col("Massa [kg/m]", 104, true), new Col("d [mm]", 76, true), new Col("bf [mm]", 76, true), new Col("A [cm²]", 80, true) };

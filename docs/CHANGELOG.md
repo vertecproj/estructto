@@ -7,6 +7,7 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 
 - Novas tabelas em `codigo/motor/prossen_estrutural/dados/perfis/` (uma CSV por família, 15 famílias) e `test_catalogo.py`; detalhes e fontes em [v3/CATALOGO-PERFIS.md](v3/CATALOGO-PERFIS.md).
 - K2: `secoes.catalogo()` resolve também os CSV novos (T, L desigual, tubos, chata, IPE/HEA/UPN...); `GET /api/catalogo?formato=arvore` devolve a árvore; metalon com raio de canto 1,5t; Ix/Iy tabelados prevalecem em Vallourec, U laminado/UPN e L desigual. Teste `test_catalogo_secoes.py`.
+- K3: seletor de perfis em árvore (nível 1 > família > série) na `JanelaCatalogo`, com busca; captura `46-catalogo-arvore`.
 
 ## 21/10/2026 — Vista 3D: chapa do joelho rente à mesa do pilar (branch wt-joelho)
 - Viga inclinada (água do telhado) contra pilar: a chapa ficava perpendicular à viga, tocando a mesa só no eixo e flutuando nas bordas. Agora o corte da viga é paralelo à face do pilar, o referencial da ligação gira até x ficar na normal da face (`LigacoesAmostra.Referencial`) e a chapa fica rente à mesa. Pilar de eixo fraco: só chapa simples na alma (`Corte.NaMesa`). Teste: folga chapa–mesa < 1 mm (render3d em `--testes-exportar`).

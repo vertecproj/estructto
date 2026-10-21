@@ -24,3 +24,7 @@ Regenerar: `python codigo/motor/ferramentas/gerar_catalogo_perfis.py <brochura_v
 - Ix/Iy da tabela prevalecem sobre os calculados em `tubos_vallourec` (brochura usa raio < 2t), `u_laminado`/`upn` (mesas inclinadas: a geometria de mesa constante erra Iy em até +19 %) e `l_desiguais` (raios de canto não modelados); W, Wx, Zx, rx etc. são reescalados. Demais famílias: Ix/Iy calculados dentro de 3 % da tabela (exceções em `test_catalogo_secoes.py`).
 - `GET /api/catalogo?formato=arvore` (MCP/py: `projeto.catalogo_arvore()`): `[{nivel1, familias:[{nome, series:[{nome, perfis:[nome]}]}]}]` com os níveis "Gerdau (ABNT)", "Europeu (EN/DIN)", "Tubos Vallourec", "Metalon", "Formados a frio NBR 6355". Sem o parâmetro a rota segue devolvendo a lista plana (usada pelo WPF atual), agora incluindo os perfis novos; `familia` aceita qualquer nome de família.
 - T e L não têm Zx/Zy: a verificação de flexão desses perfis não está implementada.
+
+## Seletor em árvore (K3)
+
+A janela "Catálogo de perfis" ganhou árvore nível 1 > família > série (de `GET /api/catalogo?formato=arvore`) à esquerda; escolher um nó filtra a tabela pelos perfis abaixo dele, e a busca continua valendo. Sem árvore (motor antigo) cai no filtro por família. Captura `46-catalogo-arvore`.
