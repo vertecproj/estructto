@@ -364,16 +364,18 @@ class _Col:
         self.v.append(dict(nome=nome, item=item, solicitante=float(sd) * conv, resistente=float(rd) * conv,
                            unidade=un, taxa=float(sd / rd), ok=bool(sd <= rd * (1 + 1e-9))))
 
-    def minimo(self, nome, minimo, real, item):   # disposição construtiva: taxa = mínimo/real
+    def minimo(self, nome, minimo, real, item, parametro=None):   # disposição construtiva: taxa = mínimo/real
         if real <= 0:
             self.v.append(dict(nome=nome, item=item if item.startswith(("AISC", "Pfeil", "Gerdau", "geometria"))
                                else "NBR 8800 " + item, solicitante=minimo / MM, resistente=real / MM, unidade="mm",
                                taxa=_INF if minimo > 0 else 0.0, ok=minimo <= 0))
-            return
-        self.res(nome, minimo, real, "mm", item)
+        else:
+            self.res(nome, minimo, real, "mm", item)
+        L._dica(self.v[-1], "sobe", parametro)
 
-    def maximo(self, nome, real, maximo, item):
+    def maximo(self, nome, real, maximo, item, parametro=None):
         self.res(nome, real, maximo, "mm", item)
+        L._dica(self.v[-1], "desce", parametro)
 
     def bordas(self, nome, e, t, db, laminada):
         self.minimo(f"borda mínima ({nome})", L.distancia_min_borda(db, laminada), e, "6.3.11.1 / tabela 14")
@@ -654,8 +656,8 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
         r.res("solda cantoneira–alma (V, V·e1, N)", q, rw["FwRd"], "kN/m", "6.2.5 / tabela 8")
         r.res("alma da viga: metal base junto às soldas (2 cantoneiras)", 2 * q,
               min(0.6 * fyv * tw / GA1, 0.6 * fuv * tw / GA2), "kN/m", "6.5.5 / tabela 8")
-        r.minimo("solda: dimensão mínima", L.filete_minimo(min(ta, tw)), bs, "6.2.6.2.1 / tabela 10")
-        r.maximo("solda: dimensão máxima (borda da cantoneira)", bs, L.filete_maximo(ta), "6.2.6.2.2")
+        r.minimo("solda: dimensão mínima", L.filete_minimo(min(ta, tw)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
+        r.maximo("solda: dimensão máxima (borda da cantoneira)", bs, L.filete_maximo(ta), "6.2.6.2.2", "b_solda")
         r.minimo("solda: comprimento mínimo do filete horizontal (4b e 40 mm)", max(4 * bs, 0.040), Lh, "6.2.6.2.3")
 
     # disposições construtivas
@@ -764,7 +766,7 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
     r.res("solda chapa–apoio (V, N)", q, rw["FwRd"], "kN/m", "6.2.5 / tabela 8")
     r.res("apoio: metal base junto à solda", 2 * q, min(0.6 * fys * t_ap / GA1, 0.6 * fus * t_ap / GA2), "kN/m",
           "6.5.5 / tabela 8")
-    r.minimo("solda: dimensão mínima", L.filete_minimo(min(t, t_ap)), bs, "6.2.6.2.1 / tabela 10")
+    r.minimo("solda: dimensão mínima", L.filete_minimo(min(t, t_ap)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
     r.minimo("solda: perna ≥ 5t/8 (chapa escoa antes da solda)", 5 * t / 8, bs, "AISC Manual 13ª ed. p. 10-102")
 
     # disposições construtivas
@@ -844,7 +846,7 @@ def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
     r.res("solda chapa–alma (V, N)", q, rw["FwRd"], "kN/m", "6.2.5 / tabela 8")
     r.res("alma da viga: metal base junto às soldas", 2 * q, min(0.6 * fyv * tw / GA1, 0.6 * fuv * tw / GA2), "kN/m",
           "6.5.5 / tabela 8")
-    r.minimo("solda: dimensão mínima", L.filete_minimo(min(t, tw)), bs, "6.2.6.2.1 / tabela 10")
+    r.minimo("solda: dimensão mínima", L.filete_minimo(min(t, tw)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
     r.minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * bs, 0.040), Lp, "6.2.6.2.3")
 
     r.bordas("chapa, vertical", ev, t, db, lam)
@@ -915,7 +917,7 @@ def _apoio(d, e, tipo="apoio_cantoneira"):
         r.val.update(solda_yb_mm=g["yb"] / MM, solda_I_cm3=g["I"] * 1e6, solda_tv=tv, solda_th=th, solda_q=q)
         rw = L.resistencia_filete(bs, fw, fys, fus)
         r.res("solda consolo–apoio (V e V·e, topo)", q, rw["FwRd"], "kN/m", "6.2.5 / tabela 8")
-        r.minimo("solda: dimensão mínima", L.filete_minimo(min(t0, t_ap)), bs, "6.2.6.2.1 / tabela 10")
+        r.minimo("solda: dimensão mínima", L.filete_minimo(min(t0, t_ap)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
         _cabe_no_apoio(r, sp, apoio, w, "assento")
         if d["ligacao_apoio"] == "parafusada":
             r.avisos.append("consolo enrijecido parafusado não implementado: verificado como soldado ([PF] 9.10.6)")
@@ -969,8 +971,8 @@ def _apoio(d, e, tipo="apoio_cantoneira"):
             r.val["solda_q"] = q
             rw = L.resistencia_filete(bs, fw, fya, fua)
             r.res("solda cantoneira–apoio (2 filetes verticais, V e V·e)", q, rw["FwRd"], "kN/m", "6.2.5 / tabela 8")
-            r.minimo("solda: dimensão mínima", L.filete_minimo(min(ta, t_ap)), bs, "6.2.6.2.1 / tabela 10")
-            r.maximo("solda: dimensão máxima (borda da cantoneira)", bs, L.filete_maximo(ta), "6.2.6.2.2")
+            r.minimo("solda: dimensão mínima", L.filete_minimo(min(ta, t_ap)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
+            r.maximo("solda: dimensão máxima (borda da cantoneira)", bs, L.filete_maximo(ta), "6.2.6.2.2", "b_solda")
             geo["soldas"] = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, sg * lc / 2, -zt), _p(xf, sg * lc / 2,
                                                                                                         -zt - b2)])
                              for sg in (1, -1)]

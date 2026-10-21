@@ -250,7 +250,8 @@ class TestContrato(unittest.TestCase):
             json.dumps(r)
             self.assertEqual({"taxa_max", "criterio", "item", "ok", "verificacoes", "avisos"}, set(r))
             for v in r["verificacoes"]:
-                self.assertEqual({"nome", "solicitante", "resistente", "unidade", "taxa", "item"}, set(v))
+                base = {"nome", "solicitante", "resistente", "unidade", "taxa", "item"}
+                self.assertTrue(base <= set(v) <= base | {"sentido", "parametro"}, set(v))   # dicas do otimizador
 
     def test_edicao_cobertura(self):
         self.assertTrue(lg.EDICAO.startswith("NBR 8800"))

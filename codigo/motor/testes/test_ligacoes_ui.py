@@ -77,6 +77,28 @@ class TestOtimizar(unittest.TestCase):
         self.assertTrue(r["ok"])
         self.assertIn("geometria", r["resultado"])
 
+    def test_perna_acima_do_maximo_desce(self):
+        # E2E-05: perna 8 mm em chapa de 5 mm (máx. = t, NBR 8800 6.2.6.2.2) — o otimizador desce a perna
+        d, esf = dict(t_base=0.005, b=0.008, L=0.1), {"F": 20}
+        r0 = L.verificar_ligacao("solda_filete", d, esf)
+        x = next(v for v in r0["verificacoes"] if "dimensão máxima" in v["nome"])
+        self.assertEqual((x["sentido"], x["parametro"]), ("desce", "b"))
+        r = L.otimizar("solda_filete", d, esf)
+        self.assertTrue(r["ok"])
+        self.assertLessEqual(r["dados"]["b"], 0.005 + 1e-12)
+
+    def test_chapa_topo_alma_fina_e2e05(self):
+        # E2E-05 (fluxo A, joelho): W310x38.7 (tw = 5,8 mm) com o padrão b_alma = 6 mm → perna máxima 6,0/5,8
+        d, esf = dict(perfil_viga="W310x38.7", perfil_pilar="W310x38.7"), {"M": 40, "V": 30}
+        r0 = L.verificar_ligacao("chapa_topo_estendida", d, esf)
+        x = next(v for v in r0["verificacoes"] if v["nome"] == "solda da alma: perna máxima")
+        self.assertFalse(x["ok"])
+        self.assertEqual((x["sentido"], x["parametro"]), ("desce", "b_alma"))
+        r = L.otimizar("chapa_topo_estendida", d, esf)
+        self.assertTrue(r["ok"])
+        self.assertLessEqual(r["dados"]["b_alma"], 5.8)
+        self.assertNotIn("b_mesa", r["mudancas"])   # solda de penetração nas mesas: b_mesa não tem efeito, fica
+
     def test_ja_passa_so_desce(self):
         r = L.otimizar("chapa_simples", dict(CHAPA, t=0.0125, d_mm=22.225), {"V": 60})
         self.assertTrue(r["ok"])

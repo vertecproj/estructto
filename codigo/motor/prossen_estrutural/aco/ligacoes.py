@@ -334,9 +334,18 @@ def _v(nome, sd, rd, unidade, item):
 
 
 # Disposições construtivas (dimensões, bordas, espaçamentos): unidade "m" — só reprovam (ESPEC §7.2).
-def _minimo(nome, minimo, real, item):  # taxa = mínimo / real
-    return dict(nome=nome, solicitante=float(minimo), resistente=float(real), unidade="m",
-                taxa=_taxa(nome, minimo, real), item=item)
+def _minimo(nome, minimo, real, item, parametro=None):  # taxa = mínimo / real
+    return _dica(dict(nome=nome, solicitante=float(minimo), resistente=float(real), unidade="m",
+                      taxa=_taxa(nome, minimo, real), item=item), "sobe", parametro)
+
+
+def _dica(x, sentido, parametro=None):
+    """Dica do otimizador (docs/v3/LIGACOES-CONTRATO.md §dicas): `sentido` = para onde o valor verificado precisa ir
+    ("sobe" num mínimo, "desce" num máximo); `parametro` = campo de entrada que o controla (opcional)."""
+    x["sentido"] = sentido
+    if parametro:
+        x["parametro"] = parametro
+    return x
 
 
 def _geometria(tipo, dn, regras):
@@ -350,8 +359,8 @@ def _geometria(tipo, dn, regras):
                          + "; ".join(erros))
 
 
-def _maximo(nome, real, maximo, item):  # taxa = real / máximo
-    return _v(nome, real, maximo, "m", item)
+def _maximo(nome, real, maximo, item, parametro=None):  # taxa = real / máximo
+    return _dica(_v(nome, real, maximo, "m", item), "desce", parametro)
 
 
 def _parafuso(d):
@@ -432,8 +441,8 @@ def _ligacao_solda(d, e):
     r = resistencia_filete(d["b"], ELETRODOS[d["eletrodo"]] * MPa, fy, fu)
     v = [_v("solda: resistência (metal da solda e metal base)", e["F"] / d["L"], r["FwRd"], "kN/m",
             "6.2.5 / tabela 8" + (" (metal base)" if r["metal_base"] < r["metal_solda"] else "")),
-         _minimo("solda: dimensão mínima", filete_minimo(d["t_base"]), d["b"], "6.2.6.2.1 / tabela 10"),
-         _maximo("solda: dimensão máxima (ao longo de borda)", d["b"], filete_maximo(d["t_base"]), "6.2.6.2.2"),
+         _minimo("solda: dimensão mínima", filete_minimo(d["t_base"]), d["b"], "6.2.6.2.1 / tabela 10", "b"),
+         _maximo("solda: dimensão máxima (ao longo de borda)", d["b"], filete_maximo(d["t_base"]), "6.2.6.2.2", "b"),
          _minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * d["b"], 0.040), d["L"], "6.2.6.2.3")]
     return v, ["resistência do filete sem o acréscimo pelo ângulo θ da força (a favor da segurança)"]
 
@@ -477,8 +486,8 @@ def _ligacao_chapa_simples(d, e):
     r = resistencia_filete(b, ELETRODOS[d["eletrodo"]] * MPa, fy, fu)
     v.append(_v("solda: resistência (V e V·e)", math.hypot(V / (2 * Lw), 6 * M / (2 * Lw ** 2)), r["FwRd"], "kN/m",
                 "6.2.5 / tabela 8"))
-    v += [_minimo("solda: dimensão mínima", filete_minimo(t), b, "6.2.6.2.1 / tabela 10"),
-          _maximo("solda: dimensão máxima", b, filete_maximo(t), "6.2.6.2.2"),
+    v += [_minimo("solda: dimensão mínima", filete_minimo(t), b, "6.2.6.2.1 / tabela 10", "b_solda"),
+          _maximo("solda: dimensão máxima", b, filete_maximo(t), "6.2.6.2.2", "b_solda"),
           _espacamento_minimo(s, db, avisos),
           _espacamento_maximo(s, min(t, d["tw"]), d["sujeito_corrosao"])]
     lam = d["borda_laminada"]
@@ -683,12 +692,16 @@ def geometria_basica(tipo, dados):
 
 
 # --- otimizador: sobe parafusos (quantidade, diâmetro), espessura da chapa e perna da solda até passar e depois
-#     desce cada um enquanto passar (mínimo de material local). ponytail: busca gulosa (um degrau por vez), não global.
+#     desce cada um enquanto passar (mínimo de material local). Disposição máxima reprovada (perna máxima, espaçamento
+#     e borda máximos, b/t) também abre a descida do campo da dica `parametro` (sem dica: de qualquer campo).
+#     ponytail: busca gulosa (um degrau por vez), não global.
 _D_MM = (12.7, 16, 19.05, 20, 22.225, 24, 25.4, 27, 28.575, 30, 31.75)
 _T_MM = (4.75, 6.3, 8, 9.5, 12.5, 16, 19, 22.4, 25, 31.5, 37.5, 44.5, 50)
 _B_MM = (3, 4, 5, 6, 8, 10, 12, 14, 16)
 _CONTAGEM = {"n", "n_linhas", "n_por_linha", "n_colunas", "fileiras", "por_fileira", "n_parafusos"}
-_ESPESSURA = {"t", "t_chapa", "t_gusset", "t_placa", "esp", "espessura", "t_assento", "t_enrijecedor"}
+_ESPESSURA = {"t", "t_chapa", "t_gusset", "t_placa", "esp", "espessura", "t_assento", "t_enrijecedor", "tp", "t_mesa",
+              "t_alma"}
+_PERNA = {"b_solda", "perna", "perna_solda", "b_mesa", "b_alma", "b_solda_mesa", "b_solda_pilar", "b_solda_alma"}
 
 
 def botoes_otimizar(tipo, campos=None):
@@ -707,7 +720,7 @@ def botoes_otimizar(tipo, campos=None):
             papel, lista = 2, list(_D_MM)
         elif nome in _ESPESSURA:
             papel, lista = 1, [x * k for x in _T_MM]
-        elif nome in ("b_solda", "perna", "perna_solda") or (tipo == "solda_filete" and nome == "b"):
+        elif nome in _PERNA or (tipo == "solda_filete" and nome == "b"):
             papel, lista = 0, [x * k for x in _B_MM]
         else:
             continue
@@ -722,9 +735,23 @@ def _nota(r):
     return max((x if math.isfinite(x) else 1e9 for x in t), default=0.0)
 
 
+def _descer(r, nomes):
+    """Campos que podem descer um degrau: os `parametro` das disposições máximas (`sentido` "desce") reprovadas;
+    máximo reprovado sem dica (ou com campo que o otimizador não mexe) libera todos."""
+    out = set()
+    for x in r.get("verificacoes", []):
+        if x.get("sentido") == "desce" and x.get("taxa", 0.0) > 1 + 1e-9:
+            if x.get("parametro") not in nomes:
+                return set(nomes)
+            out.add(x["parametro"])
+    return out
+
+
 def otimizar(tipo, dados, esforcos, max_passos=60):
-    """Enquanto não passa, aplica o aumento de um degrau que mais reduz a pior taxa (empate dentro de 2 %: o de menos
-    material — solda, chapa, diâmetro, quantidade); depois de passar, desce cada item enquanto continuar passando.
+    """Enquanto não passa, aplica o degrau que mais reduz a pior taxa (empate dentro de 2 %: o de menos material —
+    solda, chapa, diâmetro, quantidade). Degraus: subir qualquer item, descer os que um máximo reprovado pede
+    (_descer), um item ou dois juntos (ex.: perna menor + chapa mais grossa). Depois de passar, desce cada item
+    enquanto continuar passando e mudando alguma verificação (campo sem efeito fica como está).
     → {dados, resultado, ok, passos: [{campo, de, para, taxa}], mudancas: {campo: [antes, depois]}}"""
     campos = esquema(tipo)
     cur = {c["nome"]: c["padrao"] for c in campos if c["padrao"] is not None}
@@ -756,12 +783,14 @@ def otimizar(tipo, dados, esforcos, max_passos=60):
             break
         melhor = None
         # um degrau num item ou em dois juntos (ex.: chapa mais grossa só passa com solda maior, 5t/8)
-        movs = [(i,) for i in range(len(botoes))] + [(i, j) for i in range(len(botoes)) for j in range(i + 1, len(botoes))]
+        desce = _descer(r, {b[0] for b in botoes})
+        um = [(i, True) for i in range(len(botoes))] + [(i, False) for i, b in enumerate(botoes) if b[0] in desce]
+        movs = [(a,) for a in um] + [(a, b) for k, a in enumerate(um) for b in um[k + 1:] if a[0] != b[0]]
         for mov in movs:
             cand, ok_mov = dict(cur), True
-            for i in mov:
+            for i, sobe in mov:
                 nome, papel, lista = botoes[i]
-                x = vizinho(nome, lista, True)
+                x = vizinho(nome, lista, sobe)
                 if x is None:
                     ok_mov = False
                     break
@@ -769,18 +798,19 @@ def otimizar(tipo, dados, esforcos, max_passos=60):
             if not ok_mov:
                 continue
             rc = rodar(cand)
-            n3 = [botoes[i][0] for i in mov if botoes[i][1] == 3]
+            n3 = [botoes[i][0] for i, sobe in mov if botoes[i][1] == 3 and sobe]
             if rc is None and n3 and isinstance(cur.get("h"), (int, float)) and isinstance(cur.get("s"), (int, float)):
                 # ponytail: mais um parafuso numa chapa de altura h (tipos antigos) só cabe se a chapa crescer s
                 cand["h"] = cur["h"] + cur["s"] * (cand[n3[0]] - (cur.get(n3[0]) or 0))
                 rc = rodar(cand)
             if rc is None:
                 continue
-            chave = (not rc["ok"], round(_nota(rc) / 0.02), len(mov), sum(botoes[i][1] for i in mov), _nota(rc))
+            chave = (not rc["ok"], round(_nota(rc) / 0.02), len(mov), sum(botoes[i][1] * (1 if s_ else -1) for i, s_ in mov),
+                     _nota(rc))
             if melhor is None or chave < melhor[0]:
-                melhor = (chave, "+".join(botoes[i][0] for i in mov), None, rc, cand)
+                melhor = (chave, "+".join(botoes[i][0] for i, _ in mov), None, rc, cand)
         if melhor is None or (not melhor[3]["ok"] and _nota(melhor[3]) >= _nota(r) - 1e-9):
-            break   # nenhum aumento ajuda (disposição construtiva ou geometria travam)
+            break   # nenhum degrau ajuda (disposição construtiva ou geometria travam)
         _, nomes, _, r, cand = melhor
         for nome in nomes.split("+"):
             passos.append(dict(campo=nome, de=cur.get(nome), para=cand[nome], taxa=_nota(r)))
@@ -794,7 +824,7 @@ def otimizar(tipo, dados, esforcos, max_passos=60):
                 if x is None:
                     continue
                 rc = rodar({**cur, nome: valor(nome, x)})
-                if rc is not None and rc["ok"]:
+                if rc is not None and rc["ok"] and rc["verificacoes"] != r["verificacoes"]:
                     passos.append(dict(campo=nome, de=cur.get(nome), para=valor(nome, x), taxa=_nota(rc)))
                     cur[nome], r, mudou = valor(nome, x), rc, True
     return dict(dados=cur, resultado=r, ok=bool(r["ok"]), passos=passos,

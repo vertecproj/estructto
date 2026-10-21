@@ -10,6 +10,8 @@ Abra **Ações › Casos de carga** ou `CASOS`. Defina tipo e subtipo de cada ca
 | Pontual em barra | barra; posição a desde ni, em m, e componentes globais em kN |
 | Distribuída | barra; qx, qy, qz globais em kN/m nos extremos ni e nj |
 | Em área | sem seleção, Propriedades › Carga em área; nível, vigas em X ou Y, pressão em kN/m² e caso |
+Os casos têm tipo G (permanente), Q (variável), V (vento), S (sismo) ou E (excepcional). **Caso ativo** recebe as cargas que você lança.
+A janela de casos é a do motor (captura 32-acoes-casos).
 
 Valores iguais nas pontas produzem carga uniforme; diferentes, trapezoidal. Edite os campos da carga existente e **Gravar**, ou apague-a. Revise o peso próprio configurado no projeto para evitar contagem duplicada com cargas permanentes manuais.
 
@@ -48,3 +50,4 @@ Em **Pavimentos**, confira cotas e diafragma rígido. Em **Sismo**, o método us
 Em **Combinações**, escolha **NBR 8681** (padrão) ou **NBR 8400**. Na NBR 8681, revise uso, coeficientes e tipos/subtipos dos casos; filtre ELU e ELS e confira os fatores de cada caso. Direções alternativas de vento são mutuamente exclusivas, inclusive serviço/máximo. A tabela é gerada: corrija casos e configuração para mudar o conjunto.
 
 Após mudar geometria, cargas ou configuração, rode **F5** novamente. Consulte as [limitações](11-limitacoes.md), inclusive as ações que precisam ser lançadas manualmente.
+Gerar vento e sismo cria casos V (vento) e S (sismo: SX, SY e as torções acidentais SX_TOR, SY_TOR). Depois rode **Calcular** (F5): as combinações incluem esses casos automaticamente.

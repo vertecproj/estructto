@@ -234,7 +234,8 @@ class TestTiposEGeometria(unittest.TestCase):
                 self.assertAlmostEqual(r["taxa"], max(v["taxa"] for v in r["verificacoes"]))
                 self.assertEqual(r["ok"], all(v["ok"] for v in r["verificacoes"]))
                 for v in r["verificacoes"]:
-                    self.assertEqual({"nome", "item", "solicitante", "resistente", "unidade", "taxa", "ok"}, set(v))
+                    base = {"nome", "item", "solicitante", "resistente", "unidade", "taxa", "ok"}
+                    self.assertTrue(base <= set(v) <= base | {"sentido", "parametro"}, set(v))   # dicas opcionais
                     self.assertTrue(v["item"].startswith(("NBR 8800", "CBCA", "AISC", "Pfeil")), v["item"])
                 g = r["geometria"]
                 self.assertEqual({"chapas", "cantoneiras", "parafusos", "soldas", "recortes"}, set(g))
