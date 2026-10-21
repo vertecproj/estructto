@@ -76,6 +76,7 @@ namespace NovoFtool
 
             string[] args = Environment.GetCommandLineArgs();
             Loaded += (s, e) => AplicarModoEspacial();   // só existe vista 3D (docs/MODELO-ESPACIAL.md)
+            AbaSoldas.Visibility = Visibility.Collapsed;   // soldas das pontas das barras eram do cálculo 2D (Nucleo.cs)
             if (Capturas.Configurar(this, args)) return;
             string arqInicial = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--") && File.Exists(a));
             if (arqInicial != null)
