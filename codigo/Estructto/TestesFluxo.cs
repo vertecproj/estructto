@@ -1332,5 +1332,110 @@ namespace NovoFtool
             ger.Close(); EsperarIdle();
             RelatorioPdf(w, r, "F-relatorio");
         }
+
+        // ================================================================ interferência (docs/v3/RENDER.md)
+        // Estructto.exe --testes-interferencia <arquivo | galpao> [pasta]: abre o modelo (galpao = o do assistente de novo
+        // projeto), identifica as ligações, monta o Realista com as ligações do motor e lista os pares de sólidos (barras,
+        // chapas, cantoneiras) que se interpenetram mais de 1 mm (Render3DGeometria.Interferencias). Grava interferencia.txt,
+        // o gerenciador de ligações (todos os nós, com os sem ligação) e close-ups: viga-pilar, gusset, placa de base e
+        // pilar caixão/tubo. Sai com 0 = nenhum par.
+        internal static void ConfigurarInterferencia(MainWindow w, string arquivo, string pasta)
+        {
+            pastaSaida = Path.GetFullPath(pasta ?? Path.Combine(Path.GetTempPath(), "estructto-interferencia"));
+            Directory.CreateDirectory(pastaSaida);
+            GuardarConfigUsuario();
+            Ativo = true;
+            w.WindowStartupLocation = WindowStartupLocation.Manual;
+            w.Left = -10000; w.Top = -10000; w.Width = 1600; w.Height = 900;
+            w.ShowActivated = false; w.ShowInTaskbar = false;
+            w.Loaded += (s, e) => w.Dispatcher.BeginInvoke(new Action(() => RodarInterferencia(w, arquivo)), DispatcherPriority.ApplicationIdle);
+        }
+
+        static void RodarInterferencia(MainWindow w, string arquivo)
+        {
+            var sb = new StringBuilder(); int pares = -1;
+            try
+            {
+                sb.AppendLine("Interferência · " + arquivo + " · ESTRUCTTO_MOTOR = " + (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") ?? "(não definida)"));
+                VigiarCaixas();
+                if (arquivo == "galpao")
+                {
+                    var mi = ModeloInicial.Por("galpao");
+                    var g = new GradeNiveis { X = GradeNiveis.Espacamentos(mi.EixosX), Y = GradeNiveis.Espacamentos(mi.EixosY), Z = GradeNiveis.Cotas(mi.Niveis) };
+                    Esperar(Inicio.Acoes.Novo(w, new NovoProjetoDados { Modelo = mi, Grade = g, Nome = "galpao-interferencia", Pasta = Path.Combine(pastaSaida, "projeto"), Material = mi.Material, Pilar = mi.Pilar, Viga = mi.Viga }));
+                }
+                else Esperar(w.AbrirArquivo(Path.GetFullPath(arquivo)));
+                EsperarIdle();
+                var d = w.EspacialAtivo ?? throw new InvalidOperationException("modelo não abriu");
+                // gerenciador: identifica e lista todos os nós (os sem ligação com o motivo)
+                var ger = w.NovoGerenciadorLigacoes(d); ger.Width = 1320; ger.Height = 780;
+                PrepararDialogoForaDaTela(ger); ger.Show(); EsperarIdle();
+                Esperar(ger.Carregar(true)); EsperarIdle();
+                sb.AppendLine("gerenciador: " + ger.Resumo);
+                CapturarDialogo(ger, "interf-gerenciador.png");
+                ger.Close(); EsperarIdle();
+
+                w.DefinirRealista(true); w.Atualizar3D(false); EsperarIdle();
+                Esperar(w.TarefaLigacoes3D); EsperarIdle();
+                var v = w.vista3D;
+                if (!v.UsandoDx) throw new InvalidOperationException("Render3D (Direct3D 11) indisponível: sem placa de vídeo");
+                sb.AppendLine("ligações na vista: " + v.ModeloAtual.Ligacoes.Count + " (com pontas do motor: " + v.ModeloAtual.Ligacoes.Count(l => l.Ponta != null) + ")");
+                Render3D.Coleta = new List<(string, MalhaDx)>();
+                v.DefinirLigacoes(v.ModeloAtual.Ligacoes); EsperarIdle();   // remonta a cena guardando os sólidos
+                var col = Render3D.Coleta; Render3D.Coleta = null;
+                var sw = Stopwatch.StartNew();
+                var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList());
+                pares = r.Count;
+                sb.AppendLine(col.Count + " sólidos · " + pares + " pares com interseção > 1 mm · " + sw.ElapsedMilliseconds + " ms");
+                var porId = v.ModeloAtual.Barras.Where(b => b.Origem is RefMotor).ToDictionary(b => "barra " + ((RefMotor)b.Origem).Id);
+                string Ponta(Barra3D b, int no)   // diagnóstico: corte e ligação da ponta de b no nó
+                {
+                    bool emI = b.Ni == no; Render3D.CortesColeta.TryGetValue((b, emI), out Corte k); Render3D.LigsColeta.TryGetValue((b.Id, emI), out Ligacao3D l);
+                    string F(double x) => (x * 1000).ToString("0.#", CultureInfo.InvariantCulture);
+                    return ((RefMotor)b.Origem).Id + (emI ? ".i" : ".j") + ": " + (k == null ? "sem corte" : "recuo " + F(k.Recuo) + (k.Motor ? " motor" : "") + (k.Extra != null ? " +angulo" : "") + (k.Raio > 0 ? " +boca" : "") + (k.Esquadria ? " esquadria" : ""))
+                           + (l == null ? "" : " · " + l.Nome + (l.Pendente != null ? " [local]" : "") + " " + string.Join(",", (l.Ponta?.Recortes ?? l.Recortes).Select(x => x.Tipo + (x.Tipo == "cope" ? ":" + x.Posicao + " " + x.Altura.ToString("0") + "x" + x.Comprimento.ToString("0") : double.IsNaN(x.XPonta) ? " f" + x.Folga.ToString("0.#") : " x" + x.XPonta.ToString("0.#")))));
+                }
+                foreach (var (a, b, p) in r.OrderByDescending(x => x.Prof))
+                {
+                    sb.AppendLine("  " + (p * 1000).ToString("0.0", CultureInfo.InvariantCulture) + " mm  " + col[a].Nome + "  ×  " + col[b].Nome);
+                    if (porId.TryGetValue(col[a].Nome, out Barra3D ba) && porId.TryGetValue(col[b].Nome, out Barra3D bb))
+                        foreach (int no in new[] { ba.Ni, ba.Nj }.Intersect(new[] { bb.Ni, bb.Nj })) sb.AppendLine("      " + Ponta(ba, no) + "  |  " + Ponta(bb, no));
+                    foreach (var (bar, lig) in new[] { (col[a].Nome, col[b].Nome), (col[b].Nome, col[a].Nome) })
+                    {
+                        var mn = System.Text.RegularExpressions.Regex.Match(lig, " nó (\\S+) ");
+                        if (!porId.TryGetValue(bar, out Barra3D bx) || !mn.Success) continue;
+                        var nv = v.ModeloAtual.Nos.FirstOrDefault(n => n.Origem is RefMotor rm && rm.Id == mn.Groups[1].Value);
+                        if (nv != null && (bx.Ni == nv.Id || bx.Nj == nv.Id)) sb.AppendLine("      " + Ponta(bx, nv.Id));
+                    }
+                }
+
+                // close-ups: o 1º nó de cada caso
+                var json = d.Json; var grupos = Esperar2(d.Ligacoes("GET", "/api/ligacoes/grupos")).AsArray();
+                var idNo = new Dictionary<string, int>(); foreach (var kv in json["nos"].AsObject()) idNo[kv.Key] = idNo.Count + 1;
+                string NoDe(Func<JsonNode, bool> f) => grupos.Where(f).SelectMany(x => x["membros"].AsArray()).Select(m => (string)m["no"]).FirstOrDefault();
+                string Tipo(string sec) => (string)json["secoes"]?[sec ?? ""]?["props"]?["tipo"] ?? "";
+                string caixao = json["barras"].AsObject().Where(kv => Tipo((string)kv.Value["secao"]) is "dupla" or "tubo_circular" or "tubo_retangular").Select(kv => (string)kv.Value["nj"]).FirstOrDefault();
+                string noPar = r.Select(p => System.Text.RegularExpressions.Regex.Match(col[p.A].Nome + " " + col[p.B].Nome, " nó (\\S+) ")).Where(m => m.Success).Select(m => m.Groups[1].Value).FirstOrDefault();
+                foreach (var (nome, no) in new[] { ("pior-par", noPar), ("viga-pilar", NoDe(x => ((string)x["tipo"]).StartsWith("viga_pilar"))), ("gusset", NoDe(x => (string)x["tipo"] == "gusset_contraventamento")),
+                                                   ("placa-base", NoDe(x => (string)x["tipo"] == "base")), ("caixao-tubo", caixao) })
+                {
+                    if (no == null || json["nos"]?[no] == null) { sb.AppendLine("captura " + nome + ": nenhum nó"); continue; }
+                    var pn = Pos((JsonObject)json, no);
+                    v.Focar(pn, nome == "placa-base" ? 1.4 : 2.0, -40, 22);
+                    CapturarPrincipal(w, "interf-" + nome);
+                    sb.AppendLine("captura " + nome + ": nó " + no + " (" + Nf(pn.X) + ", " + Nf(pn.Y) + ", " + Nf(pn.Z) + ")");
+                }
+            }
+            catch (Exception ex) { sb.AppendLine("ERRO: " + ex); pares = -1; }
+            finally
+            {
+                sb.AppendLine(pares == 0 ? "0 PARES" : pares > 0 ? pares + " PAR(ES)" : "FALHOU");
+                File.WriteAllText(Path.Combine(pastaSaida, "interferencia.txt"), sb.ToString(), new UTF8Encoding(false));
+                DevolverConfigUsuario();
+                w.alterado = false;
+                try { w.FecharEspaciaisSemPerguntar(); } catch { }
+                Environment.Exit(pares == 0 ? 0 : 1);
+            }
+        }
     }
 }

@@ -47,6 +47,15 @@ namespace NovoFtool
         const string CadeadoAberto = "M10,15 V9 A6,6 0 0 1 21,7 M8,15 H24 V28 H8 Z";
 
         JsonArray grupos = new JsonArray();
+        // Nós sem ligação (sem_tipo de POST /api/ligacoes/identificar: {nó: motivo}). O gerenciador mostra todos os nós:
+        // os dos grupos e estes, num cartão próprio ("Nós sem ligação"), com o motivo de cada um.
+        JsonObject semTipo = new JsonObject();
+        const string SemLig = "~sem-ligacao";
+        int NosComLigacao => grupos.SelectMany(g => Lista(g["membros"])).Select(m => S(m, "no")).Distinct().Count();
+        // Resumo para testes e capturas: grupos, ligações, nós com ligação e nós sem ligação.
+        public string Resumo => Pl.N(grupos.Count, "grupo", "grupos") + " · " + Pl.N(grupos.Sum(g => (int)D(g, "n_membros")), "ligação", "ligações") + " · "
+                                + Pl.N(NosComLigacao, "nó com ligação", "nós com ligação") + " · " + Pl.N(semTipo.Count, "nó sem ligação", "nós sem ligação")
+                                + (semTipo.Count > 0 ? " (" + string.Join("; ", semTipo.Take(5).Select(kv => kv.Key + ": " + (string)kv.Value)) + ")" : "");
         JsonNode tipos, dim; string erro, gSel;
         readonly HashSet<string> gMarcados = new HashSet<string>(), mSel = new HashSet<string>();
         string ultimoMembro;
@@ -88,11 +97,16 @@ namespace NovoFtool
             if (Api == null) return;
             await Rodar(async () =>
             {
-                if (identificar) { await Api("POST", "/api/ligacoes/identificar", new JsonObject()); Mudou?.Invoke(); }
+                if (identificar)
+                {
+                    var idr = await Api("POST", "/api/ligacoes/identificar", new JsonObject());
+                    semTipo = idr?["sem_tipo"]?.DeepClone() as JsonObject ?? new JsonObject();
+                    Mudou?.Invoke();
+                }
                 if (tipos == null) tipos = await Api("GET", "/api/ligacoes/tipos", null);
                 grupos = (await Api("GET", "/api/ligacoes/grupos", null)) as JsonArray ?? new JsonArray();
             });
-            if (Grupo(gSel) == null) { gSel = S(grupos.FirstOrDefault(), "id"); mSel.Clear(); dim = null; }
+            if (Grupo(gSel) == null && !(gSel == SemLig && semTipo.Count > 0)) { gSel = S(grupos.FirstOrDefault(), "id") ?? (semTipo.Count > 0 ? SemLig : null); mSel.Clear(); dim = null; }
             Montar(); Realcar();
         }
 
@@ -154,6 +168,7 @@ namespace NovoFtool
 
         void Realcar()
         {
+            if (gSel == SemLig) { Destacar?.Invoke(semTipo.Select(kv => kv.Key).ToList(), new string[0]); return; }
             var g = Grupo(gSel);
             if (g == null || Destacar == null) return;
             var ms = Lista(g["membros"]).Where(m => mSel.Count == 0 || mSel.Contains(Chave(m))).ToList();
@@ -178,7 +193,8 @@ namespace NovoFtool
             if (!calc && Calcular != null) acoes.Children.Add(Botao("Calcular (F5)", "calc", async () => { await Rodar(Calcular); await Carregar(false); }, "Calcula o modelo para achar a pior ligação de cada grupo."));
             var re = Botao("Re-identificar", "busca", async () => await Carregar(true), "Identifica de novo as ligações do modelo e agrupa as iguais. Grupos travados e editados por você ficam como estão.");
             re.Margin = new Thickness(8, 0, 0, 0); acoes.Children.Add(re);
-            string titulo = erro != null ? "Motor: " + erro : grupos.Count == 0 ? "Nenhuma ligação identificada" : Pl.N(grupos.Count, "grupo", "grupos") + " · " + Pl.N(nm, "ligação", "ligações");
+            string titulo = erro != null ? "Motor: " + erro : grupos.Count == 0 && semTipo.Count == 0 ? "Nenhuma ligação identificada" : Pl.N(grupos.Count, "grupo", "grupos") + " · " + Pl.N(nm, "ligação", "ligações")
+                            + " · " + Pl.N(NosComLigacao + semTipo.Count, "nó", "nós") + (semTipo.Count > 0 ? " (" + semTipo.Count + " sem ligação)" : "");
             string sub = !calc ? "Sem cálculo: F5 calcula e mostra a pior ligação de cada grupo (todas as combinações ELU)."
                 : pior == null ? "Escolha o projeto de cada grupo (à direita) para ver a taxa da pior ligação."
                 : "Pior grupo: " + S(pior, "nome") + " · " + Pct(Taxa(pior)) + " em " + S(pior["governante"], "barra") + " (" + S(pior["governante"], "combinacao") + ")";
@@ -211,6 +227,7 @@ namespace NovoFtool
             sp.Children.Add(topo);
             if (grupos.Count == 0) sp.Children.Add(Vazio("unir", "Sem grupos", "Modelo sem ligações de aço (nós com 2 ou mais barras ou apoios)."));
             foreach (var g in grupos) sp.Children.Add(CartaoGrupo(g));
+            if (semTipo.Count > 0) sp.Children.Add(CartaoSemLigacao());
             hostGrupos.Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp };
             Anim.Escalonar(sp, 4);
         }
@@ -297,8 +314,45 @@ namespace NovoFtool
         static readonly (string t, double w, bool dir)[] Cols =
         { ("Nó", 76, false), ("Barra · ponta", 100, false), ("Combinação crítica", 0, false), ("|V| kN", 56, true), ("|N| kN", 56, true), ("|M| kN·m", 66, true), ("Taxa", 134, false) };
 
+        // Cartão dos nós sem ligação: não é grupo (não aceita mover, travar nem projeto).
+        Border CartaoSemLigacao()
+        {
+            bool sel = gSel == SemLig;
+            var txt = new StackPanel();
+            txt.Children.Add(Tx("Nós sem ligação", 12.5, TemaPlant.BTexto1, FontWeights.SemiBold));
+            var l2 = Tx(Pl.N(semTipo.Count, "nó", "nós") + " · motivo do motor em cada um", 11, TemaPlant.BTexto3); l2.Margin = new Thickness(0, 1, 0, 0); txt.Children.Add(l2);
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.Children.Add(new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(6), Background = TemaPlant.BSup3, VerticalAlignment = VerticalAlignment.Top,
+                                           Child = new TextBlock { Text = "?", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = sel ? TemaPlant.BAcento : TemaPlant.BTexto2, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } });
+            Grid.SetColumn(txt, 1); grid.Children.Add(txt);
+            Brush fundo = sel ? TemaPlant.BAcentoSutil : TemaPlant.BSup2;
+            var b = new Border { Background = fundo, BorderBrush = sel ? TemaPlant.BAcento : TemaPlant.BBordaSutil, BorderThickness = new Thickness(sel ? 1.5 : 1),
+                                 CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 9, 10, 9), Margin = new Thickness(0, 6, 0, 6), Child = grid, Cursor = Cursors.Hand };
+            Dica(b, "Nós do modelo que o motor não transformou em ligação (ponta livre, só barras contínuas, ângulo pequeno demais...). Clique para ver o motivo de cada um.");
+            b.MouseLeftButtonDown += (s, e) => { e.Handled = true; gMarcados.Clear(); Escolher(SemLig); };
+            return b;
+        }
+
         void MontarMembros()
         {
+            if (gSel == SemLig)
+            {
+                var sp = new StackPanel();
+                var t = Tx("Nós sem ligação", 14, TemaPlant.BTexto1, FontWeights.SemiBold); t.Margin = new Thickness(0, 0, 0, 4); sp.Children.Add(t);
+                var sub = Tx("O motor não monta ligação nestes nós. Ajuste o modelo (apoio, rótula, ângulo) e use Re-identificar.", 11.5, TemaPlant.BTexto3); sub.Margin = new Thickness(0, 0, 0, 8); sp.Children.Add(sub);
+                int r = 0;
+                foreach (var kv in semTipo.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+                {
+                    var gl = new Grid(); gl.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) }); gl.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    var no = Tx(kv.Key, 12, TemaPlant.BTexto1); var mo = Tx((string)kv.Value ?? "", 11.5, TemaPlant.BTexto2); mo.TextWrapping = TextWrapping.Wrap;
+                    Grid.SetColumn(mo, 1); gl.Children.Add(no); gl.Children.Add(mo);
+                    sp.Children.Add(new Border { Padding = new Thickness(8, 5, 8, 5), Background = r++ % 2 == 0 ? TemaPlant.BSup0 : TemaPlant.BSupAlt, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Child = gl });
+                }
+                hostMembros.Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp };
+                return;
+            }
             var g = Grupo(gSel);
             if (g == null) { hostMembros.Child = Vazio("unir", "Nenhum grupo escolhido", "Escolha um grupo à esquerda."); return; }
             bool trav = Bool(g, "travado");

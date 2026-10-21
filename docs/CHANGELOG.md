@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G4): o Realista aplica as pontas do motor (plano, cope, angulo, boca de peixe; sem `pontas`, a regra das juntas); DWG/DXF/STEP saem com as barras cortadas pela regra das juntas (só o plano); `--testes-interferencia` (PLATAFORMA 211 → 7 pares, galpão 24 → 2, pendentes descritos); gerenciador conta todos os nós e mostra os sem ligação com o motivo. Ver [v3/RENDER.md](v3/RENDER.md#pontas-do-motor-e-interferência-g4).
 - 21/10/2026 — Frente G (G3): pilar inclinado no apoio vira base, treliça sobre banzo comum vira nó de treliça, ângulo < 20° recusado com motivo; todo nó tem tipo ou motivo (`sem_tipo`). Ver [v3/LIGACOES-GRUPOS.md](v3/LIGACOES-GRUPOS.md#1-identificar).
 - 21/10/2026 — Frente G (G2, rodada 2): comprimento do cope medido do plano de corte (sem dupla contagem); apoio da ponta = barra contínua do nó. Ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#revisão-2).
 - 21/10/2026 — Frente G (G2, rodada 1b): viga–viga com recorte usa max(Gerdau 3.3, cope da ponta) e a ponta desenha o mesmo; exemplo vai a 1,197.

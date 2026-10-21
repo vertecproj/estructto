@@ -26,6 +26,7 @@ namespace NovoFtool
             public readonly List<Point[]> Lacos = new List<Point[]>(); public readonly List<Point> Tampa = new List<Point>(); public bool Concreto;
             public readonly List<bool> Liso = new List<bool>();   // por laço: normal suave (tubo circular) ou plana (chapas)
             public double H, B, Tw, Tf;                           // altura (v), largura (u), alma e mesa, m
+            public string Forma = "RET";                         // Perfil3D.Forma (I, U, L, TR, TC...): as ligações de exemplo põem as chapas pela alma
             public double Larg => Math.Max(H, B);
             public void Laco(Point[] p, bool liso = false) { Lacos.Add(p); Liso.Add(liso); }
         }
@@ -53,7 +54,7 @@ namespace NovoFtool
         {
             var f = new Contorno();
             double h = p != null && p.H > 0 ? p.H : padrao, b = p != null && p.B > 0 ? p.B : h;
-            f.Concreto = p?.Concreto ?? false; f.H = h; f.B = b;
+            f.Concreto = p?.Concreto ?? false; f.H = h; f.B = b; f.Forma = p?.Forma ?? "RET";
             double tw = Math.Min(p != null && p.Tw > 0 ? p.Tw : h * 0.06, b * 0.45), tf = Math.Min(p != null && p.Tf > 0 ? p.Tf : h * 0.08, h * 0.45);
             f.Tw = tw; f.Tf = tf;
             double hb = b / 2, hh = h / 2;
@@ -126,14 +127,23 @@ namespace NovoFtool
         }
 
         // Extrusão de a até b com o mesmo triedro da Vista3D: v = Modelo3D.EixoY(e, rot), u = v × e. k = escala (m → mm: 1000).
-        public static Solido Extrudar(Contorno f, Point3D a, Point3D b, double rotGraus, double k, int cardinal = 5)
+        // ca, cb: planos de corte das pontas (Render3DGeometria.Juntas, m); só o plano (o 2º plano e a boca de peixe deixariam
+        // as tampas fora de um plano, e o STEP facetado quer faces planas). ponytail: some quando o STEP tiver faces curvas.
+        public static Solido Extrudar(Contorno f, Point3D a, Point3D b, double rotGraus, double k, int cardinal = 5, Corte ca = null, Corte cb = null)
         {
             var s = new Solido { Concreto = f.Concreto };
             Vector3D e = b - a; if (e.Length < 1e-9) return s;
             Vector3D v = Modelo3D.EixoY(e, rotGraus), u = Vector3D.CrossProduct(v, e / e.Length);
             Point dc = Cardinal(f, cardinal); a += u * dc.X + v * dc.Y; b += u * dc.X + v * dc.Y;
-            Point3D A = new Point3D(a.X * k, a.Y * k, a.Z * k), B = new Point3D(b.X * k, b.Y * k, b.Z * k);
-            Point3D Em(Point3D o, Point q) => o + u * (q.X * k) + v * (q.Y * k);
+            Vector3D en = e / e.Length;
+            Point3D Em(Point3D o, Point q)
+            {
+                Point3D p = o + u * q.X + v * q.Y;   // m
+                Corte c = o == a ? ca : cb; double nd = c == null ? 0 : Vector3D.DotProduct(en, c.N);
+                if (Math.Abs(nd) > 1e-6) p += en * (Vector3D.DotProduct(c.P - p, c.N) / nd);
+                return new Point3D(p.X * k, p.Y * k, p.Z * k);
+            }
+            Point3D A = a, B = b;
             foreach (Point[] l in f.Lacos)
             {
                 int n = l.Length;
