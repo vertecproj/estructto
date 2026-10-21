@@ -50,6 +50,8 @@ namespace NovoFtool
             ThemeManager.Current.ChangeTheme(this, "Dark.Cobalt");
             TemaPlant.AplicarFluent(this);   // cores do AutoCAD Plant 3D por cima do tema escuro
             if (!e.Args.Contains("--capturas")) TemaPlant.AplicarAcento(this, Config.Opcoes.Acento);   // Arquivo › Opções
+            // Estructto.exe --testes-fluxo <pasta> [A,B,C,D,E] : fluxos ponta a ponta na janela real (TestesFluxo.cs)
+            if (e.Args.Length >= 2 && e.Args[0] == "--testes-fluxo") { StartupUri = null; Capturas.IniciarFluxos(e.Args[1], e.Args.Length >= 3 ? e.Args[2] : null); }
         }
 
         protected override void OnExit(ExitEventArgs e)
