@@ -41,8 +41,12 @@ Colisão de mesas (cope): offset `e` da viga no eixo `eixo_d` do apoio + meia la
 
 Se `distância + comprimento do recorte ≥ comprimento da barra`: `ValueError("barra curta demais para a ligação")`. O chamador (G2) captura como aviso e mantém a barra.
 
-## Limites atuais
+## Revisão 1
 
-- `angulo`: tipo reservado, ainda não gerado.
-- `esquadria`: só par de tubos.
-- `boca_peixe`: ramal perpendicular ao receptor.
+- `angulo` (diagonal no gusset): `{tipo, normal, folga, distancia}`. Corte paralelo à face do apoio, afastado dela pela folga. `distancia` é medida do eixo do apoio até o corte.
+- `esquadria` com 3 ou mais tubos: bissetriz com o vizinho mais próximo (maior cosseno), indicado em `recorte.vizinho`.
+- `boca_peixe` inclinada: sela calculada em 72 pontos do contorno do ramal. O plano fica no fundo da sela. O recorte traz `angulo` (rad, entre os eixos).
+- Barra curta também na esquadria (canto externo `(h/2)·cot(α/2)`) e na boca de peixe (topo da sela).
+- Cope: `face` vale `sup`/`inf` (a mesa invadida está acima/abaixo da viga) ou `esq`/`dir` (bordas das mesas da viga mais larga que o vão livre entre as mesas do apoio). Parâmetros `cope_folga_alt` e `cope_folga_comp` (padrão 0,012). `raio_cope` tem mínimo 0,010.
+- Erros claros com `ValueError`: nó sem barra contínua; perfil sem `tw`/`tf`/`h`/`b`; esquadria com menos de 2 barras ou com tubos colineares; diagonal paralela ao apoio; ramal maior que o receptor.
+- Tubo circular: `h` = diâmetro externo.

@@ -14,6 +14,15 @@ def _m(barra, d, perfil, eixo_d, L=5.0, continuo=False, ext="i", **kw):
                 continuo=continuo, **kw)
 
 
+def _dist(v):
+    return math.sqrt(sum(x * x for x in v))
+
+
+def _unit3(v):
+    n = _dist(v)
+    return [x / n for x in v]
+
+
 class TestPontas(unittest.TestCase):
     def assertVec(self, a, b):
         for x, y in zip(a, b):
@@ -69,6 +78,79 @@ class TestPontas(unittest.TestCase):
         p = pontas_do_no([0, 0, 0], [_m(1, X, rec, Z, continuo=True), _m(2, Z, ram, X)], "boca_peixe")
         self.assertEqual(p[0]["recortes"][0]["tipo"], "boca_peixe")
         self.assertAlmostEqual(p[0]["recortes"][0]["raio"], 0.0508)
+
+    def test_angulo_no_gusset(self):
+        L2 = secoes.secao_cantoneira(0.0508, 0.0508, 0.00635).props
+        s = math.sqrt(0.5)
+        ms = [_m(1, X, VIGA, Z, continuo=True), _m(5, [s, 0, s], L2, [-s, 0, s])]
+        r = pontas_do_no([0, 0, 0], ms, "gusset_contraventamento")[0]["recortes"]
+        self.assertEqual(r[0]["tipo"], "angulo")
+        self.assertVec(r[0]["normal"], [0, 0, -1])     # paralelo à face superior da viga
+        self.assertAlmostEqual(r[0]["folga"], 0.012)
+        self.assertAlmostEqual(r[0]["distancia"], VIGA["h"] / 2 + 0.012)
+
+    def test_esquadria_tres_tubos(self):
+        T = secoes.secao_tubo_retangular(0.1, 0.1, 0.003).props
+        s = math.sqrt(0.5)
+        p = pontas_do_no([0, 0, 0], [_m(1, X, T, Z), _m(2, Z, T, X), _m(3, [-s, 0, s], T, [s, 0, s])], "esquadria")
+        self.assertEqual([q["recortes"][0]["vizinho"] for q in p], [2, 3, 2])
+        self.assertVec(p[2]["plano"]["normal"], [x for x in _unit3([s, 0, 1 - s])])
+
+    def test_boca_peixe_inclinada(self):
+        rec = secoes.secao_tubo_circular(0.1016, 0.004).props
+        ram = secoes.secao_tubo_circular(0.0508, 0.003).props
+        self.assertAlmostEqual(rec["h"], 0.1016)   # tubo circular: h = diâmetro
+        s = math.sqrt(0.5)
+        p = pontas_do_no([0, 0, 0], [_m(1, X, rec, Z, continuo=True), _m(2, [s, 0, s], ram, [-s, 0, s])],
+                         "boca_peixe")
+        r = p[0]["recortes"][0]
+        self.assertAlmostEqual(r["angulo"], math.pi / 4)
+        self.assertAlmostEqual(r["raio"], 0.0508)
+        t = _dist(p[0]["plano"]["ponto"])
+        self.assertLess(t, 0.0508 / s)               # fundo da sela antes do eixo do ramal tocar o receptor
+        with self.assertRaisesRegex(ValueError, "barra curta"):
+            pontas_do_no([0, 0, 0], [_m(1, X, rec, Z, continuo=True), _m(2, [s, 0, s], ram, [-s, 0, s], L=0.08)],
+                         "boca_peixe")
+
+    def test_barra_curta_esquadria(self):
+        T = secoes.secao_tubo_retangular(0.1, 0.1, 0.003).props
+        with self.assertRaisesRegex(ValueError, "barra curta"):
+            pontas_do_no([0, 0, 0], [_m(1, X, T, Z, L=0.04), _m(2, Z, T, X)], "esquadria")
+
+    def test_cope_inf_e_duplo(self):
+        e = (0.310 - VIGA["h"]) / 2
+        ms = [_m(1, X, PILAR, Z, continuo=True), _m(3, Y, VIGA, Z, desloc=[0, 0, -e])]
+        self.assertEqual([c["face"] for c in pontas_do_no([0, 0, 3], ms, "viga_viga")[0]["recortes"]], ["inf"])
+        # viga mais alta que a mestra: as duas mesas colidem
+        ms = [_m(1, X, VIGA, Z, continuo=True), _m(3, Y, PILAR, Z)]
+        self.assertEqual([c["face"] for c in pontas_do_no([0, 0, 3], ms, "viga_viga")[0]["recortes"]],
+                         ["sup", "inf"])
+        # viga larga (bf 165) na alma de pilar estreito W150x22,5: bordas das mesas colidem
+        P150 = secoes.catalogo("W150x22.5").props
+        ms = [_m(1, Z, P150, X, continuo=True), _m(3, Y, PILAR, Z)]
+        r = pontas_do_no([0, 0, 3], ms, "viga_pilar_alma")[0]["recortes"]
+        self.assertEqual(sorted(c["face"] for c in r), ["dir", "esq"])
+        self.assertAlmostEqual(r[0]["altura"], P150["tf"] + 0.012)
+
+    def test_cope_params(self):
+        e = (0.310 - VIGA["h"]) / 2
+        ms = [_m(1, X, PILAR, Z, continuo=True), _m(3, Y, VIGA, Z, desloc=[0, 0, e])]
+        c = pontas_do_no([0, 0, 3], ms, "viga_viga",
+                         dict(cope_folga_alt=0.02, cope_folga_comp=0.03, raio_cope=0.002))[0]["recortes"][0]
+        self.assertAlmostEqual(c["altura"], PILAR["tf"] + 0.02)
+        self.assertAlmostEqual(c["comprimento"], 0.165 / 2 + 0.03)
+        self.assertAlmostEqual(c["raio"], 0.010)
+
+    def test_erros_claros(self):
+        T = secoes.secao_tubo_retangular(0.1, 0.1, 0.003).props
+        casos = [([_m(3, X, VIGA, Z)], "viga_pilar_mesa", "sem barra contínua"),
+                 ([_m(1, Z, T, X, continuo=True), _m(3, Y, VIGA, Z)], "viga_pilar_alma", "sem tw"),
+                 ([_m(1, X, T, Z)], "esquadria", "ao menos duas"),
+                 ([_m(1, X, T, Z), _m(2, X, T, Z)], "esquadria", "colineares"),
+                 ([_m(1, X, VIGA, Z, continuo=True), _m(5, X, T, Z)], "gusset_contraventamento", "paralela")]
+        for ms, tipo, msg in casos:
+            with self.assertRaisesRegex(ValueError, msg):
+                pontas_do_no([0, 0, 0], ms, tipo)
 
     def test_barra_curta(self):
         ms = [_m(1, Z, PILAR, X, continuo=True), _m(3, X, VIGA, Z, L=0.15)]

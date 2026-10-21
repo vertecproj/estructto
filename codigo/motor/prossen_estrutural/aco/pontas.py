@@ -1,17 +1,18 @@
 """Pontas de barra e recortes numa ligação (contrato em docs/v3/PONTAS-CONTRATO.md).
 
 Geometria pura: o motor é a fonte; o render 3D (Render3DGeometria.Juntas) só desenha.
-Unidades: metros. Vetores como listas [x, y, z].
+Unidades: metros e radianos. Vetores como listas [x, y, z].
 
 Membro (entrada de pontas_do_no):
   {barra, extremo "i"|"j", dir: unitário saindo do nó ao longo da barra, comprimento,
-   perfil: Secao.props (tipo, h, b, tw, tf / t), eixo_d: unitário da altura h do perfil,
+   perfil: Secao.props (h, b, tw, tf / t; tubo circular: h = b = diâmetro), eixo_d: unitário da altura h,
    continuo: True se a barra é o apoio (passa pelo nó, não recebe Ponta), desloc: [x,y,z] opcional}
 """
 import math
 
 FOLGA = 0.012
 RAIO_COPE = 0.010
+_N_SELA = 72          # amostras do contorno do ramal na boca de peixe
 
 
 def _dot(a, b):
@@ -26,84 +27,138 @@ def _cross(a, b):
     return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 
 
-def _unit(a):
+def _unit(a, msg="vetor nulo"):
     n = math.sqrt(_dot(a, a))
+    if n < 1e-9:
+        raise ValueError(msg)
     return [x / n for x in a]
+
+
+def _perfil(m, *chaves):
+    p = m["perfil"]
+    falta = [k for k in chaves if k not in p]
+    if falta:
+        raise ValueError(f"perfil da barra {m['barra']} sem {', '.join(falta)}")
+    return p
 
 
 def _meia_largura(m, w):
     """Meia extensão da seção de m na direção w (caixa h × b)."""
-    p, d = m["perfil"], m["eixo_d"]
+    p, d = _perfil(m, "h", "b"), m["eixo_d"]
     e_b = _cross(m["dir"], d)
     return p["h"] / 2 * abs(_dot(d, w)) + p["b"] / 2 * abs(_dot(e_b, w))
 
 
-def _copes(m, ap, folga, raio):
-    """Cope quando as mesas da viga atravessam a mesa do apoio (viga na alma)."""
-    w, pa = ap["eixo_d"], ap["perfil"]
+def _copes(m, ap, params):
+    """Cope em cada mesa da viga que invade a mesa do apoio (viga na alma).
+
+    face: sup/inf quando a mesa invadida está acima/abaixo da viga; esq/dir quando a invasão é
+    pelas bordas das mesas da viga (viga mais larga que o vão livre entre as mesas do apoio)."""
+    w, pa = ap["eixo_d"], _perfil(ap, "h", "b", "tf")
     e = _dot(_add(m.get("desloc", [0, 0, 0]), ap.get("desloc", [0, 0, 0]), -1), w)
     ext, livre = _meia_largura(m, w), pa["h"] / 2 - pa["tf"]
+    vert = _dot(w, m["eixo_d"])
+    lat = _dot(w, _cross(m["dir"], m["eixo_d"]))
     out = []
     for lado in (1, -1):
         if lado * e + ext > livre:
-            sup = lado * _dot(w, m["eixo_d"]) > 0
-            out.append(dict(tipo="cope", face="sup" if sup else "inf", altura=pa["tf"] + folga,
-                            comprimento=pa["b"] / 2 + folga, raio=raio))
+            if abs(vert) >= abs(lat):
+                face = "sup" if lado * vert > 0 else "inf"
+            else:
+                face = "esq" if lado * lat > 0 else "dir"
+            out.append(dict(tipo="cope", face=face, altura=pa["tf"] + params["cope_folga_alt"],
+                            comprimento=pa["b"] / 2 + params["cope_folga_comp"], raio=params["raio_cope"]))
     return out
 
 
-def _recuo_gusset(m, ap, folga):
-    """Diagonal: até a face do apoio (borda do gusset soldado nele) + folga, medido no eixo da diagonal."""
+def _gusset(m, ap, folga):
+    """Diagonal: recuo no eixo até a face do apoio (borda do gusset) + folga, e recorte `angulo`
+    paralelo a essa face, afastado dela pela folga."""
     u, a = m["dir"], ap["dir"]
     c = _dot(u, a)
     s = math.sqrt(max(0.0, 1 - c * c))
-    if s < 1e-9:
-        raise ValueError("diagonal paralela ao apoio")
+    if s < 1e-6:
+        raise ValueError("diagonal paralela ao apoio: gusset impossível")
     perp = _unit(_add(u, a, -c))
-    return _meia_largura(ap, perp) / s + m["perfil"]["b"] / 2 * abs(c) / s + folga
+    ext = _meia_largura(ap, perp)
+    recuo = ext / s + _perfil(m, "b")["b"] / 2 * abs(c) / s + folga
+    corte = dict(tipo="angulo", normal=[-x for x in perp], folga=folga, distancia=ext + folga)
+    return recuo, corte
+
+
+def _sela(m, ap):
+    """Boca de peixe: distâncias (mín, máx) no eixo do ramal até a superfície do receptor, e o ângulo."""
+    R, r = _perfil(ap, "h")["h"] / 2, _perfil(m, "h")["h"] / 2
+    if r > R:
+        raise ValueError("ramal maior que o tubo receptor")
+    u, a = m["dir"], ap["dir"]
+    c = _dot(u, a)
+    s = math.sqrt(max(0.0, 1 - c * c))
+    if s < 1e-6:
+        raise ValueError("ramal paralelo ao receptor")
+    ts = []
+    for k in range(_N_SELA):
+        cf = math.cos(2 * math.pi * k / _N_SELA)
+        # |t·u + r(cosφ e1 + sinφ e2)|² − (p·a)² = R², e1 = (a − c·u)/s
+        b = c * r * s * cf
+        disc = b * b - s * s * (r * r - (r * s * cf) ** 2 - R * R)
+        ts.append((b + math.sqrt(max(0.0, disc))) / (s * s))
+    return min(ts), max(ts), math.acos(min(1.0, abs(c)))
+
+
+def _curta(dist, m):
+    if dist >= m["comprimento"]:
+        raise ValueError("barra curta demais para a ligação")
 
 
 def pontas_do_no(no, membros, tipo_ligacao, params=None):
     """Planos de corte e recortes das barras que terminam no nó.
 
     tipo_ligacao: viga_pilar_mesa | viga_pilar_alma | viga_viga | gusset_contraventamento | esquadria | boca_peixe.
-    params: folga (m, padrão 0,012), raio_cope (m, padrão 0,010).
-    Levanta ValueError("barra curta demais para a ligação") se recuo + recorte ≥ comprimento.
+    params (m): folga (0,012), raio_cope (0,010, mínimo 0,010), cope_folga_alt (0,012), cope_folga_comp (0,012).
+    ValueError("barra curta demais para a ligação") se o corte (recuo + recorte) alcança o comprimento da barra.
     """
-    params = params or {}
-    folga = params.get("folga", FOLGA)
-    raio = max(params.get("raio_cope", RAIO_COPE), RAIO_COPE)
+    p = dict(folga=FOLGA, raio_cope=RAIO_COPE, cope_folga_alt=FOLGA, cope_folga_comp=FOLGA)
+    p.update(params or {})
+    p["raio_cope"] = max(p["raio_cope"], RAIO_COPE)
+    folga = p["folga"]
     ap = next((m for m in membros if m.get("continuo")), None)
+    if ap is None and tipo_ligacao != "esquadria":
+        raise ValueError(f"{tipo_ligacao}: nó sem barra contínua de apoio")
+    livres = [m for m in membros if not m.get("continuo")]
+    if tipo_ligacao == "esquadria" and len(livres) < 2:
+        raise ValueError("esquadria precisa de ao menos duas barras")
     out = []
-    for m in membros:
-        if m.get("continuo"):
-            continue
+    for m in livres:
         u = m["dir"]
-        recortes = []
+        recortes, fol = [], folga
         if tipo_ligacao == "viga_pilar_mesa":
-            dist = ap["perfil"]["h"] / 2 + folga
+            dist = _perfil(ap, "h")["h"] / 2 + folga
         elif tipo_ligacao in ("viga_pilar_alma", "viga_viga"):
-            dist = ap["perfil"]["tw"] / 2 + folga
-            recortes = _copes(m, ap, folga, raio)
+            dist = _perfil(ap, "tw")["tw"] / 2 + folga
+            recortes = _copes(m, ap, p)
         elif tipo_ligacao == "gusset_contraventamento":
-            dist = _recuo_gusset(m, ap, folga)
+            dist, corte = _gusset(m, ap, folga)
+            recortes = [corte]
         elif tipo_ligacao == "esquadria":
-            # ponytail: só o par de tubos; nó com 3+ tubos sem contínuo fica para o G3
-            outro = next(x for x in membros if x is not m)
-            n = _unit(_add(outro["dir"], u, -1))   # bissetriz, aponta para fora da barra
+            # bissetriz com o vizinho mais próximo (maior cosseno)
+            viz = max((x for x in livres if x is not m), key=lambda x: _dot(x["dir"], u))
+            cs = _dot(viz["dir"], u)
+            n = _unit(_add(viz["dir"], u, -1), "tubos colineares: esquadria impossível")
+            # alcance do corte no eixo: canto externo a (h/2)·cot(α/2)
+            meio = math.acos(max(-1.0, min(1.0, cs))) / 2
+            _curta(_perfil(m, "h")["h"] / 2 / math.tan(meio), m)
             out.append(dict(barra=m["barra"], extremo=m["extremo"], plano=dict(ponto=list(no), normal=n),
-                            folga=0.0, recortes=[dict(tipo="esquadria", normal=n)]))
+                            folga=0.0, recortes=[dict(tipo="esquadria", normal=n, vizinho=viz["barra"])]))
             continue
         elif tipo_ligacao == "boca_peixe":
-            # ponytail: ramal perpendicular ao receptor; ramal inclinado precisa da sela geral
-            R, r = ap["perfil"]["h"] / 2, m["perfil"]["h"] / 2
-            dist = math.sqrt(max(0.0, R * R - r * r))
-            recortes = [dict(tipo="boca_peixe", raio=R, eixo=list(ap["dir"]))]
+            dist, tmax, ang = _sela(m, ap)
+            _curta(tmax, m)
+            recortes, fol = [dict(tipo="boca_peixe", raio=ap["perfil"]["h"] / 2, eixo=list(ap["dir"]), angulo=ang)], 0.0
         else:
             raise ValueError(f"tipo de ligação sem pontas: {tipo_ligacao}")
-        if dist + max((c.get("comprimento", 0.0) for c in recortes), default=0.0) >= m["comprimento"]:
-            raise ValueError("barra curta demais para a ligação")
+        _curta(dist + max((c.get("comprimento", 0.0) for c in recortes), default=0.0), m)
         out.append(dict(barra=m["barra"], extremo=m["extremo"],
                         plano=dict(ponto=_add(no, u, dist), normal=[-x for x in u]),
-                        folga=folga if tipo_ligacao != "boca_peixe" else 0.0, recortes=recortes))
+                        folga=fol, recortes=recortes))
     return out
