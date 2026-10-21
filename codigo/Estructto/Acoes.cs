@@ -129,14 +129,14 @@ namespace NovoFtool
 
         internal void Desfazer()
         {
-            if (Esp != null) { _ = TrocarEspacial(true); return; }   // modelo espacial: pilha do motor
+            if (Esp != null) { vista3D?.LimparPedido(); _ = TrocarEspacial(true); return; }   // modelo espacial: pilha do motor; o comando em curso acaba (ids podem sumir)
             if (desfazer.Count == 0) { Log("Nada para desfazer."); return; }
             refazer.Push(atual); Restaurar(desfazer.Pop()); Log("Desfeito.");
         }
 
         void Refazer()
         {
-            if (Esp != null) { _ = TrocarEspacial(false); return; }
+            if (Esp != null) { vista3D?.LimparPedido(); _ = TrocarEspacial(false); return; }
             if (refazer.Count == 0) { Log("Nada para refazer."); return; }
             desfazer.Push(atual); Restaurar(refazer.Pop()); Log("Refeito.");
         }
@@ -404,7 +404,7 @@ namespace NovoFtool
             }
             if (e.Key != Key.Enter && e.Key != Key.Space) return;
             string t = Comando.Text.Trim();
-            if (e.Key == Key.Space && t.Length > 0 && PareceCoordenada(t)) return;   // espaço dentro de coordenada/expressão
+            if (e.Key == Key.Space && t.Length > 0 && (PareceCoordenada(t) || valorPendente != null)) return;   // espaço dentro de coordenada/expressão ou da resposta (perfil "Ue 200x75")
             e.Handled = true;
             Comando.Text = "";
             FocarVista();
@@ -437,7 +437,12 @@ namespace NovoFtool
         void AtualizarDica()
         {
             string d;
-            if (Vista.Ferr == Ferramenta.Barra)
+            if (Esp != null && vista3D != null)   // documento 3D: o pedido do comando em curso (o mesmo texto da etiqueta da vista)
+                d = vista3D.Prompt ?? (vista3D.Ferramenta == Ferramenta3D.Barra ? "BARRA — clique os pontos ou digite x,y,z  @dx,dy,dz  ou o comprimento (Enter termina)"
+                    : vista3D.Ferramenta == Ferramenta3D.Pilar ? "PILAR — clique o ponto ou digite x,y,z"
+                    : vista3D.Ferramenta == Ferramenta3D.Medir ? "MEDIR — clique pontos ou barras (Esc sai)"
+                    : "Digite um comando (AJUDA lista) — com objetos escolhidos ele age neles; sem, pede na vista");
+            else if (Vista.Ferr == Ferramenta.Barra)
                 d = Vista.InicioBarra == null
                     ? "Barra — 1º ponto: clique ou digite x,y (ex.: 0,0)"
                     : "Próximo ponto: x,y  ·  @dx,dy  ·  @L<ângulo  ·  só o comprimento  ·  Enter termina";

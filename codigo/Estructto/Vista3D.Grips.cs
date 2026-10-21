@@ -3,8 +3,9 @@
 // da barra (move a barra). Clique no grip = quente (vermelho); o próximo clique (com atração, ORTO, entrada dinâmica ou x,y,z
 // digitado) é o destino. Ctrl no destino = copia em vez de mover (ponta: barra nova da outra ponta até o destino; meio: cópia
 // da barra; nó: nó novo). Esc esfria. Quem aplica no modelo é AplicarGrip (MainWindow, Comandos3D.cs).
-// Pedidos: PedirPonto (com atração, elástico a partir da base) e PedirObjeto (clique escolhe nó/barra) para os comandos da
-// linha de comando (M, CO, MI, RO, TR, EX, medir…). Esc cancela; botão direito/Enter encerra.
+// Pedidos: PedirPonto (com atração, elástico a partir da base), PedirObjeto (clique escolhe nó/barra, com filtro de tipo e
+// pré-realce), PedirSelecao ("Selecione objetos": clique soma, Shift tira, janela/cruzamento) e PedirValor (resposta digitada)
+// para os comandos da linha de comando (docs/v3/FLUXO-COMANDOS.md). Esc cancela; Enter, Espaço ou botão direito encerra.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -109,8 +110,12 @@ namespace NovoFtool
         Func<Point3D, Task<bool>> pedePonto;                         // true = continua pedindo (o ponto vira a base do próximo)
         Func<object, Point3D?, ModifierKeys, Task<bool>> pedeObjeto;   // true = continua pedindo
         Action aoCancelarPedido, aoTerminarPedido;
-        bool manterBase;
-        public bool Pedindo => pedePonto != null || pedeObjeto != null;
+        bool manterBase, pedeSelecao, pedeValor;   // pedeSelecao: "Selecione objetos" (janela, Shift tira); pedeValor: resposta digitada
+        string filtroPedido;                        // "no", "barra" ou null: o que o clique, a janela e o pré-realce aceitam
+        object realce;                              // pré-realce: o objeto que o clique pegaria agora
+        public bool Pedindo => pedePonto != null || pedeObjeto != null || pedeValor;
+        public bool PedindoSelecao => pedeSelecao;
+        public object Realce => realce;
 
         // Pede um ponto na vista (com atração e entrada dinâmica). base_ = 1º ponto do elástico (null = nenhum).
         // manter = true: depois de cada ponto a base continua a mesma (COPIAR múltiplo); false: o ponto vira a base.
@@ -125,13 +130,83 @@ namespace NovoFtool
 
         // Pede um objeto (nó ou barra) por clique; ao recebe (objeto ou null, ponto 3D clicado no plano, modificadores).
         // terminar: chamado no Enter/botão direito (fim normal); cancelar: no Esc.
-        public void PedirObjeto(string prompt, Func<object, Point3D?, ModifierKeys, Task<bool>> ao, Action cancelar = null, Action terminar = null)
+        // filtro "no"/"barra": o clique só pega esse tipo (nó: também a ponta da barra a até 14 px) e o pré-realce mostra o que pegaria.
+        public void PedirObjeto(string prompt, Func<object, Point3D?, ModifierKeys, Task<bool>> ao, Action cancelar = null, Action terminar = null, string filtro = null)
         {
             LimparPedido(false);
-            if (ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar) Ferramenta = Ferramenta3D.Selecionar;
-            pedeObjeto = ao; aoCancelarPedido = cancelar; aoTerminarPedido = terminar; Prompt = prompt;
+            if (ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar || ferr == Ferramenta3D.Medir) Ferramenta = Ferramenta3D.Selecionar;
+            pedeObjeto = ao; aoCancelarPedido = cancelar; aoTerminarPedido = terminar; Prompt = prompt; filtroPedido = filtro;
             Cursor = Cursors.Hand;
+            if (mouseDentro) AtualizarRealce(mouseTela);
             sobre.InvalidateVisual();
+        }
+
+        // "Selecione objetos" do AutoCAD: clique soma, Shift + clique tira; janela (esq.→dir.) e cruzamento (dir.→esq.) somam,
+        // com Shift tiram; Enter, Espaço ou botão direito chama aplicar; Esc chama cancelar. A escolha é a Selecao (fica realçada).
+        public void PedirSelecao(string prompt, string filtro, Action aplicar, Action cancelar = null)
+        {
+            PedirObjeto(prompt, (o, p, mods) =>
+            {
+                var nos = o is No3D n ? new[] { Chave(n) } : null; var bs = o is Barra3D b ? new[] { Chave(b) } : null;
+                if (nos != null || bs != null) Selecionar(nos, bs, mods.HasFlag(ModifierKeys.Shift) ? ModifierKeys.Control : ModifierKeys.Shift);
+                return Task.FromResult(true);
+            }, cancelar, aplicar, filtro);
+            pedeSelecao = true;
+        }
+
+        // Pede uma resposta digitada (a janela lê a linha de comando): Enter/Espaço/botão direito com a linha vazia = terminar
+        // (o valor padrão); Esc = cancelar. Cliques na vista não fazem nada enquanto isso.
+        public void PedirValor(string prompt, Action terminar, Action cancelar = null)
+        {
+            LimparPedido(false);
+            if (ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar || ferr == Ferramenta3D.Medir) Ferramenta = Ferramenta3D.Selecionar;
+            pedeValor = true; aoTerminarPedido = terminar; aoCancelarPedido = cancelar; Prompt = prompt;
+            sobre.InvalidateVisual();
+        }
+
+        // O que o clique pegaria com o filtro do pedido.
+        object AcertarTipo(Point tela, string filtro)
+        {
+            object o = Acertar(tela);
+            if (filtro == "barra")
+            {
+                if (o is Barra3D) return o;
+                Barra3D melhor = null; double dm = 8;   // o nó tem prioridade no Acertar: vale a barra que passa a até 8 px
+                foreach (Barra3D b in mod.Barras)
+                {
+                    No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); if (a == null || c == null) continue;
+                    double d = DistSeg(tela, Tela(P(a)), Tela(P(c))); if (d < dm) { dm = d; melhor = b; }
+                }
+                return melhor;
+            }
+            if (filtro != "no" || o is No3D) return o;
+            No3D mn = null; double dn = 14;   // barra acertada: a ponta dela; vazio: o nó mais perto
+            IEnumerable<No3D> cand = o is Barra3D bb ? new[] { NoPorId(bb.Ni), NoPorId(bb.Nj) } : mod.Nos;
+            foreach (No3D n in cand) { if (n == null) continue; double d = (Tela(P(n)) - tela).Length; if (d < dn) { dn = d; mn = n; } }
+            return mn;
+        }
+
+        object Filtrar(object o) => filtroPedido == "no" ? o as No3D : filtroPedido == "barra" ? o as Barra3D : o;
+
+        void AtualizarRealce(Point tela)
+        {
+            object o = pedeObjeto != null ? AcertarTipo(tela, filtroPedido) : null;
+            if (!Equals(o, realce)) { realce = o; sobre.InvalidateVisual(); }
+        }
+
+        static readonly Pen PRealce = new Func<Pen>(() =>
+        {
+            var c = TemaPlant.CorGripHover;
+            var p = new Pen(new SolidColorBrush(Color.FromArgb(0xC8, c.R, c.G, c.B)), 4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            p.Freeze(); return p;
+        })();
+
+        // Pré-realce (traço por cima da barra, anel no nó) na sobreposição 2D: não mexe na cena.
+        void DesenharRealce(DrawingContext dc)
+        {
+            if (pedeObjeto == null || !mouseDentro) return;
+            if (realce is Barra3D b && mod.Barras.Contains(b) && NoPorId(b.Ni) is No3D a && NoPorId(b.Nj) is No3D c) dc.DrawLine(PRealce, Tela(P(a)), Tela(P(c)));
+            else if (realce is No3D n && mod.Nos.Contains(n)) dc.DrawEllipse(null, PRealce, Tela(P(n)), 8, 8);
         }
 
         // Troca só a etiqueta do pedido em curso (o comando passou para o passo seguinte).
@@ -142,6 +217,7 @@ namespace NovoFtool
             var c = aoCancelarPedido;
             bool havia = Pedindo;
             pedePonto = null; pedeObjeto = null; aoCancelarPedido = null; aoTerminarPedido = null;
+            pedeSelecao = pedeValor = false; filtroPedido = null; realce = null;
             if (havia) { Prompt = null; inicio = null; DinLimpar(); coord = ""; Cursor = CursorFerramenta; AtualizarCursor(); }
             if (havia && avisar) c?.Invoke();
         }
@@ -178,7 +254,7 @@ namespace NovoFtool
         async Task EscolherPedido(Point tela, ModifierKeys mods)
         {
             var f = pedeObjeto;
-            object o = Acertar(tela);
+            object o = AcertarTipo(tela, filtroPedido);
             Point3D? q = NoPlano(tela);
             if (o is Barra3D b && NoPorId(b.Ni) is No3D a && NoPorId(b.Nj) is No3D c)   // barra: o ponto dela sob o clique (pela tela)
             {
@@ -194,7 +270,7 @@ namespace NovoFtool
         public async Task EscolherPorCodigo(object o, Point3D? p = null, ModifierKeys mods = ModifierKeys.None)
         {
             var f = pedeObjeto; if (f == null) return;
-            if (!await f(o, p, mods) && pedeObjeto == f) LimparPedido(false);
+            if (!await f(Filtrar(o), p, mods) && pedeObjeto == f) LimparPedido(false);
         }
 
         // Barra/nó do Modelo3D pelo id do motor (capturas/testes).

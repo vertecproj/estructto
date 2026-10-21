@@ -219,12 +219,13 @@ namespace NovoFtool
                 BotoesEsp(sp, ("Distribuir nas vigas", () => { if (LerEsp(tb, out var v)) _ = DistribuirArea(niveis[cbZ.SelectedIndex], v[0], cbDir.SelectedIndex == 0); }, true));
         }
 
-        // Uma chamada /api/modelo/lote com uma carga distribuída por viga.
-        internal Task DistribuirArea(double z, double p, bool emX)
+        // Uma chamada /api/modelo/lote com uma carga distribuída por viga. so = só estas vigas (as larguras de influência usam
+        // todas as paralelas do nível); null = todas.
+        internal Task DistribuirArea(double z, double p, bool emX, ICollection<string> so = null)
         {
             var d = Esp;
-            var r = DocumentoEspacial.CargaArea(d.Json, z, p, emX).Where(x => x.q > 1e-9).ToList();
-            if (r.Count == 0) { MostrarToast("Nenhuma viga " + (emX ? "em X" : "em Y") + " com vizinha paralela no nível z = " + Num.Fmt(z, 2) + " m.", true); return Task.CompletedTask; }
+            var r = DocumentoEspacial.CargaArea(d.Json, z, p, emX).Where(x => x.q > 1e-9 && (so == null || so.Contains(x.barra))).ToList();
+            if (r.Count == 0) { string m = "Nenhuma viga " + (emX ? "em X" : "em Y") + (so != null ? " escolhida" : "") + " com vizinha paralela no nível z = " + Num.Fmt(z, 2) + " m."; Log(m); MostrarToast(m, true); return Task.CompletedTask; }
             string caso = d.CasoAtivo;
             var itens = new JsonArray(r.Select(x => (JsonNode)new JsonObject { ["tipo"] = "carga_distribuida", ["dados"] = new JsonObject { ["caso"] = caso, ["barra"] = x.barra, ["q"] = new JsonArray(0.0, 0.0, -x.q) } }).ToArray());
             return Espacial(dd => dd.Lote(itens), "Carga em área " + Num.Fmt(p, 2) + " kN/m² (" + caso + ") no nível z = " + Num.Fmt(z, 2) + " m: " + Pl.N(r.Count, "viga", "vigas") +

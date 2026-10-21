@@ -304,34 +304,38 @@ namespace NovoFtool
             abaModelo.Groups.Add(planos);
             MontarDesenho3D();                       // Barras (Selecionar, Barra, Pilar, Medir) e Configurações (Desenho3D.cs)
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Chapas",
-                Botao("laje", "Laje", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Carga em área: painel Propriedades (sem escolha) › Carga em área. O motor não tem elemento de placa: a laje distribui p (kN/m²) nas vigas.", true); },
-                      "Laje/chapa de piso como carga em área nas vigas de um nível (o motor não tem elemento de placa).", null, true)));
+                Botao("laje", "Laje", () => ExecutarComando("CARGAAREA"),
+                      "Laje/chapa de piso como carga em área (kN/m²) nas vigas escolhidas ou de um nível digitado (o motor não tem elemento de placa).", "LAJE", true)));
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Modificar",
-                Botao("mover", "Mover", () => ExecutarComando("MOVER"), "Ponto base e segundo ponto (atração, ORTO, @dx,dy,dz). Escolha antes ou depois (Enter termina a escolha).", "M", true),
+                Botao("mover", "Mover", () => ExecutarComando("MOVER"), "Ponto base e segundo ponto (atração, ORTO, @dx,dy,dz). Escolha antes ou depois (Enter termina a escolha, Shift tira).", "M", true),
                 Botao("copiar", "Copiar", () => ExecutarComando("COPIAR"), "Ponto base e destinos, várias cópias até Enter.", "CO", true),
                 Botao("espelhar", "Espelhar", () => ExecutarComando("ESPELHAR"), "Cópia espelhada: dois pontos da linha do espelho (em planta).", "MI", true),
                 Botao("rotacionar", "Rotacionar", () => ExecutarComando("ROTACIONAR"), "Em torno do eixo vertical: ponto base e ângulo (digite) ou direção (clique).", "RO", true),
-                Botao("matriz", "Matriz", () => ExecutarComando("MATRIZ"), "Matriz retangular nx × ny × nz (painel).", "AR", true),
-                Botao("dividir", "Dividir barra", () => ExecutarComando("DIVIDIR"), "Em partes iguais ou a uma distância (painel).", "DIV", true),
-                Botao("aparar", "Aparar", () => ExecutarComando("APARAR"), "Barra limite e depois as barras: o lado clicado sai.", "TR", true),
-                Botao("estender", "Estender", () => ExecutarComando("ESTENDER"), "Barra limite e depois as barras: a ponta perto do clique vai até o limite.", "EX", true),
-                Botao("unir", "Unir nós", () => ExecutarComando("UNIR"), "Funde nós coincidentes (painel).", "J", true),
-                Botao("apagar", "Apagar", () => ExecutarComando("APAGAR"), "Apaga a seleção (nós levam as barras ligadas).", "E / Del", true),
-                Botao("pincel", "Copiar props.", () => ExecutarComando("COPIARPROPRIEDADES"), "Perfil, material e giro de uma barra para outras.", "MA", true),
-                Botao("propriedades", "Em lote", () => AbrirEdicaoEsp("propriedades"), "Seção, material, giro e apoio de toda a seleção (painel).", "PR", true)));
+                Botao("matriz", "Matriz", () => ExecutarComando("MATRIZ"), "Matriz retangular nx × ny × nz: escolha antes ou depois, depois o painel.", "AR", true),
+                Botao("dividir", "Dividir barra", () => ExecutarComando("DIVIDIR"), "Em partes iguais ou a uma distância: escolha as barras antes ou depois, depois o painel.", "DIV", true),
+                Botao("aparar", "Aparar", () => ExecutarComando("APARAR"), "Barras limite (escolhidas antes, ou escolha + Enter) e depois as barras: o lado clicado sai.", "TR", true),
+                Botao("estender", "Estender", () => ExecutarComando("ESTENDER"), "Barras limite (escolhidas antes, ou escolha + Enter) e depois as barras: a ponta perto do clique vai até o limite.", "EX", true),
+                Botao("unir", "Unir nós", () => ExecutarComando("UNIR"), "Funde nós coincidentes: escolha os nós (Enter sem nada = todos), depois o painel.", "J", true),
+                Botao("apagar", "Apagar", () => ExecutarComando("APAGAR"), "Apaga os objetos escolhidos antes ou depois (nós levam as barras ligadas).", "E / Del", true),
+                Botao("pincel", "Copiar props.", () => ExecutarComando("COPIARPROPRIEDADES"), "Seção, material, giro e cardinal de uma barra (a escolhida ou um clique) para outras.", "MA", true),
+                Botao("propriedades", "Em lote", () => ExecutarComando("LOTE"), "Seção, material, giro e apoio dos objetos escolhidos antes ou depois (painel).", "LOTE", true)));
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Apoios",
-                Botao("engaste", "Engaste", () => ExecutarComando("ENGASTE"), "Trava os 6 graus de liberdade dos nós escolhidos.", null, true),
-                Botao("rotula", "Articulado", () => ExecutarComando("ROTULA"), "Trava as translações dos nós escolhidos (giros livres).", null, true),
-                Botao("livre", "Livre", () => ExecutarComando("LIVRE"), "Tira o apoio dos nós escolhidos.", null, true),
-                Botao("rotulab", "Rótulas na barra", () => ExecutarComando("ROTULAR"), "Liga/desliga a rótula nas duas pontas das barras escolhidas.", "RB", true)));
+                Botao("engaste", "Engaste", () => ExecutarComando("ENGASTE"), "Trava os 6 graus de liberdade dos nós (escolha antes ou depois).", "ENGASTE", true),
+                Botao("rotula", "Articulado", () => ExecutarComando("ROTULA"), "Trava as translações dos nós, giros livres (escolha antes ou depois).", "ROTULA", true),
+                Botao("rolo", "Móvel", () => ExecutarComando("MOVEL"), "Rolete: só uz travado (escolha antes ou depois).", "MOVEL", true),
+                Botao("valores", "Molas", () => ExecutarComando("MOLAS"), "Apoio elástico: kx,ky,kz[,krx,kry,krz] em kN/m e kN·m/rad (escolha antes ou depois).", "MOLAS", true),
+                Botao("livre", "Livre", () => ExecutarComando("LIVRE"), "Tira apoio e molas dos nós (escolha antes ou depois).", "LIVRE", true),
+                Botao("rotulab", "Rótulas na barra", () => ExecutarComando("ROTULAR"), "Liga/desliga a rótula nas duas pontas das barras (escolha antes ou depois).", "RB", true)));
             abaModelo.ToolTip = "Gerar, grade estrutural, planos de trabalho, barras e pilares, chapas, modificar, apoios e configurações das próximas barras.";
             MontarTrelicas();    // Treliças e contraventamentos (Modelo › Gerar + paleta), JanelaTrelicas.cs
 
             // ACOES: casos de carga (inseridos por MontarCasosNaFaixa), cargas nos nós e barras (painel Propriedades), ações automáticas
             var abaAcoes = Aba("Ações", "A",
                 Grupo("Cargas",
-                    Botao("cargano", "No nó ou na barra", () => { PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Escolha um nó ou uma barra na vista: o painel Propriedades lança as cargas do caso ativo (nodal, distribuída, pontual).", true); }, "Escolha o nó ou a barra: o painel Propriedades lança as cargas do caso ativo."),
-                    Botao("cargadist", "Carga em área", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; }, "Laje: p (kN/m²) distribuída nas vigas de um nível (painel Propriedades, sem escolha).", null, true)),
+                    Botao("cargano", "Nodal", () => ExecutarComando("CARGANO"), "Carga nodal Fx,Fy,Fz[,Mx,My,Mz] no caso ativo, nos nós escolhidos antes ou depois.", "CN"),
+                    Botao("cargadist", "Distribuída", () => ExecutarComando("CARGADIST"), "qx,qy,qz (kN/m, global; trapezoidal q1/q2) no caso ativo, nas barras escolhidas antes ou depois.", "CD", true),
+                    Botao("cargano", "Pontual", () => ExecutarComando("CARGAPONTUAL"), "Distância a desde ni (ou M = meio) e Fx,Fy,Fz no caso ativo, nas barras escolhidas antes ou depois.", "CPT", true),
+                    Botao("laje", "Carga em área", () => ExecutarComando("CARGAAREA"), "Laje: p (kN/m²) nas vigas escolhidas (antes ou depois) ou nas de um nível digitado.", "LAJE", true)),
                 Grupo("Ações automáticas",
                     Botao("vento", "Vento", () => ComMotorExtra(ComandosAcoes.AbrirVento), "Vento estático pela NBR 6123 (V0, S1, S2, S3, coeficientes) e geração das forças por pavimento (motor Python).", null, true),
                     Botao("sismo", "Sismo", () => ComMotorExtra(ComandosAcoes.AbrirSismo), "Forças sísmicas horizontais equivalentes pela NBR 15421 (zona, classe do terreno, categoria de utilização) (motor Python).", null, true),
@@ -358,7 +362,7 @@ namespace NovoFtool
                 Grupo("Verificar",
                     Botao("veriflista", "Verificação de barras", () => _ = ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras), "Lista de todas as barras com a taxa, o critério determinante e o item da norma. Calcula antes, se preciso."),
                     (tgCalor = BotaoCalor()),
-                    Botao("comparar", "Verificar barra", () => VerificarBarraConforme(null), "Verificação detalhada (NBR 8800) da barra escolhida.", null, true)),
+                    Botao("comparar", "Verificar barra", () => ExecutarComando("VERIFICAR"), "Verificação detalhada (NBR 8800) da barra escolhida antes ou clicada depois.", "VB", true)),
                 Grupo("Otimizar",
                     Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Perfil mais leve da mesma família que passa, por iterações no motor (cada rodada um Ctrl+Z).", "DIMENSIONAR"),
                     Botao("catalogo", "Catálogo de perfis", () => ComandosAnalise.AbrirCatalogo(this), "Perfis do catálogo do motor com todas as propriedades geométricas (A, I, W, Z, r, J, Cw).")));

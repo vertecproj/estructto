@@ -59,6 +59,7 @@ namespace NovoFtool
             TemaPlant.AplicarFluent(this);   // cores do AutoCAD Plant 3D por cima do tema escuro
             if (!e.Args.Contains("--capturas")) TemaPlant.AplicarAcento(this, Config.Opcoes.Acento);   // Arquivo › Opções
             // Estructto.exe --testes-fluxo <pasta> [A,B,C,D,E] : fluxos ponta a ponta na janela real (TestesFluxo.cs; ligado em Capturas.Configurar)
+            // Estructto.exe --testes-comandos <pasta> : cada comando nas duas ordens, com o motor (TestesComandos.cs; idem)
         }
 
         protected override void OnExit(ExitEventArgs e)

@@ -999,12 +999,14 @@ namespace NovoFtool
         }
 
         // Mouse parado neste pixel (capturas de teste: elástico, atração e entrada dinâmica sem mouse de verdade).
-        public void MoverTela(Point tela) { mouseTela = tela; mouseDentro = true; AtualizarCursor(); }
+        public void MoverTela(Point tela) { mouseTela = tela; mouseDentro = true; AtualizarCursor(); if (pedeObjeto != null) AtualizarRealce(tela); }
 
         // Clique na tela com a ferramenta atual (o mouse e as capturas de teste passam por aqui).
         public async Task ClicarTela(Point tela, ModifierKeys mods = ModifierKeys.None)
         {
             mouseTela = tela; mouseDentro = true;
+            if (gripQuente == null && pedePonto == null && pedeObjeto != null) { await EscolherPedido(tela, mods); return; }   // o mesmo caminho do mouse (Clique)
+            if (pedeValor) return;
             if (gripQuente == null && pedePonto == null && (ferr == Ferramenta3D.Selecionar || ferr == Ferramenta3D.Navegar)) { SelecionarClique(tela, mods); return; }
             AtualizarCursor();
             if (ferr == Ferramenta3D.Medir) { MedirClique(tela); return; }
@@ -1059,7 +1061,7 @@ namespace NovoFtool
                     AtualizarCursor();
                     return true;
                 case Key.Enter: case Key.Space:   // Espaço = Enter (AutoCAD)
-                    if (pedeObjeto != null) { TerminarPedido(); return true; }
+                    if (pedeObjeto != null || pedeValor) { TerminarPedido(); return true; }
                     if (!Desenhando) return false;   // nada em curso: a janela repete o último comando
                     if (coord != "") { Point3D? p = PontoDigitado(); if (p == null) { Aviso = "Coordenada inválida: use x,y,z  @dx,dy,dz  ou u,w no plano."; coord = ""; sobre.InvalidateVisual(); } else _ = Ponto(p); }
                     else if (DinTravado) _ = Ponto(PontoFinal());
@@ -1139,6 +1141,11 @@ namespace NovoFtool
                 Point p = Tela(P(na)), q = Tela(P(nc));
                 if (r.Contains(p) && r.Contains(q) || cruz && (r.Contains(p) || r.Contains(q) || Corta(p, q, r))) bs.Add(Chave(x));
             }
+            if (pedeSelecao)   // "Selecione objetos": só o tipo pedido; a janela soma e, com Shift, tira (Vista3D.Grips.cs)
+            {
+                if (filtroPedido == "barra") nos.Clear(); else if (filtroPedido == "no") bs.Clear();
+                mods = mods.HasFlag(ModifierKeys.Shift) ? ModifierKeys.Control : ModifierKeys.Shift;
+            }
             Selecionar(nos, bs, mods);
         }
 
@@ -1211,7 +1218,8 @@ namespace NovoFtool
 
             // etiqueta da ferramenta (topo, centro)
             DesenharGrips(dc);
-            string et = Aviso ?? (Prompt != null ? Prompt + (Desenhando && tipoSnap != null ? " · plano " + plano.Nome + EstadoSnap() : "") : null);
+            DesenharRealce(dc);   // pré-realce do pedido (Vista3D.Grips.cs)
+            string et = Aviso ?? (Prompt != null ? Prompt + (pedeSelecao ? " · " + Pl.N(Selecao.Count, "escolhido", "escolhidos") : "") + (Desenhando && tipoSnap != null ? " · plano " + plano.Nome + EstadoSnap() : "") : null);
             if (et == null && ferr == Ferramenta3D.Medir) et = EtiquetaMedir();
             else if (et == null && Desenhando)
                 et = (ferr == Ferramenta3D.Barra ? (inicio == null ? "BARRA — clique o 1º ponto" : "BARRA — próximo ponto (Esc ou botão direito termina)")

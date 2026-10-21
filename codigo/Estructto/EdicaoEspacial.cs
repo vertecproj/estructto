@@ -223,6 +223,52 @@ namespace NovoFtool
             return m;
         }
 
+        // Apoio (6 GL; null = mantém) e molas (kN/m, kN·m/rad, globais; null = mantém; todas 0 = tira) só dos nós dados.
+        // GL com mola fica livre: a mola é o apoio desse GL (no motor, mola em GL travado não faz nada).
+        public static JsonObject Apoio(JsonObject m, IEnumerable<string> nos, bool[] apoio, double[] molas)
+        {
+            var N = Col(m, "nos");
+            foreach (string id in (nos ?? new string[0]).Where(N.ContainsKey))
+            {
+                var n = N[id].AsObject();
+                var ap = apoio ?? (n["apoio"] as JsonArray)?.Select(x => x != null && (bool)x).ToArray() ?? new bool[6];
+                if (molas != null)
+                {
+                    if (molas.All(k => k == 0)) n.Remove("molas");
+                    else { n["molas"] = Arr(molas); ap = ap.Select((a, i) => a && molas[i] == 0).ToArray(); }
+                }
+                n["apoio"] = new JsonArray(ap.Select(x => (JsonNode)x).ToArray());
+            }
+            return m;
+        }
+
+        // Rótulas nas duas pontas (params.rotula_i/_j) das barras dadas: ligar põe, desligar tira.
+        public static JsonObject Rotulas(JsonObject m, IEnumerable<string> barras, bool ligar)
+        {
+            var B = Col(m, "barras");
+            foreach (string id in (barras ?? new string[0]).Where(B.ContainsKey))
+            {
+                var b = B[id].AsObject();
+                var p = b["params"] as JsonObject ?? (JsonObject)(b["params"] = new JsonObject());
+                if (ligar) { p["rotula_i"] = true; p["rotula_j"] = true; } else { p.Remove("rotula_i"); p.Remove("rotula_j"); }
+            }
+            return m;
+        }
+
+        // Ponto cardinal (1..10; 5 = centro, sai de params) só das barras dadas.
+        public static JsonObject Cardinal(JsonObject m, IEnumerable<string> barras, int cardinal)
+        {
+            if (cardinal < 1 || cardinal > 10) throw new ArgumentException("cardinal " + cardinal + ": use 1 a 9 (teclado numérico) ou 10 (centroide)");
+            var B = Col(m, "barras");
+            foreach (string id in (barras ?? new string[0]).Where(B.ContainsKey))
+            {
+                var b = B[id].AsObject();
+                var p = b["params"] as JsonObject ?? (JsonObject)(b["params"] = new JsonObject());
+                if (cardinal == 5) p.Remove("cardinal"); else p["cardinal"] = cardinal;
+            }
+            return m;
+        }
+
         // ---------- giro da seção (rot) e ponto cardinal sob a transformação ----------
 
         static double[] Cr(double[] a, double[] b) => new[] { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
@@ -585,30 +631,9 @@ namespace NovoFtool
     {
         IFonteSelecao fonteEsp;
         PainelEdicao painelEdicao;
-        readonly List<UIElement> botoesSo3D = new List<UIElement>();
         internal PainelEdicao PainelEdicaoAberto => painelEdicao;
 
-        // Faixa › Modelo › Modificar: botões que só existem no modelo espacial (Mover, Copiar, Espelhar e Dividir já estão
-        // lá e passam para cá quando o documento é espacial). Os botões também entram na paleta (Botao → Reg).
-        void MontarEdicao3D(F.RibbonGroupBox modificar)
-        {
-            foreach (var (ic, txt, op, dica) in new[] {
-                ("refazer", "Rotacionar", "rotacionar", "Gira a seleção em torno de um eixo vertical (modelo espacial). Cópias = 0 gira; ≥ 1 faz cópias polares."),
-                ("grade", "Matriz", "matriz", "Matriz retangular nx × ny × nz com espaçamentos (modelo espacial)."),
-                ("unir", "Unir nós", "unir", "Funde nós coincidentes (tolerância em mm) (modelo espacial)."),
-                ("pincel", "Propriedades em lote", "propriedades", "Seção, material, giro ou apoios em todos os elementos escolhidos (modelo espacial).") })
-            {
-                var b = Botao(ic, txt, () => AbrirEdicaoEsp(op), dica, null, true);
-                b.Visibility = Visibility.Collapsed;
-                botoesSo3D.Add(b); modificar.Items.Add(b);
-            }
-        }
-
-        void MostrarEdicao3D(bool esp)
-        {
-            foreach (var b in botoesSo3D) b.Visibility = esp ? Visibility.Visible : Visibility.Collapsed;
-            if (!esp) painelEdicao?.Close();
-        }
+        void MostrarEdicao3D(bool esp) { if (!esp) painelEdicao?.Close(); }
 
         internal void AbrirEdicaoEsp(string op)
         {
@@ -800,6 +825,23 @@ namespace NovoFtool
                && Perto((double)m12["barras"]["B1"]["rot"], Math.PI / 2) && (string)m12["barras"]["B3"]["secao"] == "V" && (string)m12["barras"]["B3"]["material"] == "A");
             var m13 = GeometriaEdicao.Propriedades(Portico(), new[] { "N3" }, sem, null, null, null, new[] { true, true, true, false, false, false });
             Ok("propriedades: apoio só no nó escolhido", (bool)m13["nos"]["N3"]["apoio"][2] && !(bool)m13["nos"]["N3"]["apoio"][3] && (bool)m13["nos"]["N1"]["apoio"][3]);
+
+            // apoios, molas, rótulas e cardinal dos comandos (Comandos3D.cs, docs/v3/FLUXO-COMANDOS.md)
+            var m19 = GeometriaEdicao.Apoio(Portico(), new[] { "N3" }, new[] { false, false, true, false, false, false }, new double[6]);
+            Ok("apoio móvel: só uz travado no N3; N1 continua engastado", (bool)m19["nos"]["N3"]["apoio"][2] && !(bool)m19["nos"]["N3"]["apoio"][0] && (bool)m19["nos"]["N1"]["apoio"][5]);
+            var m20 = GeometriaEdicao.Apoio(Portico(), new[] { "N1" }, null, new double[] { 0, 0, 5000, 0, 0, 0 });
+            Ok("molas: kz = 5000 no N1, uz liberado (a mola é o apoio), ux continua travado", Perto((double)m20["nos"]["N1"]["molas"][2], 5000) && !(bool)m20["nos"]["N1"]["apoio"][2] && (bool)m20["nos"]["N1"]["apoio"][0]);
+            GeometriaEdicao.Apoio(m20, new[] { "N1" }, new bool[6], new double[6]);
+            Ok("livre: tira apoio e molas", m20["nos"]["N1"]["molas"] == null && !((JsonArray)m20["nos"]["N1"]["apoio"]).Any(x => (bool)x));
+            var m21 = GeometriaEdicao.Rotulas(Portico(), new[] { "B1" }, true);
+            Ok("rótulas: B1 ganha rotula_i e rotula_j; B2 não", m21["barras"]["B1"]["params"]["rotula_j"] != null && m21["barras"]["B2"]["params"]["rotula_i"] == null);
+            GeometriaEdicao.Rotulas(m21, new[] { "B3" }, false);
+            Ok("rótulas: desligar tira as duas da B3", m21["barras"]["B3"]["params"]["rotula_i"] == null && m21["barras"]["B3"]["params"]["rotula_j"] == null);
+            var m22 = GeometriaEdicao.Cardinal(Portico(), new[] { "B3" }, 8);
+            Ok("cardinal 8 na B3; 5 tira de params", DocumentoEspacial.CardinalDe(m22["barras"]["B3"]) == 8 && DocumentoEspacial.CardinalDe(GeometriaEdicao.Cardinal(m22, new[] { "B3" }, 5)["barras"]["B3"]) == 5 && m22["barras"]["B3"]["params"]["cardinal"] == null);
+            bool recusouCard = false; try { GeometriaEdicao.Cardinal(Portico(), new[] { "B3" }, 11); } catch (ArgumentException) { recusouCard = true; }
+            Ok("cardinal 11 é recusado", recusouCard);
+            Ok("comandos: listas digitadas (0,0,-10 · 1;2;3 · 1.5)", MainWindow.LerLista("0,0,-10", 3, 6)?[2] == -10 && MainWindow.LerLista("1;2;3", 3, 3)?[1] == 2 && MainWindow.LerLista("1.5", 1, 1)?[0] == 1.5 && MainWindow.LerLista("1,2", 3, 6) == null && MainWindow.LerLista("a,b,c", 3, 3) == null);
 
             // comandos CAD (Comandos3D.cs)
             var m14 = GeometriaEdicao.Apagar(Portico(), sem, new[] { "B3" });
