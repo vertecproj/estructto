@@ -75,7 +75,7 @@
                       </StackPanel>
                     </Border>
                     <!-- mensagens rapidas: aparecem no canto e somem sozinhas (o histórico fica na linha de comando) -->
-                    <Border x:Name="Toast" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="12,7" CornerRadius="6" MaxWidth="360"
+                    <Border x:Name="Toast" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10,10,150,10" Padding="12,7" CornerRadius="6" MaxWidth="360"
                             Background="{DynamicResource Surface.Overlay}" BorderBrush="{DynamicResource Border.Subtle}" BorderThickness="1" Visibility="Collapsed" IsHitTestVisible="False">
                       <TextBlock x:Name="ToastTxt" Foreground="{DynamicResource Text.Primary}" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="36"/>
                     </Border>

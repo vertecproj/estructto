@@ -44,7 +44,7 @@ namespace NovoFtool
         internal void MontarTrelicas()
         {
             var gerar = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Gerar");
-            gerar?.Items.Add(Botao("3d", "Treliças e contraventamentos", () => AbrirTrelicas(null),
+            gerar?.Items.Add(Botao("3d", "Treliças", () => AbrirTrelicas(null),
                 "Galeria de treliças planas (Pratt, Howe, Warren, K, Fink), tesouras em série, contraventamentos (X, K, V, Λ, mão-francesa) e terças, com prévia ao vivo. Insere no modelo espacial ativo (um Ctrl+Z desfaz).", null, true));
             foreach (var (nome, item, dica) in new[]
             {

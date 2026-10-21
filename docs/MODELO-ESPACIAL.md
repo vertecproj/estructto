@@ -1,12 +1,51 @@
-# Modelo espacial (documento 3D do motor)
+# Modelo 3D (o documento único do Estructto)
 
-Data: 20/10/2026. Código: `codigo/Estructto/DocumentoEspacial.cs`. Capturas: `41-*` (`Capturas.cs`, `CapturasEspacial`).
+Data: 21/10/2026. Código: `codigo/Estructto/DocumentoEspacial.cs`, `Comandos3D.cs`, `Legado3D.cs`, `Vista3D*.cs`, `ViewCube.cs`.
+Capturas: `41-*`, `54-a1-*` (`Capturas.cs`, `CapturasA1.cs`).
 
-## Decisão
+## Decisão (A1, "3D-only")
 
-O `Modelo` do WPF (`Nucleo.cs`) continua só 2D. Um segundo tipo de documento, **Modelo espacial**, tem como fonte da verdade o
-modelo do motor Python (o JSON de `codigo/motor`, ESPEC §5). O WPF guarda só uma cópia do último `GET /api/modelo`.
-Os documentos 2D não mudaram.
+O usuário: "quero poder modelar em 3D sem nada do 0; para sair do 2D para o 3D seja igual no CAD — segurar Shift e
+rotacionar já é 3D; não tem 2D, é só 3D, igual o Plant".
+
+- **Todo documento é o modelo do motor Python** (o JSON de `codigo/motor`, ESPEC §5). O WPF guarda só uma cópia do último
+  `GET /api/modelo`. Não existe mais documento 2D nem vista 2D: planta, frente e lado são câmeras (`Vista3D.MostrarVista`).
+- O `Modelo` do `Nucleo.cs` continua compilado: testes do motor interno (`compilar.ps1 -Testes`), conversão de arquivos
+  antigos, a ponte da placa de base (abaixo) e o `--conferir-motor`/`--teste-motor` (o seletor "Interno/Python" saiu da faixa;
+  fica escondido só para esses testes). O controle `Vista.cs` fica oculto e serve só de estado do HUD (diagrama e escala).
+- Modelo novo (Ctrl+N e a abertura do programa) nasce **em planta, no térreo**: plano de trabalho z = 0, vista de topo,
+  ortográfica. Desenha-se como numa folha de CAD até orbitar (Shift + arrastar).
+
+## Arquivos
+
+| Abrir | Como |
+|---|---|
+| `.estructto` novo | contêiner JSON (abaixo) |
+| `.estructto` antigo (XML), `.portico`, `.ftl` | lido pelo `Nucleo.cs`/`Ftl.cs` e convertido por `MotorModelo.Enviar` (X → X, Y do 2D → Z, uy/rx/rz travados em todos os nós, seções e flambagem do 2D). As placas de base vêm junto (nó N → `nN`). Aviso (toast) uma vez por sessão; `DocumentoEspacial.Origem` guarda o arquivo antigo |
+| `.json` | modelo do motor puro (`POST /api/modelo/abrir`) |
+| `.ed3` | CYPE 3D (`POST /api/importar_cype`) |
+| assistentes (viga, pórtico, treliça, galpão) | geram um `Modelo` 2D e passam pela mesma conversão |
+
+**Salvar** (`SalvarEspacial`): `.estructto` = contêiner `{"formato": "estructto", "versao": 3, "modelo": <JSON do motor>,
+"placas": {nó: PlacaBase}, "grade": {x, y, z, nx, ny}, "cardinal": {barra: 1..10}}`; `.json` = só o modelo do motor (avisa
+que placas e grade ficam de fora). Escolha: um arquivo do usuário continua um arquivo só e com a extensão de sempre; o JSON
+do motor fica intacto dentro dele (abre em qualquer ferramenta do motor) e o que o motor não guarda vai ao lado.
+Um documento convertido nunca sobrescreve o antigo sozinho: Salvar pede o nome e sugere "nome (3D).estructto".
+Recuperação automática (2 min): o mesmo contêiner (`Config.SalvarRecuperacao`); uma cópia antiga em XML ainda é convertida.
+
+## Funções que nasceram no 2D (`Legado3D.cs`)
+
+| Função | Agora |
+|---|---|
+| Placa de base | `AbrirPlacaEsp(nó)`: o "pé de pilar" (nó com apoio e uma só barra) vira um `Modelo` mínimo de 2 nós no plano da barra e do eixo forte; a `ResBarra` reproduz N, V e M exatos nas duas pontas a partir de N, Vz e My do motor em cada combinação ELU (uma consulta `/api/resultados?alvo=esforcos&combinacao=…&ids=…` por combinação). A janela `JanelaPlaca` e o `PlacaCalc` (o mesmo método do `placa_base.py`) não mudaram; a combinação crítica vai no título. Placas ficam em `DocumentoEspacial.Placas`. ponytail: só flexão no eixo forte (Mz/Vy ignorados, como a placa sempre foi); pilar inclinado com o eixo forte fora do plano vertical é recusado; "Aplicar também em" só no próprio nó. Quando o motor expuser a placa por rota HTTP, trocar o `PlacaCalc` por ela neste arquivo |
+| Relatório | `RelatorioMotor` (relatório NBR do motor) + anexo das placas pela mesma ponte (`AnexoPlacasEsp`, `PlacaPior` desviado) |
+| Dimensionar | `DimensionarEspacial`: por barra com perfil do catálogo do motor, taxa > 1 sobe na família e taxa < 0,75 tenta o mais leve com massa ≥ massa·taxa/0,9; um PUT + F5 por rodada (até 8). Cada rodada é um Ctrl+Z. ponytail: palpite por massa, não ótimo global |
+| Verificação de barras, Verificar barra, Estabilidade | as janelas do motor sobre o cálculo do documento (`GarantirCalculoEsp`: F5 se ainda não calculou) |
+
+Removido da interface (só fazia sentido no 2D): grupos Desenhar 2D, Barra contínua, Apoios 2D, Seções e materiais 2D,
+cargas Fx/Fy/Mz e qx/qy, Peso próprio e Timoshenko do 2D, seletor de motor, critérios "n" e flecha L/, eletrodo das soldas
+2D, Exportar CSV, Mostrar Reações/Valores/Nomes, botão "Vista 3D", abas contextuais Barra e Nó, menu de contexto 2D,
+Inspector 2D (sobrou só quando nenhum modelo está aberto) e as ferramentas 2D de `Acoes.cs`.
 
 ## De onde vem
 
@@ -165,7 +204,7 @@ Uma chamada `POST /api/modelo/lote` com uma carga distribuída uniforme `(0, 0, 
 - Vista › Mostrar › **Cargas** liga/desliga no 2D e na Vista3D. Funciona no analítico e no **Realista** (lá a ponta para na face do
   perfil, meia largura da seção para fora do eixo). No plano isolado, só as cargas do que está na vista.
 - Sem rótulo de valor (kN) nas setas: os valores ficam no painel Propriedades.
-## Desenhar no 3D (Modelo › Desenhar 3D)
+## Desenhar no 3D (Modelo › Barras)
 
 Código: camada de entrada de `codigo/Estructto/Vista3D.cs` (o host fica no `partial MainWindow` do mesmo arquivo; em
 `DocumentoEspacial.cs` só a palavra `partial`). Capturas: `43-desenho3d-*` (`Capturas.CapturasDesenho3D`; só elas:
@@ -177,7 +216,7 @@ No documento espacial o grupo **Desenhar 3D** (Selecionar, Barra, Pilar) substit
 
 | Ferramenta | Uso |
 |---|---|
-| Navegar (nenhuma ligada) | clique escolhe (Propriedades), arrastar com o esquerdo orbita |
+| Navegar (nenhuma ligada) | clique escolhe (Propriedades); arrastar = janela/cruzamento; Shift + arrastar orbita |
 | Selecionar | clique escolhe; arrastar da esquerda p/ direita = janela (só o que está inteiro dentro), da direita p/ esquerda = cruzamento (o que tocar); Shift soma, Ctrl tira, Esc limpa |
 | Barra | cliques em sequência no plano de trabalho; a corrente segue do último ponto; Esc, Enter vazio ou botão direito termina |
 | Pilar | clique o ponto: num nível com outro abaixo, desce até ele; no nível mais baixo, sobe até o próximo; no topo sem nível acima, a altura do último andar; sem níveis, 3 m (ver "Níveis e planos") |
@@ -234,6 +273,18 @@ do usuário e confere as contagens em cada passo:
 | Carga em área 4 kN/m² no nível 9 (vigas em X) + 1 nodal + 1 pontual | 6 vigas, Σ q·L = 480 kN = p·A; 8 setas do caso G na vista |
 | F5, aproveitamento no analítico e no Realista com as setas | 54 barras verificadas |
 
+### 54-a1: produto 3D único (`CapturasA1.cs`; só ela: `ESTRUCTTO_CAPTURAS=a1`; resumo `54-a1.txt`)
+
+| Passo | Confere |
+|---|---|
+| Abre `exemplos/guincho-com-placa.estructto` (XML antigo) | documento 3D convertido, 4 nós, 3 barras, placa trazida |
+| `L`, Shift + arrastar (`SimularOrbita`) | a Barra continua ligada depois da órbita |
+| `TOPO`, `L`, `0,0,5`, `@2,0,0` | barra de 2,000 m criada pela linha de comando; Esc em cascata |
+| grip da ponta + `@0,0,1` | nó a z = 6 |
+| `GR` (3 × 2, níveis 0; 2,5; 5), `NIVEL +` | 2 pavimentos novos, plano em z = 2,5 |
+| ViewCube (canto), perspectiva, F5 | vista "Topo frente direita", calculado |
+| salvar `.estructto` e reabrir | contêiner v3 com modelo, placas e grade |
+
 ## Falta
 
 - Desenhar max e min juntos na envoltória (hoje uma curva por barra).
@@ -241,3 +292,96 @@ do usuário e confere as contagens em cada passo:
 - Desenhar 3D: sem atração a interseção/perpendicular/extensão nem rastreamento (o 2D tem); o material da barra nova não
   segue a seção escolhida.
 - Setas das cargas sem rótulo de valor; cargas da combinação mostrada (fatoradas) não são desenhadas, só as do caso ativo.
+- A1 (3D único): `RO` gira só em torno do eixo vertical e `MI` espelha em plano vertical (linha em planta); `TR`/`EX` usam
+  as retas das barras (não planos nem o contorno do perfil); F4 não é o 3D OSNAP e F6 (UCS dinâmico) não existe; o ponto
+  cardinal desloca o perfil no Realista (Render3D e nativo; docs/v3/RENDER.md); Dimensionar = um Ctrl+Z por rodada; a placa de base só
+  vê flexão no eixo forte e "Aplicar também em" só no próprio nó.
+
+## Navegação (como AutoCAD/Plant 3D) — `Vista3D.Navegacao.cs`, `ViewCube.cs`
+
+| Ação | Mouse / teclado |
+|---|---|
+| Órbita | **Shift + botão do meio** ou **Shift + botão esquerdo** (touchpad) arrastando. Transparente: não cancela o comando em curso (elástico e atração continuam). Restrita: horizontal = azimute em torno do Z, vertical = elevação (±90°). Pivô: centro da seleção; sem seleção, o ponto do modelo sob o cursor; sem nada, o centro do modelo (esfera escura enquanto orbita) |
+| Pan | botão do meio arrastando |
+| Zoom | roda, no cursor; **duplo clique do meio** = enquadrar (também `Z`, F4) |
+| Escolher | clique; esquerdo arrastando = janela (esq.→dir.) ou cruzamento (dir.→esq.); Shift soma, Ctrl tira |
+| Botão direito (sem arrastar) | Enter: termina a corrente da barra ou o comando que pede objetos. Shift/Ctrl + direito = menu de snap único (Snap3D) |
+| ViewCube | canto superior direito: 26 regiões (faces = vistas ortogonais, arestas, cantos), casinha = isométrica, arrastar o cubo orbita e encaixa a 10° de uma das 26 vistas; embaixo o nome da vista e **Ortográfica/Perspectiva** |
+| Vistas | `TOPO`/`PLANTA`, `FRENTE`, `LADO`, `ISO`; Ctrl + teclado numérico 7/1/3/5; aba Vista. Transição de 300 ms (CubicEase, desligada com `Anim.Ligado`) |
+| Projeção | `PERSP` ou Vista › Perspectiva ou o ViewCube. `Tela`, `Raio` e `NoPlano` valem nas duas; o Snap3D projeta com `Tela` na perspectiva |
+
+## Linha de comando e teclado — `Comandos3D.cs`
+
+Letras digitadas com o mouse na vista vão para a linha de comando; Enter ou Espaço executa. **Enter/Espaço com a linha vazia
+repete o último comando.** Com uma ferramenta ou pedido de ponto em curso, números, vírgula e `@` vão para a entrada dinâmica;
+digitados na linha de comando, valem como ponto (`x,y,z`, `@dx,dy,dz`, `#x,y,z`, `L<ângulo` — `Snap3D.LerCoordenada`) ou
+comprimento na direção do cursor. `END`, `MID`, `INT`… = snap único (Vista3D.Snap.cs).
+
+| Alias | Comando |
+|---|---|
+| `L`, `B`, `LINE`, `VG` | Barra (cadeia de cliques; Enter/Esc/direito termina) |
+| `PI`, `PL` | Pilar (altura pelos níveis) |
+| `S`, `SEL` | Selecionar |
+| `M`, `CO`, `MI`, `RO` | Mover / Copiar (vários, base fixa) / Espelhar (dois pontos da linha, em planta) / Rotacionar (base + ângulo digitado ou direção clicada). Escolha antes ou depois (clique soma; Enter termina a escolha) |
+| `AR`, `DIV`, `J` | Matriz, Dividir barra, Unir nós (painéis de `EdicaoEspacial.cs`) |
+| `TR`, `EX` | Aparar / Estender: barra limite e depois as barras (cruzamento das retas a até 1 cm; aparar tira o lado clicado; estender leva a ponta mais perto do clique). Nó compartilhado ganha nó novo para só esta barra mudar |
+| `E`, `DEL`, Del | Apagar a seleção (nó leva as barras; pontas soltas somem) |
+| `PR`, Ctrl+1 | Propriedades (várias escolhidas: em lote) |
+| `MA` | Copiar perfil, material e giro de uma barra para outras |
+| `DI`, `ME`, `MEDIR`, Ctrl+M | Medir 3D (Medir3D.cs) |
+| `ID` | Coordenadas de um ponto |
+| `Z`, `ZE`, `Z O`/`ZO` | Enquadrar; zoom na seleção |
+| `GR` | Grade estrutural |
+| `U`, `REFAZER` | Desfazer / refazer (Ctrl+Z / Ctrl+Y) |
+| `CALC` (F5, Ctrl+F9), `DIMENSIONAR`, `PLACA`, `RELATORIO`, `CASOS`, `TABELAS` | |
+| `ENGASTE`, `ROTULA`, `LIVRE`, `ROTULAR`/`RB` | Apoio nos nós escolhidos; rótulas nas duas pontas das barras |
+| `N`, `Q`, `MOMENTO`, `DEF`, `CALOR` | Diagramas |
+| `ORTO`, `POLAR`, `OSNAP`, `NIVEL +`/`NIVEL -`, `PERSP`, `REALISTA`, `SELTODAS`, `SELNOS`, `SELBASE`, `ABA`, `AJUDA`/`?` | |
+
+**Esc em cascata:** texto digitado > comprimento/ângulo travado > grip quente > comando que pede ponto/objeto > corrente da
+barra > ferramenta (volta a Selecionar) > seleção.
+
+**Teclas de função:** F1 ajuda, F2 histórico, F3 snap a objetos, F4 enquadrar (ponytail: no AutoCAD é o 3D OSNAP), F5
+calcular (o atalho que o usuário já usa; Ctrl+F9 também), F6 avisa que o UCS dinâmico não existe, F7 grade do plano, F8 ORTO,
+F9 snap na grade, F10 polar, F11 rastreamento, F12 entrada dinâmica. **PgUp/PgDn**: plano de trabalho no nível acima/abaixo
+(pavimentos + Térreo + níveis da grade). Ctrl+R durante o desenho: +90° no giro das próximas barras.
+
+## Grips — `Vista3D.Grips.cs`
+
+Com barras ou nós escolhidos aparecem □ azuis nas pontas e nos nós e □ menores no meio das barras (sob o mouse vermelho
+claro; quente vermelho). Clique (ou arraste) no grip e clique o destino — com atração, ORTO e `@dx,dy,dz`/`x,y,z` digitados.
+Ponta/nó: move o nó (as barras ligadas vão junto; funde com nó a 1 mm). Meio: move a barra. **Ctrl** no destino copia: da
+ponta sai uma barra nova da outra ponta até o destino; do meio, uma cópia da barra; de nó solto, um nó novo. Um PUT = um
+Ctrl+Z (`GeometriaEdicao.Mover/Copiar`).
+
+## Grade estrutural — `GR`
+
+Diálogo com eixos em X, filas em Y e níveis em Z na sintaxe do Plant 3D (`0,@6,@6,@7.5`; `GeometriaEdicao.LerCotas`).
+Nomes 1, 2, 3… e A, B, C…; linhas traço-ponto com balões no nível do plano de trabalho; os cruzamentos entram como pontos de
+atração do Snap3D; cada nível acima de 0 sem pavimento vira pavimento (um lote, um Ctrl+Z). Guardada no contêiner.
+
+## Configurações (Member Settings) e Chapas
+
+Aba Modelo › Configurações: **Seção** (modelo + catálogo do motor), **Material**, **Giro (°)** (`rot` da barra) e **Cardinal**
+(1..9 da caixa da seção como o teclado numérico, 10 = centroide; guardado por barra em `DocumentoEspacial.Cardinais` e
+entregue ao desenho em `Barra3D.Cardinal` — o Realista desloca o perfil (`GeometriaPerfis.Cardinal`); a análise usa o eixo),
+**Apoio na base**. Chapas: o motor não tem elemento de placa; **Laje** abre a carga em área (painel Propriedades sem escolha).
+
+## Snap e Medir (worktree wt-snap)
+
+`Vista3D.Snap.cs`, `Snap3D.cs`, `Medir3D.cs`: `AtualizarCursor` chama `AtrairSnap`. O estado OSNAP/ORTO/Polar/Rastreio é do
+`Snap3D` (`AplicarStatus`); F3/F8/F10/F11, os comandos e os botões do rodapé passam por ele. Os cruzamentos da grade
+estrutural entram na geometria de atração. `MostrarGradePlano` (F7) e `EntradaDinamica` (F12) são da Vista3D.
+
+## Pontos de entrada (tela inicial, novo arquivo, Arquivo)
+
+Para quem monta a tela inicial, o fluxo de "novo arquivo" e o menu Arquivo (worktree `wt-inicio`). Todos em `MainWindow`
+(`DocumentoEspacial.cs`); cada documento abre numa aba nova da barra de arquivos.
+
+| Membro | Faz |
+|---|---|
+| `Task NovoDocumento(JsonObject modelo = null, string titulo = null, bool silencioso = false)` | documento novo. `modelo` = JSON do motor (mesmo formato de `GET /api/modelo`; serve de gabarito) ou `null` = em branco. Abre em planta (vista de topo), plano de trabalho no térreo, ferramenta Selecionar. `silencioso` = erro do motor só na barra de status |
+| `Task AbrirArquivo(string caminho)` | abre qualquer arquivo como documento 3D: `.estructto` (contêiner novo ou XML antigo, convertido), `.portico`, `.ftl`, `.json` do motor, `.ed3` do CYPE. Se já estiver aberto, só troca de aba |
+| `IReadOnlyList<string> ArquivosRecentes` | últimos arquivos abertos/salvos, o mais recente primeiro (`Config.Recentes`) |
+
+Também existem `NovoEmBranco()` (= `NovoDocumento()`), `AbrirGerador3D(tipo)` e `AbrirExemplosEspaciais()`.

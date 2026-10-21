@@ -2,13 +2,8 @@
 
 ## Calcular
 
-**F5** ou o botão Calcular na barra de acesso rápido. No documento 2D o cálculo interno também é refeito a cada alteração.
+**F5** (ou Ctrl+F9, `CALC`) ou o botão Calcular na barra de acesso rápido. O cálculo é sempre o do motor Python.
 Corrija os avisos do modelo antes de calcular; sem isso o cálculo não roda.
-
-## Opções
-
-- **Deformação por cortante**: liga a viga de Timoshenko. Desligado, Euler-Bernoulli.
-- **Motor**: Interno ou Python. Ver [primeiros passos](01-primeiros-passos.md).
 
 ## Resultado mostrado
 

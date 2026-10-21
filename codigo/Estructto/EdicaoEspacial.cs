@@ -325,6 +325,88 @@ namespace NovoFtool
             foreach (string l in new[] { "cargas_distribuidas", "cargas_pontuais" })
                 if (m[l] is JsonArray a) foreach (var c in a.OfType<JsonObject>().Where(c => (string)c["barra"] == id).ToList()) a.Remove(c);
         }
+
+        // ---------- comandos CAD (Comandos3D.cs) ----------
+
+        // Apaga as barras e os nós escolhidos (nó leva as barras ligadas). Pontas que ficaram sem barra somem também; cargas vão junto.
+        public static JsonObject Apagar(JsonObject m, IEnumerable<string> nos, IEnumerable<string> barras)
+        {
+            var B = Col(m, "barras"); var N = Col(m, "nos");
+            var sn = new HashSet<string>((nos ?? new string[0]).Where(N.ContainsKey));
+            var sb = new HashSet<string>((barras ?? new string[0]).Where(B.ContainsKey));
+            foreach (var kv in B) if (sn.Contains((string)kv.Value["ni"]) || sn.Contains((string)kv.Value["nj"])) sb.Add(kv.Key);
+            var pontas = sb.SelectMany(b => new[] { (string)B[b]["ni"], (string)B[b]["nj"] }).ToHashSet();
+            foreach (string b in sb) RemoverBarra(m, b);
+            var usados = B.SelectMany(kv => new[] { (string)kv.Value["ni"], (string)kv.Value["nj"] }).ToHashSet();
+            foreach (string n in sn.Concat(pontas.Where(p => !usados.Contains(p))).ToList()) RemoverNo(m, n);
+            return m;
+        }
+
+        static void RemoverNo(JsonObject m, string id)
+        {
+            Col(m, "nos").Remove(id);
+            if (m["cargas_nodais"] is JsonArray a) foreach (var c in a.OfType<JsonObject>().Where(c => (string)c["no"] == id).ToList()) a.Remove(c);
+        }
+
+        // Leva a ponta `no` da barra até p (aparar/estender). Nó só desta barra = move o nó; nó compartilhado = a barra ganha
+        // nó novo (as outras barras ficam). Nó existente a 1 mm de p = reaproveitado.
+        public static JsonObject MoverPonta(JsonObject m, string barra, string no, double[] p)
+        {
+            var B = Col(m, "barras"); var N = Col(m, "nos");
+            string k = (string)B[barra]["ni"] == no ? "ni" : "nj";
+            string existe = Achar(N, p, x => x != no);
+            bool soDela = B.Count(kv => kv.Key != barra && ((string)kv.Value["ni"] == no || (string)kv.Value["nj"] == no)) == 0;
+            if (existe != null) { B[barra][k] = existe; if (soDela) RemoverNo(m, no); }
+            else if (soDela) Pos(N[no], p);
+            else
+            {
+                string novo = new Ids(N, "N").Novo();
+                var o = new JsonObject { ["id"] = novo }; Pos(o, p); N[novo] = o;
+                B[barra][k] = novo;
+            }
+            Limpar(m);
+            return m;
+        }
+
+        // Retas AB e CD (infinitas): ponto de AB mais próximo de CD e o parâmetro t em AB, se as retas passam a até `tol` uma
+        // da outra. null = paralelas ou reversas além da tolerância.
+        public static (double[] P, double T)? Cruzamento(double[] a, double[] b, double[] c, double[] d, double tol = 0.01)
+        {
+            double[] u = { b[0] - a[0], b[1] - a[1], b[2] - a[2] }, v = { d[0] - c[0], d[1] - c[1], d[2] - c[2] }, w = { a[0] - c[0], a[1] - c[1], a[2] - c[2] };
+            double Dot(double[] x, double[] y) => x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+            double uu = Dot(u, u), uv = Dot(u, v), vv = Dot(v, v), uw = Dot(u, w), vw = Dot(v, w), den = uu * vv - uv * uv;
+            if (uu < 1e-18 || vv < 1e-18 || Math.Abs(den) < 1e-12 * uu * vv) return null;
+            double s = (uv * vw - vv * uw) / den, t = (uu * vw - uv * uw) / den;
+            double[] p = { a[0] + s * u[0], a[1] + s * u[1], a[2] + s * u[2] }, q = { c[0] + t * v[0], c[1] + t * v[1], c[2] + t * v[2] };
+            return Dist(p, q) <= tol ? (p, s) : ((double[], double)?)null;
+        }
+
+        // Espelho no plano vertical que contém a reta (a, b) da planta (MI do AutoCAD).
+        public static Transf EspelhoReta(double ax, double ay, double bx, double by)
+        {
+            double dx = bx - ax, dy = by - ay, l = Math.Sqrt(dx * dx + dy * dy); dx /= l; dy /= l;
+            double[] R(double x, double y) { double t = x * dx + y * dy; return new[] { 2 * t * dx - x, 2 * t * dy - y }; }
+            return new Transf
+            {
+                P = p => { var r = R(p[0] - ax, p[1] - ay); return new[] { ax + r[0], ay + r[1], p[2] }; },
+                V = v => { var r = R(v[0], v[1]); return new[] { r[0], r[1], v[2] }; },
+                Reflete = true,
+            };
+        }
+
+        // "0,@6,@6,@7.5" (grade estrutural, sintaxe do Plant 3D): vírgula separa, @ = relativo ao anterior, ponto decimal.
+        public static double[] LerCotas(string s)
+        {
+            var r = new List<double>();
+            foreach (string t0 in (s ?? "").Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string t = t0.Trim(); bool rel = t.StartsWith("@"); if (rel) t = t.Substring(1);
+                if (!double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v) || !double.IsFinite(v))
+                    throw new FormatException("valor inválido: " + t0 + " (use 0,@6,@6 com ponto decimal)");
+                r.Add(rel && r.Count > 0 ? r[^1] + v : v);
+            }
+            return r.ToArray();
+        }
     }
 
     // ================= documento: uma operação = um PUT /api/modelo = um desfazer =================
@@ -648,6 +730,24 @@ namespace NovoFtool
                && Perto((double)m12["barras"]["B1"]["rot"], Math.PI / 2) && (string)m12["barras"]["B3"]["secao"] == "V" && (string)m12["barras"]["B3"]["material"] == "A");
             var m13 = GeometriaEdicao.Propriedades(Portico(), new[] { "N3" }, sem, null, null, null, new[] { true, true, true, false, false, false });
             Ok("propriedades: apoio só no nó escolhido", (bool)m13["nos"]["N3"]["apoio"][2] && !(bool)m13["nos"]["N3"]["apoio"][3] && (bool)m13["nos"]["N1"]["apoio"][3]);
+
+            // comandos CAD (Comandos3D.cs)
+            var m14 = GeometriaEdicao.Apagar(Portico(), sem, new[] { "B3" });
+            Ok("apagar viga: 4 nós (pontas ainda usadas), 2 barras, cargas da viga somem", Nn(m14) == 4 && Nb(m14) == 2 && Nc(m14, "cargas_distribuidas") == 0 && Nc(m14, "cargas_pontuais") == 0);
+            var m15 = GeometriaEdicao.Apagar(Portico(), new[] { "N3" }, sem);
+            Ok("apagar nó N3: leva B1 e B3, N1 fica sem barra e some, carga nodal some", Nn(m15) == 2 && Nb(m15) == 1 && Nc(m15, "cargas_nodais") == 0);
+            var x1 = GeometriaEdicao.Cruzamento(new double[] { 0, 0, 3 }, new double[] { 4, 0, 3 }, new double[] { 6, -1, 0 }, new double[] { 6, 1, 6 });
+            Ok("cruzamento: viga (0..4) com pilar inclinado por (6,0,3) → (6,0,3), t = 1,5", x1 != null && Perto(x1.Value.P[0], 6) && Perto(x1.Value.P[2], 3) && Perto(x1.Value.T, 1.5));
+            Ok("cruzamento: reversas a 1 m → null", GeometriaEdicao.Cruzamento(new double[] { 0, 0, 0 }, new double[] { 1, 0, 0 }, new double[] { 0, 0, 1 }, new double[] { 0, 1, 1 }) == null);
+            var m16 = GeometriaEdicao.MoverPonta(Portico(), "B3", "N4", new[] { 4.0, 0, 3 });
+            Ok("aparar: ponta compartilhada vira nó novo em (4,0,3); B2 continua em N4", Nn(m16) == 5 && NoEm(m16, 4, 0, 3) != null && (string)m16["barras"]["B2"]["nj"] == "N4" && (string)m16["barras"]["B3"]["nj"] != "N4");
+            var m17 = Portico(); m17["barras"].AsObject().Remove("B2");
+            GeometriaEdicao.MoverPonta(m17, "B3", "N4", new[] { 8.0, 0, 3 });
+            Ok("estender: ponta só desta barra move o nó", Nn(m17) == 4 && Perto((double)m17["nos"]["N4"]["x"], 8));
+            var esp = GeometriaEdicao.EspelhoReta(0, 0, 1, 1).P(new double[] { 2, 0, 5 });
+            Ok("espelho na reta y = x: (2,0,5) → (0,2,5)", Perto(esp[0], 0) && Perto(esp[1], 2) && Perto(esp[2], 5));
+            var cot = GeometriaEdicao.LerCotas("0,@6,@6,@7.5");
+            Ok("grade 0,@6,@6,@7.5 → 0 6 12 19,5", cot.Length == 4 && Perto(cot[3], 19.5) && Perto(cot[1], 6));
 
             sb.AppendLine(falhas == 0 ? "TODOS PASSARAM" : falhas + " FALHA(S)");
             return sb.ToString();

@@ -1,45 +1,32 @@
 # 8. Aba Vista
 
-## Navegar
-
-| Ação | Como |
-|---|---|
-| Enquadrar | Botão, F4, ou duplo clique na roda |
-| Aproximar / Afastar | Botões, ou roda do mouse (zoom no cursor) |
-| Pan | Botão do meio ou direito arrastando |
-| **Vista 3D** | Alterna entre o desenho 2D e a vista 3D |
-
-## Vista 3D
-
-Câmera ortográfica (captura 40-vista3d-iso).
+## Navegar (como no AutoCAD / Plant 3D)
 
 | Ação | Mouse / teclado |
 |---|---|
-| Órbita | Botão esquerdo arrastando, ou Shift + meio |
-| Pan | Botão do meio ou direito |
-| Zoom | Roda |
-| Escolher barra ou nó | Clique (abre o Inspector) |
-| Topo / Frente / Lado / Iso | Seletor no canto superior direito |
+| Órbita | **Shift + botão do meio** ou **Shift + botão esquerdo** arrastando (não interrompe o comando) |
+| Pan | Botão do meio arrastando |
+| Zoom | Roda, no cursor |
+| Enquadrar | Duplo clique na roda, `Z` + Enter, F4 ou o botão |
+| Zoom na seleção | `ZO` ou o botão |
+| Topo, Frente, Lado, Isométrica | Botões, `TOPO`/`FRENTE`/`LADO`/`ISO`, Ctrl + teclado numérico 7/1/3/5 |
+| ViewCube | Canto superior direito: clique numa face, aresta ou canto (26 vistas), casinha = isométrica, arraste o cubo para orbitar |
+| Perspectiva | Botão, `PERSP` ou "Ortográfica ▾" sob o ViewCube |
 
-O HUD escolhe o que aparece: diagrama (N, V, M), deformada com escala, mapa de aproveitamento
-(capturas 40-vista3d-momento, 40-vista3d-deformada, 40-vista3d-aproveitamento). No documento espacial a vista 3D está sempre ligada
-e mostra o resultado do motor, com legenda de máximo e mínimo (capturas 41-espacial-aproveitamento, 41-espacial-combinacao).
-
-Limites: a deformada é desenhada em cordas entre os nós deslocados (sem a elástica dentro da barra); a seção é um prisma
-quadrado fino, não o perfil real; os diagramas 3D não mostram envoltória (uma curva por barra).
+O HUD escolhe o que aparece: diagrama (N, V, M), deformada com escala, mapa de aproveitamento, com legenda de máximo e
+mínimo (capturas 03-deformada a 06-momento, 36-mapa-calor).
 
 ## Vista Realista
 
-Não existe na versão atual. O código e a documentação em `docs/VISTA3D.md` não registram um modo Realista (seção real
-extrudada, sombras). Quando existir, esta seção será atualizada.
+Perfis reais extrudados, aço e concreto, luz, sombra no chão e arestas (capturas 42-realista-*). Botão **Realista** ou `REALISTA`.
 
 ## Mostrar
 
-**Reações**, **Valores** (nos diagramas), **Cargas**, **Nomes** (perfil e comprimento). Todos ligados por padrão.
+**Cargas** (setas do caso ativo).
 
 ## Grade
 
-**Passo da grade (m)**: espaçamento da grade de desenho (padrão 0,5).
+**Passo da grade (m)**: espaçamento da grade do plano de trabalho (padrão 1). F7 mostra/esconde, F9 liga a atração nela.
 
 ## Painéis
 

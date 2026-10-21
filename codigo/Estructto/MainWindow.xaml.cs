@@ -18,13 +18,12 @@ namespace NovoFtool
     {
         readonly Dictionary<Ferramenta, List<F.ToggleButton>> btnFerr = new Dictionary<Ferramenta, List<F.ToggleButton>>();
         readonly Dictionary<Diagrama, F.ToggleButton> btnDiag = new Dictionary<Diagrama, F.ToggleButton>();
-        F.ToggleButton tgReac, tgValores, tgCargas, tgNomes, tgPeso, tgTimo, tgEixoFraco;
+        F.ToggleButton tgCargas;
         System.Windows.Controls.Primitives.ToggleButton stGrade, stAtrair, stOrto, stPolar, stObj;
-        F.TextBox cFx, cFy, cMz, cQx, cQy, cQi, cQf, cGrade, cSeg, cFlecha;
-        F.ComboBox cbFamilia, cbSecao, cbMaterial;
+        F.TextBox cGrade;
         internal HudVista Hud;
         F.ToggleButton tgCalor;
-        internal F.RibbonTabItem abaModelo, abaAnalise, abaDimens, ctxBarra, ctxNo;
+        internal F.RibbonTabItem abaModelo, abaAnalise, abaDimens;
 
         public MainWindow()
         {
@@ -72,14 +71,18 @@ namespace NovoFtool
             Vista.SizeChanged += (s, e) => Hud.Compacto = Vista.ActualHeight < 340;
             HistBtn.Click += (s, e) => { bool abrir = HistoricoCaixa.Visibility != Visibility.Visible; HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed; HistBtn.Content = abrir ? "▾" : "▴"; Comando.Focus(); };
             NovoModelo(new Modelo(), null);
-            Loaded += (s, e) => { Vista.ZoomTudo(); Vista.Focus(); if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-motor="))) OferecerRecuperacao(); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
+            Loaded += (s, e) => { Vista.ZoomTudo(); FocarVista(); if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-motor="))) OferecerRecuperacao(); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
             Log("Bem-vindo. Escolha uma ferramenta na faixa, use Modelo › Gerar estrutura ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
+            Loaded += (s, e) => AplicarModoEspacial();   // só existe vista 3D (docs/MODELO-ESPACIAL.md)
+            AbaSoldas.Visibility = Visibility.Collapsed;   // soldas das pontas das barras eram do cálculo 2D (Nucleo.cs)
             if (Capturas.Configurar(this, args)) return;
             string arqInicial = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--") && File.Exists(a));
             if (arqInicial != null)
                 Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => Abrir(arqInicial)), System.Windows.Threading.DispatcherPriority.Loaded);
+            else if (!args.Any(a => a.StartsWith("--")))   // como o AutoCAD: abre com um desenho em branco (em planta, no térreo)
+                Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => _ = NovoEmBranco(true)), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             foreach (string a in args)   // --teste-motor=<saida.png>: Verificação de barras ao vivo pelo botão da faixa (FaixaMotor.cs)
                 if (a.StartsWith("--teste-motor=")) Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => TesteMotor(a.Substring(14).Trim('"'))), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             foreach (string a in args)
@@ -215,7 +218,7 @@ namespace NovoFtool
             };
             Tamanho(b, pequeno);
             if (keytip != null) F.KeyTip.SetKeys(b, keytip);
-            b.Click += (s, e) => { acao(); Vista.Focus(); };
+            b.Click += (s, e) => { acao(); FocarVista(); };
             Reg(icone, texto, atalho, dica, acao);
             return b;
         }
@@ -228,30 +231,15 @@ namespace NovoFtool
                 Size = pequeno ? F.RibbonControlSize.Middle : F.RibbonControlSize.Large, ToolTip = Dica(texto, dica)
             };
             Tamanho(b, pequeno);
-            b.Click += (s, e) => { acao(b.IsChecked == true); Vista.Focus(); };
+            b.Click += (s, e) => { acao(b.IsChecked == true); FocarVista(); };
             Reg(icone, texto, null, dica, () => { b.IsChecked = !(b.IsChecked == true); acao(b.IsChecked == true); });
-            return b;
-        }
-
-        F.ToggleButton BotaoFerramenta(string icone, string texto, Ferramenta f, string dica, string atalho = null, bool pequeno = false)
-        {
-            var b = new F.ToggleButton
-            {
-                Header = texto, LargeIcon = Icone(icone, 32), Icon = Icone(icone, 16), Tag = f,
-                Size = pequeno ? F.RibbonControlSize.Middle : F.RibbonControlSize.Large, ToolTip = Dica(texto, dica, atalho)
-            };
-            Tamanho(b, pequeno);
-            b.Click += (s, e) => { AcionarFerramenta(f); Vista.Focus(); };
-            Reg(icone, texto, atalho, dica, () => AcionarFerramenta(f));
-            if (!btnFerr.ContainsKey(f)) btnFerr[f] = new List<F.ToggleButton>();
-            btnFerr[f].Add(b);
             return b;
         }
 
         F.ToggleButton BotaoDiagrama(string icone, string texto, Diagrama d, string dica, string atalho)
         {
             var b = new F.ToggleButton { Header = texto, LargeIcon = Icone(icone, 32), Icon = Icone(icone, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(texto, dica, atalho) };
-            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? d : Diagrama.Nenhum); Vista.Focus(); };
+            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? d : Diagrama.Nenhum); FocarVista(); };
             Reg(icone, texto, atalho, dica, () => AlternarDiagrama(d));
             btnDiag[d] = b;
             return b;
@@ -261,7 +249,7 @@ namespace NovoFtool
         {
             var b = new F.ToggleButton { Header = "Mapa de aproveitamento", LargeIcon = Icone("verif", 32), Icon = Icone("verif", 16), Size = F.RibbonControlSize.Middle, ToolTip = Dica("Mapa de aproveitamento", "Colore as barras pelo aproveitamento: verde até 75%, ciano até 90%, âmbar até 100%, vermelho acima, com selo ⚠/✕ nas críticas.", "V ou CALOR + Enter") };
             Tamanho(b, true);
-            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? Diagrama.Verificacao : Diagrama.Nenhum, b.IsChecked == true); Vista.Focus(); };
+            b.Click += (s, e) => { MostrarDiagrama(b.IsChecked == true ? Diagrama.Verificacao : Diagrama.Nenhum, b.IsChecked == true); FocarVista(); };
             Reg("verif", "Mapa de aproveitamento", "V + Enter", "Colore as barras pelo aproveitamento.", () => Executar("CALOR"));
             return b;
         }
@@ -292,201 +280,146 @@ namespace NovoFtool
         void MontarFaixa()
         {
             // barra de acesso rapido (Calcular fica sempre visivel aqui, nao em abas)
-            var qNovo = Botao("novo", "Novo", Novo, "Cria um novo modelo em branco em uma nova aba.", "Ctrl+N");
-            var qAbrir = Botao("abrir", "Abrir", AbrirDialogo, "Abre um arquivo de modelo (.estructto, .portico ou .ftl do Ftool).", "Ctrl+O");
-            var qSalvar = Botao("salvar", "Salvar", () => Salvar(false), "Salva as alterações do modelo atual no arquivo.", "Ctrl+S");
-            var qDesf = Botao("desfazer", "Desfazer", Desfazer, "Desfaz a última alteração feita no modelo.", "Ctrl+Z");
+            var qNovo = Botao("novo", "Novo", Novo, "Novo modelo em branco (3D, em planta no térreo) numa aba nova.", "Ctrl+N");
+            var qAbrir = Botao("abrir", "Abrir", AbrirDialogo, "Abre .estructto (os antigos, 2D, são convertidos para 3D), .json do motor, .ed3 do CYPE ou .ftl do Ftool.", "Ctrl+O");
+            var qSalvar = Botao("salvar", "Salvar", () => Salvar(false), "Salva no formato .estructto (modelo do motor + placas de base + grade).", "Ctrl+S");
+            var qDesf = Botao("desfazer", "Desfazer", Desfazer, "Desfaz a última alteração feita no modelo.", "Ctrl+Z / U");
             var qRef = Botao("refazer", "Refazer", Refazer, "Refaz a última alteração desfeita.", "Ctrl+Y");
-            var qCalc = Botao("calc", "Calcular", Calcular, "Calcula a estrutura. O cálculo também é refeito automaticamente a cada alteração.", "F5");
+            var qCalc = Botao("calc", "Calcular", Calcular, "Calcula no motor Python: combinações NBR 8681 e verificação por norma.", "F5");
             foreach (var q in new[] { qNovo, qAbrir, qSalvar, qDesf, qRef, qCalc })
                 Faixa.QuickAccessItems.Add(new F.QuickAccessMenuItem { Target = q, IsChecked = true });
 
             // Abas na ordem do trabalho (docs/REVISAO-TELAS.md 3.2): Modelo, Ações, Análise, Dimensionamento, Ligações e bases, Relatório, Vista.
-            // MODELO: gerar, desenhar, modificar, barra continua, apoios e vinculos, secao e material
-            cbSecao = new F.ComboBox { Header = "Seção", IsEditable = true, Width = 240, ToolTip = Dica("Seção", "Perfil do catálogo, ou digite: \"Ret 20x50\" (cm), \"Circ 30\" (cm), \"A=45,7 I=3437\" (cm², cm4), \"TC 48.3x3.7\" ou \"TR 100x50x3\" (mm).") };
-            // familia (classe) filtra a lista de secoes: evita uma lista unica com todos os perfis
-            cbFamilia = new F.ComboBox { Header = "Família", IsEditable = false, Width = 240, ToolTip = Dica("Família", "Tipo de perfil (W, tubos, cantoneiras, U...). Filtra a lista de seções ao lado.") };
-            cbFamilia.Items.Add("Todas");
-            foreach (string f in Biblioteca.Familias) cbFamilia.Items.Add(f);
-            cbFamilia.SelectionChanged += (s, e) =>
-            {
-                string txt = cbSecao.Text;
-                cbSecao.Items.Clear();
-                string fam = cbFamilia.SelectedIndex > 0 ? (string)cbFamilia.SelectedItem : null;
-                foreach (Secao sc in Biblioteca.Perfis) if (fam == null || sc.Familia == fam) cbSecao.Items.Add(sc.Nome);
-                Secao at = Biblioteca.AcharSecao(txt);
-                cbSecao.Text = fam == null || (at != null && at.Familia == fam) || cbSecao.Items.Count == 0 ? txt : (string)cbSecao.Items[0];
-            };
-            cbSecao.Text = Biblioteca.Perfis.Count > 0 ? "W 200 x 26,6" : "Ret 20x50";
-            Secao ini = Biblioteca.AcharSecao(cbSecao.Text);
-            cbFamilia.SelectedIndex = ini != null && ini.Familia != "" ? Math.Max(0, cbFamilia.Items.IndexOf(ini.Familia)) : 0;
-            if (cbSecao.Items.Count == 0) foreach (Secao s in Biblioteca.Perfis) cbSecao.Items.Add(s.Nome);
-            cbMaterial = new F.ComboBox { Header = "Material", IsEditable = true, Width = 240, ToolTip = Dica("Material", "Material da lista, ou digite \"E=25000\" (MPa).") };
-            foreach (Material m in Biblioteca.Materiais) cbMaterial.Items.Add(m.Nome);
-            cbMaterial.Text = Biblioteca.Materiais[0].Nome;
+            // MODELO, no fluxo de estruturas do Plant 3D (docs/v3/PESQUISA-PLANT.md 1): Grade, Barras (Member), Chapas (Plate),
+            // Modificar (Edit/Cut/Extend/Trim) e Configurações (Member Settings: seção, material, giro, ponto cardinal).
             abaModelo = Aba("Modelo", "M",
                 Grupo("Gerar",
-                    Botao("assist", "Gerar estrutura", () => AbrirAssistente(null), "Gera vigas contínuas, pórticos de vários andares, treliças e galpões a partir de poucas medidas."),
-                    Botao("3d", "Gerar 3D", () => AbrirGerador3D(), "Modelo espacial no motor Python: edifício, galpão ou pórtico 3D (abre numa aba nova, em 3D)."),
-                    Botao("cype", "Importar CYPE", () => ComandosAnalise.AbrirCype(this), "Importa um modelo do CYPE 3D (.ed3) ou compara os resultados do Estructto com os do CYPE (motor Python).")),
-                Grupo("Desenhar",
-                    BotaoFerramenta("sel", "Selecionar", Ferramenta.Selecionar, "Clique num nó ou barra. Arraste da esquerda p/ direita = janela (só o que está dentro); da direita p/ esquerda = cruzamento (o que tocar). Shift/Ctrl soma.", "Esc"),
-                    BotaoFerramenta("barra", "Barra", Ferramenta.Barra, "Clique os pontos em sequência. Digite um número para o comprimento exato na direção do mouse, ou x,y  @dx,dy  @L<ângulo. Botão direito ou Esc termina.", "B + Enter"),
-                    BotaoFerramenta("no", "Nó", Ferramenta.No, "Insere um nó; se cair sobre uma barra, divide a barra.", "NO + Enter", true),
-                    BotaoFerramenta("medir", "Medir", Ferramenta.Medir, "Mede a distância total, ΔX, ΔY e o ângulo entre dois pontos (encaixa nos nós e na grade). Clique no 1º e no 2º ponto; o 3º clique inicia nova medida e Esc cancela.", "Ctrl+M / DI", true)),
-                Grupo("Modificar",
-                    Botao("mover", "Mover", () => Transformar("mover", new[] { "MOVER" }), "Move os nós/barras selecionados por um deslocamento (dx, dy).", "MOVER dx dy", true),
-                    Botao("copiar", "Copiar", () => Transformar("copiar", new[] { "COPIAR" }), "Copia as barras selecionadas, uma ou várias vezes (matriz linear), com apoios e cargas.", "COPIAR dx dy vezes", true),
-                    Botao("espelhar", "Espelhar", () => Transformar("espelhar", new[] { "ESPELHAR" }), "Cria a cópia espelhada das barras selecionadas em relação a uma reta x = valor ou y = valor.", "ESPELHAR X valor", true),
-                    Botao("dividir", "Dividir barra", DividirSelecao, "Divide as barras selecionadas em partes iguais.", "DIVIDIR", true),
-                    Botao("apagar", "Apagar", Apagar, "Apaga os nós ou barras selecionados.", "Del", true)),
-                Grupo("Barra contínua",
-                    Botao("unir", "Unir trechos", UnirMembro, "Une os trechos selecionados numa barra contínua (uma peça só, mesmo dividida por nós): mesmo perfil, dimensionada junto. Selecione um trecho dela + barras novas para adicionar trechos.", "UNIR"),
-                    Botao("separar", "Separar tudo", SepararMembro, "Desfaz a barra contínua: cada trecho volta a ser uma barra independente. Tirar trecho e Selecionar a barra ficam no menu do botão direito.", "SEPARAR", true)),
-                Grupo("Apoios e vínculos",
-                    BotaoFerramenta("engaste", "Engaste", Ferramenta.ApoioEngaste, "Trava X, Y e giro. Com nós selecionados aplica neles; senão, clique nos nós."),
-                    BotaoFerramenta("rotula", "Fixo", Ferramenta.ApoioRotula, "Apoio de 2º gênero: trava X e Y."),
-                    BotaoFerramenta("rolo", "Móvel", Ferramenta.ApoioRoloV, "Apoio de 1º gênero: trava só Y (rolete)."),
-                    BotaoFerramenta("roloh", "Móvel horizontal", Ferramenta.ApoioRoloH, "Trava só o deslocamento horizontal (X).", null, true),
-                    BotaoFerramenta("livre", "Sem apoio", Ferramenta.ApoioLivre, "Remove o apoio e as molas do nó.", null, true),
-                    BotaoFerramenta("rotulab", "Rótula", Ferramenta.Rotula, "Clique perto da ponta da barra para pôr/tirar a rótula naquela ponta.", null, true)),
-                Grupo("Seções e materiais",
-                    cbFamilia, cbSecao, cbMaterial,
-                    Botao("pincel", "Aplicar à seleção", () => AplicarSecao(false), "Aplica seção e material às barras selecionadas (ou, sem seleção, passa a valer para as próximas barras desenhadas).", null, true),
-                    Botao("pincel", "Aplicar a todas", () => AplicarSecao(true), "Aplica seção e material a todas as barras.", null, true)));
-            abaModelo.Groups.Insert(1, GrupoPlanos());   // níveis e planos de trabalho do modelo espacial (PlanosTrabalho.cs)
-            MontarEdicao3D(abaModelo.Groups.First(g => (string)g.Header == "Modificar"));   // só no modelo espacial (EdicaoEspacial.cs)
-            abaModelo.ToolTip = "Gerar e desenhar a estrutura, modificar, apoios e rótulas, seções e materiais, barras contínuas.";
-            MontarDesenho3D();   // Desenhar 3D (modelo espacial), Vista3D.cs
+                    Botao("3d", "Gerar 3D", () => AbrirGerador3D(), "Edifício, galpão ou pórtico gerado pelo motor (abre numa aba nova)."),
+                    Botao("assist", "Assistente", () => AbrirAssistente(null), "Viga contínua, pórtico, treliça ou galpão a partir de poucas medidas, com prévia; o resultado abre em 3D.", null, true),
+                    Botao("cype", "Importar CYPE", () => ComandosAnalise.AbrirCype(this), "Importa uma obra do CYPE 3D (.ed3) ou compara os resultados com os do CYPE.", null, true)));
+            var planos = GrupoPlanos();   // níveis e planos de trabalho (PlanosTrabalho.cs) + a grade estrutural (GR)
+            planos.Items.Insert(0, Botao("eixo", "Grade", () => ExecutarComando("GRADE"), "Grade estrutural como no Plant 3D: eixos em X (1, 2, 3…), filas em Y (A, B, C…) e níveis (0,@6,@6). Os cruzamentos atraem o cursor; cada nível vira um plano de trabalho (PgUp/PgDn).", "GR", true));
+            abaModelo.Groups.Add(planos);
+            MontarDesenho3D();                       // Barras (Selecionar, Barra, Pilar, Medir) e Configurações (Desenho3D.cs)
+            abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Chapas",
+                Botao("cargadist", "Laje", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Carga em área: painel Propriedades (sem escolha) › Carga em área. O motor não tem elemento de placa: a laje distribui p (kN/m²) nas vigas.", true); },
+                      "Laje/chapa de piso como carga em área nas vigas de um nível (o motor não tem elemento de placa).", null, true)));
+            abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Modificar",
+                Botao("mover", "Mover", () => ExecutarComando("MOVER"), "Ponto base e segundo ponto (atração, ORTO, @dx,dy,dz). Escolha antes ou depois (Enter termina a escolha).", "M", true),
+                Botao("copiar", "Copiar", () => ExecutarComando("COPIAR"), "Ponto base e destinos, várias cópias até Enter.", "CO", true),
+                Botao("espelhar", "Espelhar", () => ExecutarComando("ESPELHAR"), "Cópia espelhada: dois pontos da linha do espelho (em planta).", "MI", true),
+                Botao("rotacionar", "Rotacionar", () => ExecutarComando("ROTACIONAR"), "Em torno do eixo vertical: ponto base e ângulo (digite) ou direção (clique).", "RO", true),
+                Botao("matriz", "Matriz", () => ExecutarComando("MATRIZ"), "Matriz retangular nx × ny × nz (painel).", "AR", true),
+                Botao("dividir", "Dividir barra", () => ExecutarComando("DIVIDIR"), "Em partes iguais ou a uma distância (painel).", "DIV", true),
+                Botao("aparar", "Aparar", () => ExecutarComando("APARAR"), "Barra limite e depois as barras: o lado clicado sai.", "TR", true),
+                Botao("estender", "Estender", () => ExecutarComando("ESTENDER"), "Barra limite e depois as barras: a ponta perto do clique vai até o limite.", "EX", true),
+                Botao("unir", "Unir nós", () => ExecutarComando("UNIR"), "Funde nós coincidentes (painel).", "J", true),
+                Botao("apagar", "Apagar", () => ExecutarComando("APAGAR"), "Apaga a seleção (nós levam as barras ligadas).", "E / Del", true),
+                Botao("pincel", "Copiar props.", () => ExecutarComando("COPIARPROPRIEDADES"), "Perfil, material e giro de uma barra para outras.", "MA", true),
+                Botao("propriedades", "Em lote", () => AbrirEdicaoEsp("propriedades"), "Seção, material, giro e apoio de toda a seleção (painel).", "PR", true)));
+            abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Apoios",
+                Botao("engaste", "Engaste", () => ExecutarComando("ENGASTE"), "Trava os 6 graus de liberdade dos nós escolhidos.", null, true),
+                Botao("rotula", "Articulado", () => ExecutarComando("ROTULA"), "Trava as translações dos nós escolhidos (giros livres).", null, true),
+                Botao("livre", "Livre", () => ExecutarComando("LIVRE"), "Tira o apoio dos nós escolhidos.", null, true),
+                Botao("rotulab", "Rótulas na barra", () => ExecutarComando("ROTULAR"), "Liga/desliga a rótula nas duas pontas das barras escolhidas.", "RB", true)));
+            abaModelo.ToolTip = "Gerar, grade estrutural, planos de trabalho, barras e pilares, chapas, modificar, apoios e configurações das próximas barras.";
             MontarTrelicas();    // Treliças e contraventamentos (Modelo › Gerar + paleta), JanelaTrelicas.cs
 
-            // ACOES (antes "Cargas"): casos de carga (inseridos por MontarCasosNaFaixa), cargas no no e na barra, peso proprio
-            cFx = Campo("Fx (kN)", "0", "Positivo para a direita."); cFy = Campo("Fy (kN)", "0", "Positivo para cima. Gravidade = negativo."); cMz = Campo("Mz (kN·m)", "0", "Positivo anti-horário.");
-            cQx = Campo("qx (kN/m)", "0", "Uniforme horizontal, por metro de barra."); cQy = Campo("qy (kN/m)", "0", "Uniforme vertical, por metro de barra. Gravidade = negativo.");
-            cQi = Campo("q⊥ início", "0", "Perpendicular à barra, linear do início ao fim (kN/m)."); cQf = Campo("q⊥ fim", "0", "Perpendicular à barra no fim (kN/m).");
-            tgPeso = Alternar("peso", "Peso próprio", v => { M.PesoProprio = v; Confirmar("Peso próprio " + (v ? "ligado" : "desligado") + "."); }, "Soma o peso das barras (massa do catálogo ou densidade × área).");
+            // ACOES: casos de carga (inseridos por MontarCasosNaFaixa), cargas nos nós e barras (painel Propriedades), ações automáticas
             var abaAcoes = Aba("Ações", "A",
-                Grupo("Carga no nó", cFx, cFy, cMz,
-                    BotaoFerramenta("cargano", "Aplicar no nó", Ferramenta.CargaNo, "Aplica Fx, Fy e Mz (substitui a carga existente). Com nós selecionados aplica neles; senão clique nos nós.")),
-                Grupo("Carga distribuída", cQx, cQy, cQi, cQf,
-                    BotaoFerramenta("cargadist", "Aplicar na barra", Ferramenta.CargaBarra, "Aplica as cargas distribuídas (substitui as existentes). Com barras selecionadas aplica nelas; senão clique nas barras.")),
-                Grupo("Outras", tgPeso, Botao("limpar", "Limpar cargas", LimparCargas, "Remove as cargas dos itens selecionados, ou de todo o modelo se nada estiver selecionado.", null, true)),
+                Grupo("Cargas",
+                    Botao("cargano", "No nó ou na barra", () => { PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Escolha um nó ou uma barra na vista: o painel Propriedades lança as cargas do caso ativo (nodal, distribuída, pontual).", true); }, "Escolha o nó ou a barra: o painel Propriedades lança as cargas do caso ativo."),
+                    Botao("cargadist", "Carga em área", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; }, "Laje: p (kN/m²) distribuída nas vigas de um nível (painel Propriedades, sem escolha).", null, true)),
                 Grupo("Ações automáticas",
                     Botao("vento", "Vento", () => ComMotorExtra(ComandosAcoes.AbrirVento), "Vento estático pela NBR 6123 (V0, S1, S2, S3, coeficientes) e geração das forças por pavimento (motor Python).", null, true),
                     Botao("sismo", "Sismo", () => ComMotorExtra(ComandosAcoes.AbrirSismo), "Forças sísmicas horizontais equivalentes pela NBR 15421 (zona, classe do terreno, categoria de utilização) (motor Python).", null, true),
                     Botao("pavimentos", "Pavimentos", () => ComMotorExtra(ComandosAcoes.AbrirPavimentos), "Cotas dos pavimentos e diafragma rígido, usados pelo vento, sismo e deslocamentos entre pavimentos (motor Python).", null, true),
                     Botao("combinacoes", "Combinações", () => ComMotor(false, ComandosAcoes.AbrirCombinacoes), "Uso da edificação e combinações ELU/ELS geradas pela NBR 8681 com γ e ψ (motor Python).")));
-            abaAcoes.ToolTip = "Casos de carga, forças e momentos nos nós, cargas distribuídas, peso próprio, vento, sismo, pavimentos e combinações.";
+            abaAcoes.ToolTip = "Casos de carga, cargas nos nós e barras, carga em área, vento, sismo, pavimentos e combinações.";
 
-            // ANALISE: resultado mostrado (inserido por MontarCasosNaFaixa), opcoes e diagramas
-            tgTimo = Alternar("eixo", "Deformação por cortante", v => { M.Timoshenko = v; Confirmar("Timoshenko " + (v ? "ligado" : "desligado") + "."); }, "Viga de Timoshenko (considera a deformação por cortante). Desligado = Euler-Bernoulli.");
+            // ANALISE: resultado mostrado (inserido por MontarCasosNaFaixa), modal/estabilidade e diagramas
             abaAnalise = Aba("Análise", "N",
-                Grupo("Opções", tgTimo, CriarCbMotor()),
                 Grupo("Modal e estabilidade",
                     Botao("modal", "Modos de vibração", () => ComMotor(false, ComandosAnalise.AbrirModal), "Análise modal: frequências, períodos e massa participante dos primeiros modos (motor Python)."),
                     Botao("estabilidade", "Estabilidade", () => ComMotor(true, ComandosAnalise.AbrirEstabilidade), "γz e deslocamentos-limite (NBR 6118/8800). Calcula o modelo no motor Python antes de abrir.")),
                 Grupo("Diagramas",
-                    BotaoDiagrama("def", "Deformada", Diagrama.Deformada, "Configuração deformada (ampliada). Passe o mouse para ler os deslocamentos.", "D + Enter"),
+                    BotaoDiagrama("def", "Deformada", Diagrama.Deformada, "Configuração deformada (ampliada).", "DEF + Enter"),
                     BotaoDiagrama("normal", "Normal", Diagrama.Normal, "Esforço normal N (kN). Positivo = tração.", "N + Enter"),
-                    BotaoDiagrama("cortante", "Cortante", Diagrama.Cortante, "Esforço cortante Q (kN).", "Q + Enter"),
-                    BotaoDiagrama("momento", "Momento", Diagrama.Momento, "Momento fletor M (kN·m), desenhado do lado tracionado.", "M + Enter"),
+                    BotaoDiagrama("cortante", "Cortante", Diagrama.Cortante, "Esforço cortante Vz (kN).", "Q + Enter"),
+                    BotaoDiagrama("momento", "Momento", Diagrama.Momento, "Momento fletor My (kN·m), desenhado do lado tracionado.", "MOMENTO + Enter"),
                     Botao("mais", "Ampliar", () => Escala(1.4), "Aumenta a escala do diagrama ou da deformada.", "+", true),
                     Botao("menos", "Reduzir", () => Escala(1 / 1.4), "Diminui a escala do diagrama ou da deformada.", "-", true)));
-            abaAnalise.ToolTip = "Resultado mostrado (caso, combinação ou envoltória), opções e motor de análise, modos de vibração, estabilidade e diagramas.";
+            abaAnalise.ToolTip = "Resultado mostrado (envoltória ou combinação), modos de vibração, estabilidade e diagramas.";
 
-            // DIMENSIONAMENTO: verificar, otimizar e criterios (o "n" global sai quando o motor Python entrar — REVISAO-TELAS 3.5)
-            cSeg = Campo("Segurança", "2", "Coeficiente de segurança mínimo exigido nas verificações de barra e placa.", 48);
-            cFlecha = Campo("Flecha L/", "250", "Flecha máxima admissível = vão / este número.", 48);
-            cSeg.LostFocus += (s, e) => MudarCriterio(); cFlecha.LostFocus += (s, e) => MudarCriterio();
-            cSeg.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); }; cFlecha.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarCriterio(); };
+            // DIMENSIONAMENTO
             abaDimens = Aba("Dimensionamento", "D",
                 Grupo("Verificar",
-                    Botao("veriflista", "Verificação de barras", () => ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras), "Lista de todas as barras com a taxa, o critério determinante e o item da NBR 8800. Calcula o modelo no motor Python antes de abrir."),
+                    Botao("veriflista", "Verificação de barras", () => ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras), "Lista de todas as barras com a taxa, o critério determinante e o item da norma. Calcula antes, se preciso."),
                     (tgCalor = BotaoCalor()),
-                    Botao("comparar", "Verificar barra", () => VerificarBarraConforme(null), "Abre a verificação da barra selecionada com a lista de perfis da mesma família.", "COMPARAR", true)),
+                    Botao("comparar", "Verificar barra", () => VerificarBarraConforme(null), "Verificação detalhada (NBR 8800) da barra escolhida.", null, true)),
                 Grupo("Otimizar",
-                    Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Troca cada barra pelo perfil mais leve da mesma família que passa na verificação (considera a envoltória). Recalcula e repete até estabilizar. Ctrl+Z desfaz.", "DIMENSIONAR"),
-                    Botao("catalogo", "Catálogo de perfis", () => ComandosAnalise.AbrirCatalogo(this), "Perfis do catálogo do motor com todas as propriedades geométricas (A, I, W, Z, r, J, Cw).")),
-                Grupo("Critérios", cSeg, cFlecha));
-            abaDimens.ToolTip = "Verificação de todas as barras, mapa de aproveitamento, verificação de cada barra, perfil mais leve, catálogo e critérios.";
+                    Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Perfil mais leve da mesma família que passa, por iterações no motor (cada rodada um Ctrl+Z).", "DIMENSIONAR"),
+                    Botao("catalogo", "Catálogo de perfis", () => ComandosAnalise.AbrirCatalogo(this), "Perfis do catálogo do motor com todas as propriedades geométricas (A, I, W, Z, r, J, Cw).")));
+            abaDimens.ToolTip = "Verificação de todas as barras, mapa de aproveitamento, verificação de cada barra, perfil mais leve e catálogo.";
 
             // LIGACOES E BASES
             var abaLigacoes = Aba("Ligações e bases", "L",
                 Grupo("Bases",
-                    BotaoFerramenta("placa", "Placa de base", Ferramenta.Placa, "Placa de base com chumbadores no pé do pilar (nó onde chega uma só barra). Com um nó selecionado, abre a verificação da placa dele.")),
+                    Botao("placa", "Placa de base", () => ExecutarComando("PLACA"), "Placa de base com chumbadores no pé do pilar escolhido (nó com apoio e uma só barra), com os esforços ELU do motor.", "PLACA")),
                 Grupo("Grupos",
-                    Botao("unir", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Modelo 3D: identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
+                    Botao("unir", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
                 Grupo("Ligações",
+                    Botao("unir", "Projetar ligação", () => AbrirProjetistaLigacao(), "Biblioteca de padrões de ligação metálica (flexíveis, rígidas, emendas, contraventamento): escolha, o motor calcula chapas, parafusos e soldas e você ajusta vendo o desenho e as verificações (JanelaLigacaoProjeto.cs)."),
                     Botao("parafuso", "Parafusos", () => AbrirLigacaoTipo("parafuso"), "Ligação parafusada: cisalhamento, pressão de contato e tração nos parafusos (NBR 8800, motor Python)."),
                     Botao("solda", "Filete de solda", () => AbrirLigacaoTipo("solda_filete"), "Solda de filete: resistência do metal de solda e do metal-base (NBR 8800, motor Python)."),
                     Botao("chapa", "Chapa simples", () => AbrirLigacaoTipo("chapa_simples"), "Ligação flexível com chapa simples (shear tab): parafusos, chapa e solda (NBR 8800, motor Python)."),
-                    Botao("tracao", "Ligação de tração", () => AbrirLigacaoTipo("ligacao_tracao"), "Ligação de barra tracionada: área líquida efetiva, ruptura e escoamento (NBR 8800, motor Python).")),
-                Grupo("Solda", CriarCbEletrodo()));
-            abaLigacoes.ToolTip = "Placas de base com chumbadores, ligações parafusadas e soldadas (NBR 8800) e eletrodo das soldas das barras.";
+                    Botao("tracao", "Ligação de tração", () => AbrirLigacaoTipo("ligacao_tracao"), "Ligação de barra tracionada: área líquida efetiva, ruptura e escoamento (NBR 8800, motor Python).")));
+            abaLigacoes.ToolTip = "Placas de base com chumbadores, grupos de ligações e ligações parafusadas e soldadas (NBR 8800).";
 
             // RELATORIO
             var abaRelatorio = Aba("Relatório", "R",
                 Grupo("Memorial",
-                    Botao("relatorio", "Relatório", AbrirRelatorio, "Memorial com modelo, casos de carga, combinações, diagramas, reações, esforços, verificação e placas. Imprime ou salva em PDF (impressora \"Microsoft Print to PDF\").", "Ctrl+P")),
-                Grupo("Exportar",
-                    Botao("exportar", "Exportar CSV", ExportarCsv, "Exporta nós, barras, reações, esforços e verificação para CSV (abre no Excel).", "Ctrl+E")));
-            abaRelatorio.ToolTip = "Memorial de cálculo (imprimir ou PDF) e exportação dos resultados.";
+                    Botao("relatorio", "Relatório", AbrirRelatorio, "Relatório NBR do motor (modelo, combinações, esforços, verificação) com o anexo das placas de base. Salva em PDF/HTML.", "Ctrl+P")));
+            abaRelatorio.ToolTip = "Memorial de cálculo do motor e das placas de base. Exportar DWG/DXF/STEP: Arquivo › Exportar.";
             MontarCasosNaFaixa(abaAcoes, abaAnalise);
 
-            // VISTA
-            tgReac = Alternar("reac", "Reações", v => { Vista.MostrarReacoes = v; Vista.InvalidateVisual(); }, "Mostra as reações de apoio.", true);
-            tgValores = Alternar("valores", "Valores", v => { Vista.MostrarValores = v; Vista.InvalidateVisual(); }, "Escreve os valores nos diagramas.", true);
-            tgCargas = Alternar("cargano", "Cargas", v => { Vista.MostrarCargas = v; Vista.InvalidateVisual(); if (vista3D != null) { vista3D.MostrarCargas = v; vista3D.Reconstruir(); } }, "Mostra as cargas no desenho (2D e Vista 3D).", true);
-            tgNomes = Alternar("nomes", "Nomes", v => { Vista.MostrarNomes = v; Vista.InvalidateVisual(); }, "Escreve perfil e comprimento ao lado das barras.", true);
-            tgValores.IsChecked = true; tgCargas.IsChecked = true; tgReac.IsChecked = true; tgNomes.IsChecked = true;   // tudo visivel por padrao
-            cGrade = Campo("Passo da grade (m)", "0,5", "Espaçamento da grade de desenho.", 50);
-            cGrade.LostFocus += (s, e) => MudarGrade(cGrade.Text);
-            cGrade.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarGrade(cGrade.Text); };
+            // VISTA: câmeras (planta, elevações, iso), projeção, Realista, o que aparece, passo da grade do plano, painéis
+            tgCargas = Alternar("cargano", "Cargas", v => { if (vista3D != null) { vista3D.MostrarCargas = v; vista3D.Reconstruir(); } }, "Mostra as setas das cargas do caso ativo.", true);
+            tgCargas.IsChecked = true;
+            cGrade = Campo("Passo da grade (m)", "1", "Espaçamento da grade do plano de trabalho (atração F9).", 50);
+            cGrade.LostFocus += (s, e) => MudarPasso3D(cGrade.Text);
+            cGrade.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarPasso3D(cGrade.Text); };
+            tgPerspectiva = Alternar("3d", "Perspectiva", v => { if (vista3D != null) vista3D.Perspectiva = v; }, "Câmera em perspectiva (desligado = ortográfica, como planta e elevação de CAD). Também no ViewCube.", true);
             var abaVista = Aba("Vista", "V",
                 Grupo("Navegar",
-                    Botao("zoomtudo", "Enquadrar", () => Vista.ZoomTudo(), "Mostra o modelo inteiro (ou duplo clique na roda do mouse).", "F4"),
-                    Botao("zoommais", "Aproximar", () => Vista.ZoomFator(1.4), "Aproxima a visualização em torno do centro da tela (ou use a roda do mouse).", null, true),
-                    Botao("zoommenos", "Afastar", () => Vista.ZoomFator(1 / 1.4), "Afasta a visualização para enxergar uma área maior do modelo.", null, true),
-                    Botao("3d", "Vista 3D", AlternarVista3D, "Alterna entre o desenho 2D e a vista 3D (órbita com o botão esquerdo, pan com o do meio, roda para zoom)."),
-                    tgRealista = Alternar("realista", "Realista", DefinirRealista, "Vista 3D com os perfis reais, materiais (aço e concreto), luz, sombra no chão e arestas — como o \"Sombreado com arestas\" do Revit. Desligado = vista analítica (barras finas). A escolha fica guardada.")),
-                Grupo("Mostrar", tgReac, tgValores, tgCargas, tgNomes),
+                    Botao("zoomtudo", "Enquadrar", () => vista3D?.Enquadrar(), "Mostra o modelo inteiro (ou duplo clique na roda do mouse).", "Z + Enter"),
+                    Botao("zoommais", "Zoom na seleção", () => vista3D?.EnquadrarSelecao(), "Aproxima o que está escolhido.", "ZO", true),
+                    Botao("topo", "Topo", () => ExecutarComando("TOPO"), "Planta (de cima).", "Ctrl+7 num.", true),
+                    Botao("frente", "Frente", () => ExecutarComando("FRENTE"), "Elevação XZ.", "Ctrl+1 num.", true),
+                    Botao("lado", "Lado", () => ExecutarComando("LADO"), "Elevação YZ (direita).", "Ctrl+3 num.", true),
+                    Botao("3d", "Isométrica", () => ExecutarComando("ISO"), "Vista isométrica (Home do ViewCube).", "Ctrl+5 num.", true),
+                    tgPerspectiva,
+                    tgRealista = Alternar("realista", "Realista", DefinirRealista, "Perfis reais, materiais (aço e concreto), luz, sombra no chão e arestas — como o \"Sombreado com arestas\" do Revit. Desligado = vista analítica (barras finas). A escolha fica guardada.")),
+                Grupo("Mostrar", tgCargas),
                 Grupo("Grade", cGrade),
                 Grupo("Painéis",
                     Botao("painel", "Projeto", () => Alternar(PainelProjeto), "Mostra/oculta o painel Projeto.", null, true),
-                    Botao("painel", "Propriedades", () => Alternar(PainelProp), "Mostra/oculta o painel Propriedades.", null, true),
+                    Botao("painel", "Propriedades", () => Alternar(PainelProp), "Mostra/oculta o painel Propriedades.", "Ctrl+1", true),
                     Botao("tabela", "Tabelas", () => Alternar(PainelTabelas), "Mostra/oculta as tabelas de nós, barras e verificação.", "TABELAS", true)),
                 Grupo("Ajuda", Botao("ajuda", "Atalhos e ajuda", MostrarAjuda, "Como usar e lista de atalhos.", "F1")));
             tgRealista.IsChecked = Config.Realista3D;
-            abaVista.ToolTip = "Zoom, o que aparece no desenho (reações, valores, cargas, nomes), passo da grade, painéis e ajuda.";
-
-            // abas contextuais (aparecem com a selecao)
-            ctxBarra = new F.RibbonTabItem { Header = "Barra", Group = CtxBarra, ToolTip = "Ações rápidas para as barras selecionadas." };
-            tgEixoFraco = Alternar("eixo", "Perfil deitado", v => { foreach (Barra b in Vista.Sel.OfType<Barra>()) b.EixoFraco = v; SincronizarMembros(Vista.Sel.OfType<Barra>()); Confirmar(v ? "Perfil deitado: menor inércia (Iy) no plano." : "Perfil em pé: maior inércia (Ix) no plano."); }, "Ligado = perfil deitado: a menor inércia (Iy) fica no plano do pórtico. Desligado = em pé (Ix no plano). Fora do plano vale o outro eixo.");
-            ctxBarra.Groups.Add(Grupo("Verificação",
-                Botao("comparar", "Verificar barra", () => VerificarBarraConforme(Vista.Sel.OfType<Barra>().FirstOrDefault()), "Abre a verificação detalhada da barra selecionada e compara perfis alternativos da família."),
-                Botao("dimens", "Dimensionar", () => DimensionarPerfis(true), "Perfil mais leve da família que passa, só nas barras selecionadas.", "DIMSEL", true), tgEixoFraco));
-            ctxBarra.Groups.Add(Grupo("Ligações",
-                Botao("rotulab", "Rótula no início", () => RotularSel(true, false), "Liga/desliga a rótula no início das barras selecionadas.", null, true),
-                Botao("rotulab", "Rótula no fim", () => RotularSel(false, true), "Liga/desliga a rótula no fim das barras selecionadas.", null, true),
-                Botao("rotulab", "Nas duas pontas", () => RotularSel(true, true), "Barra de treliça: liga/desliga rótula nas duas pontas.", null, true)));
-            ctxBarra.Groups.Add(Grupo("Modificar",
-                Botao("dividir", "Dividir", DividirSelecao, "Divide cada barra selecionada em partes iguais.", null, true),
-                Botao("apagar", "Apagar", Apagar, "Apaga as barras selecionadas.", "Del", true)));
-            Faixa.Tabs.Add(ctxBarra);
-
-            ctxNo = new F.RibbonTabItem { Header = "Nó", Group = CtxNo, ToolTip = "Ações rápidas para os nós selecionados." };
-            ctxNo.Groups.Add(Grupo("Apoio",
-                Botao("engaste", "Engaste", () => AplicarApoio(Ferramenta.ApoioEngaste, Vista.Sel.OfType<No>()), "Engasta os nós selecionados (trava X, Y e giro)."),
-                Botao("rotula", "Fixo", () => AplicarApoio(Ferramenta.ApoioRotula, Vista.Sel.OfType<No>()), "Apoio fixo de 2º gênero (trava X e Y, giro livre)."),
-                Botao("rolo", "Móvel", () => AplicarApoio(Ferramenta.ApoioRoloV, Vista.Sel.OfType<No>()), "Apoio móvel de 1º gênero (trava Y)."),
-                Botao("livre", "Sem apoio", () => AplicarApoio(Ferramenta.ApoioLivre, Vista.Sel.OfType<No>()), "Remove o apoio, as molas e a placa de base dos nós selecionados.", null, true)));
-            ctxNo.Groups.Add(Grupo("Carga e placa",
-                Botao("cargano", "Aplicar carga", () => AplicarCargaNo(Vista.Sel.OfType<No>()), "Aplica Fx/Fy/Mz da aba Ações aos nós selecionados."),
-                Botao("placa", "Placa de base", () => AbrirPlaca(Vista.Sel.OfType<No>().FirstOrDefault()), "Configura e verifica a placa de base com chumbadores/parafusos.", null, true)));
-            ctxNo.Groups.Add(Grupo("Modificar", Botao("apagar", "Apagar", Apagar, "Apaga os nós selecionados e as barras ligadas a eles.", "Del")));
-            Faixa.Tabs.Add(ctxNo);
+            abaVista.ToolTip = "Enquadrar, planta/elevações/isométrica, perspectiva, Realista, cargas, passo da grade, painéis e ajuda.";
 
             Faixa.SelectedTabItem = abaModelo;
+        }
+
+        F.ToggleButton tgPerspectiva;
+
+        void MudarPasso3D(string txt)
+        {
+            if (!Num.Ler(txt, out double g) || g <= 0) { cGrade.Text = Num.Fmt(vista3D?.PassoGrade ?? 1, 3); return; }
+            if (vista3D != null) { vista3D.PassoGrade = g; vista3D.InvalidateVisual(); }
+            Log("Passo da grade do plano: " + Num.Fmt(g, 3) + " m.", false);
         }
 
         // A aba do documento do AvalonDock e substituida pela barra de arquivos de largura toda (padrao Plant 3D).
@@ -648,18 +581,19 @@ namespace NovoFtool
 
         void MontarStatus()
         {
+            // estados do desenho na Vista3D (docs/v3/PESQUISA-PLANT.md 3.6); a Vista3D lê os mesmos valores (Comandos3D.LigarComandos3D)
             NovoBloco();
-            stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade (F9)", v => M.AtrairGrade = v);
-            stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade (F7)", v => { M.MostrarGrade = v; Vista.InvalidateVisual(); });
+            stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade do plano de trabalho (F9)", v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; })); stAtrair.IsChecked = true;
+            stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade do plano de trabalho ao desenhar (F7)", v => V3(x => x.MostrarGradePlano = v)); stGrade.IsChecked = true;
             NovoBloco();
-            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só horizontal/vertical (F8, ou segure Shift)", v => Vista.Orto = v);
-            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => Vista.Polar = v); stPolar.IsChecked = true;
-            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3) — botão direito escolhe: nó, meio, interseção, perpendicular, sobre a barra, extensão", v => Vista.AtrairObjetos = v); stObj.IsChecked = true;
-            stObj.ContextMenu = MenuSnaps();
-            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — passe o mouse num nó e afaste: aparecem linhas alinhadas com ele (horizontal/vertical)", v => { Vista.Rastrear = v; if (!v) Vista.LimparRastreio(); }); stRastro.IsChecked = true;
+            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => { });
+            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => { }); stPolar.IsChecked = true;
+            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => { }); stObj.IsChecked = true;
+            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => { }); stRastro.IsChecked = true;
+            stDin = StatusBtn("M2,6 H18 V14 H2 Z M5,10 H9 M12,8 V12", "Dinâmica — caixas de comprimento e ângulo junto ao cursor (F12)", v => V3(x => x.EntradaDinamica = v)); stDin.IsChecked = true;
             NovoBloco();
-            var tela = new Button { Content = IconeStatus("M2,7 V2 H7 M13,2 H18 V7 M18,13 V18 H13 M7,18 H2 V13"), ToolTip = "Enquadrar o modelo (F4)", Style = EstiloBotaoStatus() };
-            tela.Click += (s, e) => Vista.ZoomTudo();
+            var tela = new Button { Content = IconeStatus("M2,7 V2 H7 M13,2 H18 V7 M18,13 V18 H13 M7,18 H2 V13"), ToolTip = "Enquadrar o modelo (Z + Enter, duplo clique na roda)", Style = EstiloBotaoStatus() };
+            tela.Click += (s, e) => vista3D?.Enquadrar();
             blocoStatus.Children.Add(tela);
         }
 
@@ -697,26 +631,7 @@ namespace NovoFtool
             return estiloStatus;
         }
 
-        System.Windows.Controls.Primitives.ToggleButton stRastro;
-
-        // modos de atracao a objetos, um a um (como o menu do OSNAP)
-        ContextMenu MenuSnaps()
-        {
-            var cm = new ContextMenu();
-            void Item(string nome, string dica, Func<bool> ler, Action<bool> por)
-            {
-                var mi = new MenuItem { Header = nome, ToolTip = dica, IsCheckable = true, IsChecked = ler(), StaysOpenOnClick = true };
-                mi.Click += (s, e) => { por(mi.IsChecked); Vista.InvalidateVisual(); };
-                cm.Items.Add(mi);
-            }
-            Item("Nó (extremidade)", "Encaixa o cursor nos nós existentes nas extremidades das barras.", () => Vista.SnapNo, v => Vista.SnapNo = v);
-            Item("Meio da barra", "Encaixa o cursor exatamente no ponto médio de uma barra.", () => Vista.SnapMeio, v => Vista.SnapMeio = v);
-            Item("Interseção", "Encaixa o cursor no ponto de cruzamento geométrico entre duas barras.", () => Vista.SnapIntersecao, v => Vista.SnapIntersecao = v);
-            Item("Perpendicular", "Ao desenhar ou medir a partir de um ponto, encaixa no pé da perpendicular sobre outra barra.", () => Vista.SnapPerpendicular, v => Vista.SnapPerpendicular = v);
-            Item("Sobre a barra (mais próximo)", "Encaixa o cursor no ponto mais próximo ao longo do eixo de uma barra.", () => Vista.SnapProximo, v => Vista.SnapProximo = v);
-            Item("Extensão", "Encaixa o cursor na linha de prolongamento além da extremidade de uma barra.", () => Vista.SnapExtensao, v => Vista.SnapExtensao = v);
-            return cm;
-        }
+        System.Windows.Controls.Primitives.ToggleButton stRastro, stDin;
 
         // Pilula alternavel do rodape: icone + nome; ligada = fundo de acento suave, borda e texto de destaque.
         static Style estiloPilula;
@@ -756,7 +671,7 @@ namespace NovoFtool
             System.Windows.Automation.AutomationProperties.SetName(b, nome);
             void Cor() { var c = b.IsChecked == true ? TemaPlant.BRealce : TemaPlant.BTexto2; ic.Stroke = c; tx.Foreground = c; }
             b.Checked += (s, e) => Cor(); b.Unchecked += (s, e) => Cor(); Cor();
-            b.Click += (s, e) => { acao(b.IsChecked == true); Vista.Focus(); };
+            b.Click += (s, e) => { acao(b.IsChecked == true); FocarVista(); };
             blocoStatus.Children.Add(b);
             return b;
         }

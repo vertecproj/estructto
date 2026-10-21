@@ -29,6 +29,7 @@ Só no Render3D (não existia antes):
 | Galpão com as ligações dos grupos do motor (`chapa_topo_estendida`, `chapa_simples_alma`, placa de base) | ![](render/depois-galpao_aco-ligacoes.png) |
 | Chapa de topo do motor (`verificar_ligacao`, geometria do contrato) | ![](render/depois-ligacao-motor-chapa-topo.png) |
 | Placa de base do grupo "base" do motor | ![](render/depois-ligacao-motor-placa-base.png) |
+| Perspectiva (FOV 45°) com o ViewCube | ![](render/depois-portico2x2-perspectiva.png) |
 
 Julgamento honesto contra Tekla/Advance Steel/Revit: o nativo lia como "sombreado plano com sombra no chão", peças se
 atravessando nos nós e sem anti-serrilhado nas capturas. O Render3D traz sombra entre peças, oclusão nas quinas, arestas de 1 px,
@@ -90,6 +91,13 @@ recortes e ligações: está no nível de um "Shaded with edges" do Revit com so
 - **LOD**: parafusos e soldas só com ≤ 80 ligações ou quando a seção média tem ≥ 40 px; arestas com ≥ 6 px. Atualizado a cada
   mudança de câmera (`Render3D.Lod`, só troca `Visibility`).
 - **Pedestal**: bloco de concreto do apoio cresce para caber a chapa mais larga da ligação do nó + 40 mm.
+- **Ponto cardinal** (`Barra3D.Cardinal`, docs/MODELO-ESPACIAL.md): `GeometriaPerfis.Cardinal(contorno, 1..10)` devolve o
+  deslocamento (u, v) do perfil para o ponto escolhido ficar sobre o eixo da barra (teclado numérico olhando a seção com v para
+  cima: 7-8-9 topo, 1-2-3 base, 4 = lado +u; 10 = centroide pelas tampas). Aplicado no Render3D, nos recortes, nas ligações
+  (a origem local vai junto) e no Realista nativo; a exportação recebe `cardinal` opcional em `GeometriaPerfis.Extrudar`
+  (DWG/STEP continuam no eixo até o exportador passar o valor). Nas capturas, as vigas do pórtico 2×2 estão no cardinal 8.
+- **Câmeras**: ortográfica e perspectiva (`Render3D.Camera(perspectiva, …)` espelha a `OrthographicCamera`/`PerspectiveCamera`
+  da Vista3D.Navegacao; o LOD usa px/m no plano do alvo).
 
 ## Picking, seleção, cargas, modo analítico
 

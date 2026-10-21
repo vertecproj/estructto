@@ -73,6 +73,7 @@ namespace NovoFtool
         public event Action Falhou;   // o D3D falhou em tempo de execução: a Vista3D volta ao nativo
         public readonly Viewport3DX Vista;
         readonly HxCamera cam = new HxCamera { NearPlaneDistance = 1, FarPlaneDistance = 100 };
+        readonly HelixToolkit.Wpf.SharpDX.PerspectiveCamera pcam = new HelixToolkit.Wpf.SharpDX.PerspectiveCamera { FieldOfView = 45 };
         readonly MeshGeometryModel3D mAco, mConcreto, mSel, mChao, mParafusos, mSoldas;
         readonly LineGeometryModel3D lArestas;
         readonly ShadowMap3D sombra;
@@ -134,10 +135,21 @@ namespace NovoFtool
             foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, lArestas }) Vista.Items.Add(m);
         }
 
-        public void Camera(Point3D pos, Vector3D olhar, Vector3D cima, double larg, double perto, double longe)
+        // Segue a câmera da Vista3D: ortográfica (largOuFov = largura visível, m) ou perspectiva (largOuFov = FOV horizontal, graus).
+        public void Camera(bool perspectiva, Point3D pos, Vector3D olhar, Vector3D cima, double largOuFov, double perto, double longe)
         {
-            cam.Position = pos; cam.LookDirection = olhar; cam.UpDirection = cima; cam.Width = larg;
-            cam.NearPlaneDistance = perto; cam.FarPlaneDistance = longe;
+            if (perspectiva)
+            {
+                pcam.Position = pos; pcam.LookDirection = olhar; pcam.UpDirection = cima; pcam.FieldOfView = largOuFov;
+                pcam.NearPlaneDistance = perto; pcam.FarPlaneDistance = longe;
+                if (Vista.Camera != pcam) Vista.Camera = pcam;
+            }
+            else
+            {
+                cam.Position = pos; cam.LookDirection = olhar; cam.UpDirection = cima; cam.Width = largOuFov;
+                cam.NearPlaneDistance = perto; cam.FarPlaneDistance = longe;
+                if (Vista.Camera != cam) Vista.Camera = cam;
+            }
         }
 
         // ================= cena =================
@@ -189,6 +201,8 @@ namespace NovoFtool
                 var (a, d) = c.Pontos(b); Vector3D e = d - a; if (e.Length < 1e-9) continue; e.Normalize();
                 Vector3D v = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), u = Vector3D.CrossProduct(v, e);
                 Contorno f = forma(b);
+                Point dc = GeometriaPerfis.Cardinal(f, b.Cardinal); Vector3D desl = u * dc.X + v * dc.Y;   // ponto cardinal: o eixo da barra fica nesse ponto da seção
+                a += desl; d += desl;
                 somaLarg += f.Larg; nLarg++;
                 MalhaDx alvo = c.Selecionada(b) ? mallSel : f.Concreto ? mallConc : mallAco;
                 alvo.Marcar(b);
@@ -215,7 +229,8 @@ namespace NovoFtool
                 var (a, d) = c.Pontos(b); Vector3D e = d - a; if (e.Length < 1e-9) continue; e.Normalize();
                 bool emI = l.No == b.Ni;
                 Vector3D x = emI ? e : -e, z = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), y = Vector3D.CrossProduct(x, z);   // contrato: y = x × z (canhoto)
-                Point3D o = emI ? a : d;
+                Point dc = GeometriaPerfis.Cardinal(forma(b), b.Cardinal);
+                Point3D o = (emI ? a : d) + Vector3D.CrossProduct(z, e) * dc.X + z * dc.Y;   // origem no eixo do perfil deslocado
                 Point3D W(Vector3D p) => o + (x * p.X + y * p.Y + z * p.Z) / 1000;
                 Vector3D Wv(Vector3D p) { Vector3D r = x * p.X + y * p.Y + z * p.Z; if (r.Length > 1e-12) r.Normalize(); return r; }
                 foreach (var ch in l.Chapas)

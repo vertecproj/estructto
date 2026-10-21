@@ -39,6 +39,7 @@ namespace NovoFtool
         public double[] N, V, M;   // valores em estações igualmente espaçadas de ni a nj (kN, kN·m); null = sem diagrama
         public double? Aprov;      // aproveitamento (1 = no limite); null = sem verificação
         public double RotPerfil;   // giro extra (graus) só do desenho do perfil no modo Realista (2D: perfil deitado = 90)
+        public int Cardinal = 5;   // ponto cardinal 1..9 (teclado numérico) ou 10 = centroide; o Render3D pode deslocar o perfil
         public object Origem;
     }
 
@@ -207,7 +208,7 @@ namespace NovoFtool
     public enum Diagrama3D { Nenhum, N, V, M }
     public enum VistaPadrao { Topo, Frente, Lado, Iso }
 
-    public partial class Vista3D : Grid   // snap e Medir: Vista3D.Snap.cs
+    public partial class Vista3D : Grid
     {
         public event Action<object> Escolheu;   // No3D ou Barra3D (Origem aponta para o objeto do modelo)
 
@@ -234,7 +235,6 @@ namespace NovoFtool
         readonly ModelVisual3D cena = new ModelVisual3D();
         readonly Dictionary<Model3D, object> mapa = new Dictionary<Model3D, object>();
         readonly Sobre sobre;
-        readonly TextBlock nomeVista;
 
         // câmera: azimute e elevação (graus), largura visível (m), alvo
         double az = -55, el = 28, larg = 10; Point3D alvo;
@@ -242,7 +242,7 @@ namespace NovoFtool
         Camera3 de, para; readonly Stopwatch relogio = new Stopwatch(); bool animando;
         const double DuracaoMs = 300;   // GUIA-DESIGN: transição de câmera 250–400 ms, CubicEase EaseOut
 
-        Point? panIni, orbIni, cliqueIni; bool moveu;
+        Point? panIni, orbIni; bool moveu;
 
         struct Camera3 { public double Az, El, Larg; public Point3D Alvo; }
 
@@ -259,25 +259,7 @@ namespace NovoFtool
             marca = new MarcaSnap { IsHitTestVisible = false, Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, RenderTransform = posMarca };
             Children.Add(marca);
 
-            // seletor de vistas (canto superior direito; o HUD dos diagramas fica no esquerdo)
-            var barra = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 0, 12) };
-            var caixa = new Border { Child = barra, Background = TemaPlant.B(TemaPlant.CorCaixaHud), BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(3),
-                                     HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 12, 12, 0) };
-            foreach (var (txt, v, dica) in new[] { ("Topo", VistaPadrao.Topo, "Planta: olha de cima (Z para fora da tela)."), ("Frente", VistaPadrao.Frente, "Elevação XZ: a mesma vista do desenho 2D."),
-                                                   ("Lado", VistaPadrao.Lado, "Elevação YZ."), ("Iso", VistaPadrao.Iso, "Vista isométrica.") })
-            {
-                var t = new TextBlock { Text = txt, Foreground = TemaPlant.BTexto2, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-                var bt = new Border { Child = t, Padding = new Thickness(9, 3, 9, 3), CornerRadius = new CornerRadius(4), Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = dica };
-                bt.MouseEnter += (s, e) => { bt.Background = TemaPlant.BSup3; t.Foreground = TemaPlant.BTexto1; };
-                bt.MouseLeave += (s, e) => { bt.Background = Brushes.Transparent; t.Foreground = TemaPlant.BTexto2; };
-                bt.MouseLeftButtonDown += (s, e) => { MostrarVista(v); e.Handled = true; };
-                barra.Children.Add(bt);
-            }
-            nomeVista = new TextBlock { Foreground = TemaPlant.BTexto3, FontSize = 11, Margin = new Thickness(6, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
-            barra.Children.Add(new Border { Width = 1, Background = TemaPlant.BBordaSutil, Margin = new Thickness(4, 3, 4, 3) });
-            barra.Children.Add(nomeVista);
-            Children.Add(caixa);
-            AtualizarNome("Isométrica");
+            MontarNavegacao();   // ViewCube e pivô da órbita (Vista3D.Navegacao.cs, ViewCube.cs)
             SizeChanged += (s, e) => { AplicarCamera(); AgendarArestas(); };
             // arestas têm ~1 px: depois do zoom, refaz a cena se a escala mudou bastante
             timerArestas.Tick += (s, e) =>
@@ -829,6 +811,7 @@ namespace NovoFtool
                 Vector3D e = c - a; if (e.Length < 1e-9) continue;
                 Vector3D v = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), u = Vector3D.CrossProduct(v, Norm(e));
                 Forma f = FormaDe(b.Secao, h * 2);
+                { Point dc = GeometriaPerfis.Cardinal(f.Contorno, b.Cardinal); a += u * dc.X + v * dc.Y; c += u * dc.X + v * dc.Y; }   // ponto cardinal
                 Color cor = f.Concreto ? TemaPlant.CorConcreto3D : TemaPlant.CorAco3D;
                 if (MostrarAproveitamento && b.Aprov.HasValue) cor = Mistura(cor, CorAprov(b.Aprov.Value), 0.72);   // tinge o material, mantém o sombreado
                 if (EhSel(b, b.Origem)) cor = Mistura(cor, TemaPlant.CorBarraSel, 0.75);
@@ -913,237 +896,6 @@ namespace NovoFtool
         // Aproxima um ponto (close-ups das capturas): largura visível (m), azimute e elevação em graus, sem animação.
         public void Focar(Point3D p, double largura, double azv, double elv) { AtualizarNome("Detalhe"); IrPara(new Camera3 { Az = azv, El = elv, Larg = largura, Alvo = p }, false); }
 
-        // ================= câmera =================
-
-        Camera3 Atual() { return new Camera3 { Az = az, El = el, Larg = larg, Alvo = alvo }; }
-
-        void Direcoes(out Vector3D d, out Vector3D cima, out Vector3D dir)
-        {
-            double a = az * Math.PI / 180, e = el * Math.PI / 180;
-            d = new Vector3D(Math.Cos(e) * Math.Cos(a), Math.Cos(e) * Math.Sin(a), Math.Sin(e));          // do alvo para o olho
-            cima = new Vector3D(-Math.Sin(e) * Math.Cos(a), -Math.Sin(e) * Math.Sin(a), Math.Cos(e));
-            dir = Vector3D.CrossProduct(-d, cima);
-        }
-
-        void AplicarCamera()
-        {
-            Direcoes(out Vector3D d, out Vector3D cima, out _);
-            cam.Position = alvo + d * raio * 6;
-            cam.LookDirection = -d;
-            cam.UpDirection = cima;
-            cam.Width = larg;
-            cam.NearPlaneDistance = raio; cam.FarPlaneDistance = raio * 14;   // faixa justa: melhor precisão de profundidade (chão x sombra)
-            if (render != null && Dx) { render.Camera(cam.Position, cam.LookDirection, cam.UpDirection, larg, raio, raio * 14); render.Lod(1 / Escala); }
-            sobre.InvalidateVisual();
-        }
-
-        void IrPara(Camera3 c, bool animar)
-        {
-            if (!animar || !IsVisible)
-            {
-                Parar(); az = c.Az; el = c.El; larg = c.Larg; alvo = c.Alvo; AplicarCamera();
-                if (Realista && !Dx && Math.Abs(Math.Log(LarguraAresta() / largArestas)) > 0.3) Reconstruir();   // arestas na escala nova já
-                return;
-            }
-            de = Atual(); para = c;
-            para.Az = de.Az + ((c.Az - de.Az) % 360 + 540) % 360 - 180;   // caminho mais curto
-            relogio.Restart();
-            if (!animando) { animando = true; CompositionTarget.Rendering += Passo; }
-        }
-
-        void Parar() { if (animando) { animando = false; CompositionTarget.Rendering -= Passo; } }
-
-        void Passo(object s, EventArgs e)
-        {
-            double t = Math.Min(1, relogio.Elapsed.TotalMilliseconds / DuracaoMs), k = 1 - Math.Pow(1 - t, 3);   // CubicEase EaseOut
-            az = de.Az + (para.Az - de.Az) * k; el = de.El + (para.El - de.El) * k; larg = de.Larg + (para.Larg - de.Larg) * k;
-            alvo = de.Alvo + (para.Alvo - de.Alvo) * k;
-            AplicarCamera();
-            if (t >= 1) { Parar(); AgendarArestas(); }
-        }
-
-        double LargEnquadrada(double azv, double elv)
-        {
-            // projeta os cantos da caixa no plano da tela da direção pedida
-            double a = azv * Math.PI / 180, e = elv * Math.PI / 180;
-            var d = new Vector3D(Math.Cos(e) * Math.Cos(a), Math.Cos(e) * Math.Sin(a), Math.Sin(e));
-            var cima = new Vector3D(-Math.Sin(e) * Math.Cos(a), -Math.Sin(e) * Math.Sin(a), Math.Cos(e));
-            Vector3D dir = Vector3D.CrossProduct(-d, cima);
-            Rect3D cx = Caixa(); Point3D c = new Point3D(cx.X + cx.SizeX / 2, cx.Y + cx.SizeY / 2, cx.Z + cx.SizeZ / 2);
-            double w = 0, hh = 0;
-            for (int i = 0; i < 8; i++)
-            {
-                Vector3D v = new Point3D(cx.X + (i & 1) * cx.SizeX, cx.Y + ((i >> 1) & 1) * cx.SizeY, cx.Z + ((i >> 2) & 1) * cx.SizeZ) - c;
-                w = Math.Max(w, Math.Abs(Vector3D.DotProduct(v, dir))); hh = Math.Max(hh, Math.Abs(Vector3D.DotProduct(v, cima)));
-            }
-            double asp = ActualWidth > 1 && ActualHeight > 1 ? ActualWidth / ActualHeight : 16.0 / 9;
-            return Math.Max(1, 2 * Math.Max(w, hh * asp) * 1.25);
-        }
-
-        public void Enquadrar(bool animar = true) { Enquadrar(az, el, animar); }
-
-        public void ZoomFator(double f) { var c = Atual(); c.Larg /= f; IrPara(c, false); }   // > 1 aproxima, em torno do centro
-
-        void Enquadrar(double azv, double elv, bool animar)
-        {
-            Rect3D cx = Caixa();
-            IrPara(new Camera3 { Az = azv, El = elv, Larg = LargEnquadrada(azv, elv), Alvo = new Point3D(cx.X + cx.SizeX / 2, cx.Y + cx.SizeY / 2, cx.Z + cx.SizeZ / 2) }, animar);
-        }
-
-        public void MostrarVista(VistaPadrao v, bool animar = true)
-        {
-            switch (v)
-            {
-                case VistaPadrao.Topo: AtualizarNome("Topo"); Enquadrar(-90, 90, animar); break;
-                case VistaPadrao.Frente: AtualizarNome("Frente (XZ)"); Enquadrar(-90, 0, animar); break;
-                case VistaPadrao.Lado: AtualizarNome("Lado (YZ)"); Enquadrar(0, 0, animar); break;
-                default: AtualizarNome("Isométrica"); Enquadrar(-55, 28, animar); break;
-            }
-        }
-
-        void AtualizarNome(string s) { nomeVista.Text = s; }
-
-        // ================= mouse =================
-
-        double Escala { get { return larg / Math.Max(1, ActualWidth); } }   // m por pixel
-
-        protected override void OnMouseWheel(MouseWheelEventArgs e)
-        {
-            Parar();
-            Point p = e.GetPosition(this);
-            Direcoes(out _, out Vector3D cima, out Vector3D dir);
-            double sx = (p.X - ActualWidth / 2) * Escala, sy = (ActualHeight / 2 - p.Y) * Escala;
-            Point3D sob = alvo + dir * sx + cima * sy;   // ponto sob o cursor fica parado
-            larg = Math.Max(raio * 0.002, Math.Min(raio * 200, larg * (e.Delta > 0 ? 1 / 1.2 : 1.2)));
-            sx =(p.X - ActualWidth / 2) * Escala; sy = (ActualHeight / 2 - p.Y) * Escala;
-            alvo = sob - dir * sx - cima * sy;
-            AplicarCamera(); AgendarArestas();
-            e.Handled = true;
-        }
-
-        protected override void OnMouseDown(MouseButtonEventArgs e)
-        {
-            Focus();
-            if (MouseSnap(e)) return;   // Shift+botão direito: menu de snap
-            Point p = e.GetPosition(this);
-            if (e.ChangedButton == MouseButton.Middle && e.ClickCount == 2) { Enquadrar(); return; }
-            bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-            if (e.ChangedButton == MouseButton.Left && ferr == Ferramenta3D.Selecionar) { Parar(); caixaIni = p; moveu = false; CaptureMouse(); }   // janela/cruzamento
-            else if ((e.ChangedButton == MouseButton.Middle && shift) || e.ChangedButton == MouseButton.Left) { Parar(); orbIni = p; cliqueIni = e.ChangedButton == MouseButton.Left ? p : (Point?)null; moveu = false; CaptureMouse(); }
-            else if (e.ChangedButton == MouseButton.Middle || e.ChangedButton == MouseButton.Right) { Parar(); panIni = p; moveu = false; CaptureMouse(); }
-        }
-
-        protected override void OnMouseLeave(MouseEventArgs e) { mouseDentro = false; marca.Visibility = Visibility.Collapsed; sobre.InvalidateVisual(); }
-
-        protected override void OnMouseMove(MouseEventArgs e)
-        {
-            Point p = e.GetPosition(this);
-            mouseTela = p; mouseDentro = true;
-            if (caixaIni != null) { if ((p - caixaIni.Value).Length > 4) moveu = true; sobre.InvalidateVisual(); return; }
-            if (orbIni == null && panIni == null && Desenhando) { AtualizarCursor(); return; }
-            if (orbIni != null)
-            {
-                Vector dv = p - orbIni.Value;
-                if (!moveu && dv.Length < 3) return;
-                moveu = true;
-                az -= dv.X * 0.4; el = Math.Max(-90, Math.Min(90, el + dv.Y * 0.4));
-                orbIni = p; AtualizarNome("Órbita"); AplicarCamera();
-            }
-            else if (panIni != null)
-            {
-                Vector dv = p - panIni.Value;
-                if (dv.Length > 0) moveu = true;
-                Direcoes(out _, out Vector3D cima, out Vector3D dir);
-                alvo = alvo - dir * dv.X * Escala + cima * dv.Y * Escala;
-                panIni = p; AplicarCamera();
-            }
-        }
-
-        protected override void OnMouseUp(MouseButtonEventArgs e)
-        {
-            Point p = e.GetPosition(this);
-            if (caixaIni != null && e.ChangedButton == MouseButton.Left)
-            {
-                Point a = caixaIni.Value; caixaIni = null; ReleaseMouseCapture();
-                if (moveu) SelecionarCaixa(a, p, Keyboard.Modifiers); else SelecionarClique(p, Keyboard.Modifiers);
-                sobre.InvalidateVisual();
-                return;
-            }
-            bool clique = cliqueIni != null && !moveu && e.ChangedButton == MouseButton.Left;
-            bool direito = panIni != null && !moveu && e.ChangedButton == MouseButton.Right;
-            orbIni = null; panIni = null; cliqueIni = null;
-            ReleaseMouseCapture();
-            if (direito && inicio != null) { inicio = null; DinLimpar(); AtualizarCursor(); }   // botão direito termina a corrente (igual ao 2D)
-            if (!clique) return;
-            if (Desenhando) _ = ClicarTela(p);
-            else SelecionarClique(p, Keyboard.Modifiers);   // Navegar também escolhe: a seleção (Selecao) é uma só para a edição
-        }
-
-        public object Acertar(Point p)
-        {
-            object achado = null;
-            VisualTreeHelper.HitTest(vp, null, r =>
-            {
-                if (r is RayMeshGeometry3DHitTestResult h)
-                {
-                    object o = null;
-                    if (mapa.TryGetValue(h.ModelHit, out object o1)) o = o1;
-                    else if (faixas.TryGetValue(h.ModelHit, out var fx))   // malha juntada: a barra dona do vértice
-                    {
-                        int k = Array.BinarySearch(fx.Ini, h.VertexIndex1);
-                        o = fx.Obj[k >= 0 ? k : Math.Max(0, ~k - 1)];
-                    }
-                    if (o == null) return HitTestResultBehavior.Continue;
-                    if (o is No3D || achado == null) achado = o;   // nó tem prioridade sobre a barra que passa por ele
-                    return o is No3D ? HitTestResultBehavior.Stop : HitTestResultBehavior.Continue;
-                }
-                return HitTestResultBehavior.Continue;
-            }, new PointHitTestParameters(TranslatePoint(p, vp)));
-            if (achado == null && Dx && render != null) achado = render.Acertar(TranslatePoint(p, render.Vista));   // peças no Render3D
-            // Realista não desenha os nós: vale o nó a até 8 px do clique (os da barra acertada, ou qualquer um no vazio)
-            if (Realista && !(achado is No3D))
-            {
-                IEnumerable<No3D> cand = achado is Barra3D bb ? new[] { NoPorId(bb.Ni), NoPorId(bb.Nj) } : mod.Nos;
-                double dm = 8;
-                foreach (No3D n in cand)
-                {
-                    if (n == null) continue;
-                    double dd = (Tela(P(n)) - p).Length;
-                    if (dd < dm) { dm = dd; achado = n; }
-                }
-            }
-            return achado;
-        }
-
-        // ponto 3D -> pixel da vista (câmera ortográfica)
-        public Point Tela(Point3D q)
-        {
-            Direcoes(out _, out Vector3D cima, out Vector3D dir);
-            Vector3D r = q - alvo;
-            return new Point(ActualWidth / 2 + Vector3D.DotProduct(r, dir) / Escala, ActualHeight / 2 - Vector3D.DotProduct(r, cima) / Escala);
-        }
-
-        public void Escolher(object o)
-        {
-            object origem = o is No3D n ? n.Origem ?? n : o is Barra3D b ? b.Origem ?? b : null;
-            Selecionado = origem;
-            Reconstruir();
-            Escolheu?.Invoke(o);
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            if (e.Key == Key.F4) { Enquadrar(); e.Handled = true; }
-            else if (Tecla(e.Key)) e.Handled = true;
-            base.OnKeyDown(e);
-        }
-
-        protected override void OnTextInput(TextCompositionEventArgs e)
-        {
-            if (Digitar(e.Text)) e.Handled = true;
-            base.OnTextInput(e);
-        }
-
         // ================= entrada: plano de trabalho, desenho e seleção =================
         // Igual à vista 2D (Vista.cs): atração a nó / meio / grade, ortogonal (F8 ou Shift) e polar 0/90 nos eixos do plano,
         // entrada dinâmica (comprimento, ângulo ou x,y,z digitados) junto ao cursor, Esc em cascata.
@@ -1157,6 +909,11 @@ namespace NovoFtool
         public Func<double, double> AlturaAndar;                         // z clicado -> altura do pilar (null = 3 m; < 0 = para baixo)
         public double PassoGrade = 1;                                    // m
         public bool Orto;                                                // F8; Shift força na hora
+        // Grade do plano ao desenhar (F7) e caixas da entrada dinâmica (F12). OSNAP/ORTO/Polar/Rastreio ficam no Snap3D (Vista3D.Snap.cs).
+        public bool MostrarGradePlano = true, EntradaDinamica = true;
+        // Eixos da grade estrutural (GR / Modelo › Grade): posições em X e Y (m) e nomes. Desenhados em todo nível; cruzamentos atraem.
+        public double[] EixosX = new double[0], EixosY = new double[0];
+        public string[] NomesX = new string[0], NomesY = new string[0];
 
         PlanoTrabalho plano = PlanoTrabalho.Horizontal(0);
         public PlanoTrabalho PlanoAtual
@@ -1171,13 +928,15 @@ namespace NovoFtool
             get => ferr;
             set
             {
+                if (Pedindo) LimparPedido();
+                gripQuente = null; Prompt = null;
                 ferr = value; inicio = null; DinLimpar(); coord = "";
                 Cursor = Desenhando ? Cursors.Cross : null;
                 AtualizarCursor();
                 FerramentaMudou?.Invoke();
             }
         }
-        public bool Desenhando => ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar || ferr == Ferramenta3D.Medir;   // Medir: cursor com snap
+        public bool Desenhando => ferr == Ferramenta3D.Barra || ferr == Ferramenta3D.Pilar || gripQuente != null || pedePonto != null || ferr == Ferramenta3D.Medir;   // Medir: cursor com snap (Vista3D.Snap.cs)
         public Point3D? InicioCorrente => inicio;   // 1º ponto da barra em andamento (null = nenhuma)
         public Point3D? PontoCursor => cursor3;    // ponto atraído sob o cursor (null = fora do plano)
         public string TipoAtracao => tipoSnap;      // Snap3D.Nome: "Extremidade", "Ponto médio", "Polar", "Ortogonal", "Grade", "Plano"...
@@ -1195,11 +954,12 @@ namespace NovoFtool
         public Point3D? NoPlano(Point tela, PlanoTrabalho pl = null)
         {
             pl = pl ?? plano;
-            Direcoes(out Vector3D d, out Vector3D cima, out Vector3D dir);
-            Point3D o = alvo + dir * (tela.X - ActualWidth / 2) * Escala + cima * (ActualHeight / 2 - tela.Y) * Escala;
+            var (o, d) = Raio(tela);   // ortográfica ou perspectiva (Vista3D.Navegacao.cs)
             double nd = Vector3D.DotProduct(pl.N, d);
             if (Math.Abs(nd) < 0.02) return null;
-            return o - d * ((Vector3D.DotProduct(pl.N, (Vector3D)o) - pl.Valor) / nd);
+            double t = (pl.Valor - Vector3D.DotProduct(pl.N, (Vector3D)o)) / nd;
+            if (perspectiva && t < 0) return null;   // plano atrás do olho
+            return o + d * t;
         }
 
         static bool Ler(string t, out double v) => double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out v) && double.IsFinite(v);
@@ -1235,6 +995,7 @@ namespace NovoFtool
                 if (marca.Tipo != tipoMarcado) { tipoMarcado = marca.Tipo; marca.InvalidateVisual(); Anim.Entrar(marca, 0, Anim.Rapido); }   // aparece a cada troca de atração
             }
             else { marca.Visibility = Visibility.Collapsed; tipoMarcado = null; }
+            CursorMudou?.Invoke(pf);
             sobre.InvalidateVisual();
         }
 
@@ -1245,8 +1006,7 @@ namespace NovoFtool
         public async Task ClicarTela(Point tela, ModifierKeys mods = ModifierKeys.None)
         {
             mouseTela = tela; mouseDentro = true;
-            if (ferr == Ferramenta3D.Selecionar) { SelecionarClique(tela, mods); return; }
-            if (ferr == Ferramenta3D.Navegar) { SelecionarClique(tela, mods); return; }
+            if (gripQuente == null && pedePonto == null && (ferr == Ferramenta3D.Selecionar || ferr == Ferramenta3D.Navegar)) { SelecionarClique(tela, mods); return; }
             AtualizarCursor();
             if (ferr == Ferramenta3D.Medir) { MedirClique(tela); return; }
             await Ponto(PontoFinal());
@@ -1258,6 +1018,8 @@ namespace NovoFtool
             if (p == null) { Aviso = "O plano de trabalho está de perfil nesta vista: gire a vista (Iso ou Topo)."; sobre.InvalidateVisual(); return; }
             Aviso = null;
             DinLimpar(); coord = "";
+            if (gripQuente != null) { await SoltarGrip(p.Value); return; }       // Vista3D.Grips.cs
+            if (pedePonto != null) { await PontoPedido(p.Value); return; }
             if (PontoSnap(p.Value)) { AtualizarCursor(); return; }   // gasta o snap único; Medir trata o ponto
             var segs = new List<(Point3D, Point3D)>();
             if (ferr == Ferramenta3D.Pilar)
@@ -1286,20 +1048,26 @@ namespace NovoFtool
             if (TeclaSnap(k)) return true;   // F3, F8, F10, F11 e o Medir
             switch (k)
             {
-                case Key.Escape:   // cascata: digitado > barra em andamento > ferramenta > seleção
+                case Key.Escape:   // cascata: digitado > travado > grip quente > comando pedindo > barra em andamento > ferramenta > seleção
                     if (coord != "") coord = "";
                     else if (DinTravado) DinLimpar();
+                    else if (gripQuente != null) { Esfriar(); return true; }
+                    else if (Pedindo) { LimparPedido(); return true; }
                     else if (inicio != null) inicio = null;
                     else if (Desenhando) { Ferramenta = Ferramenta3D.Selecionar; return true; }
                     else if (Selecao.Count > 0 || Selecionado != null) { LimparSelecao(); Escolher(null); }
                     else return false;
                     AtualizarCursor();
                     return true;
-                case Key.Enter:
-                    if (!Desenhando) return false;
+                case Key.Enter: case Key.Space:   // Espaço = Enter (AutoCAD)
+                    if (pedeObjeto != null) { TerminarPedido(); return true; }
+                    if (!Desenhando) return false;   // nada em curso: a janela repete o último comando
                     if (coord != "") { Point3D? p = PontoDigitado(); if (p == null) { Aviso = "Coordenada inválida: use x,y,z  @dx,dy,dz  ou u,w no plano."; coord = ""; sobre.InvalidateVisual(); } else _ = Ponto(p); }
                     else if (DinTravado) _ = Ponto(PontoFinal());
+                    else if (gripQuente != null) Esfriar();
+                    else if (pedePonto != null) LimparPedido();                        // Enter vazio encerra o comando (COPIAR múltiplo…)
                     else if (inicio != null) { inicio = null; AtualizarCursor(); }   // Enter sem nada digitado termina a corrente
+                    else Ferramenta = Ferramenta3D.Selecionar;                        // e, sem corrente, encerra a ferramenta
                     return true;
                 case Key.Tab:
                     if (!Desenhando || inicio == null) return false;
@@ -1402,7 +1170,8 @@ namespace NovoFtool
         void DesenharEntrada(DrawingContext dc, FrameworkElement alvoTxt)
         {
             FormattedText Ft(string s, Brush b, double tam) => new FormattedText(s, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, TfEntrada, tam, b, 1.0);
-            if (Desenhando && ferr != Ferramenta3D.Medir) DesenharGrade(dc);
+            if (Desenhando && ferr != Ferramenta3D.Medir && MostrarGradePlano) DesenharGrade(dc);
+            DesenharEixos(dc);
 
             if (caixaIni != null && moveu)
             {
@@ -1419,7 +1188,7 @@ namespace NovoFtool
                     Point a = Tela(inicio.Value);
                     if (cursor3 != null && DinTravado) dc.DrawLine(PGuia3, a, Tela(cursor3.Value));
                     dc.DrawLine(PElastico, a, s);
-                    CaixasDinamicas(dc, inicio.Value, pf.Value, s, Ft);
+                    if (EntradaDinamica) CaixasDinamicas(dc, inicio.Value, pf.Value, s, Ft);
                 }
                 else if (ferr == Ferramenta3D.Pilar)
                 {
@@ -1442,7 +1211,8 @@ namespace NovoFtool
             }
 
             // etiqueta da ferramenta (topo, centro)
-            string et = Aviso;
+            DesenharGrips(dc);
+            string et = Aviso ?? (Prompt != null ? Prompt + (Desenhando && tipoSnap != null ? " · plano " + plano.Nome + EstadoSnap() : "") : null);
             if (et == null && ferr == Ferramenta3D.Medir) et = EtiquetaMedir();
             else if (et == null && Desenhando)
                 et = (ferr == Ferramenta3D.Barra ? (inicio == null ? "BARRA — clique o 1º ponto" : "BARRA — próximo ponto (Esc ou botão direito termina)")
@@ -1555,279 +1325,11 @@ namespace NovoFtool
                 }
                 if (v.mod.Nos.Count == 0 && !v.Desenhando)
                 {
-                    var ft = Txt(v.CriarBarras != null ? "Modelo vazio: Modelo › Desenhar 3D › Barra ou Pilar." : "Modelo vazio: desenhe barras na vista 2D.", TemaPlant.BTexto3, 12);
+                    var ft = Txt(v.CriarBarras != null ? "Modelo vazio: digite L (barra) ou PI (pilar) e clique no plano — ou Modelo › Barra. Shift + arrastar orbita." : "Modelo vazio: desenhe barras na vista 2D.", TemaPlant.BTexto3, 12);
                     dc.DrawText(ft, new Point((ActualWidth - ft.Width) / 2, ActualHeight / 2));
                 }
             }
         }
     }
 
-    // Alternância 2D/3D na janela principal (botão "3D" da aba Vista).
-    public partial class MainWindow
-    {
-        internal Vista3D vista3D;
-        Fluent.ToggleButton tgRealista;
-        public bool Em3D { get { return vista3D != null && vista3D.Visibility == Visibility.Visible; } }
-
-        // Botão "Realista" (Vista › Navegar): perfis reais com sombra ou vista analítica; a escolha fica em Config.
-        public void DefinirRealista(bool ligar)
-        {
-            Config.Realista3D = ligar;
-            if (tgRealista != null) tgRealista.IsChecked = ligar;
-            if (vista3D != null) { vista3D.Realista = ligar; vista3D.Reconstruir(); }
-            if (ligar && !Em3D) MostrarVista3D(true);
-        }
-
-        // Forma real da seção: do modelo do motor (props do JSON) ou do catálogo do Estructto (perfis-*.csv).
-        Perfil3D PerfilDaSecao(string nome)
-        {
-            if (Esp?.Json?["secoes"]?[nome] is JsonObject s) return Perfil3D.DoMotor(s);
-            return Perfil3D.DoCatalogo(Biblioteca.AcharSecao(nome));
-        }
-
-        public void AlternarVista3D() { MostrarVista3D(!Em3D); }
-
-        public void MostrarVista3D(bool ligar)
-        {
-            AtualizarFaixa3D();
-            if (ligar && vista3D == null)
-            {
-                vista3D = new Vista3D { Visibility = Visibility.Collapsed, MostrarLegenda = false, Realista = Config.Realista3D, Perfil = PerfilDaSecao, MostrarCargas = tgCargas?.IsChecked != false };
-                GridVista.Children.Insert(GridVista.Children.IndexOf(Vista) + 1, vista3D);   // acima do 2D, abaixo do HUD e avisos
-                vista3D.Escolheu += o =>
-                {
-                    if (Esp != null) return;   // modelo espacial: DocumentoEspacial.cs trata a escolha
-                    object alvo = o is No3D n ? n.Origem : o is Barra3D b ? b.Origem : null;
-                    Vista.Sel.Clear();
-                    if (alvo != null) Vista.Sel.Add(alvo);
-                    SelecaoMudou();
-                };
-                LigarDesenho3D();
-            }
-            if (vista3D == null || (!ligar && Esp != null)) return;   // modelo espacial: sempre 3D
-            bool primeira = ligar && vista3D.Visibility != Visibility.Visible;
-            vista3D.Visibility = ligar ? Visibility.Visible : Visibility.Collapsed;
-            Vista.Visibility = ligar ? Visibility.Hidden : Visibility.Visible;
-            if (ligar) { Atualizar3D(primeira); vista3D.Focus(); } else Vista.Focus();
-        }
-
-        // Recarrega a vista 3D a partir do modelo 2D e do diagrama ativo (chamado depois de cada cálculo).
-        internal void Atualizar3D(bool enquadrar = false)
-        {
-            if (Esp != null) { AtualizarEspacial3D(enquadrar); return; }
-            if (!Em3D) return;
-            Diagrama d = Vista.Diag;
-            vista3D.Diagrama = !Vista.Resolvido ? Diagrama3D.Nenhum : d == Diagrama.Normal ? Diagrama3D.N : d == Diagrama.Cortante ? Diagrama3D.V : d == Diagrama.Momento ? Diagrama3D.M : Diagrama3D.Nenhum;
-            vista3D.MostrarDeformada = Vista.Resolvido && d == Diagrama.Deformada;
-            vista3D.MostrarAproveitamento = Vista.Resolvido && d == Diagrama.Verificacao;
-            vista3D.EscalaDeformada = Vista.EscalaDef; vista3D.EscalaDiagrama = Vista.EscalaDiag;
-            vista3D.Selecionado = Vista.Sel.Count == 1 ? Vista.Sel[0] : null;
-            vista3D.Carregar(Modelo3D.De(M, Vista.Resolvido ? Vista.Verificar : null), enquadrar);
-        }
-
-        // ================= desenhar no modelo espacial (Modelo › Desenhar 3D) =================
-
-        F.RibbonGroupBox grpDesenho3D, grpDesenho2D;
-        readonly Dictionary<Ferramenta3D, F.ToggleButton> btnFerr3D = new Dictionary<Ferramenta3D, F.ToggleButton>();
-
-        // Chamado uma vez ao montar a faixa: grupo "Desenhar 3D" ao lado do "Desenhar" 2D (só um dos dois aparece) e a paleta.
-        internal void MontarDesenho3D()
-        {
-            grpDesenho2D = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Desenhar");
-            grpDesenho3D = new F.RibbonGroupBox { Header = "Desenhar 3D", Visibility = Visibility.Collapsed };
-            foreach (var (f, ic, txt, nome, dica, atalho) in new[]
-            {
-                (Ferramenta3D.Selecionar, "sel", "Selecionar", "Selecionar 3D", "Clique escolhe; arraste da esquerda p/ direita = janela, da direita p/ esquerda = cruzamento. Shift soma, Ctrl tira, Esc limpa.", "Esc"),
-                (Ferramenta3D.Barra, "barra", "Barra", "Barra 3D", "Clique os pontos em sequência no plano de trabalho (atrai nós, meios e grade; F8/Shift ortogonal). Digite o comprimento, Tab o ângulo, ou x,y,z / @dx,dy,dz. Esc ou botão direito termina.", null),
-                (Ferramenta3D.Pilar, "3d", "Pilar", "Pilar 3D", "Clique o ponto no plano de trabalho: num nível com outro abaixo, o pilar desce até ele; no nível mais baixo, sobe até o próximo (3 m sem níveis).", null),
-            })
-            {
-                var b = new F.ToggleButton { Header = txt, LargeIcon = Icone(ic, 32), Icon = Icone(ic, 16), Size = F.RibbonControlSize.Large, ToolTip = Dica(nome, dica, atalho) };
-                Tamanho(b, false);
-                b.Click += (s, e) => UsarFerramenta3D(f);
-                Reg(ic, nome, atalho, dica, () => UsarFerramenta3D(f));
-                btnFerr3D[f] = b; grpDesenho3D.Items.Add(b);
-            }
-            MontarSecaoDesenho3D();
-            MontarMedir3D();   // Vista3D.Snap.cs
-            int i = grpDesenho2D != null ? abaModelo.Groups.IndexOf(grpDesenho2D) + 1 : 1;
-            abaModelo.Groups.Insert(Math.Min(i, abaModelo.Groups.Count), grpDesenho3D);
-            var gerar = abaModelo.Groups.FirstOrDefault(g => (g.Header as string) == "Gerar");
-            gerar?.Items.Add(Botao("3d", "Modelo 3D vazio", NovoEspacialVazio, "Modelo espacial em branco no motor Python, para desenhar com Barra e Pilar (Desenhar 3D).", null, true));
-        }
-
-        internal void NovoEspacialVazio() => _ = AbrirEspacial(() => DocumentoEspacial.Vazio("Modelo 3D"), "criando modelo vazio");
-
-        internal void UsarFerramenta3D(Ferramenta3D f)
-        {
-            if (Esp == null || vista3D == null) { MostrarToast("Desenhar 3D vale no modelo espacial: Modelo › Gerar 3D ou Modelo 3D vazio.", true); SincronizarFerr3D(); return; }
-            vista3D.Ferramenta = vista3D.Ferramenta == f && f != Ferramenta3D.Selecionar ? Ferramenta3D.Navegar : f;
-            vista3D.Focus();
-        }
-
-        void SincronizarFerr3D()
-        {
-            foreach (var kv in btnFerr3D) kv.Value.IsChecked = vista3D != null && Esp != null && vista3D.Ferramenta == kv.Key;
-        }
-
-        void AtualizarFaixa3D()
-        {
-            if (grpDesenho3D == null) return;
-            bool esp = Esp != null;
-            grpDesenho3D.Visibility = esp ? Visibility.Visible : Visibility.Collapsed;
-            if (grpDesenho2D != null) grpDesenho2D.Visibility = esp ? Visibility.Collapsed : Visibility.Visible;
-            if (!esp && vista3D != null && vista3D.Ferramenta != Ferramenta3D.Navegar) vista3D.Ferramenta = Ferramenta3D.Navegar;   // 2D: vista 3D só de leitura
-            SincronizarFerr3D();
-        }
-
-        void LigarDesenho3D()
-        {
-            vista3D.CriarBarras = DesenharEsp;
-            vista3D.AlturaAndar = AlturaAndarEsp;
-            vista3D.FerramentaMudou += SincronizarFerr3D;
-        }
-
-        // Teclas da ferramenta 3D antes dos atalhos da janela (Esc, Enter, Tab, Backspace, F8). Acoes.cs › Tecla.
-        internal bool Tecla3D(Key k) => Esp != null && vista3D != null && vista3D.IsVisible && vista3D.Tecla(k);
-
-        async Task DesenharEsp(IList<(Point3D A, Point3D B)> segs)
-        {
-            var d = Esp;
-            if (d == null) return;
-            try
-            {
-                var ids = await d.DesenharBarras(segs, SecaoDesenho3D(d), ApoioBase3D);
-                if (Esp == d) DepoisDeMudarEspacial(ids.Count == 1 ? "Barra " + ids[0] + " desenhada." : Pl.N(ids.Count, "barra desenhada", "barras desenhadas") + ".");
-            }
-            catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
-            AvisarHistorico(d);
-        }
-
-        // Altura do pilar pelos níveis (Niveis.Lista: pavimentos + Térreo): clicado num nível com outro abaixo, desce até ele
-        // (< 0: o andar do nível ativo, o que a vista isolada mostra); senão sobe até o nível de cima; no topo sem nível, a do
-        // último andar; sem níveis, 3 m.
-        double AlturaAndarEsp(double z)
-        {
-            if (Esp == null) return 3;
-            var l = Niveis.Lista(Esp.Json);
-            double? abaixo = Niveis.Abaixo(l, z), acima = Niveis.Acima(l, z);
-            if (abaixo != null && l.Any(n => Math.Abs(n.Z - z) <= Niveis.Tol)) return abaixo.Value - z;
-            if (acima != null) return acima.Value - z;
-            return l.Count >= 2 ? l[^1].Z - l[^2].Z : 3;
-        }
-
-        // ---------- Desenhar 3D › Seção e Apoio na base ----------
-        F.ComboBox cbSecao3D; F.ToggleButton tgApoioBase3D;
-        string secao3D;                                  // escolhida no seletor (null = a da última barra)
-        bool montandoSecao3D;
-        const string DoCatalogo = "Do catálogo…";
-        internal bool ApoioBase3D { get => tgApoioBase3D?.IsChecked == true; set { if (tgApoioBase3D != null) tgApoioBase3D.IsChecked = value; } }
-
-        // Seção das barras novas: a do seletor, se ainda estiver no modelo; senão a da última barra (null = DesenharBarras decide).
-        string SecaoDesenho3D(DocumentoEspacial d) =>
-            secao3D != null && d.Json["secoes"]?[secao3D] != null ? secao3D : (string)(d.Json["barras"] as JsonObject)?.LastOrDefault().Value?["secao"];
-
-        void MontarSecaoDesenho3D()
-        {
-            cbSecao3D = new F.ComboBox { Header = "Seção", IsEditable = false, Width = 190,
-                ToolTip = Dica("Seção", "Seção das barras e pilares desenhados: as do modelo, ou um perfil do catálogo do motor (entra no modelo ao escolher).") };
-            cbSecao3D.DropDownOpened += (s, e) => ListarSecoes3D();
-            cbSecao3D.SelectionChanged += (s, e) =>
-            {
-                if (montandoSecao3D || !(cbSecao3D.SelectedItem is string v)) return;
-                if (v == DoCatalogo) { ListarSecoes3D(); _ = EscolherDoCatalogo3D(); return; }
-                secao3D = v;
-            };
-            tgApoioBase3D = new F.ToggleButton { Header = "Apoio na base", Icon = Icone("engaste", 16), LargeIcon = Icone("engaste", 32), Size = F.RibbonControlSize.Middle,
-                ToolTip = Dica("Apoio na base", "Nó novo desenhado no nível mais baixo nasce engastado (6 GL travados).") };
-            grpDesenho3D.Items.Add(cbSecao3D);
-            grpDesenho3D.Items.Add(tgApoioBase3D);
-        }
-
-        // Itens: seções do modelo + "Do catálogo…"; mostra a que vale agora.
-        internal void ListarSecoes3D()
-        {
-            if (cbSecao3D == null) return;
-            montandoSecao3D = true;
-            cbSecao3D.Items.Clear();
-            var d = Esp;
-            if (d != null) foreach (var kv in d.Json["secoes"] as JsonObject ?? new JsonObject()) cbSecao3D.Items.Add(kv.Key);
-            cbSecao3D.Items.Add(DoCatalogo);
-            string atual = d == null ? null : SecaoDesenho3D(d);
-            cbSecao3D.SelectedItem = atual != null && cbSecao3D.Items.Contains(atual) ? atual : null;
-            montandoSecao3D = false;
-        }
-
-        async Task EscolherDoCatalogo3D()
-        {
-            if (Esp == null) return;
-            JsonNode lista;
-            try { lista = await Motor.Get("/api/catalogo"); }
-            catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; return; }
-            var j = new JanelaCatalogo(lista, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome))) { Owner = this };
-            j.PerfilEscolhido += nome => _ = UsarSecao3D(nome);
-            j.Show();
-        }
-
-        // Escolhe a seção do desenho; perfil do catálogo fora do modelo entra pelo motor (POST /api/modelo/secao, um desfazer).
-        internal async Task UsarSecao3D(string nome)
-        {
-            var d = Esp;
-            if (d == null) return;
-            if (d.Json["secoes"]?[nome] == null) await Espacial(dd => dd.GarantirSecao(nome), "Seção " + nome + " do catálogo entrou no modelo.");
-            if (Esp?.Json["secoes"]?[nome] == null) return;
-            secao3D = nome;
-            ListarSecoes3D();
-        }
-    }
-
-    public partial class DocumentoEspacial
-    {
-        // Modelo espacial em branco (para desenhar na Vista3D).
-        public static Task<DocumentoEspacial> Vazio(string titulo) => Criar(() => Motor.Post("/api/modelo/novo", new JsonObject { ["nome"] = titulo }), titulo, null);
-
-        // Barras desenhadas na Vista3D: um POST /api/modelo/lote (atômico, um passo de desfazer). Ponta a até 1 mm de um nó
-        // existente reaproveita o nó. Seção = a do seletor (Desenhar 3D › Seção, que já põe o perfil do catálogo no modelo; se
-        // faltar, entra no mesmo lote); sem seção, a primeira do modelo ou W310x38.7. Material = o da última barra
-        // (ou A-572 GR.50 no mesmo lote). apoioBase: nó novo na cota do nível mais baixo nasce engastado.
-        // Devolve os ids das barras criadas.
-        // ponytail: material não segue a seção (perfil de concreto do catálogo herda o aço da última barra); trocar em Propriedades em lote.
-        public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs, string secao = null, bool apoioBase = false) => Motor.Exclusivo(async () =>
-        {
-            await Garantir();
-            var nos = Json["nos"].AsObject();
-            var itens = new JsonArray(); var novos = new List<(string Id, Point3D P)>();
-            var ult = (Json["barras"] as JsonObject)?.LastOrDefault().Value;
-            secao ??= (Json["secoes"] as JsonObject)?.Select(x => x.Key).FirstOrDefault() ?? "W310x38.7";
-            string material = (string)ult?["material"] ?? (Json["materiais"] as JsonObject)?.Select(x => x.Key).FirstOrDefault();
-            double zBase = Niveis.Lista(Json).Min(n => n.Z);
-            if (Json["secoes"]?[secao] == null) itens.Add(new JsonObject { ["tipo"] = "secao", ["dados"] = new JsonObject { ["perfil"] = secao } });
-            if (material == null) { material = "A-572 GR.50"; itens.Add(new JsonObject { ["tipo"] = "material", ["dados"] = new JsonObject { ["aco"] = material } }); }
-            int k = 0;
-            string No(Point3D p)
-            {
-                p = new Point3D(Math.Round(p.X, 6), Math.Round(p.Y, 6), Math.Round(p.Z, 6));
-                foreach (var kv in nos)
-                    if (Math.Abs((double)kv.Value["x"] - p.X) < 1e-3 && Math.Abs((double)kv.Value["y"] - p.Y) < 1e-3 && Math.Abs((double)kv.Value["z"] - p.Z) < 1e-3) return kv.Key;
-                foreach (var (id, q) in novos) if ((q - p).Length < 1e-3) return id;
-                string nid;
-                do nid = "n" + (nos.Count + ++k); while (nos.ContainsKey(nid));
-                var no = new JsonObject { ["id"] = nid, ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z };
-                if (apoioBase && Math.Abs(p.Z - zBase) <= Niveis.Tol) no["apoio"] = new JsonArray(true, true, true, true, true, true);
-                itens.Add(new JsonObject { ["tipo"] = "no", ["dados"] = no });
-                novos.Add((nid, p));
-                return nid;
-            }
-            foreach (var (a, b) in segs)
-            {
-                string ni = No(a), nj = No(b);
-                if (ni == nj) continue;
-                itens.Add(new JsonObject { ["tipo"] = "barra", ["dados"] = new JsonObject { ["ni"] = ni, ["nj"] = nj, ["secao"] = secao, ["material"] = material } });
-            }
-            var r = await Motor.Post("/api/modelo/lote", new JsonObject { ["itens"] = itens });
-            TemHistorico = true;
-            await Recarregar();
-            return r?["criados"]?.AsArray().Where(c => (string)c["tipo"] == "barra").Select(c => (string)c["id"]).ToList() ?? new List<string>();
-        });
-    }
 }

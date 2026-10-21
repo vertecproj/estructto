@@ -143,6 +143,7 @@ namespace NovoFtool
                 var (a, c) = pontos(b); Vector3D e = c - a; double len = e.Length; if (len < 1e-9) continue; e /= len;
                 Vector3D v = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), u = Vector3D.CrossProduct(v, e);
                 Contorno f = forma(b);
+                Point dc = GeometriaPerfis.Cardinal(f, b.Cardinal); a += u * dc.X + v * dc.Y; c += u * dc.X + v * dc.Y;
                 foreach (bool emI in new[] { true, false })
                 {
                     int id = emI ? b.Ni : b.Nj;

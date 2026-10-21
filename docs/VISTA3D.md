@@ -38,18 +38,15 @@ Adaptador `Modelo3D.De(Modelo, verificar)`: o plano XY do 2D vira o plano XZ (Y 
 
 ## Uso
 
-| Ação | Mouse / teclado |
-|---|---|
-| Zoom no cursor | roda |
-| Pan | botão do meio ou direito arrastando (igual ao 2D) |
-| Órbita | botão esquerdo arrastando, ou Shift + meio |
-| Enquadrar | duplo clique no meio, F4 |
-| Escolher barra/nó | clique (evento `Escolheu`; na janela vira a seleção do 2D e abre o Inspector) |
-| Topo / Frente / Lado / Iso | seletor no canto superior direito da vista; `MostrarVista(VistaPadrao)` |
+Navegação de AutoCAD/Plant 3D (Shift + arrastar orbita, meio = pan, roda = zoom no cursor, duplo clique do meio = enquadrar),
+ViewCube, perspectiva, grips e pedidos de ponto/objeto: ver [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md) ("Navegação", "Grips").
+Código: `Vista3D.Navegacao.cs` (câmera, projeção `Tela`/`Raio`, mouse), `ViewCube.cs`, `Vista3D.Grips.cs`; `Vista3D.cs` guarda
+dados, cena, Realista, entrada e sobreposição (os worktrees de render e snap mexem lá). Câmera ortográfica (padrão) ou
+`PerspectiveCamera` de 45° na mesma largura visível no plano do alvo.
 
 Transições de câmera: 300 ms, CubicEase EaseOut (GUIA-DESIGN). O diagrama, a deformada (com a escala do HUD) e o mapa de
 aproveitamento (cores `CorCalor1..4` de `TemaPlant.cs`, faixas de `Vista.FaixaCalor`) seguem o que está escolhido no HUD.
-Alternância: `MainWindow.AlternarVista3D()` / `MostrarVista3D(bool)`, botão "Vista 3D" na aba Vista.
+A vista 2D não existe mais: `MostrarVista3D` só liga a Vista3D (host em `Desenho3D.cs`).
 
 ## Modo Realista
 

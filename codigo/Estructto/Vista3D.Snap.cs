@@ -26,7 +26,7 @@ namespace NovoFtool
         ResultadoSnap snapRes;
         readonly Stopwatch relogioSnap = Stopwatch.StartNew(); double relogioExtra;
         readonly DispatcherTimer timerPausa = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Snap3D.TempoAquisicao + 20) };
-        GeoSnap geo; Modelo3D geoDe; bool geoRealista; Point pxPausa;
+        GeoSnap geo; Modelo3D geoDe; bool geoRealista; Point pxPausa; (double[], double[], double) geoEixos;
         PainelMedir painelMedir;
 
         double AgoraSnap => relogioSnap.Elapsed.TotalMilliseconds + relogioExtra;
@@ -51,9 +51,12 @@ namespace NovoFtool
         // Geometria de atração: nós, eixos das barras e, no Realista, as arestas e os centros dos tubos do sólido.
         GeoSnap Geometria()
         {
-            if (geo != null && geoDe == mod && geoRealista == Realista) return geo;
+            double zEixos = plano.Normal == 'Z' ? plano.Valor : 0;
+            if (geo != null && geoDe == mod && geoRealista == Realista && geoEixos == (EixosX, EixosY, zEixos)) return geo;
             var g = new GeoSnap();
             foreach (No3D n in mod.Nos) g.Nos.Add(P(n));
+            foreach (double gx in EixosX) foreach (double gy in EixosY) g.Nos.Add(new Point3D(gx, gy, zEixos));   // cruzamentos da grade estrutural (GR) no nível do plano
+            geoEixos = (EixosX, EixosY, zEixos);
             double h = raio * 0.006;
             foreach (Barra3D b in mod.Barras)
             {
@@ -94,7 +97,8 @@ namespace NovoFtool
             Direcoes(out Vector3D d, out Vector3D cima, out Vector3D dir);
             // o mesmo que Tela(), com a câmera calculada uma vez (o motor projeta milhares de pontos por movimento no Realista)
             double esc = Escala, cx = ActualWidth / 2, cy = ActualHeight / 2; Point3D al = alvo;
-            Point Proj(Point3D q) { Vector3D r = q - al; return new Point(cx + Vector3D.DotProduct(r, dir) / esc, cy - Vector3D.DotProduct(r, cima) / esc); }
+            bool persp = perspectiva;   // perspectiva (Vista3D.Navegacao.cs): a projeção completa
+            Point Proj(Point3D q) { if (persp) return Tela(q); Vector3D r = q - al; return new Point(cx + Vector3D.DotProduct(r, dir) / esc, cy - Vector3D.DotProduct(r, cima) / esc); }
             bool shift = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
             snapRes = Snap.Resolver(Geometria(), Proj, p => NoPlano(p), plano, tela, BaseSnap, AgoraSnap, shift, d);
             Orto = Snap.Orto;
@@ -366,7 +370,7 @@ namespace NovoFtool
             {
                 var bv = new F.Button { Header = "Medir", LargeIcon = Icone("medir", 32), Icon = Icone("medir", 16), Size = F.RibbonControlSize.Middle, ToolTip = Dica("Medir", dica, "Ctrl+M") };
                 Tamanho(bv, true);
-                bv.Click += (s, e) => { if (!Medir3D()) AcionarFerramenta(Ferramenta.Medir); };
+                bv.Click += (s, e) => Medir3D();
                 nav.Items.Add(bv);
             }
         }

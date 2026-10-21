@@ -13,8 +13,34 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   Fontes: grupos do motor com projeto (`Render3DMotor.cs`, `verificar_ligacao` por grupo), placa de base do 2D
   (`No.Placa` + `PlacaCalc`), exemplos do contrato nas capturas. Motor: tipos das 3 famílias registrados em
   `ligacoes_modelo.VERIFICADORES` (`_registrar_contrato`).
+- Ponto cardinal da barra desloca o perfil no Realista (Render3D, nativo e recortes/ligações); Render3D segue a câmera
+  ortográfica e a perspectiva.
 - Antes/depois, look, medições (2.430 barras: cena 25–34 ms, quadro 9–10 ms) e limites: [v3/RENDER.md](v3/RENDER.md);
   decisão do renderizador: [VISTA3D.md](VISTA3D.md).
+## 21/10/2026 — Estructto só 3D: documento único, navegação do AutoCAD/Plant, linha de comando e grips (branch wt-so3d, A1)
+
+- Pedido do usuário: "modelar em 3D do zero; Shift + rotacionar já é 3D; não tem 2D, é só 3D, igual o Plant".
+- Todo documento é o modelo do motor. `.estructto` antigo, `.ftl`, `.portico` e assistentes convertidos ao abrir (aviso
+  único); salvar = contêiner `.estructto` v3 (modelo + placas + grade + ponto cardinal) ou `.json`. Novo = em planta no térreo.
+- Navegação: Shift + meio/esquerdo orbita sem cancelar o comando (pivô na seleção ou sob o cursor), meio = pan, roda no
+  cursor, duplo clique do meio = enquadrar, ViewCube (26 regiões, Home, arrastar), perspectiva (`Vista3D.Navegacao.cs`, `ViewCube.cs`).
+- Linha de comando AutoCAD (`Comandos3D.cs`): L, PI, M, CO, MI, RO, AR, TR, EX, DIV, J, E, PR, MA, ME/DI, ID, Z/ZO, GR, U…;
+  Enter/Espaço repete; Esc em cascata; F1–F12; PgUp/PgDn nível; grips com Ctrl copiando (`Vista3D.Grips.cs`).
+- Aba Modelo no fluxo do Plant 3D (Grade, Barras, Chapas, Modificar, Apoios, Configurações); 2D removido da interface
+  (lista em REVISAO-TELAS.md §6). Placa de base, relatório e Dimensionar pelo motor (`Legado3D.cs`).
+- Pontos de entrada para wt-inicio: `NovoDocumento`, `AbrirArquivo`, `ArquivosRecentes`.
+- Prova: build Release sem erros, `compilar.ps1 -Testes` (200), `--testes-edicao` (com 8 asserções novas), `--testes-snap`,
+  capturas completas sem `erros.txt` + fluxo `54-a1-*`.
+- Detalhe: [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md), [VISTA3D.md](VISTA3D.md), [REVISAO-TELAS.md](REVISAO-TELAS.md), manual.
+- Pendente: ponto cardinal no desenho Realista (Render3D), F4/F6 do AutoCAD, RO/MI só em torno do vertical, placa só eixo forte.
+## 21/10/2026 — Projetista de ligações metálicas (branch wt-lig-ui)
+
+Pedido do usuário: padrões de ligação para escolher, o programa calcula e ele ajusta (como a placa de base). Nova
+`JanelaLigacaoProjeto` (biblioteca por família com miniatura 3D, 3 passos gerados do esquema do motor, desenho ao vivo em
+elevação/planta/lateral/3D com cotas e falhas em vermelho, Sugerir, Otimizar, memorial HTML, Aplicar ao grupo); faixa
+Ligações e bases › Projetar ligação e Ctrl+K; gerenciador › Projetar no projetista. Motor: `ligacoes.otimizar`,
+`memorial_html`, `geometria_basica`, rotas `/api/ligacoes/{sugerir,otimizar,memorial}`, exemplo de cada tipo, verificador
+genérico dos tipos do contrato nos grupos. `JanelaLigacao.cs` retirada. Detalhe: [v3/LIGACOES-UI.md](v3/LIGACOES-UI.md).
 
 ## 20/10/2026 — Snap igual ao AutoCAD e Medir AutoCAD + Inventor na Vista 3D (branch wt-snap)
 

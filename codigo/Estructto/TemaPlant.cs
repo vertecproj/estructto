@@ -63,7 +63,12 @@ namespace NovoFtool
             ErroFundo      = C("#3F1A24"),
             ErroBorda      = C("#6E2536"),
 
-            InfoFundo      = C("#172B42");
+            InfoFundo      = C("#172B42"),
+
+            // projetista de ligações (LigacaoDesenho.cs): perfis neutros, chapas claras, solda quente
+            LigPerfil3D    = C("#56657A"),
+            LigChapa3D     = C("#C9D4E2"),
+            LigSolda       = C("#F2B84B");
 
         // ---------- 4.2 Tokens Semanticos do Canvas e Diagramas ----------
         public static readonly Color
@@ -129,7 +134,15 @@ namespace NovoFtool
             CorParafuso3D      = C("#555E6A"),   // parafusos, porcas e arruelas
             CorSolda3D         = C("#464B54"),   // cordões de solda
             CorGrade3D         = C("#343D4B"),   // grade do chão (some no degradê)
-            CorArestaDx3D      = C("#161B23");   // arestas de 1 px do Render3D
+            CorArestaDx3D      = C("#161B23"),   // arestas de 1 px do Render3D
+            // ViewCube e grips da Vista3D (ViewCube.cs, Vista3D.Grips.cs; docs/v3/PESQUISA-PLANT.md 2.2 e 3.7)
+            CorCuboFace        = C("#D92D3646"),   // face do cubo (Surface2 a 85%)
+            CorCuboHover       = C("#CC0EA5E9"),   // região sob o mouse (acento)
+            CorCuboAresta      = C("#7C8B9E"),
+            CorPivo            = C("#1B202B"),     // esfera do pivô da órbita (contorno branco)
+            CorGripFrio        = C("#2F7DF6"),
+            CorGripHover       = C("#FF6E6E"),
+            CorGripQuente      = C("#E0201B");
 
         // ---------- Aliases de compatibilidade (nomes ja usados no codigo) ----------
         public static readonly Color
@@ -243,6 +256,8 @@ namespace NovoFtool
             BPilar3DFace      = B("#960EA5E9"),
             BPilar3DTopo      = B("#C80284C7"),
             BPerfilArea       = B("#5A0EA5E9"),
+            BLigPerfil        = B("#3394A3B8"),
+            BLigSolda         = B(LigSolda),
             BCotaFundo        = B(InfoFundo),
 
             // Modo de impressao / Memorial A4 (fundo claro)

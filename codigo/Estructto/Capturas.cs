@@ -130,8 +130,8 @@ namespace NovoFtool
             for (int k = 0; k < 2; k++) for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++)
             {
                 esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k), Nj = nid(i, j, k + 1), Secao = "W 250 x 32,7", Aprov = 0.4 + 0.7 * rnd.NextDouble() });
-                if (i < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i + 1, j, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
-                if (j < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i, j + 1, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble() });
+                if (i < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i + 1, j, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble(), Cardinal = 8 });   // vigas penduradas pela mesa superior
+                if (j < 2) esp.Barras.Add(new Barra3D { Id = ++idb, Ni = nid(i, j, k + 1), Nj = nid(i, j + 1, k + 1), Secao = "W 310 x 38,7", Aprov = 0.3 + 0.75 * rnd.NextDouble(), Cardinal = 8 });
             }
             if (contraventado)
                 for (int k = 0; k < 2; k++) for (int i = 0; i < 2; i++)
@@ -179,6 +179,12 @@ namespace NovoFtool
                 CapturarPrincipal(w, "42-" + suf + "-portico2x2");
                 w.vista3D.ZoomFator(3.5);
                 CapturarPrincipal(w, "42-" + suf + "-portico2x2-detalhe");
+                if (real)
+                {
+                    w.vista3D.Perspectiva = true;
+                    CapturarPrincipal(w, "42-realista-portico2x2-perspectiva");
+                    w.vista3D.Perspectiva = false;
+                }
                 w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                 if (real)
                 {
@@ -945,90 +951,44 @@ namespace NovoFtool
                 w.Bastidor.IsOpen = false;
                 EsperarIdle();
 
-                // Abre o modelo e calcula (F5)
-                w.Abrir(caminhoModelo);
+                // Abre o modelo (o .estructto antigo é convertido para 3D) e calcula (F5)
+                {
+                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
+                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
+                }
+                Esperar(w.AbrirTarefa(caminhoModelo));
                 w.TelaInicial.Visibility = Visibility.Collapsed;
-                w.Resolver(true);
                 EsperarIdle();
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "planos")   // só as capturas 43) de níveis e planos
-                {
-                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
-                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
-                    CapturasPlanos(w);
-                    w.alterado = false;
-                    w.Close();
-                    Environment.Exit(0);
-                }
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "trelicas")   // só as capturas 50) de treliças e contraventamentos
-                {
-                    CapturasTrelicas(w);
-                    w.alterado = false;
-                    w.Close();
-                    Environment.Exit(0);
-                }
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "ligacoes")   // só as capturas 49) do gerenciador de ligações
-                {
-                    CapturasLigacoes(w);
-                    w.alterado = false;
-                    w.Close();
-                    Environment.Exit(0);
-                }
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "desenho3d")   // só as capturas 43) do desenho no 3D
-                {
-                    CapturasDesenho3D(w);
-                    w.alterado = false;
-                    w.Close();
-                    Environment.Exit(0);
-                }
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "snap")   // só as capturas 50-53) de snap e medir 3D
-                {
-                    CapturasSnap(w);
-                    w.alterado = false;
-                    w.Close();
-                    Environment.Exit(0);
-                }
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "fluxo3d")   // só as capturas 49) do fluxo de modelagem 3D
-                {
-                    CapturasFluxo3D(w);
-                    w.alterado = false;
-                    w.Close();
-                    Environment.Exit(0);
-                }
-                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "3d")   // só as capturas 42) da vista 3D
-                {
-                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
-                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
-                    bool antes = Config.Realista3D;
-                    CapturasRealista(w);
-                    w.DefinirRealista(antes);
-                    w.alterado = false;
-                    w.Close();
-                    Environment.Exit(0);
-                }
+                if (w.EspacialAtivo == null) throw new InvalidOperationException("o modelo não abriu como documento 3D: " + caminhoModelo);
+                string so = Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS");
+                Action<Action> so1 = f => { f(); w.alterado = false; w.Close(); Environment.Exit(0); };
+                if (so == "planos") so1(() => CapturasPlanos(w));                 // só as capturas 43) de níveis e planos
+                if (so == "trelicas") so1(() => CapturasTrelicas(w));             // só as 50) de treliças e contraventamentos
+                if (so == "ligacoes") so1(() => CapturasLigacoes(w));             // só as 49) do gerenciador de ligações
+                if (so == "desenho3d") so1(() => CapturasDesenho3D(w));           // só as 43) do desenho no 3D
+                if (so == "snap") so1(() => CapturasSnap(w));                     // só as 50-53) de snap e medir 3D
+                if (so == "fluxo3d") so1(() => CapturasFluxo3D(w));               // só as 49) do fluxo de modelagem 3D
+                if (so == "a1") so1(() => CapturasA1(w, caminhoModelo));          // só as 54) do produto 3D único (A1)
+                if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
+                if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
 
-                // 02) Modelo aberto
+                // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado
                 w.MostrarDiagrama(Diagrama.Nenhum);
                 w.Faixa.SelectedTabItem = w.abaModelo;
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                CapturarPrincipal(w, "02-modelo-convertido");
+                Esperar(w.CalcularEspacial());
+                w.Toast.Visibility = Visibility.Collapsed;
                 CapturarPrincipal(w, "02-modelo");
 
-                // 03) Deformada
-                w.MostrarDiagrama(Diagrama.Deformada);
-                CapturarPrincipal(w, "03-deformada");
-
-                // 04) Normal
-                w.MostrarDiagrama(Diagrama.Normal);
-                CapturarPrincipal(w, "04-normal");
-
-                // 05) Cortante
-                w.MostrarDiagrama(Diagrama.Cortante);
-                CapturarPrincipal(w, "05-cortante");
-
-                // 06) Momento
-                w.MostrarDiagrama(Diagrama.Momento);
-                CapturarPrincipal(w, "06-momento");
-
-                // 07) Verificacao de barras
-                w.MostrarDiagrama(Diagrama.Verificacao);
+                // 03-06) Diagramas do motor (envoltória ELU) e 07) verificação
+                foreach (var (dg, nome) in new[] { (Diagrama.Deformada, "03-deformada"), (Diagrama.Normal, "04-normal"), (Diagrama.Cortante, "05-cortante"), (Diagrama.Momento, "06-momento") })
+                {
+                    w.MostrarDiagrama(dg);
+                    w.vista3D.MostrarVista(VistaPadrao.Frente, false);
+                    CapturarPrincipal(w, nome);
+                }
+                w.MostrarDiagrama(Diagrama.Verificacao, true);
                 w.AbasTabela.SelectedIndex = 2;
                 CapturarPrincipal(w, "07-verificacao-barras");
                 w.FiltrarCriticos(true);
@@ -1036,23 +996,7 @@ namespace NovoFtool
                 w.FiltrarCriticos(false);
                 w.AbasTabela.SelectedIndex = 0;
 
-                // 08) Ferramenta Medir com uma medida feita entre 2 nos
-                w.MostrarDiagrama(Diagrama.Nenhum);
-                w.Faixa.SelectedTabItem = w.abaModelo;
-                No nMedA = w.M.NoPorId(4) ?? w.M.Nos.FirstOrDefault();
-                No nMedB = w.M.NoPorId(3) ?? w.M.Nos.LastOrDefault();
-                CapturarPrincipal(w, "08-medir", () =>
-                {
-                    if (nMedA != null && nMedB != null)
-                    {
-                        w.UsarFerramenta(Ferramenta.Medir);
-                        w.PontoMedida(nMedA.X, nMedA.Y);
-                        w.PontoMedida(nMedB.X, nMedB.Y);
-                    }
-                });
-                w.UsarFerramenta(Ferramenta.Selecionar);
-
-                // 35) HUD da vista (momento) + recorte do cartao; 36) mapa de calor; 37) inspecao com o mouse; 38) toast; 39) historico aberto
+                // 35) HUD da vista (momento) + recorte do cartão; 36) mapa de aproveitamento; 38) toast; 39) histórico
                 w.MostrarDiagrama(Diagrama.Momento);
                 w.Faixa.SelectedTabItem = w.abaAnalise;
                 CapturarPrincipal(w, "35-hud");
@@ -1067,237 +1011,56 @@ namespace NovoFtool
                 }
                 w.MostrarDiagrama(Diagrama.Verificacao, true);
                 w.AbasTabela.SelectedIndex = 2;
+                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                 CapturarPrincipal(w, "36-mapa-calor");
                 w.AbasTabela.SelectedIndex = 0;
-                foreach (var tipoInsp in new[] { Diagrama.Momento, Diagrama.Deformada })
-                {
-                    w.MostrarDiagrama(tipoInsp);
-                    Barra bInsp = w.M.Barras.Where(x => x.Res != null).OrderByDescending(x => w.M.Comp(x)).FirstOrDefault();
-                    if (bInsp == null) break;
-                    Action simula = () =>
-                    {
-                        No ia = w.M.NoPorId(bInsp.N1), ic = w.M.NoPorId(bInsp.N2);
-                        w.Vista.SimularMouse(w.Vista.Tela(ia.X + (ic.X - ia.X) * 0.42, ia.Y + (ic.Y - ia.Y) * 0.42));
-                    };
-                    CapturarPrincipal(w, tipoInsp == Diagrama.Momento ? "37-inspecao-mouse" : "37-inspecao-mouse-deformada", simula);
-                    w.Vista.SimularMouse(null);
-                }
                 w.MostrarDiagrama(Diagrama.Nenhum);
-                w.MostrarToast("Calculado — caso G - Permanente. ΣRx = 0,00 kN  ΣRy = 5,88 kN", true);
+                w.MostrarToast("Calculado — envoltória ELU (motor). Pior barra 62% (flexão).", true);
                 CapturarPrincipal(w, "38-toast");
                 w.Toast.Visibility = Visibility.Collapsed;
                 w.HistoricoCaixa.Visibility = Visibility.Visible;
                 CapturarPrincipal(w, "39-historico");
                 w.HistoricoCaixa.Visibility = Visibility.Collapsed;
-                w.Vista.Etiqueta = "BARRA — próximo ponto: clique, ou digite o comprimento (na direção do mouse), x,y, @dx,dy, @L<ângulo.   Botão direito/Esc termina.";
-                CapturarPrincipal(w, "39-etiqueta");
-                w.Vista.Etiqueta = null;
-                w.MostrarDiagrama(Diagrama.Nenhum);
 
-                // 40) Resultado do motor Python (envoltoria ELU NBR 8681, verificacao NBR 8800): momento, mapa de calor e reacoes.
-                // Em desenvolvimento acha o motor em ..\motor (capturar.ps1 roda de codigo\Estructto).
+                // 41) Relatório do motor (WebView2) com o anexo das placas pela ponte do pé de pilar (Legado3D.cs)
+                try
                 {
-                    string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
-                    if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
-                    string xml = w.M.ParaXml();
-                    MotorResultado rm = null;
-                    try { rm = System.Threading.Tasks.Task.Run(() => MotorModelo.Calcular(Modelo.DeXml(xml))).GetAwaiter().GetResult(); }
-                    catch (Exception ex) { File.AppendAllText(Path.Combine(pastaSaida, "erros.txt"), "40-motor-python: " + ex.Message + Environment.NewLine); }
-                    if (rm != null)
-                    {
-                        w.MostrarMotor(rm, xml);
-                        w.Faixa.SelectedTabItem = w.abaAnalise;
-                        w.MostrarDiagrama(Diagrama.Momento);
-                        CapturarPrincipal(w, "40-motor-python-momento");
-                        w.MostrarDiagrama(Diagrama.Verificacao, true);
-                        w.AbasTabela.SelectedIndex = 2;
-                        CapturarPrincipal(w, "40-motor-python-mapa-calor");
-                        w.AbasTabela.SelectedIndex = 0;
-                        bool reac = w.Vista.MostrarReacoes; w.Vista.MostrarReacoes = true;
-                        w.MostrarDiagrama(Diagrama.Nenhum);
-                        CapturarPrincipal(w, "40-motor-python-reacoes");
-                        w.Vista.MostrarReacoes = reac;
-                        // 41) Relatório do motor (WebView2) com o anexo das placas: janela real na tela (o WebView2 não desenha fora dela)
-                        try
-                        {
-                            var jr = RelatorioMotor.Abrir(w, "guincho-com-placa", w.AnexoPlacas);
-                            jr.Left = 0; jr.Top = 0;
-                            Esperar(jr.Pronto);
-                            EsperarIdle(); System.Threading.Thread.Sleep(800); EsperarIdle();
-                            Esperar(jr.SalvarPng(Path.Combine(pastaSaida, "41-relatorio-motor.png")));
-                            Esperar(jr.GravarPdf(Path.Combine(pastaSaida, "41-relatorio-motor.pdf")));
-                            jr.Close();
-                        }
-                        catch (Exception ex) { File.AppendAllText(Path.Combine(pastaSaida, "erros.txt"), "41-relatorio-motor: " + ex.Message + Environment.NewLine); }
-                        w.EscolherResultado("ativo");
-                    }
-                    Motor.Desligar();
+                    var anexo = w.AnexoPlacasEsp(); Esperar(anexo);
+                    var jr = RelatorioMotor.Abrir(w, "guincho-com-placa", anexo.Result);
+                    jr.Left = 0; jr.Top = 0;
+                    Esperar(jr.Pronto);
+                    EsperarIdle(); System.Threading.Thread.Sleep(800); EsperarIdle();
+                    Esperar(jr.SalvarPng(Path.Combine(pastaSaida, "41-relatorio-motor.png")));
+                    Esperar(jr.GravarPdf(Path.Combine(pastaSaida, "41-relatorio-motor.pdf")));
+                    jr.Close();
                 }
+                catch (Exception ex) { File.AppendAllText(Path.Combine(pastaSaida, "erros.txt"), "41-relatorio-motor: " + ex.Message + Environment.NewLine); }
 
-                // 09) Cada aba da Ribbon (incluindo abas contextuais Barra e No)
+                // 09) Cada aba da faixa
                 foreach (var tab in w.Faixa.Tabs.ToList())
                 {
-                    if (tab == w.ctxBarra || tab == w.ctxNo) continue;
                     string slug = Slug(tab.Header as string);
-                    w.Vista.Selecionar(new object[0]);
+                    w.vista3D.LimparSelecao();
                     w.Faixa.SelectedTabItem = tab;
                     EsperarIdle();
-                    CapturarPrincipal(w, "09-ribbon-" + slug, () =>
-                    {
-                        w.Faixa.SelectedTabItem = tab;
-                        TemaPlant.AjustarFaixa(w.Faixa, null);
-                    });
+                    CapturarPrincipal(w, "09-ribbon-" + slug, () => { w.Faixa.SelectedTabItem = tab; TemaPlant.AjustarFaixa(w.Faixa, null); });
                 }
-
-                if (w.M.Barras.Count > 0 && w.ctxBarra != null)
-                {
-                    w.Vista.Selecionar(new object[] { w.M.Barras[0] });
-                    w.Faixa.SelectedTabItem = w.ctxBarra;
-                    EsperarIdle();
-                    CapturarPrincipal(w, "09-ribbon-barra", () =>
-                    {
-                        w.Vista.Selecionar(new object[] { w.M.Barras[0] });
-                        w.Faixa.SelectedTabItem = w.ctxBarra;
-                        TemaPlant.AjustarFaixa(w.Faixa, null);
-                    });
-                }
-
-                if (w.M.Nos.Count > 0 && w.ctxNo != null)
-                {
-                    w.Vista.Selecionar(new object[] { w.M.Nos[0] });
-                    w.Faixa.SelectedTabItem = w.ctxNo;
-                    EsperarIdle();
-                    CapturarPrincipal(w, "09-ribbon-no", () =>
-                    {
-                        w.Vista.Selecionar(new object[] { w.M.Nos[0] });
-                        w.Faixa.SelectedTabItem = w.ctxNo;
-                        TemaPlant.AjustarFaixa(w.Faixa, null);
-                    });
-                }
-
-                w.Vista.Selecionar(new object[0]);
                 w.Faixa.SelectedTabItem = w.abaModelo;
-                EsperarIdle();
 
-                // 10) Menu de contexto
-                object alvoMenu = (object)w.M.Barras.FirstOrDefault() ?? w.M.Nos.FirstOrDefault();
-                if (alvoMenu != null) w.Vista.Selecionar(new[] { alvoMenu });
-                ContextMenu cm = w.CriarMenuContexto(alvoMenu);
-                cm.PlacementTarget = w.Vista;
-                cm.IsOpen = true;
-                EsperarIdle();
-                Func<Point> posMenu = () =>
+                // 30-32) Painel Propriedades do documento 3D: modelo, nó do pé (com apoio) e barra
                 {
-                    Point pVista = new Point(w.Vista.ActualWidth * 0.48, w.Vista.ActualHeight * 0.42);
-                    if (alvoMenu is Barra bm)
-                    {
-                        No na = w.M.NoPorId(bm.N1), nb = w.M.NoPorId(bm.N2);
-                        if (na != null && nb != null)
-                            pVista = w.Vista.Tela((na.X + nb.X) / 2, (na.Y + nb.Y) / 2);
-                    }
-                    try { return w.Vista.TranslatePoint(pVista, w); }
-                    catch { return new Point(520, 320); }
-                };
-                CapturarPrincipal(w, "10-menu-contexto", null, cm, posMenu);
-                cm.IsOpen = false;
-                w.Vista.Selecionar(new object[0]);
-                EsperarIdle();
-
-                // 30-34) Inspector WPF: modelo, no, barra, carga e multi-selecao (tela inteira + recorte do painel completo)
-                {
-                    Action<string, IEnumerable<object>> inspetor = (nome, sel) =>
-                    {
-                        Action prep = () => w.Vista.Selecionar(sel.ToArray());
-                        prep();
-                        EsperarIdle();
-                        CapturarPrincipal(w, nome, prep);
-                        w.Insp.UpdateLayout();
-                        SalvarPng(w.Insp.Renderizar(), Path.Combine(pastaSaida, nome + "-painel.png"));
-                    };
-                    inspetor("30-inspector-modelo", new object[0]);
-                    No noI = w.M.Nos.FirstOrDefault(x => x.TemApoio && x.Res != null) ?? w.M.Nos.FirstOrDefault();
-                    if (noI != null) inspetor("31-inspector-no", new object[] { noI });
-                    Barra barI = w.M.Barras.FirstOrDefault(x => x.Res != null) ?? w.M.Barras.FirstOrDefault();
-                    if (barI != null) inspetor("32-inspector-barra", new object[] { barI });
-                    object cargaI = (object)w.M.Barras.FirstOrDefault(x => x.TemCarga) ?? w.M.Nos.FirstOrDefault(x => x.TemCarga);
-                    if (cargaI != null) inspetor("33-inspector-carga", new object[] { cargaI });
-                    if (w.M.Barras.Count > 1) inspetor("34-inspector-multi", w.M.Barras.Take(3).Cast<object>().ToList());
-
-                    // seletor de perfil (popup nao entra na captura da janela: renderiza o conteudo a parte)
-                    if (barI != null)
-                    {
-                        w.Vista.Selecionar(new object[] { barI });
-                        EsperarIdle();
-                        var pc = w.Insp.ConteudoSeletorPerfil("");
-                        if (pc != null)
-                        {
-                            var fundoPop = new Border { Background = TemaPlant.BSup1, Padding = new Thickness(12), Child = pc };
-                            fundoPop.Measure(new Size(330, 420)); fundoPop.Arrange(new Rect(0, 0, 330, fundoPop.DesiredSize.Height)); fundoPop.UpdateLayout();
-                            var rb = new RenderTargetBitmap(330, Math.Max(1, (int)Math.Ceiling(fundoPop.DesiredSize.Height)), 96, 96, PixelFormats.Pbgra32);
-                            rb.Render(fundoPop);
-                            SalvarPng(rb, Path.Combine(pastaSaida, "34-inspector-perfil-popup.png"));
-                            fundoPop.Child = null;
-                            w.Insp.DevolverSeletorPerfil(pc);
-                        }
-                    }
-
-                    // teste por codigo: editar um campo pelo Inspector muda o modelo (com expressao) e o desfazer volta
-                    var log = new StringBuilder();
-                    Action<bool, string> confere = (ok, msg) => { log.AppendLine((ok ? "OK    " : "FALHA ") + msg); if (!ok) throw new InvalidOperationException("Teste do Inspector falhou: " + msg); };
-                    try
-                    {
-                        Barra tb = w.M.Barras.First();
-                        int idB = tb.Id;
-                        double q0 = tb.QGlobalY;
-                        w.Vista.Selecionar(new object[] { tb });
-                        EsperarIdle();
-                        confere(w.Insp.NomesDosCampos.Contains("QGlobalY") && w.Insp.NomesDosCampos.Contains("Secao") && w.Insp.NomesDosCampos.Contains("RotulaInicio"), "campos da barra presentes (" + w.Insp.NomesDosCampos.Count() + ")");
-                        w.alterado = false;
-                        confere(w.Insp.DefinirTexto("QGlobalY", "-12+2,5"), "DefinirTexto aceitou");
-                        confere(Math.Abs(w.M.Barras.First(b => b.Id == idB).QGlobalY - (-9.5)) < 1e-9, "q vertical = -12+2,5 -> -9,5 (expressao e virgula)");
-                        confere(w.alterado, "modelo marcado como modificado");
-                        w.Desfazer();
-                        EsperarIdle();
-                        confere(Math.Abs(w.M.Barras.First(b => b.Id == idB).QGlobalY - q0) < 1e-9, "desfazer devolveu q vertical = " + q0);
-
-                        // valor invalido nao altera
-                        w.Vista.Selecionar(new object[] { w.M.Barras.First(b => b.Id == idB) });
-                        EsperarIdle();
-                        w.Insp.DefinirTexto("QGlobalY", "abc");
-                        confere(Math.Abs(w.M.Barras.First(b => b.Id == idB).QGlobalY - q0) < 1e-9, "texto invalido nao altera o modelo");
-
-                        // multi-selecao aplica a todos
-                        var tres = w.M.Barras.Take(3).Cast<object>().ToList();
-                        int[] ids = tres.Cast<Barra>().Select(b => b.Id).ToArray();
-                        w.Vista.Selecionar(tres);
-                        EsperarIdle();
-                        w.Insp.DefinirTexto("QGlobalX", "1,5");
-                        confere(ids.All(i => Math.Abs(w.M.Barras.First(b => b.Id == i).QGlobalX - 1.5) < 1e-9), "multi-selecao: q horizontal = 1,5 em " + ids.Length + " barras");
-                        w.Desfazer();
-                        EsperarIdle();
-
-                        // no: coordenada com expressao
-                        No nt = w.M.Nos.First();
-                        int idN = nt.Id; double x0 = nt.X;
-                        w.Vista.Selecionar(new object[] { nt });
-                        EsperarIdle();
-                        w.Insp.DefinirTexto("X", "(" + x0.ToString(CultureInfo.InvariantCulture) + "+1)*2/2");
-                        confere(Math.Abs(w.M.NoPorId(idN).X - (x0 + 1)) < 1e-9, "no: X = (x+1)*2/2 -> x+1");
-                        w.Desfazer();
-                        EsperarIdle();
-                        confere(Math.Abs(w.M.NoPorId(idN).X - x0) < 1e-9, "desfazer devolveu X do no");
-                        log.AppendLine("TUDO OK");
-                    }
-                    finally
-                    {
-                        File.WriteAllText(Path.Combine(pastaSaida, "35-teste-inspector.txt"), log.ToString(), new UTF8Encoding(false));
-                    }
-                    w.alterado = false;
-                    w.Vista.Selecionar(new object[0]);
-                    EsperarIdle();
+                    var d0 = w.EspacialAtivo;
+                    w.EscolherEspacial(null, null);
+                    CapturarPrincipal(w, "30-propriedades-modelo");
+                    string no0 = d0.Placas.Keys.FirstOrDefault() ?? d0.Json["nos"].AsObject().First().Key;
+                    w.EscolherEspacial("no", no0);
+                    CapturarPrincipal(w, "31-propriedades-no");
+                    w.EscolherEspacial("barra", d0.Json["barras"].AsObject().First().Key);
+                    CapturarPrincipal(w, "32-propriedades-barra");
+                    w.EscolherEspacial(null, null);
                 }
 
-                // 38/39) Paleta de comandos (Ctrl+K) e entrada dinamica: testes por codigo + capturas
+                // 38/39) Paleta de comandos (Ctrl+K) e linha de comando 3D: testes por código + capturas
                 {
                     var logP = new StringBuilder();
                     int falhasP = 0;
@@ -1305,151 +1068,73 @@ namespace NovoFtool
                     catch (Exception exP) { logP.AppendLine("EXCECAO: " + exP); falhasP = 1; }
                     finally { File.WriteAllText(Path.Combine(pastaSaida, "38-teste-paleta-entrada.txt"), logP.ToString(), new UTF8Encoding(false)); }
                     w.alterado = false;
-                    w.Vista.Selecionar(new object[0]);
+                    w.vista3D.LimparSelecao();
                     EsperarIdle();
-                    if (falhasP > 0) throw new InvalidOperationException("Testes da paleta/entrada dinamica falharam (ver 38-teste-paleta-entrada.txt).");
-
-                    foreach (var par in new[] { new[] { "mo", "38-palette" }, new[] { "w 200", "38-palette-perfil" }, new[] { "nó 3", "38-palette-objeto" }, new[] { "", "38-palette-vazia" } })
+                    if (falhasP > 0) throw new InvalidOperationException("Testes da paleta/linha de comando falharam (ver 38-teste-paleta-entrada.txt).");
+                    foreach (var par in new[] { new[] { "mo", "38-palette" }, new[] { "w310", "38-palette-perfil" }, new[] { "barra 1", "38-palette-objeto" }, new[] { "", "38-palette-vazia" } })
                     {
-                        string consulta = par[0];
                         var pv = new PaletaVisual(w) { };
-                        pv.Caixa.Text = consulta;
+                        pv.Caixa.Text = par[0];
                         CapturarPrincipal(w, par[1], null, pv, () => new Point(Math.Max(10, (w.Width - pv.Width) / 2), 96));
                     }
-
-                    w.PrepararCapturaDinamica();
-                    CapturarPrincipal(w, "39-entrada-dinamica", () => w.AjustarCapturaDinamica());
-                    w.EncerrarCapturaDinamica();
-                    EsperarIdle();
                 }
 
-                // 20) JanelaPlaca para cada no com placa e para o no 4 (pilar inclinado)
-                var nosPlaca = w.M.Nos.Where(x => x.Placa != null).ToList();
-                No no4 = w.M.NoPorId(4);
-                if (no4 != null && !nosPlaca.Contains(no4) && PlacaCalc.Pilar(w.M, no4, out Secao _, out double _, out double _, out string _) != null)
-                    nosPlaca.Add(no4);
-
-                bool capturouParafuso = false;
-                foreach (No no in nosPlaca)
+                // 20-22, 29) Placa de base pela ponte do pé de pilar (esforços ELU do motor): vistas, trocar chumbador, sugerir,
+                // modo parafuso e comparar fixações
                 {
-                    bool tinhaPlaca = no.Placa != null;
-                    var jp = new JanelaPlaca(w.M, no);
-                    jp.Candidatos = w.M.Nos.Where(x => x != no && (x.Placa != null || x.TemApoio) && PlacaCalc.Pilar(w.M, x, out Secao _, out double _, out double _, out string _) != null).ToList();
-                    jp.AvaliarEm = (noCand, pl) =>
+                    var d0 = w.EspacialAtivo;
+                    bool capturouParafuso = false;
+                    foreach (string noP in d0.Placas.Keys.ToList())
                     {
-                        var p0 = noCand.Placa; noCand.Placa = pl;
-                        try { return w.PlacaPior(noCand); }
-                        finally { noCand.Placa = p0; }
-                    };
-                    PrepararDialogoForaDaTela(jp);
-                    jp.Show();
-                    EsperarIdle();
-
-                    if (!tinhaPlaca)
-                    {
-                        jp.UsarModoParafuso(false);
+                        w.placaAberta = null;
+                        Esperar(w.AbrirPlacaEsp(noP));
+                        var jp = w.placaAberta;
+                        if (jp == null) throw new InvalidOperationException("Placa de base do nó " + noP + " não abriu (ver o log).");
+                        PrepararDialogoForaDaTela(jp);
+                        jp.Show();
+                        EsperarIdle();
+                        string[] vistas = { "planta", "3d", "forcas", "ficha", "calculo" };
+                        string pre = "20-placa-" + noP;
+                        for (int v = 0; v < vistas.Length; v++)
+                        {
+                            int vv = v;
+                            jp.MostrarAba(vv);
+                            RenderizarJanela(jp, 1600, 900, pre + "-" + vistas[vv] + ".png", () => jp.MostrarAba(vv));
+                            RenderizarJanela(jp, 1280, 720, pre + "-" + vistas[vv] + "-1280x720.png", () => jp.MostrarAba(vv));
+                        }
+                        jp.MostrarAba(0);
+                        RenderizarJanela(jp, 1600, 900, pre + ".png", () => jp.MostrarAba(0));
+                        RenderizarJanela(jp, 1600, 900, pre + "-trocar.png", () => { jp.MostrarAba(0); jp.AbrirTrocar(); });
+                        jp.FecharTrocar();
+                        if (!capturouParafuso)
+                        {
+                            RenderizarJanela(jp, 1600, 900, "29-placa-sugerir.png", () => { jp.MostrarAba(0); jp.AbrirSugerir(); });
+                            RenderizarJanela(jp, 1600, 900, "29-placa-aplicar-em.png", () => { jp.MostrarAba(0); jp.AbrirAplicarEm(); });
+                            jp.FecharFlutuantes();
+                            jp.UsarModoParafuso(true);
+                            RenderizarJanela(jp, 1600, 900, "21-placa-parafuso.png", () => jp.MostrarAba(0));
+                            RenderizarJanela(jp, 1280, 720, "21-placa-parafuso-1280x720.png", () => jp.MostrarAba(1));
+                            capturouParafuso = true;
+                        }
+                        jp.Close();
                         EsperarIdle();
                     }
-
-                    // Cada vista do seletor (Planta | 3D | Forças | Ficha | Cálculo) em 1600x900 e 1280x720
-                    string[] vistas = { "planta", "3d", "forcas", "ficha", "calculo" };
-                    string pre = "20-placa-no" + no.Id;
-                    for (int v = 0; v < vistas.Length; v++)
+                    if (w.placaComparar is var (mc, nc) && mc != null)
                     {
-                        int vv = v;
-                        jp.MostrarAba(vv);
-                        RenderizarJanela(jp, 1600, 900, pre + "-" + vistas[vv] + ".png", () => jp.MostrarAba(vv));
-                        RenderizarJanela(jp, 1280, 720, pre + "-" + vistas[vv] + "-1280x720.png", () => jp.MostrarAba(vv));
+                        nc.Placa ??= d0.Placas.Values.FirstOrDefault()?.Copiar();
+                        ResPlaca rpComp = PlacaCalc.Calcular(mc, nc);
+                        var jc = new JanelaComparar(mc, nc, rpComp, nc.Placa, new[] { "CB 12300", "WB 12400", "WQE 500 1/2\"" });
+                        PrepararDialogoForaDaTela(jc);
+                        jc.Show();
+                        EsperarIdle();
+                        RenderizarJanela(jc, 1600, 900, "22-comparar.png");
+                        RenderizarJanela(jc, 1280, 720, "22-comparar-1280x720.png");
+                        jc.Close();
+                        EsperarIdle();
                     }
-                    jp.MostrarAba(0);
-                    RenderizarJanela(jp, 1600, 900, pre + ".png", () => jp.MostrarAba(0));
-
-                    // Painel "Trocar chumbador" aberto
-                    RenderizarJanela(jp, 1600, 900, pre + "-trocar.png", () => { jp.MostrarAba(0); jp.AbrirTrocar(); });
-                    jp.FecharTrocar();
-
-                    // 29) Sugerir (popup leve) e Aplicar também em… (pior caso)
-                    if (no.Id == 1 || nosPlaca.Count == 1)
-                    {
-                        RenderizarJanela(jp, 1600, 900, "29-placa-sugerir.png", () => { jp.MostrarAba(0); jp.AbrirSugerir(); });
-                        RenderizarJanela(jp, 1280, 720, "29-placa-sugerir-1280x720.png", () => { jp.MostrarAba(0); jp.AbrirSugerir(); });
-                        RenderizarJanela(jp, 1600, 900, "29-placa-aplicar-em.png", () => { jp.MostrarAba(0); jp.AbrirAplicarEm(); });
-                        RenderizarJanela(jp, 1280, 720, "29-placa-aplicar-em-1280x720.png", () => { jp.MostrarAba(0); jp.AbrirAplicarEm(); });
-                        jp.FecharFlutuantes();
-                    }
-
-                    // 21) Modo parafuso
-                    if (!capturouParafuso)
-                    {
-                        jp.UsarModoParafuso(true);
-                        RenderizarJanela(jp, 1600, 900, "21-placa-parafuso.png", () => jp.MostrarAba(0));
-                        RenderizarJanela(jp, 1280, 720, "21-placa-parafuso-1280x720.png", () => jp.MostrarAba(1));
-                        capturouParafuso = true;
-                    }
-
-                    jp.Close();
-                    EsperarIdle();
                 }
 
-                // 22) JanelaComparar com 3 fixacoes
-                No noComp = w.M.Nos.FirstOrDefault(x => x.Placa != null) ?? w.M.Nos.FirstOrDefault();
-                if (noComp != null)
-                {
-                    ResPlaca rpComp = PlacaCalc.Calcular(w.M, noComp);
-                    var jc = new JanelaComparar(w.M, noComp, rpComp, noComp.Placa, new[] { "CB 12300", "WB 12400", "WQE 500 1/2\"" });
-                    PrepararDialogoForaDaTela(jc);
-                    jc.Show();
-                    EsperarIdle();
-                    RenderizarJanela(jc, 1600, 900, "22-comparar.png");
-                    RenderizarJanela(jc, 1280, 720, "22-comparar-1280x720.png");
-                    jc.Close();
-                    EsperarIdle();
-                }
-
-                // 23) JanelaVerificacao para cada barra
-                foreach (Barra b in w.M.Barras)
-                {
-                    var jv = new JanelaVerificacao(w.M, b);
-                    PrepararDialogoForaDaTela(jv);
-                    jv.Show();
-                    EsperarIdle();
-                    CapturarDialogo(jv, "23-verificacao-barra" + b.Id + ".png");
-                    jv.SoPassam(true);
-                    EsperarIdle();
-                    CapturarDialogo(jv, "23-verificacao-barra" + b.Id + "-passam.png");
-                    jv.Close();
-                    EsperarIdle();
-                }
-
-                // 24) JanelaCasos
-                var jCasos = new JanelaCasos(w.M);
-                PrepararDialogoForaDaTela(jCasos);
-                jCasos.Show();
-                EsperarIdle();
-                CapturarDialogo(jCasos, "24-casos.png");
-                jCasos.Close();
-                EsperarIdle();
-
-                var mComb = Modelo.DeXml(w.M.ParaXml()); mComb.Combinacoes = Analise.GerarNbr(mComb.Casos);
-                var jCasos2 = new JanelaCasos(mComb);
-                PrepararDialogoForaDaTela(jCasos2);
-                jCasos2.Show();
-                EsperarIdle();
-                CapturarDialogo(jCasos2, "24-casos-combinacoes.png");
-                jCasos2.Close();
-                EsperarIdle();
-
-                // 25) JanelaRelatorio
-                string nomeMod = Path.GetFileNameWithoutExtension(caminhoModelo);
-                var jRel = new JanelaRelatorio(w.MontarRelatorio, nomeMod);
-                PrepararDialogoForaDaTela(jRel);
-                jRel.Show();
-                EsperarIdle();
-                CapturarDialogo(jRel, "25-relatorio.png", EsperarIdle);
-                jRel.Close();
-                EsperarIdle();
-
-                // 26) JanelaAssistente para cada tipo
+                // 26) JanelaAssistente para cada tipo (o resultado abre em 3D)
                 string matPadrao = Biblioteca.Materiais.Count > 0 ? Biblioteca.Materiais[0].Nome : "Aço ASTM A572 Gr.50";
                 foreach (string tipo in new[] { "viga", "portico", "trelica", "galpao" })
                 {
@@ -1462,65 +1147,42 @@ namespace NovoFtool
                     EsperarIdle();
                 }
 
-                // 40) Vista 3D: modelo 2D convertido (plano XZ) e um pórtico espacial de entrada neutra
-                var abaVista3 = w.Faixa.Tabs.First(t => (t.Header as string) == "Vista");
-                w.Faixa.SelectedTabItem = abaVista3;
-                w.MostrarDiagrama(Diagrama.Nenhum);
-                w.MostrarVista3D(true);
-                EsperarIdle();
-                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
-                CapturarPrincipal(w, "40-vista3d-iso");
-                foreach (var (d, nome) in new[] { (Diagrama.Deformada, "deformada"), (Diagrama.Momento, "momento"), (Diagrama.Normal, "normal"), (Diagrama.Verificacao, "aproveitamento") })
-                {
-                    w.MostrarDiagrama(d, d == Diagrama.Verificacao);
-                    w.Faixa.SelectedTabItem = abaVista3;
-                    EsperarIdle();
-                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
-                    CapturarPrincipal(w, "40-vista3d-" + nome);
-                }
-                w.MostrarDiagrama(Diagrama.Momento);
-                w.Faixa.SelectedTabItem = abaVista3;
-                foreach (var (v, nome) in new[] { (VistaPadrao.Frente, "frente"), (VistaPadrao.Topo, "topo"), (VistaPadrao.Lado, "lado") })
-                {
-                    w.vista3D.MostrarVista(v, false);
-                    CapturarPrincipal(w, "40-vista3d-" + nome);
-                }
-                // pórtico espacial 2 x 2 vãos, 2 pavimentos, com aproveitamento, deformada e uma barra escolhida
+                // 42) Vista 3D Realista (perfis reais, sombra, arestas) lado a lado com a analítica; começa no guincho convertido
                 bool realAntes = Config.Realista3D;
-                w.DefinirRealista(false);   // 40) é a vista analítica; a Realista tem as capturas 42)
-                var esp = Portico2x2();
-                w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = true;
-                w.vista3D.Carregar(esp, false);
-                w.vista3D.Escolher(esp.Barras[4]);
-                w.vista3D.MostrarVista(VistaPadrao.Iso, false);
-                CapturarPrincipal(w, "40-vista3d-espacial");
-                w.vista3D.MostrarAproveitamento = false; w.vista3D.MostrarDeformada = true; w.vista3D.EscalaDeformada = 1;
-                w.vista3D.Carregar(esp, false);
-                CapturarPrincipal(w, "40-vista3d-espacial-deformada");
-                w.MostrarVista3D(false);
-                w.MostrarDiagrama(Diagrama.Nenhum);
-                EsperarIdle();
-
-                // 42) Vista 3D Realista (perfis reais, sombra, arestas) lado a lado com a analítica
                 CapturasRealista(w);
-                w.DefinirRealista(realAntes);
-                w.MostrarVista3D(false);
+                w.DefinirRealista(false);
 
-                // 41) Modelo espacial (motor Python, DocumentoEspacial.cs): edifício gerado em 3D, calculado, mapa de aproveitamento
+                // 40) Vista 3D analítica de um pórtico espacial de entrada neutra (Modelo3D direto, sem motor)
+                {
+                    Esperar(w.NovoEmBranco(true));
+                    var esp = Portico2x2();
+                    w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = true;
+                    w.vista3D.Carregar(esp, false);
+                    w.vista3D.Escolher(esp.Barras[4]);
+                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                    CapturarPrincipal(w, "40-vista3d-espacial");
+                    w.vista3D.MostrarAproveitamento = false; w.vista3D.MostrarDeformada = true; w.vista3D.EscalaDeformada = 1;
+                    w.vista3D.Carregar(esp, false);
+                    CapturarPrincipal(w, "40-vista3d-espacial-deformada");
+                    w.vista3D.MostrarDeformada = false;
+                    w.FecharEspaciaisSemPerguntar();
+                }
+                w.DefinirRealista(realAntes);
+
+                // 41) Modelo espacial gerado; 43) níveis e planos; 48) edição em lote; 43) desenho; 49) fluxo; 50) treliças;
+                // 49) ligações; 50-53) snap e medir; 54) produto 3D único (A1)
                 CapturasEspacial(w);
-                CapturasPlanos(w);   // 43) níveis e planos de trabalho
-                // 48) Edição em lote do modelo espacial (EdicaoEspacial.cs): pórtico copiado 3×, espelhado e rotacionado
+                CapturasPlanos(w);
                 CapturasEdicao(w);
-                // 43) Desenhar no 3D com o mouse
                 CapturasDesenho3D(w);
-                // 49) Fluxo completo: vazio, níveis, desenho, cópia, espelho, carga em área, F5, Realista com cargas
                 CapturasFluxo3D(w);
-                // 50) Treliças e contraventamentos
                 CapturasTrelicas(w);
-                // 49) Gerenciador de ligações (grupos, pior do grupo, placa da pior base)
                 CapturasLigacoes(w);
+                // 51) Projetista de ligações (biblioteca, chapa simples ao vivo, falha, otimizado, aplicar ao grupo)
+                CapturasProjetista(w);
                 // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
                 CapturasSnap(w);
+                CapturasA1(w, caminhoModelo);
 
                 // 27) Caixa de mensagem
                 var jCaixa = Caixa.Criar(null, "Salvar alterações?",
@@ -1626,17 +1288,7 @@ namespace NovoFtool
                 jb.Close();
             }
 
-            var jg = new JanelaLigacao(Amostras.Ler("tipos-ligacao"), "parafuso", null);
-            Cap(jg, "44-ligacao-vazia");
-            jg.Preencher("parafuso", new System.Text.Json.Nodes.JsonObject { ["d_mm"] = 16, ["t"] = 0.0095, ["lf"] = 0.03 },
-                new System.Text.Json.Nodes.JsonObject { ["Ft"] = 20, ["Fv"] = 35 }, Amostras.Ler("ligacao-parafuso"));
-            EsperarIdle();
-            RenderizarJanela(jg, (int)jg.Width, (int)jg.Height, "44-ligacao-parafuso.png");
-            RenderizarJanela(jg, 1280, 720, "44-ligacao-parafuso-1280x720.png");
-            jg.Preencher("chapa_simples", new System.Text.Json.Nodes.JsonObject(), new System.Text.Json.Nodes.JsonObject(), null);
-            EsperarIdle();
-            RenderizarJanela(jg, (int)jg.Width, (int)jg.Height, "44-ligacao-chapa-simples.png");
-            jg.Close();
+            // 44) ligações: o projetista (JanelaLigacaoProjeto) usa o motor real — capturas 51) em CapturasProjetista
 
             var jc = new JanelaCype(null, null);
             Cap(jc, "45-cype-vazia", () =>

@@ -140,7 +140,7 @@ namespace NovoFtool
             bool existe = File.Exists(caminho);
             string nome = Path.GetFileNameWithoutExtension(caminho), pasta = Path.GetDirectoryName(caminho) ?? "";
             ImageSource img = null;
-            if (existe && !EhEspacial(caminho))   // .json/.ed3 (modelo espacial): sem miniatura 2D, só o ícone
+            if (existe && EhXmlAntigo(caminho))   // só o .estructto/.portico antigo (2D) tem miniatura; os 3D mostram o ícone
             {
                 var info = new FileInfo(caminho);
                 img = Miniatura.Gerar(caminho + info.LastWriteTimeUtc.Ticks, () => Modelo.DeXml(File.ReadAllText(caminho)), tw, th);
@@ -159,6 +159,12 @@ namespace NovoFtool
             }
             dp.Children.Add(sp);
             return CartaoBotao(dp, () => Abrir(caminho), (existe ? "Abre " : "Tenta abrir ") + caminho, compacto ? new Thickness(6) : new Thickness(8), nome);
+        }
+
+        static bool EhXmlAntigo(string c)
+        {
+            if (!c.EndsWith(".estructto", StringComparison.OrdinalIgnoreCase) && !c.EndsWith(".portico", StringComparison.OrdinalIgnoreCase)) return false;
+            try { using var r = new StreamReader(c); int ch; while ((ch = r.Read()) >= 0 && char.IsWhiteSpace((char)ch)) { } return ch == '<'; } catch { return false; }
         }
 
         static TextBlock Rotulo(string t, Thickness m) { return new TextBlock { Text = t, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = TemaPlant.BTexto2, Margin = m }; }
@@ -198,7 +204,7 @@ namespace NovoFtool
                 DockPanel.SetDock(logo, Dock.Left); cab.Children.Add(logo);
                 var tit = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
                 tit.Children.Add(new TextBlock { Text = "Estructto", FontSize = 24, FontWeight = FontWeights.Light, Foreground = TemaPlant.BTexto1 });
-                tit.Children.Add(new TextBlock { Text = "Análise e verificação de pórticos planos", FontSize = 12, Foreground = TemaPlant.BTexto2 });
+                tit.Children.Add(new TextBlock { Text = "Estruturas de aço e concreto em 3D — modelagem como no CAD, cálculo pelas NBR", FontSize = 12, Foreground = TemaPlant.BTexto2 });
                 cab.Children.Add(tit);
                 raiz.Children.Add(cab);
             }
@@ -208,20 +214,22 @@ namespace NovoFtool
             var ib = (FrameworkElement)Icone("barra", 28); ib.Margin = new Thickness(2, 0, 12, 0); ib.VerticalAlignment = VerticalAlignment.Center;
             DockPanel.SetDock(ib, Dock.Left); hero.Children.Add(ib);
             var atalhoB = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 2, 0) };
-            atalhoB.Children.Add(Tecla("B"));
-            atalhoB.Children.Add(new TextBlock { Text = "  e clique dois pontos", FontSize = 11, Foreground = TemaPlant.BTexto2, VerticalAlignment = VerticalAlignment.Center });
+            atalhoB.Children.Add(Tecla("L"));
+            atalhoB.Children.Add(new TextBlock { Text = "  barra  ·  ", FontSize = 11, Foreground = TemaPlant.BTexto2, VerticalAlignment = VerticalAlignment.Center });
+            atalhoB.Children.Add(Tecla("Shift + arrastar"));
+            atalhoB.Children.Add(new TextBlock { Text = "  orbita", FontSize = 11, Foreground = TemaPlant.BTexto2, VerticalAlignment = VerticalAlignment.Center });
             DockPanel.SetDock(atalhoB, Dock.Right); hero.Children.Add(atalhoB);
             var ht = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             ht.Children.Add(new TextBlock { Text = "Modelo em branco", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = TemaPlant.BTexto1 });
-            if (!comp) ht.Children.Add(new TextBlock { Text = "Desenhe barras com o mouse ou digite as coordenadas.", FontSize = 11.5, Foreground = TemaPlant.BTexto2, TextTrimming = TextTrimming.CharacterEllipsis });
+            if (!comp) ht.Children.Add(new TextBlock { Text = "Começa em planta no térreo, como uma folha de CAD; orbite quando quiser ver em 3D.", FontSize = 11.5, Foreground = TemaPlant.BTexto2, TextTrimming = TextTrimming.CharacterEllipsis });
             hero.Children.Add(ht);
-            var bh = CartaoBotao(hero, () => { TelaInicial.Visibility = Visibility.Collapsed; AcionarFerramenta(Ferramenta.Barra); }, "Começa um modelo em branco e ativa o desenho de barras (tecla B).", comp ? new Thickness(14, 6, 14, 6) : new Thickness(14, 10, 14, 10), "Modelo em branco");
+            var bh = CartaoBotao(hero, () => { TelaInicial.Visibility = Visibility.Collapsed; _ = NovoEmBranco().ContinueWith(_ => { if (Esp != null) UsarFerramenta3D(Ferramenta3D.Barra); }, System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext()); }, "Começa um modelo 3D em branco (em planta, no térreo) e liga a Barra (L).", comp ? new Thickness(14, 6, 14, 6) : new Thickness(14, 10, 14, 10), "Modelo em branco");
             bh.Style = EstiloHero();
             bh.Margin = new Thickness(0, 0, 0, comp ? 8 : 16);
             raiz.Children.Add(bh);
 
             // assistentes
-            raiz.Children.Add(Rotulo("OU PARTA DE UM ASSISTENTE", new Thickness(0, 0, 0, 6)));
+            raiz.Children.Add(Rotulo("OU PARTA DE UM ASSISTENTE (O RESULTADO ABRE EM 3D)", new Thickness(0, 0, 0, 6)));
             var ass = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, comp ? 6 : 14) };
             foreach (var a in AssistentesInicio()) { var c = CartaoAssistente(a.titulo, a.sub, a.tipo, a.modelo, comp); c.Margin = new Thickness(0, 0, 8, 0); ass.Children.Add(c); }
             raiz.Children.Add(ass);
@@ -247,12 +255,12 @@ namespace NovoFtool
             // rodape: abrir/importar + atalhos
             var rod = new DockPanel { Margin = new Thickness(0, comp ? 0 : 4, 0, 0) };
             var botoes = new StackPanel { Orientation = Orientation.Horizontal };
-            botoes.Children.Add(Ui.Botao("Abrir arquivo…", "abrir", AbrirDialogo, "Abre um .estructto (ou .portico antigo) ou importa um .ftl do Ftool original (Ctrl+O)."));
-            var imp = Ui.Botao("Importar .ftl", "importar", ImportarDialogo, "Importa a geometria, seções, materiais e casos de um arquivo .ftl do Ftool original."); imp.Margin = new Thickness(8, 0, 0, 0);
+            botoes.Children.Add(Ui.Botao("Abrir arquivo…", "abrir", AbrirDialogo, "Abre um .estructto (os antigos, 2D, são convertidos para 3D), .json do motor, .ed3 do CYPE ou .ftl do Ftool (Ctrl+O)."));
+            var imp = Ui.Botao("Importar .ftl", "importar", ImportarDialogo, "Importa a geometria, seções, materiais e casos de um arquivo .ftl do Ftool original (abre em 3D)."); imp.Margin = new Thickness(8, 0, 0, 0);
             botoes.Children.Add(imp);
             DockPanel.SetDock(botoes, Dock.Left); rod.Children.Add(botoes);
             var atalhos = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            foreach (var kd in new[] { ("F5", "calcular"), ("F4", "enquadrar"), ("F1", "ajuda") })
+            foreach (var kd in new[] { ("F5", "calcular"), ("Z E", "enquadrar"), ("F1", "ajuda") })
             {
                 atalhos.Children.Add(Tecla(kd.Item1));
                 atalhos.Children.Add(new TextBlock { Text = " " + kd.Item2, FontSize = 11, Foreground = TemaPlant.BTexto3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) });

@@ -24,11 +24,11 @@ e diz isso em cada item.
 ## O que não está coberto, por assunto
 
 ### Análise
-- Pórtico plano (2D): cargas fora do plano, FLT, torção e 2ª ordem global (P-Δ) não são tratados.
-- Vista 3D: deformada em cordas, seção em prisma quadrado, sem envoltória nos diagramas.
+- Arquivos 2D antigos abrem convertidos com o que sai do plano travado (pórtico plano no espaço).
+- Vista 3D: deformada em cordas, sem envoltória nos diagramas; o ponto cardinal ainda não desloca o perfil desenhado.
 - Equipamento giratório: só posições 0° e 180°; ψ declarado pelo usuário.
 - Motor Python ainda não calcula molas (apoios elásticos) nem recalques; carga giratória; carga linear em barra com trecho rígido.
-- Combinações digitadas pelo usuário no documento 2D não vão ao motor.
+- Placa de base: só flexão no eixo forte do pilar; Dimensionar escolhe por palpite de massa, não pelo ótimo global.
 - Um modelo por servidor: pilha de desfazer vale só para o documento ativo.
 
 ### Ações

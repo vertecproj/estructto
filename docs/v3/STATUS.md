@@ -32,10 +32,10 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - [x] P4 Logo (c8bd9d8) nova (SVG + ico) → `docs/logo-estructto.svg`, `codigo/Estructto/estructto.ico/png`
 
 ### Fase 2 — núcleo 3D-only (sequencial no Vista3D/MainWindow)
-- [~] A1 (wt-so3d) Documento único 3D: todo documento é espacial; .estructto/.ftl abrem convertidos; Shift+arrastar orbita em qualquer vista;
+- [x] A1 (merge) Documento único 3D: todo documento é espacial; .estructto/.ftl abrem convertidos; Shift+arrastar orbita em qualquer vista;
       Vista 2D antiga só como câmera planta/elevação. Placa de base/memorial continuam funcionando.
 - [x] A2 (wt-snap, merge) Snap CAD completo + rastreamento + entrada dinâmica; Medir (distância, ângulo, área, mínima entre objetos, cadeia) — arquivos Snap3D.cs / Medir3D.cs
-- [ ] A3 Fluxo Plant: comandos e atalhos do PESQUISA-PLANT (grips, UCS/plano, copiar com ponto base, propriedades)
+- [x] A3 (no A1: Comandos3D, grips, ViewCube) Fluxo Plant: comandos e atalhos do PESQUISA-PLANT (grips, UCS/plano, copiar com ponto base, propriedades)
 
 ### Fase 3 — ligações (paralelo: motor Python + UI)
 - [x] L1 (19 tipos: flex/rig/contrav) Motor: tipos de ligação (cantoneira dupla, chapa de extremidade, chapa simples/shear tab, emendas, flange plate, gusset de contraventamento,
@@ -43,7 +43,7 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - [x] L2 Agrupamento: identificar ligações iguais (perfis, ângulos, tipo), grupos editáveis, pior do grupo, aplicar
 - [x] L2 Agrupamento: identificar ligações iguais (perfis, ângulos, tipo), grupos editáveis, pior do grupo, aplicar
       (branch `wt-grupos`, [LIGACOES-GRUPOS.md](LIGACOES-GRUPOS.md); tipos novos do L1 entram em `VERIFICADORES`)
-- [ ] L3 UI: biblioteca de ligações (cards com desenho), janela de dimensionamento estilo placa de base (3 passos, desenho ao vivo)
+- [x] L3 (merge) UI: biblioteca de ligações (cards com desenho), janela de dimensionamento estilo placa de base (3 passos, desenho ao vivo)
 - [ ] L4 3D: ligação e recortes aparecem no Realista
 
 ### Fase 4 — visual 3D e exportação
@@ -75,3 +75,6 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - 20:28: placa v2 merge (3137145), verificador rodando. Treliças e logo no unificacao. REGRA: nenhum agente edita código no checkout principal (bloqueia merges) — só worktrees. Polimento final: tela inicial ainda diz "pórticos planos" e tem assistentes 2D (A1 deve refazer).
 - 20:41: L1 flexíveis merge (693e4bf, 5 tipos, 35 testes, exemplos Pfeil/Gerdau). Registro de módulos = _MODULOS_CONTRATO em ligacoes.py. Placa v2: verificador achou V2-01/V2-02 críticos → wt-placa3 corrigindo.
 - 20:50: merges: L1 x3 (19 tipos), placa v2+v3 (V2-01..07 corrigidos), snap/medir. Rodando: A1 so3d, R1 render (Fable), L3 lig-ui. Backlog QA: itens NBR 5.7.x/6.1 a conferir; folgas furo alargado; Ue distorcional.
+- 20:57: USUÁRIO pediu: refazer tela inicial, fluxo de novo arquivo e menu Arquivo (feios) → wt-inicio (Fable). E no fim: redesign geral (Q2).
+- 01:01: limite liberado; retomados so3d, render, lig-ui, inicio. Usuário reforçou: no FINAL, redesign refinado incluindo ÍCONES.
+- 01:20: merges A1 so3d + L3 lig-ui (+fix 8fc65ed). Placa 3D ainda no legado → wt-placa-ui ligando à v2 do motor. Rodando: render (Fable), inicio (Fable), placa-ui.

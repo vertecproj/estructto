@@ -569,3 +569,296 @@ def verificar_ligacao(tipo, dados, esforcos):
         avisos.append("borda mínima (tabela 14): bordas cortadas com serra/tesoura salvo indicação")
     return dict(taxa_max=pior["taxa"], criterio=pior["nome"], item=f"NBR 8800:2008 {pior['item']}",
                 ok=pior["taxa"] <= 1.0 + 1e-9 and not falhas, verificacoes=v, avisos=avisos)
+
+
+# ---------------------------------------------------------------- interface do projetista (docs/v3/LIGACOES-UI.md)
+# Metadados do contrato (nome, família, liga) dos tipos antigos deste módulo, geometria esquemática deles, registro dos
+# tipos do contrato em qualquer módulo de família, otimizador simples e memorial em HTML.
+
+META = {
+    "parafuso": dict(nome="Parafuso isolado", familia="componente", liga=["emenda"]),
+    "solda_filete": dict(nome="Filete de solda", familia="componente", liga=[]),
+    "chapa_simples": dict(nome="Chapa simples soldada (genérica)", familia="flexivel",
+                          liga=["viga-pilar-mesa", "viga-pilar-alma", "viga-viga"]),
+    "ligacao_tracao": dict(nome="Chapa de ligação tracionada", familia="contraventamento",
+                           liga=["gusset-contraventamento", "no-trelica"]),
+}
+
+
+def registro(tipo):
+    """Entrada do contrato (TIPOS[tipo] de um módulo de família) ou None (tipo antigo deste módulo)."""
+    return tipos_contrato().get(tipo)
+
+
+def esquema(tipo):
+    """Campos do tipo: [{nome, unidade, padrao, min, max, opcoes, inteiro}] (antigos em m, contrato em mm)."""
+    if tipo in _TIPOS:
+        out = []
+        for nome, un, _desc, pad, regra in _TIPOS[tipo]["campos"]:
+            c = dict(nome=nome, unidade=un, padrao=pad, inteiro=nome in _INTEIROS, min=None, max=None, opcoes=None)
+            if isinstance(regra, list):
+                c["opcoes"] = list(regra)
+            elif isinstance(regra, tuple):
+                c["min"], c["max"] = regra
+            out.append(c)
+        return out
+    reg = registro(tipo)
+    if reg is None:
+        raise ValueError(f"tipo de ligação '{tipo}' desconhecido")
+    out = []
+    for k, c in reg["entradas"].items():
+        p = c.get("padrao")
+        out.append(dict(nome=k, unidade=c.get("unidade", ""), padrao=p, min=c.get("min"), max=c.get("max"),
+                        opcoes=c.get("opcoes"), inteiro=isinstance(p, int) and not isinstance(p, bool) and not c.get("opcoes")
+                        and c.get("unidade", "") in ("", "-")))
+    return out
+
+
+def _quad(nome, origem, u, v, larg, alt, t):
+    """Chapa retangular larg × alt (mm): ponto = origem + a·u + b·v, normal = u × v (como em ligacoes_flexiveis)."""
+    n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+    return dict(nome=nome, contorno=[[0, 0], [larg, 0], [larg, alt], [0, alt]], origem=list(origem), normal=n,
+                u=list(u), v=list(v), espessura=t)
+
+
+def geometria_basica(tipo, dados):
+    """Geometria esquemática (mm, referencial do contrato) dos tipos antigos; None se faltam dados.
+    ponytail: só para o desenho — os tipos antigos não recebem perfil; o apoio é a face x = 0."""
+    if tipo not in _TIPOS:
+        return None
+    k = {}
+    for c in esquema(tipo):
+        v = (dados or {}).get(c["nome"], c["padrao"])
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            k[c["nome"]] = float(v) / MM if c["unidade"] == "m" else float(v)
+    U, V, Z = [1, 0, 0], [0, 0, 1], [0, -1, 0]
+    try:
+        if tipo == "chapa_simples":
+            h, t, n, s, eh, e, tw, b = k["h"], k["t"], int(k["n"]), k["s"], k["eh"], k["e"], k["tw"], k["b_solda"]
+            db = k["d_mm"]
+            par = [dict(d=db, comprimento=round(t + tw + 1.2 * db + 6), origem=[e, tw / 2 + t, (i - (n - 1) / 2) * s], eixo=Z)
+                   for i in range(n)]
+            sol = [dict(tipo="filete", perna=b, pontos=[[0, y, -h / 2], [0, y, h / 2]]) for y in (tw / 2, tw / 2 + t)]
+            dv = round(h / 0.75)
+            return dict(chapas=[_quad("chapa simples", [0, tw / 2 + t / 2, -h / 2], U, V, e + eh, h, t)], cantoneiras=[],
+                        parafusos=par, soldas=sol,
+                        recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=max(0.0, e - k["e_alma"])))],
+                        membros=[dict(barra="viga", perfil="viga (esquemática)", d=dv, bf=round(dv * 0.5), tw=tw,
+                                      tf=max(1.6 * tw, 8.0))])
+        if tipo == "ligacao_tracao":
+            b, t, nl, np_, s, g, e1 = k["b"], k["t"], int(k["n_linhas"]), int(k["n_por_linha"]), k["s"], k["g"], k["e1"]
+            db, x0 = k["d_mm"], 80.0
+            par = [dict(d=db, comprimento=round(2 * t + 1.2 * db + 6), origem=[x0 + i * s, t / 2, (j - (nl - 1) / 2) * g], eixo=Z)
+                   for i in range(np_) for j in range(nl)]
+            return dict(chapas=[_quad("chapa de ligação", [0, 0, -b / 2], U, V, x0 + (np_ - 1) * s + e1, b, t)], cantoneiras=[],
+                        parafusos=par, soldas=[dict(tipo="filete", perna=max(4.0, t * 0.6), pontos=[[0, y, -b / 2], [0, y, b / 2]])
+                                               for y in (-t / 2, t / 2)], recortes=[])
+        if tipo == "parafuso":
+            t, db, lf = k["t"], k["d_mm"], k["lf"]
+            borda = lf + (db + 1.5) / 2
+            return dict(chapas=[_quad("chapa", [0, 0, -50], U, V, borda + 70, 100, t)], cantoneiras=[], soldas=[], recortes=[],
+                        parafusos=[dict(d=db, comprimento=round(2 * t + 1.2 * db + 6), origem=[70, t / 2, 0], eixo=Z)])
+        if tipo == "solda_filete":
+            t, L_, b = k["t_base"], k["L"], k["b"]
+            return dict(chapas=[_quad("chapa soldada", [0, 0, -L_ / 2], U, V, 120, L_, t)], cantoneiras=[], parafusos=[],
+                        recortes=[], soldas=[dict(tipo="filete", perna=b, pontos=[[0, y, -L_ / 2], [0, y, L_ / 2]])
+                                             for y in (-t / 2, t / 2)])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return None
+    return None
+
+
+# --- otimizador: sobe parafusos (quantidade, diâmetro), espessura da chapa e perna da solda até passar e depois
+#     desce cada um enquanto passar (mínimo de material local). ponytail: busca gulosa (um degrau por vez), não global.
+_D_MM = (12.7, 16, 19.05, 20, 22.225, 24, 25.4, 27, 28.575, 30, 31.75)
+_T_MM = (4.75, 6.3, 8, 9.5, 12.5, 16, 19, 22.4, 25, 31.5, 37.5, 44.5, 50)
+_B_MM = (3, 4, 5, 6, 8, 10, 12, 14, 16)
+_CONTAGEM = {"n", "n_linhas", "n_por_linha", "n_colunas", "fileiras", "por_fileira", "n_parafusos"}
+_ESPESSURA = {"t", "t_chapa", "t_gusset", "t_placa", "esp", "espessura", "t_assento", "t_enrijecedor"}
+
+
+def botoes_otimizar(tipo, campos=None):
+    """[(campo, papel, valores na unidade do campo)]; papel = ordem de material: 0 solda, 1 chapa, 2 diâmetro, 3 quantidade."""
+    out = []
+    for c in campos or esquema(tipo):
+        nome, un = c["nome"], c.get("unidade") or ""
+        if c.get("opcoes") or isinstance(c.get("padrao"), bool):
+            continue
+        k = MM if un == "m" else 1.0
+        lo = -math.inf if c.get("min") is None else float(c["min"])
+        hi = math.inf if c.get("max") is None else float(c["max"])
+        if nome in _CONTAGEM:
+            papel, lista = 3, [float(i) for i in range(max(1, int(lo) if math.isfinite(lo) else 1), int(min(hi, 30)) + 1)]
+        elif nome in ("d", "d_mm", "db", "diametro", "diametro_mm"):
+            papel, lista = 2, list(_D_MM)
+        elif nome in _ESPESSURA:
+            papel, lista = 1, [x * k for x in _T_MM]
+        elif nome in ("b_solda", "perna", "perna_solda") or (tipo == "solda_filete" and nome == "b"):
+            papel, lista = 0, [x * k for x in _B_MM]
+        else:
+            continue
+        lista = [x for x in lista if lo - 1e-12 <= x <= hi + 1e-12]
+        if lista:
+            out.append((nome, papel, lista))
+    return out
+
+
+def _nota(r):
+    t = [x.get("taxa", 0.0) for x in r.get("verificacoes", [])]
+    return max((x if math.isfinite(x) else 1e9 for x in t), default=0.0)
+
+
+def otimizar(tipo, dados, esforcos, max_passos=60):
+    """Enquanto não passa, aplica o aumento de um degrau que mais reduz a pior taxa (empate dentro de 2 %: o de menos
+    material — solda, chapa, diâmetro, quantidade); depois de passar, desce cada item enquanto continuar passando.
+    → {dados, resultado, ok, passos: [{campo, de, para, taxa}], mudancas: {campo: [antes, depois]}}"""
+    campos = esquema(tipo)
+    cur = {c["nome"]: c["padrao"] for c in campos if c["padrao"] is not None}
+    cur.update(dict(dados or {}))
+    botoes = botoes_otimizar(tipo, campos)
+
+    def rodar(d):
+        try:
+            return verificar_ligacao(tipo, d, esforcos)
+        except (ValueError, KeyError, TypeError, ZeroDivisionError):
+            return None
+
+    def vizinho(nome, lista, sobe):
+        v = cur.get(nome)
+        if v is None:
+            return lista[0]
+        cand = [x for x in lista if (x > float(v) + 1e-9 if sobe else x < float(v) - 1e-9)]
+        return (min(cand) if sobe else max(cand)) if cand else None
+
+    def valor(nome, x):
+        return int(round(x)) if nome in _CONTAGEM else x
+
+    r = rodar(cur)
+    if r is None:   # dados iniciais impossíveis: o erro do verificador explica
+        verificar_ligacao(tipo, cur, esforcos)
+    antes, passos = dict(cur), []
+    for _ in range(max_passos):
+        if r["ok"]:
+            break
+        melhor = None
+        # um degrau num item ou em dois juntos (ex.: chapa mais grossa só passa com solda maior, 5t/8)
+        movs = [(i,) for i in range(len(botoes))] + [(i, j) for i in range(len(botoes)) for j in range(i + 1, len(botoes))]
+        for mov in movs:
+            cand, ok_mov = dict(cur), True
+            for i in mov:
+                nome, papel, lista = botoes[i]
+                x = vizinho(nome, lista, True)
+                if x is None:
+                    ok_mov = False
+                    break
+                cand[nome] = valor(nome, x)
+            if not ok_mov:
+                continue
+            rc = rodar(cand)
+            n3 = [botoes[i][0] for i in mov if botoes[i][1] == 3]
+            if rc is None and n3 and isinstance(cur.get("h"), (int, float)) and isinstance(cur.get("s"), (int, float)):
+                # ponytail: mais um parafuso numa chapa de altura h (tipos antigos) só cabe se a chapa crescer s
+                cand["h"] = cur["h"] + cur["s"] * (cand[n3[0]] - (cur.get(n3[0]) or 0))
+                rc = rodar(cand)
+            if rc is None:
+                continue
+            chave = (not rc["ok"], round(_nota(rc) / 0.02), len(mov), sum(botoes[i][1] for i in mov), _nota(rc))
+            if melhor is None or chave < melhor[0]:
+                melhor = (chave, "+".join(botoes[i][0] for i in mov), None, rc, cand)
+        if melhor is None or (not melhor[3]["ok"] and _nota(melhor[3]) >= _nota(r) - 1e-9):
+            break   # nenhum aumento ajuda (disposição construtiva ou geometria travam)
+        _, nomes, _, r, cand = melhor
+        for nome in nomes.split("+"):
+            passos.append(dict(campo=nome, de=cur.get(nome), para=cand[nome], taxa=_nota(r)))
+        cur = cand
+    if r["ok"]:   # descida: menos material enquanto passa (do item mais caro para o mais barato)
+        mudou = True
+        while mudou:
+            mudou = False
+            for nome, papel, lista in sorted(botoes, key=lambda b: -b[1]):
+                x = vizinho(nome, lista, False)
+                if x is None:
+                    continue
+                rc = rodar({**cur, nome: valor(nome, x)})
+                if rc is not None and rc["ok"]:
+                    passos.append(dict(campo=nome, de=cur.get(nome), para=valor(nome, x), taxa=_nota(rc)))
+                    cur[nome], r, mudou = valor(nome, x), rc, True
+    return dict(dados=cur, resultado=r, ok=bool(r["ok"]), passos=passos,
+                mudancas={k: [antes.get(k), v] for k, v in cur.items() if antes.get(k) != v})
+
+
+# --- memorial: seção HTML com as verificações (expressão pelo item da norma, valores e taxa)
+_FORMULAS = [
+    ("6.3.3.4", "(F<sub>t,Sd</sub>/F<sub>t,Rd</sub>)² + (F<sub>v,Sd</sub>/F<sub>v,Rd</sub>)² ≤ 1,0"),
+    ("6.3.3.1", "F<sub>t,Rd</sub> = 0,75·A<sub>b</sub>·f<sub>ub</sub> / γ<sub>a2</sub>"),
+    ("6.3.3.2", "F<sub>v,Rd</sub> = 0,4·A<sub>b</sub>·f<sub>ub</sub> / γ<sub>a2</sub> por plano (0,5 com rosca fora do plano)"),
+    ("6.3.3.3", "F<sub>c,Rd</sub> = 1,2·l<sub>f</sub>·t·f<sub>u</sub> / γ<sub>a2</sub> ≤ 2,4·d<sub>b</sub>·t·f<sub>u</sub> / γ<sub>a2</sub>"),
+    ("6.3.9", "s ≥ 2,7·d<sub>b</sub> (preferível 3·d<sub>b</sub>)"),
+    ("6.3.10", "s ≤ 24·t ≤ 300 mm"),
+    ("6.3.12", "e ≤ 12·t ≤ 150 mm"),
+    ("tabela 14", "e ≥ e<sub>mín</sub> (tabela 14)"),
+    ("6.2.6.2.1", "b ≥ b<sub>mín</sub> (tabela 10, chapa mais fina)"),
+    ("6.2.6.2.2", "b ≤ t − 1,5 mm (t ≥ 6,35 mm)"),
+    ("6.2.6.2.3", "L ≥ 4·b e L ≥ 40 mm"),
+    ("6.2.5", "F<sub>w,Rd</sub> = 0,6·A<sub>w</sub>·f<sub>w</sub> / γ<sub>w2</sub> (A<sub>w</sub> = 0,707·b); metal base 0,6·b·f<sub>y</sub> / γ<sub>a1</sub>"),
+    ("6.5.6", "F<sub>r,Rd</sub> = (0,6·f<sub>u</sub>·A<sub>nv</sub> + C<sub>ts</sub>·f<sub>u</sub>·A<sub>nt</sub>) / γ<sub>a2</sub> ≤ "
+              "(0,6·f<sub>y</sub>·A<sub>gv</sub> + C<sub>ts</sub>·f<sub>u</sub>·A<sub>nt</sub>) / γ<sub>a2</sub>"),
+    ("6.5.5", "escoamento 0,6·f<sub>y</sub>·A<sub>g</sub> / γ<sub>a1</sub>; ruptura 0,6·f<sub>u</sub>·A<sub>nv</sub> / γ<sub>a2</sub>"),
+    ("5.2", "N<sub>t,Rd</sub> = A<sub>g</sub>·f<sub>y</sub> / γ<sub>a1</sub>; A<sub>e</sub>·f<sub>u</sub> / γ<sub>a2</sub> (A<sub>e</sub> ≤ 0,85·A<sub>g</sub>)"),
+    ("5.4", "M<sub>Rd</sub> = W·f<sub>y</sub> / γ<sub>a1</sub> (elástico)"),
+]
+
+
+def formula(item):
+    for chave, f in _FORMULAS:
+        if chave in (item or ""):
+            return f
+    return "S<sub>d</sub> ≤ R<sub>d</sub>"
+
+
+def memorial_html(tipo, dados, esforcos, resultado=None, rotulos=None):
+    """Seção <section class="memorial-ligacao"> (sem <html>): veredito, esforços, dados, verificações com expressão,
+    solicitante, resistente e taxa, avisos."""
+    from html import escape as h
+    r = resultado or verificar_ligacao(tipo, dados, esforcos)
+    nome = (META.get(tipo) or registro(tipo) or {}).get("nome", tipo)
+    rot, un = rotulos or {}, {c["nome"]: c["unidade"] for c in esquema(tipo)}
+
+    def num(x, c=2):
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+            return "—"
+        return f"{x:,.{c}f}".replace(",", " ").replace(".", ",")
+
+    def val(k, v):
+        if isinstance(v, bool):
+            return "sim" if v else "não"
+        if isinstance(v, (int, float)):
+            u = un.get(k, "")
+            return (num(v / MM, 1) + " mm") if u == "m" else (num(v, 1 if u == "mm" else 2) + ("" if u in ("", "-") else " " + u))
+        return h(str(v))
+
+    def mm(x, u):
+        return x / MM if u == "m" else x
+
+    vs = sorted(r.get("verificacoes", []), key=lambda x: -x.get("taxa", 0.0))
+    passa = (lambda x: x.get("taxa", 0.0) <= 1 + 1e-9 and x.get("ok") is not False)
+    linhas = "".join(
+        f"<tr class=\"{'' if passa(x) else 'falha'}\"><td>{h(x['nome'])}</td><td>{h(x.get('item', ''))}</td>"
+        f"<td class=\"f\">{formula(x.get('item'))}</td><td class=\"n\">{num(mm(x['solicitante'], x.get('unidade')))}</td>"
+        f"<td class=\"n\">{num(mm(x['resistente'], x.get('unidade')))}</td>"
+        f"<td>{h('mm' if x.get('unidade') == 'm' else x.get('unidade', ''))}</td>"
+        f"<td class=\"n\">{num(x.get('taxa', 0.0) * 100, 0)} %</td><td>{'✓' if passa(x) else '✕'}</td></tr>" for x in vs)
+    entradas = "".join(f"<tr><td>{h(rot.get(k, k))}</td><td class=\"n\">{val(k, v)}</td></tr>" for k, v in (dados or {}).items())
+    esf = ", ".join(f"{h(k)} = {num(float(v))} {'kN·m' if k.startswith('M') or k == 'T' else 'kN'}"
+                    for k, v in (esforcos or {}).items() if isinstance(v, (int, float)) and not isinstance(v, bool))
+    avisos = "".join(f"<li>{h(a)}</li>" for a in r.get("avisos", []))
+    ok, taxa, pior = bool(r.get("ok")), r.get("taxa", r.get("taxa_max", 0.0)), (vs[0] if vs else None)
+    return (f"<section class=\"memorial-ligacao\"><h2>Ligação — {h(nome)}</h2>"
+            f"<p class=\"veredito {'ok' if ok else 'falha'}\">{'PASSA' if ok else 'NÃO PASSA'} · taxa máxima {num(taxa * 100, 0)} %"
+            + (f" em {h(pior['nome'])} ({h(pior.get('item', ''))})" if pior else "") + "</p>"
+            f"<p>Esforços de cálculo (ELU): {esf or '—'}. Norma: {EDICAO}.</p>"
+            f"<h3>Dados</h3><table class=\"dados\">{entradas}</table>"
+            "<h3>Verificações</h3><table class=\"verif\"><thead><tr><th>Verificação</th><th>Item</th><th>Expressão</th>"
+            f"<th>Solicitante</th><th>Resistente</th><th>Un.</th><th>Taxa</th><th></th></tr></thead><tbody>{linhas}</tbody></table>"
+            + (f"<h3>Avisos</h3><ul>{avisos}</ul>" if avisos else "")
+            + "<p class=\"nota\">Resultado do motor; exige conferência do engenheiro responsável (ART).</p></section>")

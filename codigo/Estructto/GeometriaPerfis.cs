@@ -99,12 +99,34 @@ namespace NovoFtool
             return f;
         }
 
+        // Ponto cardinal (docs/MODELO-ESPACIAL.md, Plant 3D): 1..9 como o teclado numérico olhando a seção com v para cima
+        // (7 8 9 em cima, 4 5 6 no meio, 1 2 3 embaixo; 4 = lado +u), 10 = centroide. Devolve o deslocamento (u, v) em m a somar
+        // ao eixo da barra para o contorno (centrado em 0) ficar com esse ponto sobre o eixo: cardinal 2 (base) = perfil sobe H/2.
+        public static Point Cardinal(Contorno f, int cardinal)
+        {
+            if (cardinal == 10)
+            {
+                double A = 0, su = 0, sv = 0;   // centroide pelos triângulos da tampa
+                for (int t = 0; t + 2 < f.Tampa.Count; t += 3)
+                {
+                    Point p = f.Tampa[t], q = f.Tampa[t + 1], r = f.Tampa[t + 2];
+                    double a = Math.Abs((q.X - p.X) * (r.Y - p.Y) - (r.X - p.X) * (q.Y - p.Y)) / 2;
+                    A += a; su += a * (p.X + q.X + r.X) / 3; sv += a * (p.Y + q.Y + r.Y) / 3;
+                }
+                return A > 0 ? new Point(-su / A, -sv / A) : new Point();
+            }
+            if (cardinal < 1 || cardinal > 9 || cardinal == 5) return new Point();
+            int col = (cardinal - 1) % 3, lin = (cardinal - 1) / 3;   // col 0 = 1/4/7 (+u), lin 0 = 1/2/3 (base)
+            return new Point(col == 0 ? -f.B / 2 : col == 2 ? f.B / 2 : 0, lin == 0 ? f.H / 2 : lin == 2 ? -f.H / 2 : 0);
+        }
+
         // Extrusão de a até b com o mesmo triedro da Vista3D: v = Modelo3D.EixoY(e, rot), u = v × e. k = escala (m → mm: 1000).
-        public static Solido Extrudar(Contorno f, Point3D a, Point3D b, double rotGraus, double k)
+        public static Solido Extrudar(Contorno f, Point3D a, Point3D b, double rotGraus, double k, int cardinal = 5)
         {
             var s = new Solido { Concreto = f.Concreto };
             Vector3D e = b - a; if (e.Length < 1e-9) return s;
             Vector3D v = Modelo3D.EixoY(e, rotGraus), u = Vector3D.CrossProduct(v, e / e.Length);
+            Point dc = Cardinal(f, cardinal); a += u * dc.X + v * dc.Y; b += u * dc.X + v * dc.Y;
             Point3D A = new Point3D(a.X * k, a.Y * k, a.Z * k), B = new Point3D(b.X * k, b.Y * k, b.Z * k);
             Point3D Em(Point3D o, Point q) => o + u * (q.X * k) + v * (q.Y * k);
             foreach (Point[] l in f.Lacos)
