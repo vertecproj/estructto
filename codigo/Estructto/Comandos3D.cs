@@ -76,7 +76,7 @@ namespace NovoFtool
             C("ISO", "Vista isométrica", w => vista3D?.MostrarVista(VistaPadrao.Iso), "HOME"),
             C("PERSPECTIVA", "Liga/desliga a perspectiva", w => { if (vista3D != null) { vista3D.Perspectiva = !vista3D.Perspectiva; Log(vista3D.Perspectiva ? "Perspectiva." : "Ortográfica."); } }, "PERSP"),
             C("REALISTA", "Perfis reais (liga/desliga)", w => DefinirRealista(Config.Estilo3D != EstiloVisual.Realista)),
-            C("ESTILO", "Estilo visual: ESTILO analitico|sombreado|realista (sem nome = o próximo)", w => CmdEstilo(w), "VS", "VSCURRENT"),
+            C("ESTILO", "Estilo visual: ESTILO analitico|sombreado|realista (sem nome = o próximo)", w => CmdEstilo(w), "VS", "VSCURRENT").SemModeloOk(),   // estilo não depende de modelo aberto
             C("NIVEL", "Plano de trabalho no nível acima (+) ou abaixo (-): NIVEL + | NIVEL -", w => TrocarNivel(w.Length > 1 && w[1].StartsWith("-") ? -1 : 1)),
             C("ORTO", "ORTO (F8)", w => AlternarSnap("orto"), "ORTHO"),
             C("POLAR", "Polar (F10)", w => AlternarSnap("polar")),

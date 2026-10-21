@@ -3,6 +3,15 @@
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 - 21/10/2026 — A pedido do usuário, manual v3 em [manual/](manual/README.md) e seção do produto no README atualizados para o fluxo só 3D, com aliases do código, vento integrado, ligações/grupos, placa NBR, exportação e limites/ART.
 
+## 21/10/2026 — Vista 3D: parafusos sólidos, ligações propostas, linhas do analítico (branch wt-visual)
+
+- A pedido do usuário (parafusos "bugados", ligações que não apareciam, barras do analítico "parecendo cantoneira" e nós em
+  caixa): tampas dos parafusos fechadas, sólidos com normais para fora e descarte de faces de trás no Render3D, arruelas
+  afastadas da chapa, planos perto/longe pela cena, nível de detalhe com histerese e parado na órbita; grupos sem projeto
+  desenhados como **propostas** (sugerir + verificar do motor, ou o tipo de nó) com chip na vista; analítico com linhas de
+  1,5 px e nós de 6 px na tela, apoios em símbolo. Detalhes: [docs/VISTA3D.md](VISTA3D.md) ("Parafusos, ligações propostas
+  e linhas do analítico"). Capturas `58-*` (`ESTRUCTTO_CAPTURAS=visual`).
+
 ## 21/10/2026 — Testes de fluxo ponta a ponta (branch wt-e2e)
 
 - `Estructto.exe --testes-fluxo <pasta> [A,B,C,D,E,F] [raiz]` dirige a MainWindow real: galpão do zero, edifício, legados/CYPE, edição,

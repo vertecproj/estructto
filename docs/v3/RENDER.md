@@ -91,7 +91,7 @@ cope e filete triangular também.
 - **Motor**: os tipos das três famílias do contrato entraram em `ligacoes_modelo.VERIFICADORES` (`_registrar_contrato`:
   esforços do solver → convenção do contrato, V = Vz local, M = My), senão `editar {acao: projeto}` recusava
   `chapa_topo_estendida` etc. Testes `test_ligacoes_modelo/rigidas/flexiveis/contraventamento` passam.
-- **LOD**: parafusos e soldas só com ≤ 80 ligações ou quando a seção média tem ≥ 40 px; arestas com ≥ 6 px. Atualizado a cada
+- **LOD**: parafusos e soldas só com ≤ 80 ligações ou quando a seção média tem ≥ 40 px; arestas com ≥ 6 px. Histerese e órbita parada: ver ../VISTA3D.md ("Parafusos, ligações propostas e linhas do analítico"). Atualizado a cada
   mudança de câmera (`Render3D.Lod`, só troca `Visibility`).
 - **Pedestal**: bloco de concreto do apoio cresce para caber a chapa mais larga da ligação do nó + 40 mm.
 - **Ponto cardinal** (`Barra3D.Cardinal`, docs/MODELO-ESPACIAL.md): `GeometriaPerfis.Cardinal(contorno, 1..10)` devolve o
@@ -139,7 +139,7 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
 - Cantoneira: só `L<b>x<t>` de abas iguais; triedro direito no mundo (a aba pode sair espelhada no referencial canhoto do contrato).
 - Setas de carga e diagramas (vista nativa por cima) não são ocultados pelas peças.
 - O halo da seleção atravessa as peças (pós-efeito do Helix).
-- Ligações dos grupos só aparecem depois de Ligações › Identificar e de dar um tipo ao grupo; sem cálculo, a geometria usa os
+- Grupos sem projeto aparecem como propostas (cor própria e chip), ver ../VISTA3D.md; sem cálculo, a geometria usa os
   dados padrão do tipo.
 - Gusset do motor exige `dim_a/dim_b` etc. no projeto do grupo (o `sugerir` não os deduz do nome do perfil): grupos de
   contraventamento sem esses dados não desenham.

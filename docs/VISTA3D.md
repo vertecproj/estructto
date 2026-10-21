@@ -79,6 +79,58 @@ torno do centro do modelo jogava a peça para fora da tela. Agora é automático
   centro do que aparece, zoom no cursor parado (< 1 px), perspectiva que chega na junta e anda no vazio, tempo < 5 ms.
   Capturas `56-orbita-pivo-realista|analitico` e `56-tempos.txt` (`CapturasSnap.cs`; só elas: `ESTRUCTTO_CAPTURAS=navegacao`).
 
+## Parafusos, ligações propostas e linhas do analítico (21/10/2026)
+
+Pedido do usuário: parafusos "bugados" (ocos, piscando na órbita), ligações que não apareciam no 3D, barras do analítico
+grossas que "parecem cantoneira" de lado e nós em caixa. Capturas `58-*` (`CapturasVisual.cs`; só elas:
+`ESTRUCTTO_CAPTURAS=visual`): `58-parafusos-az*-el*` (6 órbitas + perspectiva + longe), `58-analitico-*`, `58-galpao-propostas*`.
+
+**Parafusos e sólidos (Render3D).** Causa principal: as tampas de `MalhaDx.Tubo` (cabeça, arruela, porca) eram um leque do
+centro que pulava 2 das n fatias — via-se o interior e, por ele, a face da chapa no mesmo plano da arruela (z-fighting que
+piscava ao orbitar). Agora:
+- tampas fechadas; parafuso = cabeça + arruela + fuste (passa da porca) + arruela + porca, cada um um sólido fechado;
+  arruelas a `FolgaParafuso` = 0,03 d da chapa; a porca encosta na `pega` (contrato: `pega` opcional; sem ela, estimada do
+  comprimento como o motor calcula: pega + 0,9 d + 10 mm);
+- perfis I/U/L com tampa triangulada pelo próprio contorno (`GeometriaPerfis.CriarContorno`; os retângulos davam vértices em T,
+  frestas que cintilam); normal do furo dos tubos redondos para dentro do furo; cordão de solda com as duas pernas (prisma fechado);
+- `CullMode.Back` em aço, concreto, seleção, parafusos, soldas e propostas: a face de trás some, então arruela/chapa,
+  solda/peça e chapa/pilar não disputam o mesmo plano. Autoverificação `Render3DGeometria.Fechada` (cada aresta com a sua
+  inversa e volume > 0) para parafuso, chapa no referencial canhoto, caixa, I com corte oblíquo, tubo e solda (`--testes-exportar`);
+- planos perto/longe pela esfera da cena (2,6 raios em volta do centro da caixa: modelo, cargas e chão), na ortográfica e na
+  perspectiva (`Vista3D.PlanosRecorte`); antes, longe = distância + 20 raios e perto = 2% da distância;
+- nível de detalhe com histerese (arestas acendem em 6 px e apagam abaixo de 4; parafusos/soldas em 40/28 px) e parado
+  durante a órbita (atualiza ao soltar).
+
+**Ligações propostas.** Todo grupo de ligação sem projeto é desenhado como proposta (`Render3DMotor.cs`): tipo padrão do
+tipo de nó (base → placa de base; viga–pilar na mesa rígida → `chapa_topo_estendida`, rotulada → `chapa_simples_alma`;
+viga–pilar na alma e viga–viga → `chapa_simples_alma`; emenda reta → `emenda_viga`/`emenda_pilar`; gusset → 
+`gusset_contraventamento` com forma e medidas do perfil), `POST /api/ligacoes/sugerir` com os perfis do grupo e esforços
+típicos (N 50, V 50, M 30) e `/verificar` com o que ele sugeriu. Quando o motor não desenha (perfil formado a frio Ue, nó de
+treliça, emenda em ângulo), a ligação vai `Pendente` e o Render3D faz a do tipo de nó com as juntas
+(`LigacoesAmostra.Proposta`: chapa simples, chapa de topo, gusset; cumeeira/joelho = duas chapas de topo no plano da esquadria
+com 8 parafusos). Modelo sem grupos (Identificar nunca rodou): propostas em todas as juntas (`LigacoesAmostra.Gerar`).
+Estilo: chapas, parafusos e soldas em `TemaPlant.CorProposta3D` (azul-acinzentado fosco, malhas próprias, sem
+transparência: a passagem transparente do Helix ignora a profundidade) e chip "Ligação proposta (sem projeto) · n" no canto
+inferior direito. Grupos com projeto continuam sólidos como antes. Desempenho: cache estático por (tipo, dados, perfis) — os
+grupos já são por assinatura, então é uma chamada por grupo e nenhuma ao recarregar; no máximo 40 chamadas novas por carga
+e 600 propostas desenhadas. `galpao_aco` só com Identificar: 54 propostas + 12 placas de base (`58-galpao-propostas`).
+Trocar o estilo de Analítico para Realista busca as ligações (`DefinirEstilo`). O Sombreado (nativo) não desenha ligações.
+
+**Analítico: linhas e pontos na tela** (`Vista3D.Linhas.cs`). Barras = linhas de 1,5 px anti-serrilhadas (aproveitamento
+2,25 px; escolhida = branca 2,25 px com halo `CorBarraSel`; com diagrama/deformada = `TextoMudo`), nós = pontos de 6 px
+(4 px quando as barras ficam curtas na tela), apoios = símbolos na tela pelo "para baixo" do mundo (engaste: base hachurada;
+articulado: triângulo + base; móvel: triângulo + base afastada). Desenhados pela sobreposição 2D (`Sobre`) a cada quadro de
+câmera, com a mesma projeção do snap, grips, setas e cotas; na perspectiva o trecho atrás do plano perto é cortado. A
+alternativa (linhas do Helix DX11) só existiria com GPU e no Realista; a sobreposição vale em todos os estilos e máquinas.
+A deformada, os fantasmas, a posição original no Realista (tracejada) e o nó escolhido nos estilos sólidos também passaram
+para a sobreposição; o Viewport3D nativo do analítico ficou só com grade, setas e diagramas. Picking (`Acertar`) pela tela:
+nó a 8 px, barra a 6 px do eixo; ganha o mais perto do olho, e o nó ganha da barra que chega nele; `ponto` = ponto do eixo
+mais perto do raio (pivô da órbita, zoom no cursor). `--testes-navegacao`, `--testes-snap` e `--testes-edicao` passam.
+
+Limites: a sobreposição desenha as linhas por cima das setas e diagramas (sem profundidade), como os CADs; a cumeeira
+proposta não tem solda nem enrijecedor; o gusset do motor fica no plano vertical da diagonal (contraventamento de cobertura
+sai em pé). Sem Raio-X ainda (pede material transparente com profundidade no Render3D).
+
 ## Modo Realista
 
 **Estilo visual** (`SeletorEstilo.cs`, 21/10/2026), onde os programas 3D põem: seletor "Realista ▾" na vista, abaixo do
@@ -139,7 +191,7 @@ Recomendação: ficar no nativo. Rever se o usuário pedir sombra entre peças, 
 ## Limites conhecidos
 
 - Deformada desenhada como cordas entre nós deslocados (sem a elástica dentro da barra), inclusive no Realista.
-- Modo analítico: seção desenhada como prisma quadrado fino (o Realista extruda o perfil real).
+- Modo analítico: barras em linhas e nós em pontos na tela (sem seção; o Sombreado/Realista extrudam o perfil real).
 - Realista nativo (fallback): nós sem acabamento (as peças se cruzam; o Render3D recorta); Ue sem enrijecedores, 2L costas com costas desenhado como I, material pela
   forma da seção (aço maciço apareceria como concreto).
 - Sem envoltória nos diagramas 3D.

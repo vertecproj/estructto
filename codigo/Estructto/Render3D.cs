@@ -74,11 +74,13 @@ namespace NovoFtool
         public readonly Viewport3DX Vista;
         readonly HxCamera cam = new HxCamera { NearPlaneDistance = 1, FarPlaneDistance = 100 };
         readonly HelixToolkit.Wpf.SharpDX.PerspectiveCamera pcam = new HelixToolkit.Wpf.SharpDX.PerspectiveCamera { FieldOfView = 45 };
-        readonly MeshGeometryModel3D mAco, mConcreto, mSel, mChao, mParafusos, mSoldas;
+        readonly MeshGeometryModel3D mAco, mConcreto, mSel, mChao, mParafusos, mSoldas, mProp, mPropDet;
         readonly LineGeometryModel3D lArestas;
         readonly ShadowMap3D sombra;
         readonly List<(MeshGeometryModel3D M, int[] Ini, object[] Obj)> faixas = new List<(MeshGeometryModel3D, int[], object[])>();
         int quadros, nLig; double largSecao = 0.3;
+        public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
+        public const int MaxPropostas = 600;         // ponytail: modelos enormes ficam com as 600 primeiras; subir se pedirem
 
         static readonly Vector3D Luz = Norm(new Vector3D(0.45, 0.5, -0.74));          // chave: a mesma do Realista nativo (esquerda-alto da Iso)
         static readonly Vector3D LuzEnch = Norm(new Vector3D(-0.8, 0.25, -0.35));     // enchimento frio, do outro lado
@@ -134,8 +136,14 @@ namespace NovoFtool
             mSel = new MeshGeometryModel3D { Material = Pbr(metal, rugo, 0.5f, true), IsThrowingShadow = true, PostEffects = "selecao" };
             mParafusos = new MeshGeometryModel3D { Material = Pbr(0.7f, 0.38f, 0.5f, true), IsThrowingShadow = true };
             mSoldas = new MeshGeometryModel3D { Material = Pbr(0.2f, 0.85f), IsThrowingShadow = false };
+            // propostas (grupos sem projeto): fosco e frio, um tom fora do aço (TemaPlant.CorProposta3D, chip na vista)
+            mProp = new MeshGeometryModel3D { Material = Pbr(0f, 0.75f, 0.35f), IsThrowingShadow = true };
+            mPropDet = new MeshGeometryModel3D { Material = Pbr(0f, 0.75f, 0.35f), IsThrowingShadow = false };
+            // sólidos fechados com as normais para fora (Render3DGeometria.Fechada nos testes): a face de trás some. Assim a arruela
+            // encostada na chapa, a solda na peça e a chapa no pilar não disputam o mesmo plano (z-fighting) e nada parece oco.
+            foreach (var m in new[] { mConcreto, mAco, mSel, mParafusos, mSoldas, mProp, mPropDet }) m.CullMode = SharpDX.Direct3D11.CullMode.Back;
             lArestas = new LineGeometryModel3D { Color = TemaPlant.CorArestaDx3D, Thickness = 0.9, Smoothness = 0.6, DepthBias = -4, IsThrowingShadow = false };
-            foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, lArestas }) Vista.Items.Add(m);
+            foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, mProp, mPropDet, lArestas }) Vista.Items.Add(m);
             mChao.IsHitTestVisible = lArestas.IsHitTestVisible = false;   // picking (Acertar) mais barato: o chão e as arestas não contam
         }
 
@@ -253,9 +261,22 @@ namespace NovoFtool
             }
             var cortes = Render3DGeometria.Juntas(mod, c.Pontos, forma, FolgaPadrao, (b, emI) => double.NaN);
 
-            // ligações: as do modelo, ou os exemplos (capturas / ESTRUCTTO_3D_AMOSTRAS=1)
-            var ligs = new List<Ligacao3D>(mod.Ligacoes);
-            if (ligs.Count == 0 && c.Amostras) ligs.AddRange(LigacoesAmostra.Gerar(mod, cortes, forma, FolgaPadrao));
+            // ligações: as do modelo (projetadas e propostas), ou os exemplos (capturas / ESTRUCTTO_3D_AMOSTRAS=1).
+            // Pendente = proposta sem geometria do motor: a do tipo de nó, feita aqui com as juntas; "*" = modelo sem grupos de
+            // ligação (nunca identificado): propostas em todas as juntas (LigacoesAmostra.Gerar).
+            var ligs = mod.Ligacoes.Where(l => l.Pendente == null).ToList();
+            Vector3D ParaLocal(Barra3D b, int no, Vector3D v)
+            {
+                var (pa, pd) = c.Pontos(b); Vector3D e = pd - pa; e.Normalize();
+                Vector3D x = b.Ni == no ? e : -e, z = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), y = Vector3D.CrossProduct(x, z);
+                return new Vector3D(Vector3D.DotProduct(v, x), Vector3D.DotProduct(v, y), Vector3D.DotProduct(v, z));
+            }
+            foreach (Ligacao3D p in mod.Ligacoes.Where(l => l.Pendente != null && l.Pendente != "*").Take(MaxPropostas))
+                foreach (Ligacao3D q in LigacoesAmostra.Proposta(p, mod, cortes, forma, FolgaPadrao, ParaLocal)) { q.Proposta = true; q.Nome = p.Nome; ligs.Add(q); }
+            bool todas = mod.Ligacoes.Any(l => l.Pendente == "*");
+            if (ligs.Count == 0 && (c.Amostras || todas))
+                foreach (Ligacao3D q in LigacoesAmostra.Gerar(mod, cortes, forma, FolgaPadrao).Take(c.Amostras ? int.MaxValue : MaxPropostas)) { q.Proposta = !c.Amostras; ligs.Add(q); }
+            Propostas = ligs.Count(l => l.Proposta);
             var porPonta = new Dictionary<(int, bool), Ligacao3D>();
             foreach (Ligacao3D l in ligs) if (barras.TryGetValue(l.Barra, out Barra3D bl)) porPonta[(l.Barra, l.No == bl.Ni)] = l;
             if (ligs.Count > 0)
@@ -323,11 +344,14 @@ namespace NovoFtool
             }
 
             // ligações (contrato → mundo)
-            var mallParaf = new MalhaDx(); var mallSolda = new MalhaDx();
-            Color4 corChapa = Cor(Aco == Acabamento.Galvanizado ? TemaPlant.CorChapa3D : CorAco), corParaf = Cor(TemaPlant.CorParafuso3D), corSolda = Cor(TemaPlant.CorSolda3D);
+            var mallParaf = new MalhaDx(); var mallSolda = new MalhaDx(); var mallProp = new MalhaDx(); var mallPropDet = new MalhaDx();
+            Color4 corChapaP = Cor(Aco == Acabamento.Galvanizado ? TemaPlant.CorChapa3D : CorAco), corParafP = Cor(TemaPlant.CorParafuso3D), corSoldaP = Cor(TemaPlant.CorSolda3D), corProp = Cor(TemaPlant.CorProposta3D);
             mallAco.Marcar(null);   // chapas e cantoneiras não são escolhíveis (sem isso o picking dava a última barra)
             foreach (Ligacao3D l in ligs)
             {
+                // proposta: chapas, parafusos e soldas numa cor fria e fosca, em malhas próprias
+                MalhaDx mallChapas = l.Proposta ? mallProp : mallAco, mallP = l.Proposta ? mallPropDet : mallParaf, mallS = l.Proposta ? mallPropDet : mallSolda;
+                Color4 corChapa = l.Proposta ? corProp : corChapaP, corParaf = l.Proposta ? corProp : corParafP, corSolda = l.Proposta ? corProp : corSoldaP;
                 if (!barras.TryGetValue(l.Barra, out Barra3D b)) continue;
                 var (a, d) = c.Pontos(b); Vector3D e = d - a; if (e.Length < 1e-9) continue; e.Normalize();
                 bool emI = l.No == b.Ni;
@@ -340,7 +364,7 @@ namespace NovoFtool
                 {
                     Vector3D nn = Wv(ch.Normal), uu = Wv(ch.U); if (nn.Length < 0.5 || uu.Length < 0.5) continue;
                     Vector3D ww = Wv(Vector3D.CrossProduct(ch.Normal, ch.U));   // no local: o referencial do contrato (y = x × z) é canhoto, o produto no mundo inverteria
-                    mallAco.Chapa(W(ch.Origem), uu, ww, nn, ch.Contorno.Select(p => new Point(p.X / 1000, p.Y / 1000)).ToArray(), ch.Espessura / 1000, corChapa, false);
+                    mallChapas.Chapa(W(ch.Origem), uu, ww, nn, ch.Contorno.Select(p => new Point(p.X / 1000, p.Y / 1000)).ToArray(), ch.Espessura / 1000, corChapa, false);
                     arestas.Chapa(W(ch.Origem), uu, ww, nn, ch.Contorno.Select(p => new Point(p.X / 1000, p.Y / 1000)).ToArray(), ch.Espessura / 1000, corChapa, true, false);
                 }
                 foreach (var ca in l.Cantoneiras)
@@ -350,17 +374,17 @@ namespace NovoFtool
                     Vector3D ex = Wv(ca.Eixo), uu = Wv(ca.U); if (ex.Length < 0.5 || uu.Length < 0.5) continue;
                     Vector3D vv = Vector3D.CrossProduct(ex, uu);   // ponytail: triedro direito no mundo (a aba pode sair espelhada no referencial canhoto)
                     Point3D pa = W(ca.Origem), pb = pa + ex * (ca.Comprimento / 1000);
-                    Render3DGeometria.Extrudar(mallAco, f, pa, pb, uu, vv, null, null, corChapa, false);
+                    Render3DGeometria.Extrudar(mallChapas, f, pa, pb, uu, vv, null, null, corChapa, false);
                     Render3DGeometria.Extrudar(arestas, f, pa, pb, uu, vv, null, null, corChapa, true, false);
                 }
-                foreach (var pf in l.Parafusos) Render3DGeometria.Parafuso(mallParaf, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf);
-                foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallSolda, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, x);
+                foreach (var pf in l.Parafusos) Render3DGeometria.Parafuso(mallP, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000);
+                foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallS, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, x);
             }
 
             var mallChao = new MalhaDx(); Chao(c, mallChao);
 
             faixas.Clear();
-            Aplicar(mAco, mallAco); Aplicar(mConcreto, mallConc); Aplicar(mSel, mallSel); Aplicar(mParafusos, mallParaf); Aplicar(mSoldas, mallSolda); Aplicar(mChao, mallChao);
+            Aplicar(mAco, mallAco); Aplicar(mConcreto, mallConc); Aplicar(mSel, mallSel); Aplicar(mParafusos, mallParaf); Aplicar(mSoldas, mallSolda); Aplicar(mChao, mallChao); Aplicar(mProp, mallProp); Aplicar(mPropDet, mallPropDet);
             if (arestas.L.Count > 0 && !(Environment.GetEnvironmentVariable("ESTRUCTTO_3D_SEM") ?? "").Contains("arestas"))
             {
                 lArestas.Geometry = new HxLine { Positions = new Vector3Collection(arestas.L), Indices = new IntCollection(Enumerable.Range(0, arestas.L.Count)) };
@@ -369,6 +393,7 @@ namespace NovoFtool
             else { lArestas.Geometry = null; lArestas.Visibility = Visibility.Collapsed; }
 
             Vista.SSAOSamplingRadius = (float)Math.Max(0.12, Math.Min(0.6, largSecao * 0.9));
+            lodAr = lodDet = null;   // cena nova: o próximo Lod decide sem histerese
             UltimaMontagemMs = sw.Elapsed.TotalMilliseconds;
             Vista.InvalidateRender();
         }
@@ -450,13 +475,17 @@ namespace NovoFtool
         // ================= nível de detalhe, picking, captura =================
 
         // pxPorM = pixels por metro na tela. Arestas só quando a seção tem ≥ 6 px; parafusos e soldas só perto ou em modelos
-        // com poucas ligações (≤ 80).
+        // com poucas ligações (≤ 80). Histerese (acendem em 6/40 px, apagam abaixo de 4/28 px): o zoom e a órbita em perspectiva
+        // mudam um pouco a escala e não podem ficar acendendo e apagando os parafusos (a Vista3D nem chama durante a órbita).
+        bool? lodAr, lodDet;
         public void Lod(double pxPorM)
         {
-            bool ar = pxPorM * largSecao >= 6, det = nLig <= 80 || pxPorM * largSecao >= 40;
+            double px = pxPorM * largSecao;
+            bool ar = lodAr == true ? px >= 4 : px >= 6, det = nLig <= 80 || (lodDet == true ? px >= 28 : px >= 40);
+            lodAr = ar; lodDet = det;
             Visibility va = ar && lArestas.Geometry != null ? Visibility.Visible : Visibility.Collapsed;
             if (lArestas.Visibility != va) lArestas.Visibility = va;
-            foreach (var m in new[] { mParafusos, mSoldas })
+            foreach (var m in new[] { mParafusos, mSoldas, mPropDet })
             {
                 Visibility vd = det && m.Geometry != null ? Visibility.Visible : Visibility.Collapsed;
                 if (m.Visibility != vd) m.Visibility = vd;

@@ -1076,6 +1076,7 @@ namespace NovoFtool
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
+                if (so == "visual") so1(() => CapturasVisual(w));                 // só as 58) close-ups de parafusos, linhas e ligações propostas
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado
                 w.MostrarDiagrama(Diagrama.Nenhum);
@@ -1256,6 +1257,7 @@ namespace NovoFtool
                 bool realAntes = Config.Realista3D;
                 CapturasRealista(w);
                 CapturasEstilo(w);   // 57) estilo visual: seletor da vista, chip da barra de status, VS
+                CapturasVisual(w);
                 w.DefinirRealista(false);
 
                 // 40) Vista 3D analítica de um pórtico espacial de entrada neutra (Modelo3D direto, sem motor)

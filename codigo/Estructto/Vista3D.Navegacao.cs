@@ -49,16 +49,32 @@ namespace NovoFtool
         double FocalPx => Math.Max(1, ActualWidth) / 2 / TanMeioFov;
         Point3D Olho { get { Direcoes(out Vector3D d, out _, out _); return alvo + d * (perspectiva ? DistPersp : raio * 6); } }
 
+        double PxPorM => perspectiva ? FocalPx / DistPersp : 1 / Escala;   // no plano do alvo
+
+        // Planos perto/longe justos na cena: esfera de 2,6 raios em volta do centro da caixa (modelo, cargas, diagramas e o
+        // chão do Realista cabem nela). Longe = fundo da esfera; perto = frente da esfera, ou 1/10.000 do longe com o olho
+        // dentro dela. Antes era longe = distância + 20 raios e perto = 2% da distância: na distância a profundidade não
+        // separava arruela, chapa e solda (piscavam na órbita).
+        (double Perto, double Longe) PlanosRecorte(Point3D olho, Vector3D d)
+        {
+            Rect3D cx = Caixa(); Point3D c = new Point3D(cx.X + cx.SizeX / 2, cx.Y + cx.SizeY / 2, cx.Z + cx.SizeZ / 2);
+            double zc = Vector3D.DotProduct(c - olho, -d), R = raio * 2.6;
+            double longe = Math.Max(zc + R, raio * 0.1);
+            return (Math.Max(zc - R, longe * 1e-4), longe);
+        }
+
         void AplicarCamera()
         {
             Direcoes(out Vector3D d, out Vector3D cima, out _);
+            bool lod = render != null && Dx && modo != Modo.Orbita;   // na órbita o nível de detalhe fica parado (sem parafuso piscando)
             if (perspectiva)
             {
                 double dist = DistPersp;
                 pcam.Position = alvo + d * dist; pcam.LookDirection = -d; pcam.UpDirection = cima;
-                pcam.NearPlaneDistance = Math.Max(0.01, dist * 0.02); pcam.FarPlaneDistance = dist + raio * 20;
+                var (pe, lo) = PlanosRecorte(pcam.Position, d);
+                pcam.NearPlaneDistance = pe; pcam.FarPlaneDistance = lo;
                 if (vp.Camera != pcam) vp.Camera = pcam;
-                if (render != null && Dx) { render.Camera(true, pcam.Position, pcam.LookDirection, pcam.UpDirection, pcam.FieldOfView, pcam.NearPlaneDistance, pcam.FarPlaneDistance); render.Lod(FocalPx / dist); }
+                if (render != null && Dx) render.Camera(true, pcam.Position, pcam.LookDirection, pcam.UpDirection, pcam.FieldOfView, pe, lo);
             }
             else
             {
@@ -66,10 +82,12 @@ namespace NovoFtool
                 cam.LookDirection = -d;
                 cam.UpDirection = cima;
                 cam.Width = larg;
-                cam.NearPlaneDistance = raio; cam.FarPlaneDistance = raio * 14;   // faixa justa: melhor precisão de profundidade (chão x sombra)
+                var (pe, lo) = PlanosRecorte(cam.Position, d);
+                cam.NearPlaneDistance = pe; cam.FarPlaneDistance = lo;   // faixa justa: melhor precisão de profundidade (chão x sombra)
                 if (vp.Camera != cam) vp.Camera = cam;
-                if (render != null && Dx) { render.Camera(false, cam.Position, cam.LookDirection, cam.UpDirection, larg, raio, raio * 14); render.Lod(1 / Escala); }
+                if (render != null && Dx) render.Camera(false, cam.Position, cam.LookDirection, cam.UpDirection, larg, pe, lo);
             }
+            if (lod) render.Lod(PxPorM);
             sobre.InvalidateVisual();
             cubo?.InvalidateVisual();
             pivoVis?.InvalidateVisual();
@@ -317,6 +335,7 @@ namespace NovoFtool
         {
             if (modo == Modo.Orbita) modo = Modo.Nada;
             pivoP = null; orbIni = null;
+            if (render != null && Dx) render.Lod(PxPorM);   // o nível de detalhe ficou parado durante a órbita
             Anim.Valor(pivoVis, OpacityProperty, 1, 0, Anim.Medio);
             AtualizarCursor();   // o comando continua: elástico e atração na câmera nova
             AgendarArestas();
@@ -502,59 +521,74 @@ namespace NovoFtool
 
         public object Acertar(Point p) => Acertar(p, out _);
 
-        // `ponto`: onde o raio tocou a peça (nó/barra da cena nativa ou peça do Render3D); null se achou só pela tolerância.
+        // `ponto`: onde o raio tocou a peça (peça sólida do Sombreado/Render3D) ou o ponto do eixo da barra/nó achado na tela.
+        // Analítico: barras e nós são linhas e pontos da sobreposição (Vista3D.Linhas.cs), escolhidos pela tela: nó a até
+        // 8 px, senão a barra a até 6 px do eixo (empate: a mais perto do olho); `ponto` = ponto do eixo mais perto do raio.
         object Acertar(Point p, out Point3D? ponto)
         {
             object achado = null; Point3D? pt = null;
-            VisualTreeHelper.HitTest(vp, null, r =>
-            {
-                if (r is RayMeshGeometry3DHitTestResult h)
+            if (Realista && !Dx)
+                VisualTreeHelper.HitTest(vp, null, r =>
                 {
-                    object o = null;
-                    if (mapa.TryGetValue(h.ModelHit, out object o1)) o = o1;
-                    else if (faixas.TryGetValue(h.ModelHit, out var fx))   // malha juntada: a barra dona do vértice
+                    if (r is RayMeshGeometry3DHitTestResult h && faixas.TryGetValue(h.ModelHit, out var fx))   // malha juntada: a barra dona do vértice
                     {
                         int k = Array.BinarySearch(fx.Ini, h.VertexIndex1);
-                        o = fx.Obj[k >= 0 ? k : Math.Max(0, ~k - 1)];
+                        object o = fx.Obj[k >= 0 ? k : Math.Max(0, ~k - 1)];
+                        if (o == null) return HitTestResultBehavior.Continue;
+                        achado = o; pt = h.PointHit;
+                        return HitTestResultBehavior.Stop;
                     }
-                    if (o == null) return HitTestResultBehavior.Continue;
-                    // nó tem prioridade sobre a barra que passa por ele; um nó lá atrás, em outro ponto do raio, não
-                    if (achado == null) { achado = o; pt = h.PointHit; }
-                    else if ((h.PointHit - pt.Value).Length > raio * 0.03) return HitTestResultBehavior.Stop;
-                    else if (o is No3D) { achado = o; pt = h.PointHit; }
-                    return o is No3D ? HitTestResultBehavior.Stop : HitTestResultBehavior.Continue;
-                }
-                return HitTestResultBehavior.Continue;
-            }, new PointHitTestParameters(TranslatePoint(p, vp)));
+                    return HitTestResultBehavior.Continue;
+                }, new PointHitTestParameters(TranslatePoint(p, vp)));
             if (achado == null && Dx && render != null)   // peças no Render3D
             {
                 achado = render.Acertar(TranslatePoint(p, render.Vista), out Point3D? pr);
                 pt ??= pr;
             }
-            ponto = pt;
-            // Realista não desenha os nós: vale o nó a até 8 px do clique (os da barra acertada, ou qualquer um no vazio)
-            if (Realista && !(achado is No3D))
+            if (achado is Barra3D bb)   // sólido acertado: vale um nó dele a até 8 px
             {
-                IEnumerable<No3D> cand = achado is Barra3D bb ? new[] { NoPorId(bb.Ni), NoPorId(bb.Nj) } : mod.Nos;
                 double dm = 8;
-                foreach (No3D n in cand)
+                foreach (No3D n in new[] { NoPorId(bb.Ni), NoPorId(bb.Nj) })
                 {
                     if (n == null) continue;
                     double dd = (Tela(P(n)) - p).Length;
                     if (dd < dm) { dm = dd; achado = n; }
                 }
             }
-            // barra fina (analítico): vale a barra a até 6 px do eixo na tela
+            // nada sólido sob o cursor (analítico, ou vazio no Realista): nós a até 8 px e barras a até 6 px do eixo na tela;
+            // ganha o mais perto do olho; o nó ganha da barra que chega nele (mesma profundidade, ±3% do raio)
             if (achado == null)
             {
-                double dm = 6;
+                var (o, rd) = Raio(p); Point3D fim = o + rd * (raio * 400 + larg * 10);
+                var pr = new Projetor(this);   // corta no plano perto: barra que passa atrás do olho não "cruza" a tela toda
+                object melhor = null; double zm = double.MaxValue, dmin = double.MaxValue; Point3D qm = default;
+                void Candidato(object c, double dd, Point3D q)
+                {
+                    double z = Vector3D.DotProduct(q - o, rd);
+                    if (z < 0) return;
+                    double tol = raio * 0.03;
+                    bool ganha = melhor == null || z < zm - tol || (Math.Abs(z - zm) <= tol && (c is No3D && !(melhor is No3D) || (c is No3D) == (melhor is No3D) && dd < dmin));
+                    if (ganha) { melhor = c; zm = z; dmin = dd; qm = q; }
+                }
+                foreach (No3D n in mod.Nos)
+                {
+                    Point3D q = P(n); if (!pr.Visivel(q)) continue;
+                    double dd = (pr.Tela(q) - p).Length;
+                    if (dd <= 8) Candidato(n, dd, q);
+                }
                 foreach (Barra3D b in mod.Barras)
                 {
                     No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); if (a == null || c == null) continue;
-                    double dd = DistSeg(p, Tela(P(a)), Tela(P(c)));
-                    if (dd < dm) { dm = dd; achado = b; }
+                    if (!pr.Segmento(P(a), P(c), out Point sa, out Point sc)) continue;
+                    double dd = DistSeg(p, sa, sc);
+                    if (dd > 6) continue;
+                    Snap3D.Segmentos(o, fim, P(a), P(c), out _, out _, out _, out Point3D q);
+                    Candidato(b, dd, q);
                 }
+                achado = melhor;
+                if (melhor != null && !Realista) pt = qm;
             }
+            ponto = pt;
             return achado;
         }
 

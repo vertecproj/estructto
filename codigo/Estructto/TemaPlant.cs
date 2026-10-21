@@ -137,6 +137,7 @@ namespace NovoFtool
             CorSolda3D         = C("#464B54"),   // cordões de solda
             CorGrade3D         = C("#343D4B"),   // grade do chão (some no degradê)
             CorArestaDx3D      = C("#161B23"),   // arestas de 1 px do Render3D
+            CorProposta3D      = C("#6E93C8"),   // ligação proposta (grupo sem projeto): azul-acinzentado fosco, fora do aço
             // ViewCube e grips da Vista3D (ViewCube.cs, Vista3D.Grips.cs; docs/v3/PESQUISA-PLANT.md 2.2 e 3.7)
             CorCuboFace        = C("#E6242B38"),   // face do cubo (Surface1 a 90%)
             CorCuboHover       = C("#CC0EA5E9"),   // região sob o mouse (acento)

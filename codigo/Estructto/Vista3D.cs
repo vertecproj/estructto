@@ -234,7 +234,6 @@ namespace NovoFtool
         readonly Viewport3D vp = new Viewport3D { ClipToBounds = true, IsHitTestVisible = true };
         readonly OrthographicCamera cam = new OrthographicCamera { NearPlaneDistance = 0.001, FarPlaneDistance = double.PositiveInfinity };
         readonly ModelVisual3D cena = new ModelVisual3D();
-        readonly Dictionary<Model3D, object> mapa = new Dictionary<Model3D, object>();
         readonly Sobre sobre;
 
         // câmera: azimute e elevação (graus), largura visível (m), alvo
@@ -345,7 +344,6 @@ namespace NovoFtool
             m.TriangleIndices.Add(i); m.TriangleIndices.Add(i + 1); m.TriangleIndices.Add(i + 2);
         }
 
-        static void Cubo(MeshGeometry3D m, Point3D c, double h) { Prisma(m, c - new Vector3D(0, 0, h), c + new Vector3D(0, 0, h), h); }
 
         GeometryModel3D Geo(MeshGeometry3D m, Material mat, bool duasFaces = false)
         {
@@ -375,7 +373,7 @@ namespace NovoFtool
 
         public void Reconstruir()
         {
-            mapa.Clear(); faixas.Clear();
+            faixas.Clear();
             var g = new Model3DGroup();
             bool dx = Dx;
             if (!Realista || dx)   // DX: a cena nativa só tem cargas, diagramas e nós (sobrepostos ao Render3D)
@@ -387,7 +385,7 @@ namespace NovoFtool
 
             Rect3D cx = Caixa();
             raio = Math.Max(1, new Vector3D(cx.SizeX, cx.SizeY, cx.SizeZ).Length / 2);
-            double h = raio * 0.006, hn = h * 2.0;   // meia espessura da barra e do nó
+            double h = raio * 0.006;   // escala das setas e da grade; forma padrão das seções sem dados
 
             bool def = MostrarDeformada && mod.Nos.Any(n => n.Desl != null);
             double dmax = def ? mod.Nos.Where(n => n.Desl != null).Max(n => Math.Sqrt(n.Desl[0] * n.Desl[0] + n.Desl[1] * n.Desl[1] + n.Desl[2] * n.Desl[2])) : 0;
@@ -408,57 +406,25 @@ namespace NovoFtool
                 g.Children.Add(Geo(mg, mat, true));
             }
 
-            // barras (uma geometria por barra para o picking e a cor)
-            if (!Realista)
-            foreach (Barra3D b in mod.Barras)
+            // Barras, nós, apoios do analítico, deformada e fantasmas: linhas e pontos de largura fixa na tela, desenhados pela
+            // sobreposição a cada quadro (Vista3D.Linhas.cs). Aqui fica só o que é sólido: os blocos de apoio do Sombreado.
+            linhaDef = fDef;
+            if (Realista && !dx)
             {
-                No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); if (a == null || c == null) continue;
-                bool sel = EhSel(b, b.Origem);
-                Color cor = sel ? TemaPlant.Texto1   // branco: não colide com as cores do aproveitamento
-                          : MostrarAproveitamento && b.Aprov.HasValue ? CorAprov(b.Aprov.Value)
-                          : def || Diagrama != Diagrama3D.Nenhum ? TemaPlant.TextoMudo : TemaPlant.CorBarra;
-                var m = new MeshGeometry3D();
-                Prisma(m, P(a), P(c), (MostrarAproveitamento && b.Aprov.HasValue ? h * 1.6 : h) * (sel ? 1.8 : 1));
-                var geo = Geo(m, Mat(cor, true));
-                mapa[geo] = b; g.Children.Add(geo);
-            }
-
-            // nós e apoios
-            var mApoio = new MeshGeometry3D();
-            foreach (No3D n in mod.Nos)
-            {
-                bool selNo = EhSel(n, n.Origem);
-                if (!Realista || selNo)   // Realista: nós escolhidos pela tela (Acertar), só o selecionado aparece
+                var mApoio = new MeshGeometry3D();
+                foreach (No3D n in mod.Nos)
                 {
-                    var m = new MeshGeometry3D(); Cubo(m, P(n), hn);
-                    var geo = Geo(m, Mat(selNo ? TemaPlant.CorBarraSel : TemaPlant.Texto2, true));
-                    mapa[geo] = n; g.Children.Add(geo);
+                    if (!n.Apoios.Any(x => x)) continue;
+                    double s = ApoioReal(n); Point3D p = P(n), bz = p - new Vector3D(0, 0, s * 1.4);
+                    if (n.Apoios[3] || n.Apoios[4] || n.Apoios[5]) Prisma(mApoio, bz, p, s);   // engaste: bloco encostado no pilar
+                    else
+                    {
+                        Point3D[] q = { bz + new Vector3D(-s, -s, 0), bz + new Vector3D(s, -s, 0), bz + new Vector3D(s, s, 0), bz + new Vector3D(-s, s, 0) };
+                        for (int i = 0; i < 4; i++) Tri(mApoio, p, q[i], q[(i + 1) % 4]);   // rótula: pirâmide
+                        Quad(mApoio, q[3], q[2], q[1], q[0]);
+                    }
                 }
-                if (!n.Apoios.Any(x => x) || dx) continue;   // DX: pedestal no Render3D
-                double s = Realista ? ApoioReal(n) : raio * 0.035; Point3D p = P(n), bz = p - new Vector3D(0, 0, s * 1.4);
-                if (n.Apoios[3] || n.Apoios[4] || n.Apoios[5])
-                    Prisma(mApoio, bz, p - new Vector3D(0, 0, Realista ? 0 : hn), s);   // engaste: bloco (Realista: encostado no pilar)
-                else
-                {
-                    Point3D[] q = { bz + new Vector3D(-s, -s, 0), bz + new Vector3D(s, -s, 0), bz + new Vector3D(s, s, 0), bz + new Vector3D(-s, s, 0) };
-                    for (int i = 0; i < 4; i++) Tri(mApoio, p, q[i], q[(i + 1) % 4]);   // rótula: pirâmide
-                    Quad(mApoio, q[3], q[2], q[1], q[0]);
-                }
-            }
-            if (mApoio.Positions.Count > 0) g.Children.Add(Geo(mApoio, Realista ? MatReal(TemaPlant.CorConcreto3D, false) : Mat(TemaPlant.CorApoio, true), true));
-
-            // deformada (cordas entre nós deslocados; ponytail: sem a elástica dentro da barra).
-            // Realista: as peças já estão na posição deformada; aqui fica a posição original em linhas finas.
-            if (fDef > 0)
-            {
-                var m = new MeshGeometry3D();
-                foreach (Barra3D b in mod.Barras)
-                {
-                    No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); if (a == null || c == null) continue;
-                    if (Realista) Prisma(m, P(a), P(c), h * 0.5);
-                    else Prisma(m, Deformado(a, fDef), Deformado(c, fDef), h * 1.2);
-                }
-                g.Children.Add(Geo(m, Mat(Realista ? TemaPlant.TextoMudo : TemaPlant.CorDeformada, true)));
+                if (mApoio.Positions.Count > 0) g.Children.Add(Geo(mApoio, MatReal(TemaPlant.CorConcreto3D, false), true));
             }
 
             // diagramas N/V/M no plano (barra, eixo local y)
@@ -500,17 +466,7 @@ namespace NovoFtool
 
             if (MostrarCargas && mod.Cargas.Count > 0) DesenharCargas(g);
 
-            // fantasmas (fora de `mapa` e de mod.Nos: o picking, a seleção e a atração não os veem); entram com fade
-            if (mod.Fantasmas.Count > 0)
-            {
-                var mg = new MeshGeometry3D();
-                foreach (var (a, b) in mod.Fantasmas) Prisma(mg, a, b, h * 0.3);
-                Color cf = TemaPlant.BTexto3.Color;
-                var br = new SolidColorBrush(Color.FromArgb(0x50, cf.R, cf.G, cf.B));
-                var mat = new MaterialGroup(); mat.Children.Add(new DiffuseMaterial(Brushes.Transparent)); mat.Children.Add(new EmissiveMaterial(br));
-                g.Children.Add(Geo(mg, mat, true));
-                if (fantasmasNovos) { fantasmasNovos = false; Anim.Valor(br, Brush.OpacityProperty, 0, 1, Anim.Espacial); }
-            }
+            if (fantasmasNovos && mod.Fantasmas.Count > 0) { fantasmasNovos = false; Anim.Valor(pincelFantasma, Brush.OpacityProperty, 0, 1, Anim.Espacial); }   // entram com fade (linhas: Vista3D.Linhas.cs)
 
             cena.Content = g;
             sobre.InvalidateVisual();
@@ -572,7 +528,7 @@ namespace NovoFtool
                     cauda = tc;
                 }
             }
-            if (m.Positions.Count > 0) g.Children.Add(Geo(m, Mat(TemaPlant.CorCarga, true), true));   // fora de `mapa`: o picking passa por elas
+            if (m.Positions.Count > 0) g.Children.Add(Geo(m, Mat(TemaPlant.CorCarga, true), true));   // fora do picking: o clique passa por elas
         }
 
         // ================= modo Realista =================
@@ -881,7 +837,7 @@ namespace NovoFtool
                 },
             };
             render.Montar(cena);
-            render.Lod(1 / Escala);
+            render.Lod(PxPorM);
             AplicarCamera();
         }
 
@@ -1292,6 +1248,7 @@ namespace NovoFtool
 
             protected override void OnRender(DrawingContext dc)
             {
+                v.DesenharModelo(dc);          // barras, nós e apoios do analítico em linhas e pontos (Vista3D.Linhas.cs)
                 v.DesenharEntrada(dc, this);   // plano, corrente, caixa de seleção, entrada dinâmica
                 v.Direcoes(out Vector3D d, out Vector3D cima, out Vector3D dir);
                 // gizmo: canto inferior esquerdo
@@ -1322,6 +1279,17 @@ namespace NovoFtool
                         dc.DrawRoundedRectangle(TemaPlant.B(itens[i].Item1), null, new Rect(x + 10, yy + 3, 18, 8), 2, 2);
                         dc.DrawText(Txt(itens[i].Item2, TemaPlant.BTexto1, 11), new Point(x + 36, yy - 1));
                     }
+                }
+                // chip das ligações propostas (grupos sem projeto, desenhados na cor CorProposta3D): canto inferior direito,
+                // acima da legenda do aproveitamento
+                if (v.Dx && v.render != null && v.render.Propostas > 0)
+                {
+                    var ft = Txt("Ligação proposta (sem projeto) · " + v.render.Propostas, TemaPlant.BTexto1, 11);
+                    bool leg = v.MostrarLegenda && v.MostrarAproveitamento && v.mod.Barras.Any(b => b.Aprov.HasValue);
+                    double w = ft.Width + 40, h = 24, x = ActualWidth - w - 14, y = ActualHeight - h - 14 - (leg ? 26 + 4 * 18 + 8 : 0);
+                    dc.DrawRoundedRectangle(TemaPlant.B(TemaPlant.CorCaixaHud), new Pen(TemaPlant.BBordaSutil, 1), new Rect(x, y, w, h), 6, 6);
+                    dc.DrawRoundedRectangle(TemaPlant.B(TemaPlant.CorProposta3D), null, new Rect(x + 10, y + 8, 18, 8), 2, 2);
+                    dc.DrawText(ft, new Point(x + 34, y + (h - ft.Height) / 2));
                 }
                 if (v.mod.Nos.Count == 0 && !v.Desenhando)
                 {

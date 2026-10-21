@@ -54,6 +54,12 @@ namespace NovoFtool
             T.Add(i); T.Add(i + 1); T.Add(i + 2); T.Add(i); T.Add(i + 2); T.Add(i + 3);
         }
 
+        public void QuadN(Point3D a, Point3D b, Point3D c, Point3D d, Vector3D n, Color4 cor)   // vira o quadrilátero para a normal dada
+        {
+            if (Vector3D.DotProduct(Vector3D.CrossProduct(c - a, d - b), n) < 0) (b, d) = (d, b);
+            Quad(a, b, c, d, cor);
+        }
+
         public void Aresta(Point3D a, Point3D b) { L.Add(V(a)); L.Add(V(b)); }
 
         // Caixa alinhada aos eixos (pedestais, blocos).
@@ -83,10 +89,11 @@ namespace NovoFtool
                 if (liso) Quad(p0, p1, p2, p3, rad[k], rad[j], rad[j], rad[k], cor); else Quad(p0, p1, p2, p3, cor);
             }
             if (!tampas) return;
-            for (int k = 1; k < n - 1; k++)
+            for (int k = 0; k < n; k++)   // leque fechado a partir do centro (antes faltavam 2 fatias: a peça parecia oca)
             {
-                Tri(b, b + rad[k] * r, b + rad[k + 1] * r, cor);
-                Tri(a, a + rad[k + 1] * r, a + rad[k] * r, cor);
+                int j = (k + 1) % n;
+                Tri(b, b + rad[k] * r, b + rad[j] * r, cor);
+                Tri(a, a + rad[j] * r, a + rad[k] * r, cor);
             }
         }
 
@@ -210,12 +217,13 @@ namespace NovoFtool
             for (int li = 0; li < f.Lacos.Count; li++)
             {
                 Point[] q = f.Lacos[li]; bool liso = f.Liso[li]; int n = q.Length;
+                double area = 0; for (int k = 0; k < n; k++) area += q[k].X * q[(k + 1) % n].Y - q[(k + 1) % n].X * q[k].Y;   // furo (horário): normal radial para dentro
                 var pa = new Point3D[n]; var pc = new Point3D[n]; var nr = new Vector3D[n];
                 for (int k = 0; k < n; k++)
                 {
                     Vector3D off = u * q[k].X + v * q[k].Y;
                     pa[k] = Fim(a + off, ca); pc[k] = Fim(c + off, cc);
-                    nr[k] = off; if (nr[k].Length > 1e-12) nr[k].Normalize();   // liso: normal radial
+                    nr[k] = area < 0 ? -off : off; if (nr[k].Length > 1e-12) nr[k].Normalize();   // liso: normal radial (para fora do material)
                 }
                 for (int k = 0; k < n; k++)
                 {
@@ -236,18 +244,25 @@ namespace NovoFtool
 
         // ---------- primitivas das ligações ----------
 
-        // Parafuso sextavado: cabeça + arruela, fuste, arruela + porca na ponta. cabeca = face de apoio da cabeça; eixo = cabeça -> porca.
-        public static void Parafuso(MalhaDx m, Point3D cabeca, Vector3D eixo, double d, double comp, Color4 cor)
+        // Parafuso sextavado, cada peça um sólido fechado: cabeça + arruela, fuste, arruela + porca e a ponta do fuste
+        // passando da porca. cabeca = face de apoio da cabeça; eixo = cabeça -> porca. pega = espessura apertada (a arruela da
+        // porca encosta nela); sem pega (NaN), a do comprimento do motor (pega + porca + arruela + fios: ligacoes_rigidas
+        // _comprimento_parafuso). As arruelas ficam a Folga da chapa: sem faces no mesmo plano (z-fighting).
+        public const double FolgaParafuso = 0.03;   // × d (0,6 mm no M20)
+        public static void Parafuso(MalhaDx m, Point3D cabeca, Vector3D eixo, double d, double comp, Color4 cor, double pega = double.NaN)
         {
             if (eixo.Length < 1e-12 || d <= 0 || comp <= 0) return;
             eixo.Normalize();
-            double rc = 0.95 * d, hc = 0.65 * d, ra = 1.05 * d, ha = 0.14 * d, rp = 0.95 * d, hp = 0.8 * d;
-            m.Tubo(cabeca - eixo * (ha + hc), cabeca - eixo * ha, rc, 6, false, cor);     // cabeça
-            m.Tubo(cabeca - eixo * ha, cabeca, ra, 12, true, cor);                        // arruela
-            m.Tubo(cabeca, cabeca + eixo * comp, d / 2, 8, true, cor, false);             // fuste
-            Point3D fim = cabeca + eixo * comp;
-            m.Tubo(fim - eixo * (hp + ha), fim - eixo * hp, ra, 12, true, cor);          // arruela da porca
-            m.Tubo(fim - eixo * hp, fim, rp, 6, false, cor, true, Math.PI / 6);           // porca
+            double rc = 0.95 * d, hc = 0.65 * d, ra = 1.05 * d, ha = 0.14 * d, rp = 0.95 * d, hp = 0.8 * d, f = FolgaParafuso * d;
+            if (double.IsNaN(pega) || pega <= 0) pega = comp - 0.9 * d - 0.014;
+            pega = Math.Max(Math.Min(pega, comp - hp - ha), 0.3 * comp);
+            Point3D Em(double x) => cabeca + eixo * x;
+            m.Tubo(Em(-f - ha - hc), Em(-f - ha), rc, 6, false, cor);                     // cabeça
+            m.Tubo(Em(-f - ha), Em(-f), ra, 12, true, cor);                               // arruela
+            double ponta = Math.Max(comp, pega + f + ha + hp + 0.25 * d);
+            m.Tubo(Em(-f - ha * 0.5), Em(ponta), d / 2, 10, true, cor);                    // fuste, da arruela até passar da porca
+            m.Tubo(Em(pega + f), Em(pega + f + ha), ra, 12, true, cor);                   // arruela da porca
+            m.Tubo(Em(pega + f + ha), Em(pega + f + ha + hp), rp, 6, false, cor, true, Math.PI / 6);   // porca
         }
 
         // Cordão de filete: prisma triangular (pernas iguais) ao longo da polilinha. ax = direção da peça que chega (x local do
@@ -274,6 +289,8 @@ namespace NovoFtool
                     if (Vector3D.DotProduct(Vector3D.CrossProduct(a2 - a1, b2 - a1), h) >= 0) m.Quad(a1, a2, b2, b1, h, h, h, h, cor);
                     else m.Quad(a1, b1, b2, a2, h, h, h, h, cor);
                     m.TriN(a, a1, a2, -sg, cor); m.TriN(b, b1, b2, sg, cor);
+                    // pernas (encostadas na chapa e na peça): o prisma fecha; com o descarte de faces de trás não brigam com elas
+                    m.QuadN(a, b, b1, a1, -w, cor); m.QuadN(a, a2, b2, b, -ax, cor);
                 }
             }
         }
@@ -336,9 +353,53 @@ namespace NovoFtool
             return r;
         }
 
-        // Autoverificação (Estructto.exe --testes-exportar também chama): triangulação e recortes.
+        // Sólido fechado e para fora: cada aresta orientada tem a sua inversa (sem buraco nem T) e o volume com sinal é > 0
+        // (os triângulos giram anti-horário vistos de fora, como o descarte de faces de trás do Render3D espera).
+        public static (bool Fechada, double Volume) Fechada(MalhaDx m)
+        {
+            var arestas = new Dictionary<(long, long, long, long, long, long), int>();
+            (long, long, long) K(Vector3 p) => ((long)Math.Round(p.X * 1e6), (long)Math.Round(p.Y * 1e6), (long)Math.Round(p.Z * 1e6));
+            double vol = 0;
+            for (int t = 0; t + 2 < m.T.Count; t += 3)
+            {
+                Vector3 a = m.P[m.T[t]], b = m.P[m.T[t + 1]], c = m.P[m.T[t + 2]];
+                vol += Vector3.Dot(a, Vector3.Cross(b, c)) / 6.0;
+                foreach (var (p, q) in new[] { (a, b), (b, c), (c, a) })
+                {
+                    var (x, y, z) = K(p); var (x2, y2, z2) = K(q);
+                    var chave = (x, y, z, x2, y2, z2); var inv = (x2, y2, z2, x, y, z);
+                    if (arestas.TryGetValue(inv, out int n) && n > 0) arestas[inv] = n - 1;
+                    else arestas[chave] = (arestas.TryGetValue(chave, out int k) ? k : 0) + 1;
+                }
+            }
+            return (arestas.Values.All(n => n == 0), vol);
+        }
+
+        // Autoverificação (Estructto.exe --testes-exportar também chama): triangulação, recortes e sólidos fechados.
         public static void Testar(Action<bool, string> afirmar)
         {
+            {   // parafuso, chapa, caixa, perfil I extrudado e cordão de solda: fechados, normais para fora
+                var cb = new Color4(1, 1, 1, 1);
+                var mp = new MalhaDx(); Parafuso(mp, new Point3D(0.1, 0.2, 0.3), new Vector3D(0.3, -1, 0.2), 0.02, 0.06, cb, 0.035);
+                var (fp, vp) = Fechada(mp);
+                afirmar(fp && vp > 0, "parafuso: cabeça, arruelas, fuste e porca fechados e para fora (volume " + (vp * 1e6).ToString("0.0") + " cm³)");
+                var mc = new MalhaDx(); mc.Chapa(new Point3D(1, 0, 0), new Vector3D(0, 1, 0), new Vector3D(0, 0, 1), new Vector3D(-1, 0, 0), new[] { new Point(0, 0), new Point(0.3, 0), new Point(0.3, 0.2), new Point(0.1, 0.25), new Point(0, 0.2) }, 0.016, cb, false);
+                var (fc, vc) = Fechada(mc);
+                afirmar(fc && Math.Abs(vc / (0.016 * (0.3 * 0.2 + 0.3 * 0.05 / 2)) - 1) < 1e-4, "chapa (referencial canhoto): fechada, volume = área × espessura");
+                var mx = new MalhaDx(); mx.Caixa(new Point3D(1, 2, 3), 0.4, 0.5, 0.6, cb);
+                var (fx, vx) = Fechada(mx);
+                afirmar(fx && Math.Abs(vx - 0.12) < 1e-6, "caixa (pedestal): fechada, volume 0,12 m³");
+                Contorno fi = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "I", H = 0.3, B = 0.15, Tw = 0.006, Tf = 0.01 }, 0.1);
+                var me = new MalhaDx(); Extrudar(me, fi, new Point3D(0, 0, 0), new Point3D(2, 0, 0), new Vector3D(0, 1, 0), new Vector3D(0, 0, 1), new Corte { P = new Point3D(0.1, 0, 0), N = new Vector3D(1, 0, 0.3) }, null, cb, false);   // com corte oblíquo
+                var (fe, _) = Fechada(me);
+                var mt = new MalhaDx(); Contorno ft = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "TC", H = 0.2, Tw = 0.008 }, 0.1);
+                Extrudar(mt, ft, new Point3D(0, 0, 0), new Point3D(0, 0, 3), new Vector3D(1, 0, 0), new Vector3D(0, 1, 0), null, null, cb, false);
+                var (ftb, vtb) = Fechada(mt);
+                afirmar(fe && ftb && vtb > 0, "perfil I e tubo circular extrudados: fechados (tampas sem T), para fora");
+                var ms = new MalhaDx(); Cordao(ms, new[] { new Point3D(0, 0, 0), new Point3D(0, 0.2, 0) }, 0.008, cb, new Vector3D(1, 0, 0));
+                var (fs, vs) = Fechada(ms);
+                afirmar(fs && Math.Abs(vs / (2 * 0.2 * 0.008 * 0.008 / 2) - 1) < 1e-3, "cordão de solda (dois lados): prismas fechados, volume 2 × L × p²/2");
+            }
             {   // cope de 40 mm no topo de um I 300×150 (mesa 10): some a mesa de cima, a tampa fecha com a área do resto
                 Contorno fi = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "I", H = 0.3, B = 0.15, Tw = 0.006, Tf = 0.01 }, 0.1);
                 Contorno fc = Recortar(fi, -0.15, 0.15 - 0.04);

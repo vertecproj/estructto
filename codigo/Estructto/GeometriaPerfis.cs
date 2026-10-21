@@ -96,6 +96,11 @@ namespace NovoFtool
                     Ret(f, -hb, -hh, hb, hh);
                     break;
             }
+            if (f.Lacos.Count == 1 && !f.Liso[0])   // I, U, L: tampa pelo próprio contorno (os retângulos davam vértices em T: frestas que piscam no 3D)
+            {
+                Point[] l = f.Lacos[0]; f.Tampa.Clear();
+                foreach (int[] t in Render3DGeometria.Triangular(l)) { f.Tampa.Add(l[t[0]]); f.Tampa.Add(l[t[1]]); f.Tampa.Add(l[t[2]]); }
+            }
             return f;
         }
 
