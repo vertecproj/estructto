@@ -22,6 +22,9 @@ try {
     $pk = Join-Path $Motor 'prossen_estrutural'
     $dados = @()
     foreach ($d in 'dados', 'relatorio_estilo') { if (Test-Path (Join-Path $pk $d)) { $dados += '--add-data'; $dados += ((Join-Path $pk $d) + ';prossen_estrutural\' + $d) } }
+    # exemplos do motor (projeto.EXEMPLOS = <pacote>/../exemplos): só os .json
+    $ex = Join-Path $Motor 'exemplos'
+    if (Test-Path $ex) { Get-ChildItem $ex -Filter *.json | ForEach-Object { $dados += '--add-data'; $dados += ($_.FullName + ';exemplos') } }
     & python -m PyInstaller --noconfirm --clean --console --name estructto-motor `
         --paths $Motor --collect-submodules prossen_estrutural @dados `
         --distpath (Join-Path $tmp 'dist') --workpath (Join-Path $tmp 'build') --specpath $tmp $entrada
