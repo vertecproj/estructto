@@ -97,22 +97,26 @@ namespace NovoFtool
             if (t >= 1) { Parar(); AgendarArestas(); AtualizarCursor(); }
         }
 
-        double LargEnquadrada(double azv, double elv)
+        // Projeta os nós (não os cantos da caixa, que sobram nas vistas iso) no plano da tela da direção pedida: largura com
+        // margem de 15% (perspectiva 35%: o que está perto cresce) e alvo no centro do que aparece.
+        Camera3 Enquadramento(double azv, double elv)
         {
-            // projeta os cantos da caixa no plano da tela da direção pedida
             double a = azv * Math.PI / 180, e = elv * Math.PI / 180;
             var d = new Vector3D(Math.Cos(e) * Math.Cos(a), Math.Cos(e) * Math.Sin(a), Math.Sin(e));
             var cima = new Vector3D(-Math.Sin(e) * Math.Cos(a), -Math.Sin(e) * Math.Sin(a), Math.Cos(e));
             Vector3D dir = Vector3D.CrossProduct(-d, cima);
             Rect3D cx = Caixa(); Point3D c = new Point3D(cx.X + cx.SizeX / 2, cx.Y + cx.SizeY / 2, cx.Z + cx.SizeZ / 2);
-            double w = 0, hh = 0;
-            for (int i = 0; i < 8; i++)
+            var pts = mod.Nos.Count > 0 ? mod.Nos.Select(n => new Point3D(n.X, n.Y, n.Z))
+                                        : Enumerable.Range(0, 8).Select(i => new Point3D(cx.X + (i & 1) * cx.SizeX, cx.Y + ((i >> 1) & 1) * cx.SizeY, cx.Z + ((i >> 2) & 1) * cx.SizeZ));
+            double u0 = double.MaxValue, u1 = double.MinValue, v0 = double.MaxValue, v1 = double.MinValue;
+            foreach (Point3D p in pts)
             {
-                Vector3D v = new Point3D(cx.X + (i & 1) * cx.SizeX, cx.Y + ((i >> 1) & 1) * cx.SizeY, cx.Z + ((i >> 2) & 1) * cx.SizeZ) - c;
-                w = Math.Max(w, Math.Abs(Vector3D.DotProduct(v, dir))); hh = Math.Max(hh, Math.Abs(Vector3D.DotProduct(v, cima)));
+                double du = Vector3D.DotProduct(p - c, dir), dv = Vector3D.DotProduct(p - c, cima);
+                u0 = Math.Min(u0, du); u1 = Math.Max(u1, du); v0 = Math.Min(v0, dv); v1 = Math.Max(v1, dv);
             }
             double asp = ActualWidth > 1 && ActualHeight > 1 ? ActualWidth / ActualHeight : 16.0 / 9;
-            return Math.Max(1, 2 * Math.Max(w, hh * asp) * (perspectiva ? 1.45 : 1.25));
+            return new Camera3 { Az = azv, El = elv, Larg = Math.Max(1, Math.Max(u1 - u0, (v1 - v0) * asp) * (perspectiva ? 1.35 : 1.15)),
+                                 Alvo = c + dir * ((u0 + u1) / 2) + cima * ((v0 + v1) / 2) };
         }
 
         public void Enquadrar(bool animar = true) { Enquadrar(az, el, animar); }
@@ -121,8 +125,7 @@ namespace NovoFtool
 
         void Enquadrar(double azv, double elv, bool animar)
         {
-            Rect3D cx = Caixa();
-            IrPara(new Camera3 { Az = azv, El = elv, Larg = LargEnquadrada(azv, elv), Alvo = new Point3D(cx.X + cx.SizeX / 2, cx.Y + cx.SizeY / 2, cx.Z + cx.SizeZ / 2) }, animar);
+            IrPara(Enquadramento(azv, elv), animar);
         }
 
         // Zoom na seleção (Z O): caixa dos nós escolhidos (e das pontas das barras), na direção atual.

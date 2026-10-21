@@ -33,8 +33,8 @@ Só no Render3D (não existia antes):
 
 Julgamento honesto contra Tekla/Advance Steel/Revit: o nativo lia como "sombreado plano com sombra no chão", peças se
 atravessando nos nós e sem anti-serrilhado nas capturas. O Render3D traz sombra entre peças, oclusão nas quinas, arestas de 1 px,
-recortes e ligações: está no nível de um "Shaded with edges" do Revit com sombras. Falta para o Tekla: reflexos de ambiente
-(mapa de ambiente), cope de mesa de verdade e soldas com perfil triangular.
+recortes e ligações: está no nível de um "Shaded with edges" do Revit com sombras. Depois (fix-render): mapa de ambiente,
+cope e filete triangular também.
 
 ## O look
 
@@ -75,9 +75,12 @@ recortes e ligações: está no nível de um "Shaded with edges" do Revit com so
   local, antes de ir para o mundo, e a orientação dos triângulos é decidida pela mão do triedro no mundo). Chapas: polígono
   (triangulação por orelhas) extrudado de 0 a `espessura` ao longo da normal. Cantoneiras: `L<b>x<t>` extrudadas. Parafusos:
   cabeça sextavada + arruela, fuste, arruela + porca, numa malha só (ponytail: sem instancing; 2.430 barras com ~1.200 chapas
-  de topo montam em 0,5 s). Soldas: tubo fino ao longo da polilinha (raio ≈ 0,55 × perna; ponytail: sem o perfil triangular).
-  Recortes: `recuo` com `folga` (vão até a face) ou `x_ponta` (posição absoluta da ponta, como o motor manda); `cope` lido mas
-  não desenhado.
+  de topo montam em 0,5 s). Soldas: filete triangular de pernas iguais (`Cordao`): uma perna ao longo da peça que chega (x local), a outra para fora do
+  contorno (laço fechado, pela orientação) ou dos dois lados (cordão aberto).
+  Recortes: `recuo` com `folga` (vão até a face) ou `x_ponta` (posição absoluta da ponta, como o motor manda); `cope` (`posicao`
+  topo/base, `altura`, `comprimento` a partir da ponta): a ponta da viga é extrudada com o contorno cortado
+  (`Render3DGeometria.Recortar`, só seções de laço único: I, U, L) e a peça cheia começa depois. O exemplo de chapa simples viga
+  em viga entra até 12 mm da alma do apoio (`x_ponta`) com cope na mesa de cima (captura `42-realista-ligacao-cope`).
 - **Origem das ligações**, por ordem: (1) `Modelo3D.Ligacoes` preenchido pelo modelo espacial: grupos do motor
   (`GET /api/ligacoes/grupos`) com projeto → `POST /api/ligacoes/verificar` por grupo (esforços nulos; `perfil_viga` = seção
   do membro, `perfil_pilar/suporte` = barra com `papel: pilar` no nó, senão a mais alta) → `geometria`; grupo "base" → placa pelo
@@ -127,8 +130,12 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
 
 ## Limites e próximos passos
 
-- Sem mapa de ambiente (reflexos): metálico baixo para o aço não ficar escuro. Adicionar um cubemap procedural (`EnvironmentMap3D`).
-- Cope de mesa não desenhado (a viga para na face; o `cope` do contrato é lido e ignorado). Solda sem perfil triangular.
+- Mapa de ambiente: cubo procedural 64² com mips (`Render3D.CeuDds`, céu de estúdio em degradê com Z para cima), só reflexo
+  (`SkipRendering`); aço galvanizado metálico 0,3 / rugosidade 0,5. Mesas vistas no reflexo da luz chave saem quase brancas.
+- Perspectiva: a Vista3D usa FOV horizontal (WPF) e o Helix SharpDX vertical; `Render3D.Camera` converte
+  (`vfov = 2·atan(tan(hfov/2)/aspecto)`, refeito no SizeChanged). Captura `42-realista-portico2x2-perspectiva-no` + picking.
+- Enquadrar: projeta os nós (não a caixa), alvo no centro do que aparece, margem 15% (perspectiva 35%).
+- Placa de base do grupo "base" só com projeto (`tipo_ligacao: placa_base`), como as outras ligações.
 - Cantoneira: só `L<b>x<t>` de abas iguais; triedro direito no mundo (a aba pode sair espelhada no referencial canhoto do contrato).
 - Setas de carga e diagramas (vista nativa por cima) não são ocultados pelas peças.
 - O halo da seleção atravessa as peças (pós-efeito do Helix).

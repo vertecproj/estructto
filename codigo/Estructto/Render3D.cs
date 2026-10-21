@@ -107,7 +107,8 @@ namespace NovoFtool
             if (sem.Contains("sombra")) Vista.IsShadowMappingEnabled = false;
             if (sem.Contains("ssao")) Vista.EnableSSAO = false;
             if (sem.Contains("fxaa")) Vista.FXAALevel = FXAALevel.None;
-            Vista.RenderExceptionOccurred += (s, e) => { disponivel = false; Falhou?.Invoke(); };
+            Vista.RenderExceptionOccurred += ErroRender;
+            Vista.SizeChanged += (s, e) => pcam.FieldOfView = Vfov();   // o FOV vertical depende do aspecto
 
             // estúdio: chave quente (sombra), enchimento frio, contraluz; somadas ficam abaixo de 1 para não estourar o aço claro
             Vista.Items.Add(new AmbientLight3D { Color = Color.FromRgb(0x30, 0x34, 0x3C) });
@@ -118,21 +119,93 @@ namespace NovoFtool
             Vista.Items.Add(sombra);
             Vista.Items.Add(new PostEffectMeshOutlineBlur { EffectName = "selecao", Color = TemaPlant.CorBarraSel, ScaleX = 1.2f, ScaleY = 1.2f, NumberOfBlurPass = 1 });   // halo justo: o pós-efeito passa por cima de tudo
 
-            PBRMaterial Pbr(float metal, float rugo, float refl = 0.5f) => new PBRMaterial
+            // reflexo: céu de estúdio procedural (só nos materiais; o fundo continua o canvas)
+            Vista.Items.Add(new EnvironmentMap3D { Texture = TextureModel.Create(CeuDds()), SkipRendering = true });
+            PBRMaterial Pbr(float metal, float rugo, float refl = 0.5f, bool ceu = false) => new PBRMaterial
             {
                 AlbedoColor = new Color4(1, 1, 1, 1), MetallicFactor = metal, RoughnessFactor = rugo, ReflectanceFactor = refl,
-                VertexColorBlendingFactor = 1f, RenderShadowMap = true, AmbientOcclusionFactor = 1f,
+                VertexColorBlendingFactor = 1f, RenderShadowMap = true, AmbientOcclusionFactor = 1f, RenderEnvironmentMap = ceu,
             };
-            var (metal, rugo) = Aco == Acabamento.Primer ? (0.0f, 0.78f) : Aco == Acabamento.Pintado ? (0.08f, 0.58f) : (0.12f, 0.5f);
+            var (metal, rugo) = Aco == Acabamento.Primer ? (0.0f, 0.78f) : Aco == Acabamento.Pintado ? (0.08f, 0.5f) : (0.3f, 0.5f);   // galvanizado: metálico com o céu
             // opaco: a passagem transparente do Helix ignora a profundidade das peças (grade aparecia por cima de tudo)
             mChao = new MeshGeometryModel3D { Material = Pbr(0f, 0.95f, 0.25f), IsThrowingShadow = false, CullMode = SharpDX.Direct3D11.CullMode.None };
             mConcreto = new MeshGeometryModel3D { Material = Pbr(0f, 0.9f, 0.35f), IsThrowingShadow = true };
-            mAco = new MeshGeometryModel3D { Material = Pbr(metal, rugo), IsThrowingShadow = true };
-            mSel = new MeshGeometryModel3D { Material = Pbr(metal, rugo), IsThrowingShadow = true, PostEffects = "selecao" };
-            mParafusos = new MeshGeometryModel3D { Material = Pbr(0.6f, 0.42f), IsThrowingShadow = true };
+            mAco = new MeshGeometryModel3D { Material = Pbr(metal, rugo, 0.5f, true), IsThrowingShadow = true };
+            mSel = new MeshGeometryModel3D { Material = Pbr(metal, rugo, 0.5f, true), IsThrowingShadow = true, PostEffects = "selecao" };
+            mParafusos = new MeshGeometryModel3D { Material = Pbr(0.7f, 0.38f, 0.5f, true), IsThrowingShadow = true };
             mSoldas = new MeshGeometryModel3D { Material = Pbr(0.2f, 0.85f), IsThrowingShadow = false };
             lArestas = new LineGeometryModel3D { Color = TemaPlant.CorArestaDx3D, Thickness = 0.9, Smoothness = 0.6, DepthBias = -4, IsThrowingShadow = false };
             foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, lArestas }) Vista.Items.Add(m);
+        }
+
+        // Mapa de ambiente procedural: cubo DDS BGRA8 n×n com mips (o PBR lê o mip pela rugosidade). Mundo com Z para cima:
+        // zênite azul-acinzentado, horizonte claro, chão escuro quente e uma janela de luz larga do lado da luz chave (-Luz).
+        // Faces na ordem do D3D (+X −X +Y −Y +Z −Z), direção do texel (s, t) pela convenção do D3D.
+        static System.IO.MemoryStream CeuDds(int n = 64)
+        {
+            int mips = (int)Math.Log2(n) + 1;
+            var ms = new System.IO.MemoryStream(); var w = new System.IO.BinaryWriter(ms);
+            w.Write(0x20534444u);   // "DDS "
+            uint[] h = new uint[31];
+            h[0] = 124; h[1] = 0x1 | 0x2 | 0x4 | 0x1000 | 0x20000; h[2] = (uint)n; h[3] = (uint)n; h[4] = (uint)(n * 4); h[6] = (uint)mips;
+            h[18] = 32; h[19] = 0x41; h[21] = 32; h[22] = 0x00FF0000; h[23] = 0x0000FF00; h[24] = 0x000000FF; h[25] = 0xFF000000;   // pixel format BGRA8
+            h[26] = 0x1000 | 0x8 | 0x400000; h[27] = 0x200 | 0xFC00;   // textura, complexa, mips; cubo com as 6 faces
+            foreach (uint x in h) w.Write(x);
+            Vector3D sol = -Luz;
+            Vector3D Ceu(Vector3D d)
+            {
+                d.Normalize(); double z = d.Z;
+                Vector3D zen = new Vector3D(0.50, 0.56, 0.66), hor = new Vector3D(0.80, 0.81, 0.83), chao = new Vector3D(0.16, 0.15, 0.14);
+                Vector3D c = z >= 0 ? hor + (zen - hor) * Math.Pow(z, 0.6) : hor + (chao - hor) * Math.Min(1, Math.Pow(-z * 4, 0.7));
+                double j = Math.Max(0, Vector3D.DotProduct(d, sol)); c += new Vector3D(1, 0.97, 0.9) * (0.3 * Math.Pow(j, 16));   // janela de luz
+                return c;
+            }
+            for (int f = 0; f < 6; f++)
+            {
+                var px = new Vector3D[n * n];
+                for (int y = 0; y < n; y++)
+                    for (int x = 0; x < n; x++)
+                    {
+                        double sc = 2 * (x + 0.5) / n - 1, tc = 2 * (y + 0.5) / n - 1;
+                        Vector3D d = f switch { 0 => new Vector3D(1, -tc, -sc), 1 => new Vector3D(-1, -tc, sc), 2 => new Vector3D(sc, 1, tc), 3 => new Vector3D(sc, -1, -tc), 4 => new Vector3D(sc, -tc, 1), _ => new Vector3D(-sc, -tc, -1) };
+                        px[y * n + x] = Ceu(d);
+                    }
+                for (int m = 0, k = n; m < mips; m++, k /= 2)
+                {
+                    foreach (Vector3D c in px)
+                    {
+                        byte B(double v) => (byte)Math.Round(255 * Math.Max(0, Math.Min(1, v)));
+                        w.Write(B(c.Z)); w.Write(B(c.Y)); w.Write(B(c.X)); w.Write((byte)255);
+                    }
+                    if (k == 1) break;
+                    var px2 = new Vector3D[k / 2 * (k / 2)];   // mip seguinte: média 2×2
+                    for (int y = 0; y < k / 2; y++) for (int x = 0; x < k / 2; x++)
+                        px2[y * (k / 2) + x] = (px[2 * y * k + 2 * x] + px[2 * y * k + 2 * x + 1] + px[(2 * y + 1) * k + 2 * x] + px[(2 * y + 1) * k + 2 * x + 1]) / 4;
+                    px = px2;
+                }
+            }
+            ms.Position = 0; return ms;
+        }
+
+        // Um aviso só (o Helix pode repetir a exceção a cada quadro); quem recebe chama Descartar.
+        void ErroRender(object s, EventArgs e) { Vista.RenderExceptionOccurred -= ErroRender; disponivel = false; Falhou?.Invoke(); }
+
+        // Depois de Falhou: tira o viewport da árvore e libera o dispositivo D3D (EffectsManager).
+        public void Descartar()
+        {
+            Vista.RenderExceptionOccurred -= ErroRender;
+            (Vista.Parent as System.Windows.Controls.Panel)?.Children.Remove(Vista);
+            var em = Vista.EffectsManager; Vista.EffectsManager = null;
+            (em as IDisposable)?.Dispose();
+        }
+
+        // A Vista3D usa FOV horizontal (como o WPF); o PerspectiveCamera do Helix SharpDX é vertical (PerspectiveFovRH):
+        // vfov = 2·atan(tan(hfov/2)/aspecto), senão as peças DX saem menores que a sobreposição nativa (capturas -perspectiva-no).
+        double hfov = 45;
+        double Vfov()
+        {
+            double w = Vista.ActualWidth, h = Vista.ActualHeight;
+            return w < 1 || h < 1 ? hfov : 2 * Math.Atan(Math.Tan(hfov * Math.PI / 360) * h / w) * 180 / Math.PI;
         }
 
         // Segue a câmera da Vista3D: ortográfica (largOuFov = largura visível, m) ou perspectiva (largOuFov = FOV horizontal, graus).
@@ -140,7 +213,7 @@ namespace NovoFtool
         {
             if (perspectiva)
             {
-                pcam.Position = pos; pcam.LookDirection = olhar; pcam.UpDirection = cima; pcam.FieldOfView = largOuFov;
+                pcam.Position = pos; pcam.LookDirection = olhar; pcam.UpDirection = cima; hfov = largOuFov; pcam.FieldOfView = Vfov();
                 pcam.NearPlaneDistance = perto; pcam.FarPlaneDistance = longe;
                 if (Vista.Camera != pcam) Vista.Camera = pcam;
             }
@@ -182,10 +255,10 @@ namespace NovoFtool
             // ligações: as do modelo, ou os exemplos (capturas / ESTRUCTTO_3D_AMOSTRAS=1)
             var ligs = new List<Ligacao3D>(mod.Ligacoes);
             if (ligs.Count == 0 && c.Amostras) ligs.AddRange(LigacoesAmostra.Gerar(mod, cortes, forma, FolgaPadrao));
+            var porPonta = new Dictionary<(int, bool), Ligacao3D>();
+            foreach (Ligacao3D l in ligs) if (barras.TryGetValue(l.Barra, out Barra3D bl)) porPonta[(l.Barra, l.No == bl.Ni)] = l;
             if (ligs.Count > 0)
             {
-                var porPonta = new Dictionary<(int, bool), Ligacao3D>();
-                foreach (Ligacao3D l in ligs) if (barras.TryGetValue(l.Barra, out Barra3D b)) porPonta[(l.Barra, l.No == b.Ni)] = l;
                 Ligacao3D Lig(Barra3D b, bool emI) => porPonta.TryGetValue((b.Id, emI), out Ligacao3D l) ? l : null;
                 cortes = Render3DGeometria.Juntas(mod, c.Pontos, forma,
                     (b, emI) => { double r = Lig(b, emI)?.RecuoDe("viga") ?? double.NaN; return double.IsNaN(r) ? FolgaPadrao(b, emI) : r; },
@@ -207,6 +280,33 @@ namespace NovoFtool
                 MalhaDx alvo = c.Selecionada(b) ? mallSel : f.Concreto ? mallConc : mallAco;
                 alvo.Marcar(b);
                 cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
+                // cope (recortes "cope" da ligação na ponta): trechos da ponta com o contorno cortado, a peça cheia começa depois
+                Corte Cope(bool emI, Corte k)
+                {
+                    if (!porPonta.TryGetValue((b.Id, emI), out Ligacao3D l)) return k;
+                    var cs = l.Recortes.Where(r => r.Tipo == "cope" && (r.Barra ?? "viga") == "viga" && r.Altura > 0 && r.Comprimento > 0).ToList();
+                    if (cs.Count == 0) return k;
+                    Vector3D dentro = emI ? e : -e;
+                    Corte k0 = k ?? new Corte { P = emI ? a : d, N = e }, ant = k0;
+                    Corte Em(double x) => new Corte { P = k0.P + dentro * x, N = k0.N };
+                    foreach (double cc in cs.Select(r => r.Comprimento / 1000).Distinct().OrderBy(x => x))
+                    {
+                        var ativos = cs.Where(r => r.Comprimento / 1000 >= cc - 1e-9).ToList();   // copes que ainda valem neste trecho
+                        double vMax = f.H / 2 - ativos.Where(r => r.Posicao != "base").Select(r => r.Altura / 1000).DefaultIfEmpty(0).Max();
+                        double vMin = -f.H / 2 + ativos.Where(r => r.Posicao == "base").Select(r => r.Altura / 1000).DefaultIfEmpty(0).Max();
+                        Corte k1 = Em(cc);
+                        Contorno fc = Render3DGeometria.Recortar(f, vMin, vMax);
+                        if (fc != null)
+                        {
+                            Corte p1 = emI ? ant : k1, p2 = emI ? k1 : ant;
+                            Render3DGeometria.Extrudar(alvo, fc, a, d, u, v, p1, p2, Cor(c.Cor(b)), false);
+                            Render3DGeometria.Extrudar(arestas, fc, a, d, u, v, p1, p2, Cor(c.Cor(b)), true, false);
+                        }
+                        ant = k1;
+                    }
+                    return ant;
+                }
+                ci = Cope(true, ci); cj = Cope(false, cj);
                 Render3DGeometria.Extrudar(alvo, f, a, d, u, v, ci, cj, Cor(c.Cor(b)), false);
                 Render3DGeometria.Extrudar(arestas, f, a, d, u, v, ci, cj, Cor(c.Cor(b)), true, false);   // só as arestas
             }
@@ -214,6 +314,7 @@ namespace NovoFtool
 
             // pedestais dos apoios (concreto)
             Color4 corConc = Cor(TemaPlant.CorConcreto3D);
+            mallConc.Marcar(null);   // picking: o que vem depois não é barra
             foreach (No3D n in mod.Nos)
             {
                 double s = c.Apoio(n); if (s <= 0) continue;
@@ -223,6 +324,7 @@ namespace NovoFtool
             // ligações (contrato → mundo)
             var mallParaf = new MalhaDx(); var mallSolda = new MalhaDx();
             Color4 corChapa = Cor(Aco == Acabamento.Galvanizado ? TemaPlant.CorChapa3D : CorAco), corParaf = Cor(TemaPlant.CorParafuso3D), corSolda = Cor(TemaPlant.CorSolda3D);
+            mallAco.Marcar(null);   // chapas e cantoneiras não são escolhíveis (sem isso o picking dava a última barra)
             foreach (Ligacao3D l in ligs)
             {
                 if (!barras.TryGetValue(l.Barra, out Barra3D b)) continue;
@@ -251,7 +353,7 @@ namespace NovoFtool
                     Render3DGeometria.Extrudar(arestas, f, pa, pb, uu, vv, null, null, corChapa, true, false);
                 }
                 foreach (var pf in l.Parafusos) Render3DGeometria.Parafuso(mallParaf, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf);
-                foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallSolda, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda);
+                foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallSolda, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, x);
             }
 
             var mallChao = new MalhaDx(); Chao(c, mallChao);
@@ -263,7 +365,7 @@ namespace NovoFtool
                 lArestas.Geometry = new HxLine { Positions = new Vector3Collection(arestas.L), Indices = new IntCollection(Enumerable.Range(0, arestas.L.Count)) };
                 lArestas.Visibility = Visibility.Visible;
             }
-            else lArestas.Visibility = Visibility.Collapsed;
+            else { lArestas.Geometry = null; lArestas.Visibility = Visibility.Collapsed; }
 
             Vista.SSAOSamplingRadius = (float)Math.Max(0.12, Math.Min(0.6, largSecao * 0.9));
             UltimaMontagemMs = sw.Elapsed.TotalMilliseconds;
@@ -274,7 +376,7 @@ namespace NovoFtool
 
         void Aplicar(MeshGeometryModel3D m, MalhaDx malha)
         {
-            if (malha.Vazia) { m.Visibility = Visibility.Collapsed; return; }
+            if (malha.Vazia) { m.Geometry = null; m.Visibility = Visibility.Collapsed; return; }   // null: o Lod não reacende a malha velha
             m.Geometry = new HxMesh { Positions = new Vector3Collection(malha.P), Normals = new Vector3Collection(malha.N), Colors = new Color4Collection(malha.C), Indices = new IntCollection(malha.T) };
             m.Visibility = Visibility.Visible;
             if (malha.Obj.Count > 0) faixas.Add((m, malha.Ini.ToArray(), malha.Obj.ToArray()));

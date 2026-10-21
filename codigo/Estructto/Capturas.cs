@@ -183,6 +183,18 @@ namespace NovoFtool
                 {
                     w.vista3D.Perspectiva = true;
                     CapturarPrincipal(w, "42-realista-portico2x2-perspectiva");
+                    // sobreposição: o nó escolhido (vista nativa por cima) tem de cair no nó das peças DX (FOV horizontal x vertical)
+                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                    w.vista3D.Escolher(esp.Nos.OrderByDescending(n => n.Z).ThenByDescending(n => n.X + n.Y).First());
+                    CapturarPrincipal(w, "42-realista-portico2x2-perspectiva-no");
+                    {   // picking em perspectiva: o meio de uma viga de cima, na frente, acha essa viga (DX e nativo na mesma câmera)
+                        var vf = esp.Barras.Where(b => esp.Nos.First(n => n.Id == b.Ni).Z > 6 && esp.Nos.First(n => n.Id == b.Nj).Z > 6)
+                                           .OrderBy(b => esp.Nos.First(n => n.Id == b.Ni).Y + esp.Nos.First(n => n.Id == b.Nj).Y).First();
+                        No3D n1 = esp.Nos.First(n => n.Id == vf.Ni), n2 = esp.Nos.First(n => n.Id == vf.Nj);
+                        object pk = w.vista3D.Acertar(w.vista3D.Tela(new Point3D((n1.X + n2.X) / 2, (n1.Y + n2.Y) / 2, (n1.Z + n2.Z) / 2)));
+                        if (pk != vf) throw new InvalidOperationException("Realista: picking em perspectiva não achou a viga " + vf.Id + " (achou " + ((pk as Barra3D)?.Id.ToString() ?? pk?.ToString() ?? "nada") + ")");
+                    }
+                    w.vista3D.Escolher(null);
                     w.vista3D.Perspectiva = false;
                 }
                 w.vista3D.MostrarVista(VistaPadrao.Iso, false);
@@ -214,12 +226,28 @@ namespace NovoFtool
                     CapturarPrincipal(w, "42-realista-ligacao-chapa-topo-iso");
                     w.vista3D.Focar(PNo(esp, nid(2, 0, 0)) + new Vector3D(0, 0, 0.12), 1.3, -40, 26);
                     CapturarPrincipal(w, "42-realista-ligacao-placa-base");
+                    // clique na placa de base (fora do pilar) não escolhe barra nenhuma (antes: a última barra da malha)
+                    if (w.vista3D.Acertar(w.vista3D.Tela(PNo(esp, nid(2, 0, 0)) + new Vector3D(0.12, 0.12, 0.026))) is Barra3D bp)
+                        throw new InvalidOperationException("Realista: clique na placa de base escolheu a barra " + bp.Id);
                     var cv = Portico2x2(true);
                     w.vista3D.Carregar(cv, false);
                     w.vista3D.Focar(new Point3D(6, 0, 3.5), 15, -90, 12);
                     CapturarPrincipal(w, "42-realista-contraventamento");
                     w.vista3D.Focar(PNo(cv, nid(1, 0, 1)) + new Vector3D(0, 0, -0.15), 2.4, -75, 14);
                     CapturarPrincipal(w, "42-realista-ligacao-gusset");
+                    // viga secundária (W 250) apoiada na alma da principal (W 310), topos alinhados: chapa simples + cope na mesa de cima
+                    var sb = Portico2x2(false);
+                    int na = sb.Nos.Max(n => n.Id) + 1, nb = na + 1;
+                    sb.Nos.Add(new No3D { Id = na, X = 3, Y = 0, Z = 3.5 }); sb.Nos.Add(new No3D { Id = nb, X = 3, Y = 5, Z = 3.5 });
+                    foreach (var (n0, n1, nm) in new[] { (nid(0, 0, 1), nid(1, 0, 1), na), (nid(0, 1, 1), nid(1, 1, 1), nb) })
+                    {
+                        var vb = sb.Barras.First(b => b.Ni == n0 && b.Nj == n1); int fim = vb.Nj; vb.Nj = nm;
+                        sb.Barras.Add(new Barra3D { Id = sb.Barras.Max(b => b.Id) + 1, Ni = nm, Nj = fim, Secao = vb.Secao, Cardinal = 8, Aprov = vb.Aprov });
+                    }
+                    sb.Barras.Add(new Barra3D { Id = sb.Barras.Max(b => b.Id) + 1, Ni = na, Nj = nb, Secao = "W 250 x 32,7", Cardinal = 8, Aprov = 0.5 });
+                    w.vista3D.Carregar(sb, false);
+                    w.vista3D.Focar(new Point3D(3, 0.2, 3.4), 1.2, -35, 40);   // fora do reflexo da luz chave nas mesas
+                    CapturarPrincipal(w, "42-realista-ligacao-cope");
                     w.vista3D.Carregar(esp, false);
                     w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                 }
