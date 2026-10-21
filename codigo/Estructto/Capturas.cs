@@ -147,6 +147,31 @@ namespace NovoFtool
 
         // 42) Vista 3D Realista x analítica: guincho (modelo 2D), pórtico espacial 2 x 2 e exemplos do motor (concreto e galpão).
         // Atalho para iterar só nelas: variável ESTRUCTTO_CAPTURAS=3d.
+        // V1: seta de carga atrás de uma viga. Realista: a viga a esconde; "sempre visíveis": a seta aparece por cima.
+        static void CapturasCargasProfundidade(MainWindow w)
+        {
+            var esp = new Modelo3D();
+            esp.Nos.Add(new No3D { Id = 1, X = 0, Y = 0, Z = 3, Apoios = new bool[6] });
+            esp.Nos.Add(new No3D { Id = 2, X = 6, Y = 0, Z = 3, Apoios = new bool[6] });
+            esp.Nos.Add(new No3D { Id = 3, X = 3, Y = 1.5, Z = 3, Apoios = new bool[6] });
+            esp.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W 310 x 38,7" });
+            esp.Cargas.Add(new Carga3D { No = 3, F = new System.Windows.Media.Media3D.Vector3D(0, -10, -5) });
+            esp.Cargas.Add(new Carga3D { No = 2, F = new System.Windows.Media.Media3D.Vector3D(0, 0, -10) });
+            Esperar(w.NovoEmBranco(true));
+            w.DefinirRealista(true);
+            w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = false;
+            w.vista3D.Carregar(esp, false);
+            foreach (bool topo in new[] { false, true })
+            {
+                w.vista3D.CargasSempre = topo;
+                w.vista3D.Reconstruir();
+                w.vista3D.Focar(new System.Windows.Media.Media3D.Point3D(3, 0.5, 3.4), 2, -90, 0);
+                CapturarPrincipal(w, "58-cargas-profundidade-" + (topo ? "sempre" : "oculta"));
+            }
+            w.vista3D.CargasSempre = null;
+            w.FecharEspaciaisSemPerguntar();
+        }
+
         static void CapturasRealista(MainWindow w)
         {
             var abaVista = w.Faixa.Tabs.First(t => (t.Header as string) == "Vista");
@@ -1065,6 +1090,7 @@ namespace NovoFtool
                 if (w.EspacialAtivo == null) throw new InvalidOperationException("o modelo não abriu como documento 3D: " + caminhoModelo);
                 string so = Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS");
                 Action<Action> so1 = f => { f(); w.alterado = false; w.Close(); Environment.Exit(0); };
+                if (so == "cargasprof") so1(() => CapturasCargasProfundidade(w));   // só as 58) de cargas com profundidade
                 if (so == "planos") so1(() => CapturasPlanos(w));                 // só as capturas 43) de níveis e planos
                 if (so == "trelicas") so1(() => CapturasTrelicas(w));             // só as 50) de treliças e contraventamentos
                 if (so == "ligacoes") so1(() => CapturasLigacoes(w));             // só as 49) do gerenciador de ligações

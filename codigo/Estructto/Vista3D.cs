@@ -217,6 +217,10 @@ namespace NovoFtool
         public bool MostrarAproveitamento, MostrarDeformada, MostrarLegenda = true;   // legenda própria (a janela principal já tem a do HUD)
         public bool MostrarCargas = true;        // Vista › Mostrar › Cargas (o mesmo botão do 2D)
         public double EscalaCargas = 1;
+        // Setas por cima de tudo (sem teste de profundidade). Padrão: só no Analítico; no Realista elas respeitam as peças na frente.
+        public bool? CargasSempre;
+        public bool CargasSempreVisiveis => CargasSempre ?? !Realista;
+        MeshGeometry3D malhaCargasDx;
         public double EscalaDeformada = 1, EscalaDiagrama = 1;
         public object Selecionado;
         public bool Realista;                    // perfis reais, materiais, sombra e arestas (Config.Realista3D)
@@ -464,7 +468,13 @@ namespace NovoFtool
                     }
             }
 
-            if (MostrarCargas && mod.Cargas.Count > 0) DesenharCargas(g);
+            malhaCargasDx = null;
+            if (MostrarCargas && mod.Cargas.Count > 0)
+            {
+                MeshGeometry3D mc = DesenharCargas();
+                // DX sem "sempre visíveis": as setas vão para o Viewport3DX e passam pelo teste de profundidade (Render3D.mCargas)
+                if (mc != null) { if (dx && !CargasSempreVisiveis) malhaCargasDx = mc; else g.Children.Add(Geo(mc, Mat(TemaPlant.CorCarga, true), true)); }   // fora do picking: o clique passa por elas
+            }
 
             if (fantasmasNovos && mod.Fantasmas.Count > 0) { fantasmasNovos = false; Anim.Valor(pincelFantasma, Brush.OpacityProperty, 0, 1, Anim.Espacial); }   // entram com fade (linhas: Vista3D.Linhas.cs)
 
@@ -476,7 +486,7 @@ namespace NovoFtool
         // proporcional ao módulo, com escala própria: a maior força mede 11% do tamanho do modelo e a maior q 8% (vezes EscalaCargas).
         // Distribuída: "pente" de setas ao longo da barra com altura linear de q a q2 e a linha das caudas.
         // Realista: a ponta fica na face do perfil (meia largura da seção para fora), não no eixo escondido dentro dele.
-        void DesenharCargas(Model3DGroup g)
+        MeshGeometry3D DesenharCargas()
         {
             double fmax = mod.Cargas.Where(c => !c.Distribuida).Select(c => c.F.Length).DefaultIfEmpty(0).Max();
             double qmax = mod.Cargas.Where(c => c.Distribuida).Select(c => Math.Max(c.F.Length, c.F2.Length)).DefaultIfEmpty(0).Max();
@@ -528,7 +538,7 @@ namespace NovoFtool
                     cauda = tc;
                 }
             }
-            if (m.Positions.Count > 0) g.Children.Add(Geo(m, Mat(TemaPlant.CorCarga, true), true));   // fora do picking: o clique passa por elas
+            return m.Positions.Count > 0 ? m : null;
         }
 
         // ================= modo Realista =================
@@ -817,7 +827,7 @@ namespace NovoFtool
             foreach (No3D n in mod.Nos) if (n.Apoios.Any(x => x)) z0 = Math.Min(z0, n.Z - ApoioReal(n) * 1.4);
             var cena = new Cena3D
             {
-                Mod = mod, Raio = raio, Z0 = z0, Caixa = cx, Amostras = LigacoesAmostra,
+                Mod = mod, Raio = raio, Z0 = z0, Caixa = cx, Cargas = malhaCargasDx, Amostras = LigacoesAmostra,
                 Forma = s => FormaDe(s, h * 2).Contorno,
                 Pontos = b => { No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); return a == null || c == null ? (new Point3D(), new Point3D()) : (fDef > 0 ? Deformado(a, fDef) : P(a), fDef > 0 ? Deformado(c, fDef) : P(c)); },
                 Selecionada = b => EhSel(b, b.Origem),
