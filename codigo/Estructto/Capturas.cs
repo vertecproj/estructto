@@ -1494,6 +1494,13 @@ namespace NovoFtool
                 RenderizarJanela(jk, (int)jk.Width, (int)jk.Height, "46-catalogo-vazio.png");
             });
             jk.Close();
+            var jka = new JanelaCatalogo(Amostras.Ler("catalogo"), n => System.Threading.Tasks.Task.FromResult(n == "W250x32.7" ? perfil : null), Amostras.Ler("catalogo-arvore"));
+            Cap(jka, "46-catalogo-arvore", () =>
+            {
+                jka.EscolherNo("Gerdau (ABNT)", "W/HP", "W"); jka.Escolher("W250x32.7"); EsperarIdle();
+                RenderizarJanela(jka, (int)jka.Width, (int)jka.Height, "46-catalogo-arvore.png");
+            });
+            jka.Close();
             EsperarIdle();
             CapturarVerificacao5000();
         }

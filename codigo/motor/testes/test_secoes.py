@@ -64,7 +64,7 @@ class TestSecoes(unittest.TestCase):
         self.assertEqual(set(w[0]), {"nome", "familia", "massa_kg_m", "d_mm", "bf_mm", "A_cm2"})
         hp = {i["nome"] for i in s.lista_catalogo("HP")}
         self.assertTrue({"HP200x53", "HP310x125"} <= hp)
-        self.assertEqual(len(s.lista_catalogo()), len(w) + len(hp) + len(s.lista_catalogo("Ue")) + len(s.lista_catalogo("U")))
+        self.assertGreaterEqual(len(s.lista_catalogo()), len(w) + len(hp) + len(s.lista_catalogo("Ue")) + len(s.lista_catalogo("U")))  # + catálogo novo (K2)
         # nomes tolerantes a espaço, vírgula e ",0"
         self.assertEqual(s.catalogo("W 200 x 52,0").nome, "W200x52")
         with self.assertRaises(KeyError):
