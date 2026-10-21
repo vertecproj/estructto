@@ -1,4 +1,4 @@
-// Render3D: o modo Realista da Vista3D em Direct3D 11 (HelixToolkit.Wpf.SharpDX 3.1): sombra projetada entre peças (shadow
+﻿// Render3D: o modo Realista da Vista3D em Direct3D 11 (HelixToolkit.Wpf.SharpDX 3.1): sombra projetada entre peças (shadow
 // map), oclusão ambiente (SSAO), materiais PBR (aço galvanizado/pintado/primer e concreto), MSAA + FXAA, arestas de 1 px,
 // chão com degradê e grade, brilho de seleção por pós-efeito, recortes nas juntas e ligações (Render3DGeometria/Render3DLigacoes).
 // A Vista3D continua dona da câmera, do mouse, dos diagramas, das cargas e da seleção: o Render3D só recebe a cena (Cena3D),
@@ -89,6 +89,8 @@ namespace NovoFtool
         public sealed class Peca3D { public string Nome, Tipo; public MalhaDx M; public Barra3D Barra; public Ligacao3D Lig; public bool Trecho, Excluir; }
         // Barras curtas demais para a ligação na última cena montada (IdBarra): o gerenciador avisa.
         public static readonly HashSet<string> Curtas = new HashSet<string>();
+        // G6 r4 (diagnóstico do --testes-interferencia): causa por barra curta — "recuos", "motor" (recusa x_max) ou "guarda" (AparaEm)
+        public static readonly Dictionary<string, string> CurtasCausa = new Dictionary<string, string>();
         public static readonly HashSet<string> Locais = new HashSet<string>();   // G6: barras com chapa de proposta local (sem ligação do motor), para o gerenciador
         public static Dictionary<(Barra3D, bool), Corte> CortesColeta; public static Dictionary<(int, bool), Ligacao3D> LigsColeta;   // diagnóstico do teste
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
@@ -303,7 +305,7 @@ namespace NovoFtool
         public static Montagem Construir(Cena3D c, List<Peca3D> coleta)
         {
             var g = new Montagem();
-            lock (Curtas) Curtas.Clear();
+            lock (Curtas) Curtas.Clear();   // CurtasCausa fica: a 1ª montagem dá a causa (Excluir da guarda persiste na ligação)
             lock (Locais) Locais.Clear();
             Modelo3D mod = c.Mod;
             var nos = new Dictionary<int, No3D>();
@@ -397,12 +399,20 @@ namespace NovoFtool
                 cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
                 // G6 r2: chapas das duas pontas que se alcançariam (barra curta, ex.: B1091 de 101 mm) param no meio da barra
                 double meio = (d - a).Length / 2 * 1000;
+                bool pelosRecuos = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6;
+                string causa = pelosRecuos ? "recuos" : new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lm) && lm.Excluir) ? "motor" : null;
+                // G6 r4: limite = o x_max que o motor recebeu; sem ele, meio (outra ponta com ligação) ou comprimento menos o recuo
+                // da outra ponta (antes: sempre o meio — recusava ligação que o motor projetou sem x_max, ex.: B1080 de 350 mm)
+                double Limite(Ligacao3D l, bool ei) => !double.IsNaN(l.XMax) ? l.XMax : porPonta.ContainsKey((b.Id, !ei)) ? meio
+                    : 2 * meio - ((ei ? cj : ci)?.Recuo ?? 0) * 1000;
                 foreach (bool ei in new[] { true, false })   // no-op em barra comum; o motor já projeta dentro do x_max (G6 r3)
-                    if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lq) && lq.Pendente == null && !Ligacao3D.AparaEm(lq, meio))
+                    if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lq) && lq.Pendente == null && !Ligacao3D.AparaEm(lq, Limite(lq, ei)))
+                    {
                         lq.Excluir = true;   // cortaria parafuso/borda: pendente → barra curta demais para a ligação (gerenciador)
-                bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6
-                             || new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir);
-                if (curta) lock (Curtas) Curtas.Add(Exportador.IdBarra(b));
+                        causa ??= "guarda";
+                    }
+                bool curta = pelosRecuos || new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir);
+                if (curta) lock (Curtas) { Curtas.Add(Exportador.IdBarra(b)); CurtasCausa.TryAdd(Exportador.IdBarra(b), (causa ?? "?") + string.Concat(new[] { true, false }.Select(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D ld) ? " " + (ei ? "i:" : "j:") + ld.Nome + (ld.Pendente != null ? "(local)" : "") : ""))); }
                 if (curta) foreach (bool ei in new[] { true, false }) if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lc)) lc.Excluir = true;   // G6: a ligação da barra curta também sai
                 void Guardar(MalhaDx sm, bool trecho) { if (sm.T.Count > 0) coleta.Add(new Peca3D { Nome = (curta ? "excluir · " : "") + "barra " + Exportador.IdBarra(b) + (trecho ? " (cope)" : ""), Tipo = "barra", M = sm, Barra = b, Trecho = trecho, Excluir = curta }); }
                 // cope (recortes "cope" da ligação na ponta): trechos da ponta com o contorno cortado, a peça cheia começa depois

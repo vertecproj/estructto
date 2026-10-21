@@ -1,4 +1,4 @@
-// Ligações do motor no Realista: os grupos de ligações do modelo espacial (GET /api/ligacoes/grupos, ver
+﻿// Ligações do motor no Realista: os grupos de ligações do modelo espacial (GET /api/ligacoes/grupos, ver
 // JanelaLigacoesGrupos.cs e docs/v3/LIGACOES-GRUPOS.md) viram geometria do contrato e uma Ligacao3D por membro (nó, barra).
 // - Grupo com projeto (tipo_ligacao + dados): POST /api/ligacoes/verificar (esforços nulos: a geometria só depende dos dados).
 // - Grupo sem projeto: PROPOSTA (desenhada esmaecida, chip "Ligação proposta" na vista). Tipo padrão do tipo de nó
@@ -256,6 +256,7 @@ namespace NovoFtool
                         }
                         JsonObject geo = proposta && perfis == null ? null : await Geometria(tl, dados, perfis);
                         if (geo != null) lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]);
+                        if (lig != null && ((perfis?["x_max"] ?? dados["x_max"]) as JsonValue)?.TryGetValue(out double xm) == true) lig.XMax = xm;
                         // G6: o contrato tem o centroide do U no eixo (costas da alma em y = −abertura·xg); o WPF desenha o U pelo
                         // retângulo envolvente (costas em u = −B/2): o Render3D anda a origem DeslU em u
                         if (lig != null && ehU && tl != "gusset_contraventamento") lig.DeslU = Prop(sec, "xg") - Prop(sec, "b") / 2;

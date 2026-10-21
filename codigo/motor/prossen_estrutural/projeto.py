@@ -2563,10 +2563,13 @@ def geometrias_ligacoes(itens):
             tipo, dados, perfis = it.get("tipo"), dict(it.get("dados") or {}), it.get("perfis")
             if perfis:
                 dados.update(perfis)
-                sug = sugerir_ligacao(tipo, perfis, dict(N=50, V=50, M=30))
-                dados.update({k: v for k, v in (sug or {}).items() if v is not None})
+                sug = dict(sugerir_ligacao(tipo, perfis, dict(N=50, V=50, M=30)) or {})
+                tipo, mot_sug = sug.pop("tipo_ligacao", None) or tipo, sug.pop("motivo", None)   # G6 r4: troca (solda direta)
+                dados.update({k: v for k, v in sug.items() if v is not None})
+            else:
+                mot_sug = None
             r = verificar_ligacao(tipo, dados, nulos)
-            mot = r.get("motivo")
+            mot = r.get("motivo") or mot_sug
             cab = next((v for v in r.get("verificacoes") or [] if v.get("nome", "").startswith("geometria: comprimento disponível")), None)
             if cab and not cab["ok"]:   # G6 r3: não cabe no x_max → o WPF trata como barra curta, com o motivo
                 mot = (f"barra curta demais para a ligação: precisa {cab['solicitante']:.0f} mm, "

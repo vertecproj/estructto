@@ -348,8 +348,10 @@ class TestChapaFaceContrato(unittest.TestCase):
         alcance = v["solicitante"]
         r2 = P.verificar_ligacao("chapa_simples_alma", dict(d, x_max=alcance - 10), {"V": 50})
         self.assertFalse(r2["ok"])
+        # G6 r4: no lote o sugerir já vê o x_max e cai na chapa compacta (Tab. 14) — cabe; o motivo de barra curta
+        # do lote fica coberto no gusset (test_x_max_no_gusset)
         lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=dict(pf, x_max=alcance - 10))])[0]
-        self.assertIn("barra curta demais para a ligação", lote["motivo"])
+        self.assertNotIn("barra curta", lote.get("motivo") or "")
         # as bordas da Tab. 14 continuam valendo no que passa (nenhuma verificação de borda reprova)
         self.assertTrue(all(x["ok"] for x in r["verificacoes"] if "borda" in x["nome"]))
 
@@ -361,3 +363,47 @@ class TestChapaFaceContrato(unittest.TestCase):
         self.assertNotIn("barra curta", g.get("motivo") or "")
         g2 = P.geometrias_ligacoes([dict(tipo="gusset_contraventamento", dados={}, perfis=dict(pf, x_max=alc / 3))])[0]
         self.assertIn("barra curta demais para a ligação", g2["motivo"])
+
+    def _cabe(self, r):
+        return next(x for x in r["verificacoes"] if x["nome"].startswith("geometria: comprimento disponível"))
+
+    def test_x_max_sugerir_chapa_simples_compacta(self):
+        """G6 r4: sob `x_max` o sugerir tenta a chapa compacta — a e e_h nas bordas mínimas da Tab. 14 (não os 75/40
+        padrão) — antes de desistir. W310 na alma de W360: padrão alcança ~119 mm; compacta (a = folga + 32, e_h = 32,
+        parafuso 19,05 serrado) ~78 mm."""
+        pf = dict(perfil_viga="W310x38.7", perfil_suporte="W360x51", apoio="alma_viga")
+        livre = P.sugerir_ligacao("chapa_simples_alma", pf, {"V": 50})
+        self.assertEqual(livre["a"] if "a" in livre else 75, 75)   # sem x_max: nada muda
+        sug = P.sugerir_ligacao("chapa_simples_alma", dict(pf, x_max=100), {"V": 50})
+        self.assertNotIn("tipo_ligacao", sug)
+        self.assertEqual((sug["a"], sug["e_h"]), (10 + 32, 32))
+        r = P.verificar_ligacao("chapa_simples_alma", dict(pf, **sug), {"V": 50})
+        self.assertTrue(r["ok"] and self._cabe(r)["ok"])
+        self.assertTrue(all(x["ok"] for x in r["verificacoes"] if "borda" in x["nome"]))
+        lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=dict(pf, x_max=100))])[0]
+        self.assertNotIn("barra curta", lote.get("motivo") or "")
+        self.assertTrue(lote["geometria"]["parafusos"])
+
+    def test_x_max_sem_parafusada_cai_na_solda_direta(self):
+        """G6 r4: nenhuma parafusada cabe no `x_max` → solda_direta_alma (não precisa de comprimento de chapa); o lote
+        verifica e desenha o tipo trocado e o motivo cita o limite."""
+        pf = dict(perfil_viga="W310x38.7", perfil_suporte="W250x73", apoio="mesa_pilar", x_max=150)   # face a ~127 mm
+        for tipo in ("chapa_simples_alma", "cantoneira_dupla_alma"):
+            sug = P.sugerir_ligacao(tipo, pf, {"V": 50})
+            self.assertEqual(sug["tipo_ligacao"], "solda_direta_alma", tipo)
+            self.assertIn("disponível 150 mm", sug["motivo"])
+            lote = P.geometrias_ligacoes([dict(tipo=tipo, dados={}, perfis=pf)])[0]
+            self.assertNotIn("barra curta", lote.get("motivo") or "")
+            self.assertIn("solda direta", lote["motivo"])
+            g = lote["geometria"]
+            self.assertTrue(g["soldas"] and not g["parafusos"] and not g["chapas"])
+
+    def test_upn50_chapa_simples_invalida_cai_na_solda_direta(self):
+        """G6 r4: UPN 50 com chapa simples dá resistência ≤ 0 (furo maior que a alma útil): o lote não devolve erro
+        (proposta local), devolve solda_direta_alma (caso PLATAFORMA, UPN 50 em UPN 50, x_max 101 mm)."""
+        pf = dict(perfil_viga="UPN 50", perfil_suporte="UPN 50", perfil_pilar="UPN 50", x_face=25, x_max=101.3,
+                  abertura_y=-1)
+        lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=pf)])[0]
+        self.assertNotIn("erro", lote)
+        self.assertTrue(lote["geometria"]["soldas"])
+        self.assertNotIn("barra curta", lote.get("motivo") or "")

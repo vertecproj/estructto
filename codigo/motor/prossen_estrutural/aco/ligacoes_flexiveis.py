@@ -1155,7 +1155,12 @@ def _padrao_gerdau(dv):
     return dict(d=22.225, s=75, e_v=40, cantoneira="L102x102x7.94", g=65)
 
 
-def _tentar(tipo, candidatos, esforcos):
+_CTX = ("x_face", "x_max", "abertura_y")   # G6 r4: geometria do chamador que muda a escolha (cabe na barra?)
+
+
+def _tentar(tipo, candidatos, esforcos, perfis=None):
+    ctx = {k: perfis[k] for k in _CTX if (perfis or {}).get(k) is not None}
+    candidatos = [dict(c, **ctx) for c in candidatos]
     ult = None
     for c in candidatos:
         try:
@@ -1200,14 +1205,15 @@ def _sug_cd(perfis, esforcos, tipo="cantoneira_dupla_alma", extra=None):
         cands.append(c)
     if not cands:
         raise ValueError(f"sugerir: perfil {v} baixo demais para {tipo}")
-    return _tentar(tipo, cands, esforcos)
+    return _tentar(tipo, cands, esforcos, perfis)
 
 
 def _sug_cs(perfis, esforcos):
     v, s_, apoio = _perfis_de(perfis)
     vg = _perfil(v, "perfil_viga")
     pd = _padrao_gerdau(vg["d"])
-    cands = []
+    cands, compactas = [], []
+    emin = L.distancia_min_borda(pd["d"] * MM) / MM
     # G5: U baixo (UPN 100: altura útil 66 mm) não leva 2 parafusos → 1 parafuso
     for n in range(2, 13) if _furos_viga(vg, pd, 2) is not None else (1,):
         dt = _furos_viga(vg, pd, n)
@@ -1216,11 +1222,16 @@ def _sug_cs(perfis, esforcos):
         for t in (6.3, 8.0, 9.5, 12.5):
             if t * MM > pd["d"] * MM / 2 + 2 * MM:
                 break
-            cands.append(dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, d=pd["d"], s=pd["s"], e_v=pd["e_v"],
-                              n=n, dist_topo_furo=dt, t_chapa=t, b_solda=max(5, math.ceil(5 * t / 8))))
+            c = dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, d=pd["d"], s=pd["s"], e_v=pd["e_v"],
+                     n=n, dist_topo_furo=dt, t_chapa=t, b_solda=max(5, math.ceil(5 * t / 8)))
+            cands.append(c)
+            # G6 r4: barra curta (x_max) → chapa compacta: furo e borda nas mínimas da Tab. 14 (a = folga 10 + emin)
+            if (perfis or {}).get("x_max"):
+                compactas.append(dict(c, a=10 + emin, e_h=emin))
+    cands += compactas
     if not cands:
         raise ValueError(f"sugerir: perfil {v} baixo demais para chapa simples")
-    return _tentar("chapa_simples_alma", cands, esforcos)
+    return _tentar("chapa_simples_alma", cands, esforcos, perfis)
 
 
 def _sug_ce(perfis, esforcos):
@@ -1249,7 +1260,7 @@ def _sug_ce(perfis, esforcos):
                               dist_topo_chapa=round(topo / MM)))
     if not cands:
         raise ValueError(f"sugerir: perfil {v} baixo demais para chapa de extremidade")
-    return _tentar("chapa_extremidade_flexivel", cands, esforcos)
+    return _tentar("chapa_extremidade_flexivel", cands, esforcos, perfis)
 
 
 def _sug_ap(perfis, esforcos):
@@ -1259,7 +1270,7 @@ def _sug_ap(perfis, esforcos):
     cands += [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, assento="enrijecido", t_enrijecedor=t,
                    h_enrijecedor=h, b_enrijecedor=125, largura_assento=150, t_assento=t, b_solda=b)
               for t in (12.5, 16.0, 19.0) for h in (200, 250, 300, 400) for b in (6, 8, 10)]
-    return _tentar("apoio_cantoneira", cands, esforcos)
+    return _tentar("apoio_cantoneira", cands, esforcos, perfis)
 
 
 def _sug_vv(perfis, esforcos):
@@ -1273,7 +1284,7 @@ def _sug_vv(perfis, esforcos):
 def _sug_sd(perfis, esforcos):
     v, s_, apoio = _perfis_de(perfis)
     cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, b_solda=b) for b in (3, 4, 5, 6, 8, 10)]
-    return _tentar("solda_direta_alma", cands, esforcos)
+    return _tentar("solda_direta_alma", cands, esforcos, perfis)
 
 
 def _governa(res):
@@ -1283,9 +1294,15 @@ def _governa(res):
     return f"{v['nome']} (taxa {v['taxa']:.2f})".replace(".", ",") if v else "—"
 
 
+def _cabe(res):
+    """G6 r4: verificação "comprimento disponível na barra" (x_max) do resultado, ou None."""
+    return next((v for v in res.get("verificacoes") or [] if v["nome"].startswith("geometria: comprimento disp")), None)
+
+
 def _com_solda_direta(tipo, sug):
     """G5: viga U baixa demais para parafusos, ou parafusada que não passa → sugere solda_direta_alma se ela passa;
-    a resposta traz `tipo_ligacao` e `motivo`, e o chamador passa a verificar esse tipo."""
+    a resposta traz `tipo_ligacao` e `motivo`, e o chamador passa a verificar esse tipo.
+    G6 r4: o mesmo quando a parafusada (qualquer perfil) não cabe no `x_max` ou tem dados impossíveis (UPN 50)."""
     def solda(perfis, esforcos, motivo):
         c = _sug_sd(perfis, esforcos)
         if tipo == "viga_viga_recorte":
@@ -1300,9 +1317,25 @@ def _com_solda_direta(tipo, sug):
                 raise
             return solda(perfis, esforcos, str(ex))
         try:
-            if _perfil(_perfis_de(perfis)[0], "perfil_viga").get("forma") != "U" or                     TIPOS[tipo]["verificar"](c, esforcos)["ok"]:
-                return c
             r1 = TIPOS[tipo]["verificar"](c, esforcos)
+        except ValueError as ex:   # G6 r4: dados impossíveis (ex.: UPN 50: resistência ≤ 0) → solda direta
+            alt = solda(perfis, esforcos, f"{tipo} impossível ({ex}): solda direta da alma")
+            dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
+            try:
+                return alt if TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)["ok"] else c
+            except ValueError:
+                return c
+        cb = _cabe(r1)
+        if cb and not cb["ok"]:   # G6 r4: nem a compacta cabe na barra → solda direta (sem comprimento de chapa)
+            alt = solda(perfis, esforcos, "")
+            dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
+            r2 = TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)
+            alt["motivo"] = (f"{tipo} não cabe na barra (precisa {cb['solicitante']:.0f} mm, disponível "
+                             f"{cb['resistente']:.0f} mm): solda direta da alma; governa: {_governa(r2)}")
+            return alt if r2["ok"] else c
+        try:
+            if _perfil(_perfis_de(perfis)[0], "perfil_viga").get("forma") != "U" or r1["ok"]:
+                return c
             alt = solda(perfis, esforcos, "")
             dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
             r2 = TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)

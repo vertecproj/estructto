@@ -1386,7 +1386,7 @@ namespace NovoFtool
                 v.DefinirLigacoes(v.ModeloAtual.Ligacoes); EsperarIdle();   // remonta a cena guardando os sólidos
                 var todos = Render3D.Coleta; Render3D.Coleta = null;
                 var col = todos.Where(x => !x.Excluir).ToList();   // parafusos atravessam as chapas; barras curtas demais para a ligação (motor ou WPF)
-                sb.AppendLine("fora do teste: " + todos.Count(x => x.Excluir && x.Tipo != "parafuso") + " sólidos (barras curtas demais para a ligação: " + string.Join(", ", Render3D.Curtas) + ")");
+                sb.AppendLine("fora do teste: " + todos.Count(x => x.Excluir && x.Tipo != "parafuso") + " sólidos (barras curtas demais para a ligação: " + string.Join(", ", Render3D.Curtas.Select(id => id + " [" + (Render3D.CurtasCausa.TryGetValue(id, out string cz) ? cz : "?") + "]")) + ")");
                 var sw = Stopwatch.StartNew();
                 var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList()).Where(x => col[x.A].Barra == null || col[x.A].Barra != col[x.B].Barra).ToList();   // trechos do cope da mesma barra encostam
                 pares = r.Count;

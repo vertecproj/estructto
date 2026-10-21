@@ -1,4 +1,4 @@
-// Ligações no 3D: a geometria do contrato (docs/v3/LIGACOES-CONTRATO.md, "geometria", mm, referencial local da ligação)
+﻿// Ligações no 3D: a geometria do contrato (docs/v3/LIGACOES-CONTRATO.md, "geometria", mm, referencial local da ligação)
 // lida para Ligacao3D, a conversão para o mundo e os exemplos feitos à mão (chapa de topo, chapa simples, gusset, placa de
 // base com chumbadores) com que o renderer foi construído enquanto os tipos do motor não chegam. A placa de base do modelo 2D
 // (PlacaBase/ResPlaca do Nucleo.cs) entra pelo mesmo caminho.
@@ -42,6 +42,7 @@ namespace NovoFtool
         // apoio_dir o Render3D usa o referencial do motor como veio, sem adivinhar.
         public bool Excluir; public Vector3D? ApoioDir; public double Lado = double.NaN;
         public Vector3D? ApoioMundo; public double DeslU;
+        public double XMax = double.NaN;   // G6 r4: x_max (mm) que o motor recebeu; a guarda AparaEm usa o mesmo limite
         // G6 r3: guarda. Corta as chapas em x = xMax (mm, local ao longo da barra; Sutherland–Hodgman) só se nenhum parafuso
         // passa de xMax − 1,5·d (borda mínima ~Tab. 14); senão não mexe e devolve false (a ligação fica pendente, com motivo).
         public static bool AparaEm(Ligacao3D l, double xMax)
