@@ -2,6 +2,15 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 21/10/2026 — Projetista de ligações metálicas (branch wt-lig-ui)
+
+Pedido do usuário: padrões de ligação para escolher, o programa calcula e ele ajusta (como a placa de base). Nova
+`JanelaLigacaoProjeto` (biblioteca por família com miniatura 3D, 3 passos gerados do esquema do motor, desenho ao vivo em
+elevação/planta/lateral/3D com cotas e falhas em vermelho, Sugerir, Otimizar, memorial HTML, Aplicar ao grupo); faixa
+Ligações e bases › Projetar ligação e Ctrl+K; gerenciador › Projetar no projetista. Motor: `ligacoes.otimizar`,
+`memorial_html`, `geometria_basica`, rotas `/api/ligacoes/{sugerir,otimizar,memorial}`, exemplo de cada tipo, verificador
+genérico dos tipos do contrato nos grupos. `JanelaLigacao.cs` retirada. Detalhe: [v3/LIGACOES-UI.md](v3/LIGACOES-UI.md).
+
 ## 20/10/2026 — Snap igual ao AutoCAD e Medir AutoCAD + Inventor na Vista 3D (branch wt-snap)
 
 - Snap 3D novo (`Snap3D.cs`, motor puro): extremidade, meio, centro, nó, interseção real e aparente, perpendicular, extensão,

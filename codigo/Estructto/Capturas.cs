@@ -909,6 +909,13 @@ namespace NovoFtool
                     w.Close();
                     Environment.Exit(0);
                 }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "projetista")   // só as capturas 51) do projetista de ligações
+                {
+                    CapturasProjetista(w);
+                    w.alterado = false;
+                    w.Close();
+                    Environment.Exit(0);
+                }
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "ligacoes")   // só as capturas 49) do gerenciador de ligações
                 {
                     CapturasLigacoes(w);
@@ -1462,6 +1469,8 @@ namespace NovoFtool
                 CapturasTrelicas(w);
                 // 49) Gerenciador de ligações (grupos, pior do grupo, placa da pior base)
                 CapturasLigacoes(w);
+                // 51) Projetista de ligações (biblioteca, chapa simples ao vivo, falha, otimizado, aplicar ao grupo)
+                CapturasProjetista(w);
                 // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
                 CapturasSnap(w);
 
@@ -1569,17 +1578,7 @@ namespace NovoFtool
                 jb.Close();
             }
 
-            var jg = new JanelaLigacao(Amostras.Ler("tipos-ligacao"), "parafuso", null);
-            Cap(jg, "44-ligacao-vazia");
-            jg.Preencher("parafuso", new System.Text.Json.Nodes.JsonObject { ["d_mm"] = 16, ["t"] = 0.0095, ["lf"] = 0.03 },
-                new System.Text.Json.Nodes.JsonObject { ["Ft"] = 20, ["Fv"] = 35 }, Amostras.Ler("ligacao-parafuso"));
-            EsperarIdle();
-            RenderizarJanela(jg, (int)jg.Width, (int)jg.Height, "44-ligacao-parafuso.png");
-            RenderizarJanela(jg, 1280, 720, "44-ligacao-parafuso-1280x720.png");
-            jg.Preencher("chapa_simples", new System.Text.Json.Nodes.JsonObject(), new System.Text.Json.Nodes.JsonObject(), null);
-            EsperarIdle();
-            RenderizarJanela(jg, (int)jg.Width, (int)jg.Height, "44-ligacao-chapa-simples.png");
-            jg.Close();
+            // 44) ligações: o projetista (JanelaLigacaoProjeto) usa o motor real — capturas 51) em CapturasProjetista
 
             var jc = new JanelaCype(null, null);
             Cap(jc, "45-cype-vazia", () =>

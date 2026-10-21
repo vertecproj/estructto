@@ -417,6 +417,7 @@ namespace NovoFtool
                 Grupo("Grupos",
                     Botao("unir", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Modelo 3D: identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
                 Grupo("Ligações",
+                    Botao("unir", "Projetar ligação", () => AbrirProjetistaLigacao(), "Biblioteca de padrões de ligação metálica (flexíveis, rígidas, emendas, contraventamento): escolha, o motor calcula chapas, parafusos e soldas e você ajusta vendo o desenho e as verificações (JanelaLigacaoProjeto.cs)."),
                     Botao("parafuso", "Parafusos", () => AbrirLigacaoTipo("parafuso"), "Ligação parafusada: cisalhamento, pressão de contato e tração nos parafusos (NBR 8800, motor Python)."),
                     Botao("solda", "Filete de solda", () => AbrirLigacaoTipo("solda_filete"), "Solda de filete: resistência do metal de solda e do metal-base (NBR 8800, motor Python)."),
                     Botao("chapa", "Chapa simples", () => AbrirLigacaoTipo("chapa_simples"), "Ligação flexível com chapa simples (shear tab): parafusos, chapa e solda (NBR 8800, motor Python)."),

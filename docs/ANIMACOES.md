@@ -55,6 +55,7 @@ então as capturas (estáticas) sempre saem no estado final.
 | Vista 2D — seleção | `Vista.Avisar()` | halo da seleção com fade 120 ms |
 | Barra de status — após calcular (F5) | `Acoes.cs`, `Resolver(avisar)` | ΣRx, ΣRy, desl. máx. contam até o valor (o log recebe o texto final) |
 | Barra de status — motor Python | `CalcularMotor` | `Anim.Brilho` no lugar da ProgressBar |
+| Projetista de ligações — desenho | `LigacaoDesenho.cs`, `DesenhoLigacao.Mostrar` | `Anim.Valor` em `Prog` (260 ms): peças interpoladas ou fade |
 | Relatório / memorial | — | nenhuma (documento) |
 
 ## Janela nova
