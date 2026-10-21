@@ -204,6 +204,51 @@ namespace Portico
             Conf("flambagem: Euler quando a esbeltez passa do limite", vb.Ncr, lam > lam1 ? Math.PI * Math.PI * 200000e3 * tq2.A / (lam * lam) : -1);
             Conf("flambagem: aproveitamento = N.n/Ncr", vb.ApFlamb, 20 * 2 / vb.Ncr);
 
+            Console.WriteLine("-- vento NBR 6123:2023: fatores e forcas em barras");
+            Conf("S2 cat. II classe A a 10 m (Tabela 3) = 1,00", Math.Round(VentoNbr.S2(2, 0, 10), 2), 1.00);
+            Conf("S2 cat. IV classe A ate 5 m (Tabela 3) = 0,79", Math.Round(VentoNbr.S2(4, 0, 3), 2), 0.79);
+            Conf("S2 cat. III classe B a 30 m (Tabela 3) = 1,03", Math.Round(VentoNbr.S2(3, 1, 30), 2), 1.03);
+            Conf("S2 cat. V classe C a 100 m (Tabela 3) = 1,01", Math.Round(VentoNbr.S2(5, 2, 100), 2), 1.01);
+            Conf("S2 cat. V constante ate 10 m (= 0,74)", Math.Round(VentoNbr.S2(5, 0, 4), 2), 0.74);
+            Conf("S2 cat. I classe A a 250 m (Tabela 3) = 1,33", Math.Round(VentoNbr.S2(1, 0, 250), 2), 1.33);
+            Conf("q = 0,613 Vk2 (Vk = 40 m/s -> 0,981 kN/m2)", VentoNbr.Q(40), 0.613 * 1600 / 1000);
+            Conf("K faces planas, l/c = 20 (Tabela 28) = 0,81", VentoNbr.K(2, 20), 0.81);
+            Conf("K faces planas, l/c = 15 (interpolado) = 0,75", VentoNbr.K(2, 15), 0.75);
+            Conf("K circular subcritico, l/c = 2 = 0,58", VentoNbr.K(0, 2), 0.58);
+            Conf("Ca circular subcritico (Tabela 27) = 1,2", VentoNbr.CaCircular(3e5), 1.2);
+            Conf("Ca circular Re entre 8,4e5 e 2,3e6 = 0,7", VentoNbr.CaCircular(1e6), 0.7);
+            Conf("classe pela maior dimensao: 35 m -> B", VentoNbr.ClassePorDimensao(35), 1);
+            // pilar em balanco de tubo redondo 114,3 x 7,30, 6 m, V0 40, cat. III, classe A (automatica), S1 = S3 = 1
+            m = Novo(0, 0, 0, 6); b = B(m, 0, 1); b.Secao = "Tubo " + (char)0xD8 + "114,3x7,30"; b.Material = "Aço ASTM A36"; Engaste(m.Nos[0]);
+            var pv = new ParamVento { V0 = 40, S1 = 1, Categoria = 3, Classe = "", S3 = 1, UsarK = true };
+            var lv = VentoNbr.Calcular(m, pv);
+            double s2p = 0.94 * 1.0 * Math.Pow(0.6, 0.10), vkp = 40 * s2p, qp = 0.613 * vkp * vkp / 1000;
+            Conf("vento no pilar: S2 a 6 m (cat. III, classe A)", lv[0].S2, s2p);
+            Conf("vento no pilar: Re < 4,2e5 -> Ca = 1,2 (Tabela 27)", lv[0].Cf, 1.2);
+            Conf("vento no pilar: l/c dobrado na base > 100 -> K = 1,0", lv[0].K, 1.0);
+            Conf("vento no pilar: w = Ca q K d (kN/m)", lv[0].W, 1.2 * qp * 1.0 * 0.1143);
+            // tubo de 203,2 mm a Vk ~ 35 m/s: Re acima do critico (Ca 0,6), mas o subcritico a Vcr da forca maior (8.1.3)
+            Modelo mt = Novo(0, 0, 0, 6); Barra bt = B(mt, 0, 1); bt.Secao = "Tubo " + (char)0xD8 + "203,2x3,75"; Engaste(mt.Nos[0]);
+            var lt = VentoNbr.Calcular(mt, new ParamVento { V0 = 40, S1 = 1, Categoria = 3, S3 = 1, UsarK = false });
+            double vcr = 4.2e5 / (70000 * 0.2032), vkt = 40 * s2p;
+            Conf("tubo 203: Re acima do critico", lt[0].Re >= 4.2e5 ? 1 : 0, 1);
+            Conf("tubo 203: vale a forca subcritica 1,2.q(Vcr).d (> 0,6.q(Vk).d)", lt[0].W, Math.Max(1.2 * 0.613 * vcr * vcr / 1000, 0.6 * 0.613 * vkt * vkt / 1000) * 0.2032);
+            int cv = VentoNbr.GarantirCaso(m, "Vento → (0°)");
+            VentoNbr.Aplicar(m, lv, cv, +1);
+            m.AtivarCaso(cv);
+            r = Solver.Resolver(m);
+            Conf("vento no pilar: reacao horizontal na base = -w.L (vento para +X)", m.Nos[0].Res[3], -lv[0].W * 6);
+            Conf("vento no pilar: momento na base = w.L2/2", Math.Abs(m.Nos[0].Res[5]), lv[0].W * 18);
+            m.AtivarCaso(0);
+            Conf("caso G continua sem a carga de vento", b.QLocalIni, 0);
+            // barra horizontal nao recebe vento no plano (vento paralelo ao eixo); barra a 45 graus recebe sen2 = 0,5
+            m = Novo(0, 3, 4, 3, 0, 0, 3, 3); b = B(m, 0, 1); b.Secao = "W 200 x 26,6"; b2 = B(m, 2, 3); b2.Secao = "W 200 x 26,6";
+            m.Nos[2].ApoioX = m.Nos[2].ApoioY = true;
+            lv = VentoNbr.Calcular(m, pv);
+            Conf("barra horizontal: forca do vento no plano = 0", lv[0].W, 0);
+            Conf("barra a 45 graus: sen2(alfa) = 0,5", lv[1].Sen2, 0.5);
+            Conf("perfil W com vento normal as mesas: c = d", lv[1].C, 0.207);
+
             Console.WriteLine("-- biblioteca Gerdau: " + Biblioteca.Perfis.Count + " perfis " + Biblioteca.AvisoPerfis);
             Conf("perfis W e HP carregados", Biblioteca.DaFamilia("W e HP (Gerdau)", null).Count, 88);
             int ruins = 0;

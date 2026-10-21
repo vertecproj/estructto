@@ -106,17 +106,26 @@ namespace NovoFtool
                 for (int i = 0; i < n; i++) if (casos[i].Tipo == "G") c.Fatores[i] = 1.4;
                 lista.Add(c);
             }
+            // Casos de vento sao direcoes alternativas (ex.: vento da esquerda e da direita): nunca entram juntos.
+            // Com a sobrecarga principal, gera uma combinacao para cada direcao de vento secundario.
+            var ventos = variaveis.Where(i => casos[i].Tipo == "V").ToList();
             int k = 1;
             foreach (int p in variaveis)
             {
-                var c = Nova("ELU " + k++ + " - " + casos[p].Nome + " principal", "ELU");
-                for (int i = 0; i < n; i++)
+                bool pVento = casos[p].Tipo == "V";
+                var opcoesVento = pVento || ventos.Count == 0 ? new List<int> { -1 } : ventos;
+                foreach (int w in opcoesVento)
                 {
-                    if (casos[i].Tipo == "G") c.Fatores[i] = 1.4;
-                    else if (i == p) c.Fatores[i] = gama(casos[i].Tipo);
-                    else if (variaveis.Contains(i)) c.Fatores[i] = Math.Round(gama(casos[i].Tipo) * psi0(casos[i].Tipo), 3);
+                    var c = Nova("ELU " + k++ + " - " + casos[p].Nome + " principal" + (w >= 0 ? " + " + casos[w].Nome : ""), "ELU");
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (casos[i].Tipo == "G") c.Fatores[i] = 1.4;
+                        else if (i == p) c.Fatores[i] = gama(casos[i].Tipo);
+                        else if (casos[i].Tipo == "V" && (pVento || i != w)) c.Fatores[i] = 0;
+                        else if (variaveis.Contains(i)) c.Fatores[i] = Math.Round(gama(casos[i].Tipo) * psi0(casos[i].Tipo), 3);
+                    }
+                    lista.Add(c);
                 }
-                lista.Add(c);
             }
             foreach (int p in variaveis.Where(i => casos[i].Tipo == "V"))
             {

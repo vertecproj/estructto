@@ -160,6 +160,7 @@ namespace NovoFtool
             var g = new F.RibbonGroupBox { Header = "Casos de carga" };
             g.Items.Add(cbCaso);
             g.Items.Add(Botao("tabela", "Casos e combinações", AbrirCasos, "Cria casos (permanente, sobrecarga, vento...) e combinações ELU/ELS, ou gera as combinações da NBR 8681/8800.", "CASOS"));
+            g.Items.Add(Botao("vento", "Vento NBR 6123", AbrirVento, "Calcula a carga de vento da NBR 6123:2023 nas barras (V0, S1, S2, S3, Cf de cada seção) e cria os casos de vento nos dois sentidos.", "VENTO"));
             abaCargas.Groups.Insert(0, g);
 
             cbResultado = new F.ComboBox { Header = "Mostrar", IsEditable = false, Width = 290, ToolTip = new F.ScreenTip { Title = "Resultado mostrado", Text = "Um caso isolado, uma combinação, ou a envoltória (mínimos e máximos) de todas as combinações ELU ou ELS. Diagramas, tabelas, verificação e relatório usam esta escolha.", Width = 300 } };

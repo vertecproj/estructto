@@ -14,7 +14,7 @@ Visão geral, pastas e comando de publicar: [README.md](README.md). O que mudou 
 1. Editar o código (`codigo/Estructto` = interface WPF .NET 8; `codigo/portico` = motor + testes).
    Arquivos com acento: ferramenta Edit/Write (sed/PowerShell corrompem UTF-8).
 2. Build: `cd codigo\Estructto; dotnet build -c Release` (saída em `C:\dev\build\EstructtoV2`, fora do Drive).
-3. Testes do motor: `cd codigo\portico; .\compilar.ps1 -Testes` (hoje 200 passam).
+3. Testes do motor: `cd codigo\portico; .\compilar.ps1 -Testes` (hoje 225 passam).
 4. Conferência visual sem abrir o programa: `powershell -ExecutionPolicy Bypass -File codigo\Estructto\capturar.ps1`
    → PNG de todas as telas e diálogos em `C:\dev\build\EstructtoV2\capturas` (`Estructto.exe --capturas <pasta>`); revisar com o
    checklist de [docs/v2/GUIA-DESIGN.md](docs/v2/GUIA-DESIGN.md). Tela nova = acrescentar a captura dela em `Capturas.cs`.

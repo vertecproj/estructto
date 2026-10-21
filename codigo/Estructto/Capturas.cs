@@ -713,6 +713,30 @@ namespace NovoFtool
                 jCasos2.Close();
                 EsperarIdle();
 
+                // 24b) Carga de vento NBR 6123
+                var jVento = new JanelaVento(w.M);
+                PrepararDialogoForaDaTela(jVento);
+                jVento.Show();
+                EsperarIdle();
+                CapturarDialogo(jVento, "24-vento.png");
+                jVento.Close();
+                EsperarIdle();
+
+                // casos e combinações depois de aplicar o vento (as duas direções nunca entram juntas)
+                var mV = Modelo.DeXml(w.M.ParaXml());
+                var lvC = VentoNbr.Calcular(mV, new ParamVento());
+                VentoNbr.Aplicar(mV, lvC, VentoNbr.GarantirCaso(mV, MainWindow.CasoVentoDir), +1);
+                VentoNbr.Aplicar(mV, lvC, VentoNbr.GarantirCaso(mV, MainWindow.CasoVentoEsq), -1);
+                if (!mV.Casos.Any(c => c.Tipo == "Q")) mV.AdicionarCaso(new CasoCarga { Nome = "Q - Sobrecarga", Tipo = "Q" });
+                mV.Combinacoes = Analise.GerarNbr(mV.Casos);
+                var jCasosV = new JanelaCasos(mV);
+                PrepararDialogoForaDaTela(jCasosV);
+                jCasosV.Show();
+                EsperarIdle();
+                CapturarDialogo(jCasosV, "24-casos-vento.png");
+                jCasosV.Close();
+                EsperarIdle();
+
                 // 25) JanelaRelatorio
                 string nomeMod = Path.GetFileNameWithoutExtension(caminhoModelo);
                 var jRel = new JanelaRelatorio(w.MontarRelatorio, nomeMod);

@@ -847,7 +847,7 @@ namespace NovoFtool
         // ================= teclado e linha de comando =================
 
         static readonly string[] Comandos = { "BARRA", "NO", "MEDIR", "DI", "DIST", "SEL", "APAGAR", "DIVIDIR", "ZE", "DESFAZER", "REFAZER", "CALC", "NOVO", "ABRIR", "SALVAR",
-            "UNIR", "TIRAR", "SEPARAR", "SELMEMBRO", "DEF", "NORMAL", "CORTANTE", "MOMENTO", "VERIFICAR", "CALOR", "MOVER", "COPIAR", "ESPELHAR", "QD", "FN", "SELNOS", "SELBASE", "SELTODAS", "REAC", "GRADE", "ORTO", "POLAR", "ENGASTE", "FIXO", "MOVEL", "ROTULA", "CARGA", "ASSISTENTE", "TABELAS", "CSV", "AJUDA", "ABA", "CASOS", "CASO", "NOVOCASO", "GERARCOMB", "RESULTADO", "RELATORIO" };
+            "UNIR", "TIRAR", "SEPARAR", "SELMEMBRO", "DEF", "NORMAL", "CORTANTE", "MOMENTO", "VERIFICAR", "CALOR", "MOVER", "COPIAR", "ESPELHAR", "QD", "FN", "SELNOS", "SELBASE", "SELTODAS", "REAC", "GRADE", "ORTO", "POLAR", "ENGASTE", "FIXO", "MOVEL", "ROTULA", "CARGA", "ASSISTENTE", "TABELAS", "CSV", "AJUDA", "ABA", "CASOS", "VENTO", "CASO", "NOVOCASO", "GERARCOMB", "RESULTADO", "RELATORIO" };
 
         void MostrarSugestao()
         {
@@ -1106,6 +1106,7 @@ namespace NovoFtool
                     break;
                 case "SELTODAS": Vista.Selecionar(M.Barras.Cast<object>()); break;
                 case "CASOS": AbrirCasos(); break;
+                case "VENTO": AbrirVento(); break;
                 case "RELATORIO": case "RELATÓRIO": AbrirRelatorio(); break;
                 case "RELPNG": if (w.Length > 1) SalvarRelatorioPng(string.Join(" ", w.Skip(1))); else Log("Uso: RELPNG pasta"); break;
                 case "NOVOCASO":

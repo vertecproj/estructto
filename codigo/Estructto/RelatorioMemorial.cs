@@ -98,6 +98,7 @@ namespace NovoFtool
                 doc.Blocks.Add(dd.S);
             }
 
+            if (M.Vento != null) MemorialVento(doc);
             MemorialAnalise(doc);
             doc.Blocks.Add(Secao2("9.3 Verificação das barras"));
             foreach (Barra b in M.Barras) MemorialBarra(doc, b);
@@ -120,6 +121,33 @@ namespace NovoFtool
         }
 
         // 9.1 e 9.2: metodo da rigidez, coeficientes de cada barra, esforcos nas pontas e equilibrio global
+        // Vento: as mesmas contas do motor (VentoNbr), com os dados digitados na janela do vento.
+        void MemorialVento(FlowDocument doc)
+        {
+            ParamVento p = M.Vento;
+            int classe = VentoNbr.Classe(M, p);
+            var lista = VentoNbr.Calcular(M, p);
+            var b1 = new Bloco("Vento — ABNT NBR 6123:2023 (barras prismáticas expostas, seção 8.1)");
+            b1.Tab(Dados(new[]
+            {
+                new[] { "Velocidade básica", "V0", Fm(p.V0, 1), "m/s", "Figura 1 (isopletas), informada pelo usuário" },
+                new[] { "Fator topográfico", "S1", Fm(p.S1, 2), "—", "5.2" },
+                new[] { "Categoria de rugosidade", "—", VentoNbr.Categorias[Math.Max(1, Math.Min(5, p.Categoria)) - 1], "—", "5.3.1" },
+                new[] { "Classe", "—", VentoNbr.Classes[classe], "—", string.IsNullOrEmpty(p.Classe) ? "5.3.2, pela maior dimensão do pórtico" : "5.3.2, escolhida pelo usuário" },
+                new[] { "Fator estatístico", "S3", Fm(p.S3, 2), "—", "Tabela 4" },
+                new[] { "Fator de comprimento finito", "K", p.UsarK ? "Tabela 28" : "1,00", "—", p.UsarK ? "8.1.3 (l/c dobrado na barra que toca um apoio)" : "desligado (lado seguro)" },
+            }));
+            b1.Eq("V_k = V_0 \\, S_1 \\, S_2 \\, S_3 \\qquad S_2 = b_m \\, F_r \\left(\\frac{z}{10}\\right)^{p} \\qquad q = 0{,}613 \\, V_k^2");
+            b1.Eq("w = C_f \\, q \\, K \\, c \\, \\mathrm{sen}^2\\alpha \\quad (\\mathrm{kN/m,\\;normal\\;à\\;barra})");
+            b1.Nota("z = cota do ponto mais alto da barra acima do terreno; c = dimensão de referência da seção (Tabela 26, Nota 1); α = ângulo entre o vento (horizontal, no plano do pórtico) e o eixo da barra. " +
+                    "As cargas estão nos casos \"" + MainWindow.CasoVentoDir + "\" e \"" + MainWindow.CasoVentoEsq + "\" (mesmo valor, sentidos opostos), que nunca entram juntos numa combinação.");
+            b1.Tab(Tabela(new[] { "Barra", "z (m)", "S2", "Vk (m/s)", "q (N/m²)", "Cf", "c (mm)", "K", "sen²α", "w (kN/m)" },
+                lista.Select(v => new[] { v.B.Id.ToString(), Fm(v.Z, 2), Fm(v.S2, 3), Fm(v.Vk, 1), Fm(v.Q * 1000, 0), Fm(v.Cf, 2), Fm(v.C * 1000, 0), Fm(v.K, 2), Fm(v.Sen2, 2), Math.Abs(v.W) < 1e-9 ? "—" : Fm(v.W, 3) })));
+            foreach (var v in lista.Where(x => Math.Abs(x.W) > 1e-9)) b1.Nota("Barra " + v.B.Id + " (" + v.B.Secao + "): " + v.Fonte + ".");
+            b1.Nota("Não incluído: vento sobre equipamentos, telhas e fechamentos presos à estrutura, vento fora do plano do pórtico e efeitos dinâmicos (seção 9).");
+            doc.Blocks.Add(b1.S);
+        }
+
         void MemorialAnalise(FlowDocument doc)
         {
             doc.Blocks.Add(Secao2("9.1 Análise estrutural (método da rigidez direta)"));

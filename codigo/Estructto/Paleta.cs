@@ -147,6 +147,7 @@ namespace NovoFtool
             Extra("Carga distribuída (QD)", "QD", "cargadist", "QD qy", "uniforme kn/m", "Aplica qy [qx] nas barras selecionadas.", () => preenche("QD"));
             Extra("Força no nó (FN)", "FN", "cargano", "FN fx fy", "carga concentrada", "Aplica fx fy [mz] nos nós selecionados.", () => preenche("FN"));
             Extra("Casos de carga", "CASOS", "tabela", null, "permanente acidental vento", "Abre a janela de casos de carga e combinações.", () => run("CASOS"));
+            Extra("Carga de vento (NBR 6123)", "VENTO", "vento", null, "vento nbr 6123 v0 s1 s2 s3", "Calcula o vento da NBR 6123:2023 nas barras e cria os casos de vento.", () => run("VENTO"));
             Extra("Ativar caso de carga", "CASO", "tabela", "CASO n", "caso ativo", "Torna ativo o caso de carga de número n.", () => preenche("CASO"));
             Extra("Novo caso de carga", "NOVOCASO", "mais", "NOVOCASO tipo", "criar adicionar", "Cria um caso G, Q, V ou E.", () => preenche("NOVOCASO"));
             Extra("Gerar combinações NBR", "GERARCOMB", "calc", null, "nbr 8681 elu els", "Gera as combinações NBR 8681/8800.", () => run("GERARCOMB"));

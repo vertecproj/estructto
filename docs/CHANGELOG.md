@@ -24,6 +24,13 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   desenho, relatório e memorial (`PlacaPior`/`EnvoltoriaPlaca` em `Acoes.cs`; `PiorCombinacao` em `JanelaPlaca.cs`). Motor inalterado
   (200 testes). Conferido com cópia do modelo do Bruno: CBE 3/8" hef 47 em 230×250×16 agora já aparece "não passa" (fixação 176% a 180°). Build, capturas e 200 testes ok (SDK .NET 8 instalado no PC do Bruno).
 
+- **Vento NBR 6123:2023** (pedido do Bruno): botão "Vento NBR 6123" (aba Cargas) + comando `VENTO`. Janela com V0, S1, categoria,
+  classe (automática pela maior dimensão), S3 e prévia barra a barra; cria os casos `Vento → (0°)` e `Vento ← (180°)` e regera as
+  combinações. Motor `VentoNbr` (Nucleo.cs): S2 pela fórmula das Tabelas 1–2, q = 0,613 Vk², Cf da Tabela 26 / Ca da Tabela 27 (com
+  conferência do regime subcrítico), K da Tabela 28, barra inclinada × sen²α. Gerador de combinações: as duas direções de vento nunca
+  entram juntas. Memorial ganhou o bloco do vento. Critérios e hipóteses: [VENTO.md](VENTO.md). 225 testes (25 novos). Norma em
+  `referencias/` (fora do git). Ferramentas instaladas neste PC: Poppler (ler o PDF escaneado).
+
 ## 19/10/2026 — Bruno
 
 - **Função "Comparar fixações" ([TAREFA-COMPARAR-FIXACOES.md](TAREFA-COMPARAR-FIXACOES.md)):**
