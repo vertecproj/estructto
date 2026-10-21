@@ -727,10 +727,22 @@ def verificar_gusset(dados, esforcos):
                    largura=round(tg / MM + FOLGA_RASGO, 1)))] if info["sec"].startswith("tubo") else [],
                ponto_trabalho=[0.0, 0.0, 0.0], recuo=recuo / MM, Lh=Lh / MM, Lv=Lv / MM,
                largura_whitmore=info["Lw"] / MM, pontas=[_ponta_em(recuo)])
+    geo.update(_orientacao(ap, dirv, perp))
     extra = dict(forcas_interface=forcas)
     if "dica" in info:
         extra["dica_barra"] = info["dica"]
     return _resultado(v, av, geo, **extra)
+
+
+def _orientacao(ap, dirv, perp):
+    """G5: eixo do apoio e face onde a chapa fica, no referencial local (x ao longo da diagonal, chapa no plano xz,
+    normal [0, −1, 0]). `apoio_dir` = eixo do pilar (pilar, viga-pilar) ou da viga/base; a chapa fica do lado
+    `lado` · (normal × apoio_dir)."""
+    eixo, lado_hv = ((0.0, 1.0), (1.0, 0.0)) if ap in ("pilar", "viga-pilar") else ((1.0, 0.0), (0.0, 1.0))
+    (ax, az), (sx, sz) = _para_local([eixo, lado_hv], dirv, perp)
+    # normal [0, −1, 0] × [ax, 0, az] = [−az, 0, ax]
+    lado = 1 if -az * sx + ax * sz > 0 else -1
+    return dict(apoio_dir=[round(ax, 12), 0.0, round(az, 12)], lado=lado)
 
 
 # ---------------------------------------------------------------- 2. nó de treliça com gusset

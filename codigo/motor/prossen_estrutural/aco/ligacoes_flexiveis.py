@@ -212,6 +212,7 @@ _ENT_CS = {**_BASE,
            "t_chapa": _e("Espessura da chapa", "mm", 6.3, mn=3, mx=50),
            "aco_chapa": _e("Aço da chapa", "-", "A-36", _ACOS),
            **_PARAF, **_FURACAO,
+           "n": _e("Parafusos por linha", "-", 3, mn=1, mx=20),   # G5: 1 parafuso (rótula) em U baixo
            "a": _e("Solda ao eixo dos furos", "mm", 75, mn=20, mx=300),
            "e_h": _e("Borda horizontal da chapa", "mm", 40, mn=10, mx=200),
            "folga": _e("Folga viga–apoio", "mm", 10, mn=0, mx=50),
@@ -328,8 +329,16 @@ def _perfil(v, campo):
         raise ValueError(f"{campo}: perfil '{v}' não está no catálogo (use o nome ou um dict com d, bf, tw, tf)") \
             from None
     pr = s.props
+    if pr.get("tipo") in ("U", "Ue"):   # G5: UPN, U laminado, U e Ue formados a frio (docs/v3/LIGACOES-U.md)
+        tw = pr.get("tw") or pr["t"]
+        tf = pr.get("tf") or pr["t"]
+        # raio da mesa: UPN/U laminado sem r no catálogo → r ≈ tf (DIN 1026: r1 = tf); dobrado: ri + t
+        r = pr.get("r") or (pr["ri"] + pr["t"] if pr.get("ri") is not None and "t" in pr else tf)
+        xg = pr.get("xg", 0.0)
+        return dict(nome=str(v), d=pr["h"], bf=pr["b"], tw=tw, tf=tf, r=r, forma="U", xg=xg,
+                    x_cc=abs(pr.get("x0", 0.0)) - xg)   # centro de cisalhamento: x_cc além da face externa da alma
     if pr.get("tipo") != "I":
-        raise ValueError(f"{campo}: '{v}' não é perfil I/H")
+        raise ValueError(f"{campo}: '{v}' ({pr.get('tipo')}): ligação flexível só com perfil I/H ou U")
     return dict(nome=str(v), d=pr["h"], bf=pr["b"], tw=pr["tw"], tf=pr["tf"], r=pr.get("r", 0.0))
 
 
@@ -525,6 +534,26 @@ def _cabe_no_apoio(r, sp, apoio, largura, nome, folga_viga_sup=None, topo=None):
         r.minimo(f"{nome}: abaixo da mesa da viga suporte", sp["tf"] + sp["r"], topo, "geometria (viga–viga)")
 
 
+def _face_apoio(sp, apoio):
+    """Largura disponível na face do apoio (m): mesa = bf; alma do pilar = altura livre entre mesas; None = viga."""
+    if apoio == "mesa_pilar":
+        return sp["bf"]
+    if apoio == "alma_pilar":
+        return sp["d"] - 2 * (sp["tf"] + sp["r"])
+    return None
+
+
+def _u_viga(r, vg, p, V, y_chapa, pega):
+    """Viga U ligada pelas costas da alma (G5): a ponta do parafuso fica entre as mesas e a reação passa fora do
+    centro de cisalhamento (torção V·e na viga, não verificada aqui)."""
+    ponta = _comp_parafuso(pega, p["db"]) * MM - pega
+    r.maximo("parafusos: ponta dentro da mesa do U", ponta, vg["bf"] - vg["tw"], "geometria (gabarito na mesa do U)")
+    e = abs(y_chapa + vg["xg"] + vg["x_cc"])   # centro de cisalhamento em y = −(xg + x_cc)
+    r.val["e_centro_cisalhamento_mm"] = e / MM
+    r.avisos.append(f"viga U: reação a {e / MM:.0f} mm do centro de cisalhamento — torção V·e = "
+                    f"{V * e:.2f} kN·m na viga não verificada (trave a viga ou confira a torção)")
+
+
 def _comp_parafuso(pega, db):
     return math.ceil((pega + 1.2 * db + 6 * MM) / (5 * MM)) * 5   # mm: pega + porca/arruela + 3 fios (aprox.)
 
@@ -670,6 +699,12 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
     topo, base = zs[0] - ev, zs[-1] + ev
     _cabe_na_alma(r, d, vg, topo, base, "cantoneiras")
     _cabe_no_apoio(r, sp, apoio, tw + 2 * b2, "cantoneiras", topo=topo)
+    if vg.get("forma") == "U":   # G5: a cantoneira de dentro fica entre as mesas do U
+        r.maximo("cantoneira interna dentro da mesa do U", b1, vg["bf"] - tw, "geometria (gabarito na mesa do U)")
+        e = vg["x_cc"] + tw / 2
+        r.val["e_centro_cisalhamento_mm"] = e / MM
+        r.avisos.append(f"viga U: reação a {e / MM:.0f} mm do centro de cisalhamento — torção V·e na viga não "
+                        "verificada")
     if apoio == "mesa_pilar":
         r.minimo("borda dos furos na mesa do pilar", L.distancia_min_borda(db, lam), (sp["bf"] - tw) / 2 - gs,
                  "6.3.11.1 / tabela 14")
@@ -682,18 +717,19 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
 
     # geometria
     xf = _x_face(sp, apoio)
+    yw = tw / 2 - vg["xg"] if vg.get("forma") == "U" else 0.0   # plano médio da alma (U abre para +y)
     zt = vg["d"] / 2
     zb = zt - base
-    can = [dict(perfil=d["cantoneira"], origem=_p(xf, sg * tw / 2, zb), eixo=[0, 0, 1], u=[1, 0, 0], w=[0, sg, 0],
+    can = [dict(perfil=d["cantoneira"], origem=_p(xf, yw + sg * tw / 2, zb), eixo=[0, 0, 1], u=[1, 0, 0], w=[0, sg, 0],
                 comprimento=Lc / MM, abas=[b1 / MM, b2 / MM], espessura=ta / MM) for sg in (1, -1)]
-    par = [_paraf(p, (xf + ta, sg * (tw / 2 + gs), zt - z), [-1, 0, 0], ta + t_ap) for sg in (1, -1) for z in zs]
+    par = [_paraf(p, (xf + ta, yw + sg * (tw / 2 + gs), zt - z), [-1, 0, 0], ta + t_ap) for sg in (1, -1) for z in zs]
     sol = []
     if soldada:
         sol = [dict(tipo="filete", perna=bs / MM,
-                    pontos=[_p(xf + folga, sg * tw / 2, zt - topo), _p(xf + b1, sg * tw / 2, zt - topo),
-                            _p(xf + b1, sg * tw / 2, zb), _p(xf + folga, sg * tw / 2, zb)]) for sg in (1, -1)]
+                    pontos=[_p(xf + folga, yw + sg * tw / 2, zt - topo), _p(xf + b1, yw + sg * tw / 2, zt - topo),
+                            _p(xf + b1, yw + sg * tw / 2, zb), _p(xf + folga, yw + sg * tw / 2, zb)]) for sg in (1, -1)]
     else:
-        par += [_paraf(p, (xf + gv, tw / 2 + ta, zt - z), [0, -1, 0], tw + 2 * ta) for z in zs]
+        par += [_paraf(p, (xf + gv, yw + tw / 2 + ta, zt - z), [0, -1, 0], tw + 2 * ta) for z in zs]
     return r.resultado(dict(chapas=[], cantoneiras=can, parafusos=par, soldas=sol,
                             recortes=_geo_recortes(d, xf + folga)))
 
@@ -732,7 +768,8 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
     else:        # método elástico com N
         M = V * a
         # parafuso extremo do lado em que N e V·a somam (linha simétrica): compressão não cancela a parcela de M
-        R = math.hypot(V / n, abs(N) / n + abs(M) * max(map(abs, ys)) / sum(y * y for y in ys))
+        Iy = sum(y * y for y in ys)   # 1 parafuso: rótula, V·a vai para a chapa (verificada abaixo)
+        R = math.hypot(V / n, abs(N) / n + (abs(M) * max(map(abs, ys)) / Iy if Iy else 0.0))
         r.val["Fd_parafuso"] = R
         r.avisos.append("com N ≠ 0 o grupo de parafusos é verificado pelo método elástico (V, N e V·a)")
         r.res("parafusos: cisalhamento (V, N e V·a, elástico)", R, p["Fv"], "kN", "6.3.3.2")
@@ -791,10 +828,15 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
     xf = _x_face(sp, apoio)
     zt = vg["d"] / 2
     zb = zt - base
-    yc = tw / 2 + t / 2
+    # I: chapa do lado +y da alma (plano médio da alma em y = 0). U: chapa nas costas da alma (face externa em y =
+    # −xg, o U abre para +y local) e parafusos de fora para dentro; a porca fica entre as mesas.
+    y0, sg = (-vg["xg"], -1) if vg.get("forma") == "U" else (tw / 2, 1)
+    yc = y0 + sg * t / 2
+    if vg.get("forma") == "U":
+        _u_viga(r, vg, p, V, yc, t + tw)
     ch = [_chapa("chapa simples", (xf, yc, zb), [1, 0, 0], [0, 0, 1], a + eh, Lc, t)]
-    par = [_paraf(p, (xf + a, tw / 2 + t, zt - z), [0, -1, 0], t + tw) for z in zs]
-    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y, zb), _p(xf, y, zb + Lc)]) for y in (tw / 2, tw / 2 + t)]
+    par = [_paraf(p, (xf + a, y0 + sg * t, zt - z), [0, -sg, 0], t + tw) for z in zs]
+    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y, zb), _p(xf, y, zb + Lc)]) for y in (y0, y0 + sg * t)]
     return r.resultado(dict(chapas=ch, cantoneiras=[], parafusos=par, soldas=sol, recortes=_geo_recortes(d, xf + folga)))
 
 
@@ -1024,6 +1066,8 @@ def _perfis_de(perfis):
 
 def _padrao_gerdau(dv):
     """[GD] 2.4 e 3.1.2: bitola, espaçamento, borda e cantoneira pela altura da viga."""
+    if dv <= 0.150:   # G5: U/UPN baixos (altura útil ~84 mm no UPN 120); fora da tabela Gerdau
+        return dict(d=12.7, s=38, e_v=22, cantoneira="L51x51x6.35", g=30)
     if dv <= 0.215:
         return dict(d=15.875, s=60, e_v=30, cantoneira="L76x76x6.35", g=45)
     if dv <= 0.560:
@@ -1084,7 +1128,8 @@ def _sug_cs(perfis, esforcos):
     vg = _perfil(v, "perfil_viga")
     pd = _padrao_gerdau(vg["d"])
     cands = []
-    for n in range(2, 13):
+    # G5: U baixo (UPN 100: altura útil 66 mm) não leva 2 parafusos → 1 parafuso
+    for n in range(2, 13) if _furos_viga(vg, pd, 2) is not None else (1,):
         dt = _furos_viga(vg, pd, n)
         if dt is None:
             break
@@ -1102,9 +1147,16 @@ def _sug_ce(perfis, esforcos):
     v, s_, apoio = _perfis_de(perfis)
     vg, sp = _perfil(v, "perfil_viga"), _perfil(s_, "perfil_suporte")
     pd = _padrao_gerdau(vg["d"])
-    larg = sp["bf"] if apoio == "mesa_pilar" else sp["d"] - 2 * (sp["tf"] + sp["r"]) if apoio == "alma_pilar" else 0.2
+    larg = _face_apoio(sp, apoio) or 0.2
     bp = min(0.200, math.floor(larg / MM / 5) * 5 * MM)
-    gch = min(0.120, bp - 2 * L.distancia_min_borda(pd["d"] * MM))
+    emin = L.distancia_min_borda(pd["d"] * MM)
+    # G5: chapa mínima = duas colunas de parafusos que passem da solda na alma + bordas; não cabe → recusa (nunca
+    # chapa cortada em silêncio)
+    bmin = vg["tw"] + 2 * (5 * MM + pd["d"] * MM / 2 + emin)
+    if bmin > larg + 1e-9:
+        raise ValueError(f"chapa de topo {math.ceil(bmin / MM)} mm > face do apoio {larg / MM:.0f} mm "
+                         f"({s_}): use cantoneira lateral ou outro apoio")
+    gch = min(0.120, bp - 2 * emin)
     topo = vg["tf"] + vg["r"] + 5 * MM
     cands = []
     for n in range(1, 13):

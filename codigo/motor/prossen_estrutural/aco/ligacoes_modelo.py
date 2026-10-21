@@ -20,6 +20,7 @@ import math
 
 from . import ligacoes as _lig
 from . import placa_base as _placa
+from .ligacoes_rigidas import U_RIGIDA
 from ..solver import eixos_locais
 
 # tipo de nó → (rótulo, tipo de ligação sugerido)
@@ -87,8 +88,13 @@ def _membro(m, no, e, tipo, apoio=None, ang=0, cond=None):
     assin = "|".join(str(x) for x in (tipo, b.secao, sec_ap, papel_ap, ang, cond, b.material))
     rot = TIPOS[tipo][0]
     nome = f"{rot} {b.secao}" + (f" → {sec_ap}" if sec_ap else "") + (f" {ang}°" if tipo in ("emenda",) and ang else "")
-    return dict(no=no, barra=b.id, ponta=e["ponta"], tipo=tipo, assinatura=assin, nome=nome,
-                apoio=apoio["b"].id if apoio else None)
+    mb = dict(no=no, barra=b.id, ponta=e["ponta"], tipo=tipo, assinatura=assin, nome=nome,
+              apoio=apoio["b"].id if apoio else None)
+    # G5: sem tipo rígido para U. Só a viga–pilar na mesa pede tipo rígido; alma do pilar e viga–viga já são
+    # propostas flexíveis (chapa simples) com qualquer condição
+    if cond == "rigida" and tipo == "viga_pilar_mesa" and m.secoes[b.secao].props.get("tipo") in ("U", "Ue"):
+        mb.update(sem_tipo=True, motivo=U_RIGIDA)
+    return mb
 
 
 def _emenda(m, nid, a, c):
@@ -234,7 +240,42 @@ def membros(modelo, motivos=None):
     for nid in m.nos:
         if nid in pontas:
             out += _classificar_no(m, nid, pontas[nid], motivos)
-    return out
+    return _nos_proximos(m, out, motivos)
+
+
+_D_PROXIMOS = 0.200   # m: nós mais perto que isso com chapa nos dois → uma ligação só (G5)
+_CHAPA_NO = ("gusset_contraventamento", "emenda", "no_trelica")
+
+
+def _celula(n):
+    return tuple(int(math.floor(c / _D_PROXIMOS)) for c in (n.x, n.y, n.z))
+
+
+def _nos_proximos(m, out, motivos):
+    """Dois nós a < 200 mm com chapa (gusset/emenda/nó de treliça) nos dois: as chapas se sobrepõem. Fica a ligação
+    do nó com mais pontas (empate: o primeiro do modelo); o outro perde as chapas e recebe o motivo."""
+    por_no = {}
+    for mb in out:
+        if mb["tipo"] in _CHAPA_NO:
+            por_no.setdefault(mb["no"], []).append(mb)
+    grade = {}   # ponytail: grade de células de 200 mm, vizinhança 3×3×3
+    for nid in por_no:
+        grade.setdefault(_celula(m.nos[nid]), []).append(nid)
+    ordem = {k: i for i, k in enumerate(m.nos)}
+    fora = set()
+    for nid in sorted(por_no, key=lambda k: (-len(por_no[k]), ordem[k])):
+        if nid in fora:
+            continue
+        n = m.nos[nid]
+        c = _celula(n)
+        for d in ((i, j, k) for i in (-1, 0, 1) for j in (-1, 0, 1) for k in (-1, 0, 1)):
+            for outro in grade.get((c[0] + d[0], c[1] + d[1], c[2] + d[2]), ()):
+                o = m.nos[outro]
+                if outro != nid and outro not in fora and math.dist((n.x, n.y, n.z), (o.x, o.y, o.z)) < _D_PROXIMOS:
+                    fora.add(outro)
+                    if motivos is not None:
+                        motivos[outro] = f"nós a <200 mm: ligação única (no nó {nid})"
+    return [mb for mb in out if not (mb["no"] in fora and mb["tipo"] in _CHAPA_NO)]
 
 
 # ---------------------------------------------------------------- grupos
@@ -582,6 +623,8 @@ def dimensionar_grupo(modelo, calculo, grupo):
             else:
                 linha.update(taxa=pior, combinacao=pior_c, esforcos=esf[pior_c], demanda=demanda(esf[pior_c]),
                              ok=bool(pior_r.get("ok")) and pior <= 1.0 + 1e-9, motivo=pior_r.get("motivo"))
+                if pior_r.get("excluir_interferencia"):
+                    linha["excluir_interferencia"] = True
                 if gov is None or pior > gov["taxa"]:
                     gov, gov_res = linha, pior_r
         saida.append(linha)

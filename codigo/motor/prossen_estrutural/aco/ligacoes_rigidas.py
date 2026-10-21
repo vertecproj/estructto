@@ -318,6 +318,9 @@ def _minimo_6152(e, braco, avisos):
     avisos.append(aviso)
 
 
+U_RIGIDA = "ligação rígida com perfil U não suportada"
+
+
 def _perfil(v, campo):
     """Catálogo (W/HP Gerdau) ou dict {d, bf, tw, tf, r} em mm → props em m."""
     if isinstance(v, dict):
@@ -332,6 +335,8 @@ def _perfil(v, campo):
         except KeyError as ex:
             raise ValueError(f"{campo}: {ex.args[0]}") from None
     p = s.props
+    if p.get("tipo") in ("U", "Ue"):   # G5: sem tipo rígido para U (docs/v3/LIGACOES-U.md)
+        raise ValueError(f"{campo}: {U_RIGIDA} ({s.nome})")
     if p.get("tipo") != "I":
         raise ValueError(f"{campo}: só perfis I/H (W, HP, soldados) — recebido {s.nome}")
     return dict(p, nome=s.nome)
