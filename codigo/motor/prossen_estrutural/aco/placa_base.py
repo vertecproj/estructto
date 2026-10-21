@@ -1060,6 +1060,42 @@ def verificar_placa_base(dados, esforcos, secao):
     return r
 
 
+def dados_no_eixo(dados, fraco):
+    """A mesma placa física vista no eixo fraco do pilar: H↔B, fileiras↔por_fileira, bloco_H↔bloco_B e o perfil gira
+    (eixo_fraco invertido). Os chumbadores (y, z) do resultado no eixo fraco são os (z, y) da placa no eixo forte."""
+    d = dict(dados or {})
+    if fraco:
+        pad = {c['nome']: c['padrao'] for c in esquema_placa_base()}
+        for a, b in (('H', 'B'), ('fileiras', 'por_fileira'), ('bloco_H', 'bloco_B')):
+            d[a], d[b] = d.get(b, pad[b]), d.get(a, pad[a])
+        d['eixo_fraco'] = not bool(d.get('eixo_fraco', False))
+    return d
+
+
+def casos_biaxiais(dados, esforcos):
+    """Flexão biaxial como duas verificações uniaxiais (o método é uniaxial, ver LIMITACOES): My no eixo forte e Mz no
+    eixo fraco da mesma placa (``dados_no_eixo``). esforcos: N, V (módulo no plano), My (ou M), Mz e os opcionais
+    (sismo, inclinada...). → [(eixo, dados, esforcos uniaxiais)]; a solda recebe os mesmos N, V, M."""
+    base = {k: v for k, v in esforcos.items() if k not in ('M', 'My', 'Mz')}
+    out = []
+    for eixo, M, fraco in (('forte (My)', esforcos.get('My', esforcos.get('M', 0.)), False),
+                           ('fraco (Mz)', esforcos.get('Mz', 0.), True)):
+        out.append((eixo, dados_no_eixo(dados, fraco), dict(base, M=M, N_barra=esforcos['N'], V_barra=esforcos['V'], M_barra=M)))
+    return out
+
+
+def verificar_placa_base_biaxial(dados, esforcos, secao):
+    """Pior das duas verificações uniaxiais de ``casos_biaxiais`` (campo ``eixo`` no resultado)."""
+    pior = None
+    for eixo, d, e in casos_biaxiais(dados, esforcos):
+        r = verificar_placa_base(d, e, secao)
+        r['eixo'] = eixo
+        t = r['taxa_max'] if math.isfinite(r['taxa_max']) else math.inf
+        if pior is None or t > pior[0]:
+            pior = (t, r)
+    return pior[1]
+
+
 def dimensionar_chumbador(dados, esforcos, secao, linha=None, metodo='nbr'):
     """Heurística estável por arranjo/rosca/hef; não estima preços nem muta dados.
 

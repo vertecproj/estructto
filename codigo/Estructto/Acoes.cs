@@ -285,7 +285,6 @@ namespace NovoFtool
         // Placa: no resultado da tela; na envoltoria, a combinacao com o pior aproveitamento (parafuso ou chapa).
         internal ResPlaca PlacaPior(No n)
         {
-            if (placaPiorDesvio != null) return placaPiorDesvio(n);   // anexo do relatório 3D (Legado3D.cs)
             if (Vista.Envoltoria == null) return PlacaCalc.Calcular(M, n);
             ResPlaca pior = null; double nota = double.MinValue;
             for (int i = 0; i < Vista.NomesEnv.Count; i++)
@@ -307,48 +306,11 @@ namespace NovoFtool
             return Math.Max(par, ch);
         }
 
+        // A placa de base é do documento 3D (Legado3D.cs): a janela verifica pelo motor (método NBR) com os esforços ELU do cálculo.
         void AbrirPlaca(No n)
         {
-            if (Esp != null) { _ = AbrirPlacaEsp(null); return; }   // documento 3D: ponte do pé de pilar (Legado3D.cs)
-            if (n == null) n = Vista.Sel.OfType<No>().FirstOrDefault() ?? M.Nos.FirstOrDefault(x => x.Placa != null);
-            if (n == null) { Log("Selecione o nó do pé do pilar e repita."); return; }
-            string erro;
-            Secao s; double ri, ro;
-            if (PlacaCalc.Pilar(M, n, out s, out ri, out ro, out erro) == null) { Log(erro); return; }
-            var orig = n.Placa;
-            No nn = n;
-            string crit = n.Placa != null ? FixarCombinacaoCritica(i => { foreach (Barra b in M.Barras) b.Res = Vista.Envoltoria[b][i]; return NotaPlaca(PlacaCalc.Calcular(M, nn), nn); }) : null;
-            if (crit == null && Vista.Envoltoria != null)
-                crit = FixarCombinacaoCritica(i => { foreach (Barra b in M.Barras) b.Res = Vista.Envoltoria[b][i]; var r = PlacaCalc.Pilar(M, nn, out Secao s2, out double a2, out double b2, out string e2); return r != null && r.Res != null ? Math.Abs(r.Res.M(r.N1 == nn.Id ? 0 : r.Res.L)) : 0; });
-            JanelaPlaca j;
-            try { j = new JanelaPlaca(M, n) { Owner = this }; }
-            catch (Exception ex) { n.Placa = orig; if (crit != null) RestaurarResultado(); Log("Erro ao abrir a placa: " + ex.Message); return; }
-            if (crit != null) j.Title += " — combinação crítica: " + crit;
-            // outros pés de pilar onde a mesma placa pode ir, avaliados cada um na sua pior combinação
-            j.Candidatos = M.Nos.Where(x => x != nn && (x.Placa != null || x.TemApoio) && PlacaCalc.Pilar(M, x, out Secao s3, out double a3, out double b3, out string e3) != null).ToList();
-            j.AvaliarEm = (no, pl) =>
-            {
-                var salvo = M.Barras.Select(b => b.Res).ToList();
-                var p0 = no.Placa; no.Placa = pl;
-                try
-                {
-                    if (Vista.Envoltoria == null) return PlacaCalc.Calcular(M, no);
-                    ResPlaca pior = null; double nota = double.MinValue;
-                    for (int i = 0; i < Vista.NomesEnv.Count; i++)
-                    {
-                        foreach (Barra b in M.Barras) b.Res = Vista.Envoltoria[b][i];
-                        ResPlaca rp = PlacaCalc.Calcular(M, no);
-                        double v = NotaPlaca(rp, no);
-                        if (pior == null || v > nota) { pior = rp; nota = v; }
-                    }
-                    return pior;
-                }
-                finally { no.Placa = p0; for (int k = 0; k < M.Barras.Count; k++) M.Barras[k].Res = salvo[k]; }
-            };
-            j.ShowDialog();
-            if (crit != null) RestaurarResultado();
-            if (j.Mudou && n.Placa != null) foreach (No o in j.AplicarEm) o.Placa = n.Placa.Copiar();
-            if (j.Mudou) Confirmar(n.Placa == null ? "Placa de base removida do nó " + n.Id + "." : "Placa de base do nó " + n.Id + " atualizada" + (j.AplicarEm.Count > 0 ? " e copiada para os nós " + string.Join(", ", j.AplicarEm.Select(o => o.Id)) : "") + ".");
+            if (Esp != null) { _ = AbrirPlacaEsp(null); return; }
+            Log("Placa de base: abra ou converta o modelo em 3D (a verificação é a do motor, com as combinações do cálculo).");
         }
 
         void AbrirAssistente(string tipo)

@@ -2507,6 +2507,264 @@ def ligacoes_dimensionar(modelo, calculo, grupo):
     return _lm("dimensionar_grupo", modelo, calculo, grupo)
 
 
+# ---- placa de base pelo método NBR (aco/placa_base.py, docs/v3/PLACA-BASE-V2.md §10): a janela da placa usa estas
+
+_NOTA_BIAXIAL = ("Flexão biaxial: o método da placa é uniaxial. Cada combinação é verificada com My no eixo forte e com "
+                 "Mz no eixo fraco (a mesma placa girada), separadamente; vale o pior. Os dois momentos não são somados.")
+
+
+def _pb():
+    from .aco import placa_base
+    return placa_base
+
+
+def placa_base_esquema():
+    """Campos de entrada da placa de base (dimensões em m, resistências em kN/m²) e as chapas/diâmetros/classes."""
+    pb = _pb()
+    return _puro(dict(campos=pb.esquema_placa_base(), chapas=pb.CHAPAS, diametros_mm=pb.DIAMETROS_MM, classes=pb.CLASSES))
+
+
+def _passo_placa(nome):
+    """Passo da janela: fixação (chumbadores, concreto ACI, corte), chapa (espessura, furo, pressão no concreto), solda."""
+    if nome.startswith("solda"):
+        return "solda"
+    return "chapa" if nome.startswith("chapa") or nome.startswith("concreto: pressão de contato") else "fixacao"
+
+
+def _casos_placa(modelo, calculo, c):
+    """Casos de esforços da placa: [{barra, ponta, no, combinacao, esf {N, V, My, Mz, sismo}, secao}].
+    `membros` [{barra, ponta | no}] → todas as combinações ELU do cálculo na ponta (aco.ligacoes_modelo.esforcos_ponta);
+    senão `esforcos` (um dict ou lista: N, V | Vy/Vz, M | My, Mz, nome) com `secao` (nome do modelo/catálogo ou props)."""
+    from .aco import ligacoes_modelo as lm
+    casos = []
+    if c.get("membros"):
+        if calculo is None:
+            raise ErroEntrada("calcule o modelo antes (membros usam as combinações ELU do cálculo)", "membros")
+        for mb in c["membros"]:
+            b = modelo.barras.get(str(mb.get("barra")))
+            if b is None:
+                raise ErroNaoEncontrado("barra", mb.get("barra"), modelo.barras)
+            ponta = mb.get("ponta") or ("i" if mb.get("no") == b.ni else "j" if mb.get("no") == b.nj else None)
+            if ponta not in ("i", "j"):
+                raise ErroEntrada("membros: informe ponta i/j ou o nó de uma das pontas", "ponta")
+            esf = lm.esforcos_ponta(calculo, b.id, ponta)
+            if not esf:
+                raise ErroEntrada(f"barra {b.id}: sem esforços ELU no cálculo (calcule de novo)", "membros")
+            sec = modelo.secoes[b.secao].props
+            for nome, e in esf.items():
+                casos.append(dict(barra=b.id, ponta=ponta, no=b.ni if ponta == "i" else b.nj, combinacao=nome,
+                                  esf=lm.esforcos_placa(modelo, e), secao=sec))
+        return casos
+    esf = c.get("esforcos")
+    if not esf:
+        raise ErroEntrada("informe membros (com cálculo) ou esforcos + secao", "esforcos")
+    s = c.get("secao")
+    if isinstance(s, str):
+        sec = modelo.secoes[s].props if modelo is not None and s in modelo.secoes else None
+        if sec is None:
+            try:
+                sec = _sec.catalogo(s).props
+            except KeyError:
+                raise ErroNaoEncontrado("perfil", s, list(modelo.secoes) if modelo is not None else []) from None
+    elif isinstance(s, dict):
+        sec = s
+    else:
+        raise ErroEntrada("secao: nome do perfil ou propriedades {tipo, h, b, tw, tf}", "secao")
+    for i, e in enumerate(esf if isinstance(esf, list) else [esf]):
+        try:
+            V = float(e["V"]) if "V" in e else math.hypot(float(e.get("Vy", 0)), float(e.get("Vz", 0)))
+            ee = dict(N=float(e.get("N", 0)), V=V, My=float(e.get("My", e.get("M", 0))), Mz=float(e.get("Mz", 0)),
+                      sismo=bool(e.get("sismo", False)))
+        except (TypeError, ValueError):
+            raise ErroEntrada(f"esforcos[{i}]: números N, V, M esperados", "esforcos") from None
+        casos.append(dict(barra=None, ponta=None, no=None, combinacao=str(e.get("nome") or f"caso {i + 1}"), esf=ee, secao=sec))
+    return casos
+
+
+def _placa_pior(dados, casos, primeiro=None, passo=None):
+    """Verifica a placa em todos os casos, nos dois eixos (placa_base.casos_biaxiais). → resumo com o governante (maior
+    taxa), o pior de cada passo, uma linha por caso (eixo pior) e o pior de cada membro. Triagem: com `primeiro`, esse
+    caso vai antes e, se reprovar (o `passo`, ou a placa inteira), para ali com parcial=True."""
+    pb = _pb()
+    ordem = ([primeiro] if primeiro is not None else []) + [i for i in range(len(casos)) if i != primeiro]
+    gov, passos, linhas, membros, eixos = None, {}, [], {}, {}
+    ok_total = True
+    for k, i in enumerate(ordem):
+        cs = casos[i]
+        pior_caso, ok_c = None, True
+        for eixo, d, e in pb.casos_biaxiais(dados, cs["esf"]):
+            try:
+                r = pb.verificar_placa_base(d, e, cs["secao"])
+            except (ValueError, KeyError, TypeError) as ex:
+                raise ErroEntrada(str(ex.args[0] if ex.args else ex), "dados") from ex
+            r["eixo"] = eixo
+            t = r["taxa_max"] if math.isfinite(r["taxa_max"]) else math.inf
+            ok = bool(r["ok"])
+            ok_c = ok_c and ok
+            eixos[eixo] = max(eixos.get(eixo, 0.0), t)
+            onde = dict(barra=cs["barra"], ponta=cs["ponta"], no=cs["no"], combinacao=cs["combinacao"], eixo=eixo, caso=i)
+            grupos = {}
+            for v in r["verificacoes"]:
+                g = grupos.setdefault(_passo_placa(v["nome"]), [0.0, True, ""])
+                tv = v["taxa"] if math.isfinite(v["taxa"]) else math.inf
+                if (v["unidade"] != "m" or v.get("criterio_resistente")) and tv > g[0]:
+                    g[0], g[2] = tv, v["nome"]
+                if tv > 1 and g[1]:
+                    g[1], g[2] = False, g[2] if g[0] > 1 else v["nome"]
+            grupos.setdefault("fixacao", [0.0, True, ""])[1] &= bool(r["fixacao"].get("ChOk", True))
+            grupos.setdefault("chapa", [0.0, True, ""])[1] &= bool(r["chapa"]["ok"])
+            sd = r.get("solda")
+            g = grupos.setdefault("solda", [0.0, True, ""])
+            if sd is None or not sd["ok"]:
+                g[1], g[2] = False, g[2] or ("solda não verificada" if sd is None else "solda")
+            for p, (tp, okp, nome) in grupos.items():   # local do passo: o pior caso (reprovado antes, depois a taxa)
+                x = passos.setdefault(p, dict(taxa=-1.0, ok=True, _k=(False, -1.0)))
+                if (not okp, tp) > x["_k"]:
+                    x.update(onde, criterio=nome, esforcos=dict(N=e["N"], V=e["V"], M=e["M"]), _k=(not okp, tp))
+                x["taxa"], x["ok"] = max(x["taxa"], tp), x["ok"] and okp
+            passos["chapa"]["t_nec"] = max(passos["chapa"].get("t_nec", 0.0), r["chapa"]["t_cbca"])
+            if sd is not None:
+                passos["solda"]["h_max"] = max(passos["solda"].get("h_max", 0.0), sd["h"])
+            if pior_caso is None or t > pior_caso[0]:
+                pior_caso = (t, ok, r, e, onde)
+            if gov is None or t > gov[0]:
+                gov = (t, ok, r, e, onde)
+        t, _, r, e, onde = pior_caso
+        ok = ok_c
+        ok_total = ok_total and ok
+        linhas.append(dict(onde, taxa=t, ok=ok, N=cs["esf"]["N"], V=cs["esf"]["V"], My=cs["esf"]["My"], Mz=cs["esf"]["Mz"]))
+        x = membros.setdefault((cs["barra"], cs["ponta"]), dict(barra=cs["barra"], ponta=cs["ponta"], no=cs["no"], taxa=-1.0, ok=True))
+        x["ok"] = x["ok"] and ok
+        if t > x["taxa"]:
+            x.update(combinacao=cs["combinacao"], eixo=onde["eixo"], taxa=t)
+        if k == 0 and primeiro is not None and not (passos.get(passo, {}).get("ok", True) if passo else ok):
+            break
+    else:
+        k = None
+    t, ok, r, e, onde = gov
+    for x in passos.values():
+        x.pop("_k", None)
+    return dict(ok=ok_total and k is None, parcial=k is not None, taxa_max=t,
+                governante=dict(onde, N=e["N"], V=e["V"], M=e["M"]), resultado=r, passos=passos,
+                combinacoes=sorted(linhas, key=lambda x: -x["taxa"]), membros=list(membros.values()),
+                biaxial=dict(eixos=eixos, nota=_NOTA_BIAXIAL))
+
+
+def placa_base_verificar(modelo, calculo, corpo):
+    """Placa de base pelo método NBR (aco/placa_base.py) na PIOR combinação ELU: corpo {dados, membros [{barra, ponta}]}
+    (esforços do cálculo, todas as combinações ELU de todos os membros) ou {dados, esforcos, secao}. Biaxial: My no eixo
+    forte e Mz no eixo fraco, separadamente (nota em `biaxial`). `variantes` [dados...]: resumo de cada uma (triagem
+    pelo caso governante da placa de `dados`; `triagem` = passo que manda parar: fixacao, chapa ou solda). → {ok, taxa_max, governante, resultado, passos, combinacoes, membros,
+    biaxial[, variantes]}"""
+    c = corpo or {}
+    casos = _casos_placa(modelo, calculo, c)
+    out = _placa_pior(c.get("dados") or {}, casos)
+    if c.get("variantes") is not None:
+        gi = out["governante"]["caso"]
+        out["variantes"] = []
+        for v in c["variantes"]:
+            s = _placa_pior(v or {}, casos, gi, c.get("triagem"))
+            out["variantes"].append({k: s[k] for k in ("ok", "parcial", "taxa_max", "passos", "governante")})
+    return _puro(out)
+
+
+def placa_base_gravar(modelo, corpo):
+    """Grava a placa como projeto `placa_base` do grupo de ligações das bases (fonte única: modelo.ligacoes). corpo
+    {membros [{no, barra, ponta}], dados, grupo_inteiro}. grupo_inteiro: o projeto vale para o grupo do 1º membro e os
+    outros membros entram nele; senão, se os membros não são exatamente um grupo, vão para um grupo novo (dividir).
+    Identifica os grupos antes se algum membro ainda não tem grupo. → {grupo}"""
+    from .aco import ligacoes_modelo as lm
+    c = corpo or {}
+    sel = [dict(no=str(x["no"]), barra=str(x["barra"]), ponta=str(x["ponta"])) for x in c.get("membros") or []]
+    if not sel:
+        raise ErroEntrada("membros: lista não vazia de {no, barra, ponta}", "membros")
+
+    def dono():
+        return {lm._chave(mb): gid for gid, g in lm._grupos(modelo).items() for mb in g["membros"]}
+    if any(lm._chave(x) not in dono() for x in sel):
+        _lm("identificar", modelo)
+    d = dono()
+    falta = [x for x in sel if lm._chave(x) not in d]
+    if falta:
+        raise ErroEntrada(f"membros sem ligação de base no modelo: {falta}", "membros")
+    gid = d[lm._chave(sel[0])]
+    grupo = lm._grupos(modelo)[gid]
+    chaves = {lm._chave(x) for x in sel}
+    if c.get("grupo_inteiro"):
+        resto = [x for x in sel if d[lm._chave(x)] != gid]
+        if resto:
+            _lm("editar", modelo, dict(acao="mover", membros=resto, destino=gid))
+    elif chaves != {lm._chave(x) for x in grupo["membros"]}:
+        gid = _lm("editar", modelo, dict(acao="mover", membros=sel, destino=None))["grupo"]
+    _lm("editar", modelo, dict(acao="projeto", grupo=gid, tipo_ligacao="placa_base", dados=dict(c.get("dados") or {})))
+    return dict(grupo=gid)
+
+
+def placa_base_dimensionar(modelo, calculo, corpo):
+    """Menor fixação que passa em todos os casos (preferencia 'leve': menor diâmetro/classe; 'furo': menor furo), depois
+    a chapa comercial ≥ t_CBCA e a perna de solda ≥ a maior mínima. Chumbador de catálogo (dados.chumbador preenchido):
+    mesmo tipo (mecânico/químico), arranjos 2×2, 2×3, 3×3 (≥ o atual). Pré-concretado (chumbador vazio): diâmetro e
+    classe da tabela métrica. → {achou, descricao, dados, verificacao (como placa_base_verificar)}"""
+    pb = _pb()
+    c = corpo or {}
+    casos = _casos_placa(modelo, calculo, c)
+    d0 = dict(c.get("dados") or {})
+    pad = {x["nome"]: x["padrao"] for x in pb.esquema_placa_base()}
+    gi = _placa_pior(d0, casos)["governante"]["caso"]
+    furo = c.get("preferencia") == "furo"
+    f0, q0 = int(d0.get("fileiras", pad["fileiras"])), int(d0.get("por_fileira", pad["por_fileira"]))
+    cands = []
+    if d0.get("chumbador"):
+        atual = pb.achar_chumbador(d0["chumbador"])
+        itens = [x for x in pb.carregar_chumbadores() if atual is None or x["quimico"] == atual["quimico"]]
+        itens.sort(key=lambda x: ((x["furo_mm"] or 0) if furo else 0, x["rosca_mm"], x["hef_mm"]))
+        arrs = [(nf, nq) for nf, nq in ((2, 2), (2, 3), (3, 3)) if nf * nq >= f0 * q0] or [(f0, q0)]
+        pares = [(x, a) for x in itens for a in arrs] if furo else [(x, a) for a in arrs for x in itens]
+        for x, (nf, nq) in pares:
+            cands.append(dict(d0, chumbador=x["codigo"] or x["nome"], fileiras=max(nf, f0), por_fileira=max(nq, q0)))
+    else:
+        cl = str(d0.get("classe", pad["classe"]))
+        i0 = pb.CLASSES.index(cl) if cl in pb.CLASSES else 0
+        pares = ([(dm, k) for dm in pb.DIAMETROS_MM for k in pb.CLASSES[i0:]] if furo
+                 else [(dm, k) for k in pb.CLASSES[i0:] for dm in pb.DIAMETROS_MM])
+        cands = [dict(d0, diametro_mm=dm, classe=k) for dm, k in pares]
+    escolhido = None
+    for cand in cands:
+        try:
+            s = _placa_pior(cand, casos, gi, "fixacao")
+        except ErroEntrada:
+            continue
+        if not s["parcial"] and s["passos"]["fixacao"]["ok"]:
+            escolhido = (cand, s)
+            break
+    if escolhido is None:
+        return dict(achou=False, dados=None, descricao="Nenhuma fixação da tabela passa em todas as combinações nesta placa: "
+                    "aumente a placa ou o arranjo.", verificacao=placa_base_verificar(modelo, calculo, dict(c, dados=d0)))
+    cand, s = escolhido
+    t = s["passos"]["chapa"]["t_nec"]
+    cand["esp"] = next((x for x in pb.CHAPAS if x >= t - 1e-9), pb.CHAPAS[-1])
+    cand["solda"] = 0
+    ps = _placa_pior(cand, casos)["passos"].get("solda", {})
+    h = ps.get("h_max", 0.0)
+    if h > 0:
+        cand["solda"] = h
+        sd = _placa_pior(cand, casos)["passos"]["solda"]
+        if not sd["ok"] and sd.get("caso") is not None:   # perna > parede etc.: eletrodo mais forte com perna que cabe
+            cs = casos[sd["caso"]]
+            eixo, de, e = next(x for x in pb.casos_biaxiais(cand, cs["esf"]) if x[0] == sd["eixo"])
+            dg = pb.diagnosticar_solda(cs["secao"], de, dict(N=e["N_barra"], V=e["V_barra"], M=e["M_barra"]))
+            if dg["perna"] > 0:
+                cand.update(eletrodo=dg["eletrodo"], solda=dg["perna"])
+                h = dg["perna"]
+    v = placa_base_verificar(modelo, calculo, dict(c, dados=cand))
+    n = v["resultado"]["geometria"]["coordenadas"]
+    fix = (f"{len(n)} × {cand['chumbador']}" if cand.get("chumbador")
+           else f"{len(n)} × Ø{cand['diametro_mm']:g} mm classe {cand['classe']} (pré-concretado)")
+    mm = lambda x: f"{x * 1000:g}".replace(".", ",")
+    desc = f"{fix} · chapa {mm(cand['esp'])} mm" + (f" · solda {mm(h)} mm {cand.get('eletrodo', 'E70')}" if h > 0 else "")
+    return dict(achou=True, dados=_puro(cand), verificacao=v, descricao=desc)
+
+
 def _norm(s):
     return str(s).upper().replace(" ", "").replace(",", ".")
 

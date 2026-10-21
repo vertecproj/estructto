@@ -364,6 +364,21 @@ class Bordas(unittest.TestCase):
         self.assertFalse(inc['passa_legado'])
         self.assertIsNone(inc['solda'])
 
+    def test_biaxial_dois_eixos_mesma_placa(self):
+        """Tubo quadrado em placa quadrada: My no eixo forte e Mz no fraco dão a mesma taxa (simetria). Placa retangular
+        2×3: no eixo fraco o braço é B e as fileiras trocam (a mesma placa física, girada)."""
+        tq = dict(h=.15, b=.15, tw=.006, tf=.006, tipo='TR')
+        d = dict(D, H=.35, B=.35, chumbador='')
+        a = p.verificar_placa_base_biaxial(d, dict(N=-50., V=5., My=30., Mz=0.), tq)
+        b = p.verificar_placa_base_biaxial(d, dict(N=-50., V=5., My=0., Mz=30.), tq)
+        self.assertEqual((a['eixo'], b['eixo']), ('forte (My)', 'fraco (Mz)'))
+        self.assertAlmostEqual(a['taxa_max'], b['taxa_max'], places=9)
+        f = p.dados_no_eixo(dict(D, H=.5, B=.3, fileiras=2, por_fileira=3, bloco_H=.9, bloco_B=.6), True)
+        self.assertEqual((f['H'], f['B'], f['fileiras'], f['por_fileira'], f['bloco_H'], f['bloco_B'], f['eixo_fraco']),
+                         (.3, .5, 3, 2, .6, .9, True))
+        r = p.verificar_placa_base_biaxial(dict(D, H=.5, B=.3, por_fileira=3), dict(N=-50., V=5., My=0., Mz=30.), W)
+        self.assertEqual((r['geometria']['H'], len(r['geometria']['coordenadas'])), (.3, 6))
+
     def test_copias_catalogos(self):
         origem = Path(__file__).resolve().parents[2]/'portico'
         for nome in ('chumbadores.csv','fixacoes.csv','fixacoes-pares.csv'):

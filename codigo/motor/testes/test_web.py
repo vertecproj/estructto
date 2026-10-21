@@ -375,6 +375,47 @@ class TestCalculoAPI(BaseWeb):
         self.assertEqual(self.api("POST", f"/api/ligacoes/grupos/{base['id']}/dimensionar", status=409)["erro"],
                          "sem_calculo")
 
+    def test_placa_base(self):
+        """/api/placa_base: método NBR na pior combinação ELU de todos os membros, nos dois eixos; igual ao projeto
+        chamado direto; sem cálculo → 409; com esforços explícitos não precisa de cálculo; dimensionar acha fixação."""
+        self.api("POST", "/api/exemplos/galpao_aco")
+        bases = [{"barra": "P1-0-0", "ponta": "i"}, {"barra": "P1-0-1", "ponta": "i"}]
+        corpo = {"dados": {"pelo_perfil": True}, "membros": bases}
+        self.assertEqual(self.api("POST", "/api/placa_base/verificar", corpo, status=409)["erro"], "sem_calculo")
+        self.api("POST", "/api/calcular", {})
+        r = self.api("POST", "/api/placa_base/verificar", dict(corpo, variantes=[{"pelo_perfil": True, "diametro_mm": 36}]))
+        m = projeto.abrir_exemplo("galpao_aco")
+        self.assertQuase(r, projeto.placa_base_verificar(m, projeto.calcular(m), dict(corpo, variantes=[{"pelo_perfil": True, "diametro_mm": 36}])))
+        # governante = maior taxa entre todas as combinações ELU × membros × eixos
+        self.assertEqual(r["taxa_max"], max(x["taxa"] for x in r["combinacoes"]))
+        self.assertEqual(len(r["combinacoes"]), 2 * len([c for c in self.api("GET", "/api/calculo")["combinacoes"] if c["estado"].startswith("ELU")]))
+        self.assertEqual(set(r["biaxial"]["eixos"]), {"forte (My)", "fraco (Mz)"})
+        self.assertEqual(r["resultado"]["eixo"], r["governante"]["eixo"])
+        self.assertIn("bloco retangular", r["resultado"]["metodo"])
+        self.assertEqual({"fixacao", "chapa", "solda"}, set(r["passos"]))
+        self.assertGreater(r["passos"]["chapa"]["t_nec"], 0)
+        self.assertEqual(len(r["variantes"]), 1)
+        # esforços explícitos (sem membros): caso do guincho da docs/v3/PLACA-BASE-V2.md §4 (WB 5/8", N = −2,99, V = 1,81, M = −2,37)
+        e = self.api("POST", "/api/placa_base/verificar", {"dados": {"H": .25, "B": .25, "esp": .0127, "borda": .04, "chumbador": "WB 58500"},
+                                                         "esforcos": {"N": -2.99, "V": 1.81, "M": -2.37}, "secao": "W360x51"})
+        self.assertEqual(e["governante"]["combinacao"], "caso 1")
+        self.assertGreater(e["resultado"]["forcas"]["Tmax"], 0)
+        d = self.api("POST", "/api/placa_base/dimensionar", corpo)
+        self.assertTrue(d["achou"], d["descricao"])
+        self.assertTrue(d["verificacao"]["passos"]["fixacao"]["ok"])
+        self.assertGreaterEqual(d["dados"]["esp"] + 1e-12, d["verificacao"]["passos"]["chapa"]["t_nec"])
+        # gravar: fonte única = projeto do grupo de ligações; um membro só sai do grupo; grupo_inteiro vale para todos
+        mb = {"no": "N0-0-0", "barra": "P1-0-0", "ponta": "i"}
+        g1 = self.api("POST", "/api/placa_base/gravar", {"membros": [mb], "dados": d["dados"]})["grupo"]
+        gr = self.api("GET", "/api/modelo")["ligacoes"]["grupos"]
+        self.assertEqual(gr[g1]["membros"], [mb])
+        self.assertEqual(gr[g1]["projeto"], {"tipo_ligacao": "placa_base", "dados": d["dados"]})
+        self.assertIsNotNone(self.api("GET", "/api/calculo"))  # gravar não descarta o cálculo
+        outro = {"no": "N0-0-1", "barra": "P1-0-1", "ponta": "i"}
+        g2 = self.api("POST", "/api/placa_base/gravar", {"membros": [mb, outro], "dados": {"pelo_perfil": True}, "grupo_inteiro": True})["grupo"]
+        self.assertEqual(g2, g1)
+        self.assertIn(outro, self.api("GET", "/api/modelo")["ligacoes"]["grupos"][g1]["membros"])
+
     def test_sem_calculo(self):
         self.api("POST", "/api/exemplos/viga_biapoiada")
         self.assertIsNone(self.api("GET", "/api/calculo"))  # 200 + null: a interface não loga erro

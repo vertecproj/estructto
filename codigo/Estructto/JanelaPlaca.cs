@@ -1,10 +1,14 @@
 // Janela da placa de base (E5): veredito numa linha no topo + 3 chips (Fixação / Chapa / Solda),
 // desenho à esquerda (Planta | 3D | Forças | Ficha | Cálculo) e, à direita, 3 passos numerados com o essencial visível
 // e o resto em "mais". Rodapé: Dimensionar tudo, Aplicar também em…, Cancelar / Aplicar.
-// O cálculo é sempre o do motor (PlacaCalc.Calcular, CandidatoChumbador, Solda.Calcular/Diagnosticar).
+// O cálculo é o do MOTOR, método NBR (aco/placa_base.py por /api/placa_base/verificar e /dimensionar; PlacaMotor.cs):
+// bloco de compressão, chapa CBCA (conferência Pfeil), chumbador NBR 8800 6.3.3 + ACI 318 cap. 17, na pior combinação ELU
+// de todos os membros e nos dois eixos. O Nucleo.cs (PlacaCalc, pivô na borda, n global) só aparece recolhido em
+// "Comparar com método legado" (planilha do guincho). O desenho usa a geometria do PlacaCalc com as forças do motor.
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -13,6 +17,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Portico;
 using static NovoFtool.UiPlaca;
+using static NovoFtool.UiAnalise;
 
 namespace NovoFtool
 {
@@ -20,7 +25,8 @@ namespace NovoFtool
     {
         public bool Mudou;
         readonly Modelo m; readonly No n;
-        readonly PlacaBase original, edit, refInicial;
+        readonly PlacaBase original, edit;
+        PlacaBase refInicial;
         readonly PlacaEdit pe;
         readonly PlanoPlaca plano = new PlanoPlaca();
         readonly Placa3D vista3d = new Placa3D();
@@ -40,11 +46,21 @@ namespace NovoFtool
         readonly StackPanel listaAplicarEm = new StackPanel();
         readonly TextBlock lblAplicarEm = new TextBlock();
 
-        // Outras fixações: quem abre a janela informa os nós possíveis e como avaliar uma placa num nó (pior combinação)
-        public Func<No, PlacaBase, ResPlaca> AvaliarEm;
-        public List<No> Candidatos = new List<No>();
-        public readonly List<No> AplicarEm = new List<No>();   // nós que recebem a mesma placa ao Aplicar
-        readonly HashSet<int> marcados = new HashSet<int>();
+        // Motor: quem abre a janela liga a rota (síncrona) e os membros {barra, ponta} cujos esforços ELU valem (o pé ou o grupo)
+        public Func<string, JsonObject, JsonNode> Api;
+        public readonly JsonArray Membros = new JsonArray();
+        public string CombLegado;                                      // combinação crítica do método legado (comparação)
+        // "Aplicar também em": outros pés selecionados (nó, membro, já tem placa) e o grupo de ligações das bases do nó
+        public readonly List<(string No, JsonObject Membro, bool TemPlaca)> Outros = new List<(string, JsonObject, bool)>();
+        public (string Id, string Nome, List<string> Nos)? Grupo;
+        public readonly List<string> AplicarEm = new List<string>();  // nós que recebem a mesma placa ao Aplicar
+        public bool AplicarNoGrupo;                                    // gravar também como projeto do grupo de ligações
+        readonly HashSet<int> marcados = new HashSet<int>();           // índices em Outros
+        ResNbr nb = ResNbr.ComErro("");                                // último resultado do motor (governante)
+        ResPlaca leg;                                                  // método legado (só comparação e geometria do desenho)
+        List<(bool FixOk, double FixTaxa, bool Ok, double Taxa, double TNec, string Criterio)> regua = new List<(bool, double, bool, double, double, string)>();
+        readonly Dictionary<string, JsonNode> cache = new Dictionary<string, JsonNode>();
+        bool verLegado;
 
         int abaAtiva;                  // 0 = Planta, 1 = 3D, 2 = Forças, 3 = Ficha, 4 = Cálculo
         bool prefFuroMenor;            // false = Mais leve, true = Furo menor
@@ -64,13 +80,15 @@ namespace NovoFtool
         const double LargDir = 440;    // coluna dos 3 passos
         const double LargRot = 66;     // coluna dos rótulos dentro dos passos (alinha os campos dos 3 passos)
 
-        // Solda do pilar na placa com os esforços do pé do pilar; perna digitada ou, com 0, a mínima da tabela.
+        // Solda do pilar na placa com os esforços da combinação/eixo que governa a solda no motor; perna digitada ou, com 0, a mínima.
         ResSolda SoldaPilar(ResPlaca r)
         {
-            if (!r.TemEsforcos || r.Sec == null) return null;
-            double h = edit.Solda > 0 ? edit.Solda : Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, edit.Eletrodo, edit.Esp);
+            var p = nb.Solda;
+            if (!r.TemEsforcos || r.Sec == null || !nb.Valido || double.IsNaN(p.N)) return null;
+            bool deitado = r.Deitado != p.Fraco;
+            double h = edit.Solda > 0 ? edit.Solda : Solda.Minima(r.Sec, deitado, p.N, p.V, p.M, edit.Eletrodo, edit.Esp);
             if (h <= 0) h = 25;
-            return Solda.Calcular(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, h, edit.Eletrodo, edit.Esp);
+            return Solda.Calcular(r.Sec, deitado, p.N, p.V, p.M, h, edit.Eletrodo, edit.Esp);
         }
 
         static string NomeCurtoCh(Chumbador c)
@@ -90,75 +108,67 @@ namespace NovoFtool
 
         string DescFixAtual(ResPlaca r)
         {
-            return r.Ch != null ? r.Paraf.Count + " × " + NomeCurtoCh(r.Ch) : r.Paraf.Count + " × M" + Num.Fmt(edit.Diametro, 0) + " cl. " + edit.Classe;
+            return r.Ch != null ? r.Paraf.Count + " × " + NomeCurtoCh(r.Ch) : r.Paraf.Count + " × Ø" + Num.Fmt(edit.Diametro, 0) + " cl. " + edit.Classe + " pré-concretado";
         }
 
-        // Dimensiona segundo a preferência ativa ("Mais leve" ou "Furo menor").
-        void Dimensionar()
+        // ---------- motor (/api/placa_base/*) ----------
+        JsonObject Corpo(PlacaBase pl, JsonArray membros = null) => new JsonObject { ["dados"] = PlacaMotor.Dados(pl), ["membros"] = (membros ?? Membros).DeepClone() };
+
+        JsonNode Chamar(string rota, JsonObject corpo)
         {
-            ResPlaca r = PlacaCalc.Calcular(m, n);
-            if (!r.TemEsforcos) return;
-            bool achou = false;
-            if (r.Ch != null || !string.IsNullOrEmpty(edit.Chumbador))
-            {
-                if (!prefFuroMenor)
-                {
-                    string esc = PlacaCalc.DimensionarChumbador(m, n);
-                    achou = esc != "";
-                    msgDim = achou ? "Escolhido automaticamente: " + esc + "." : "Nenhum chumbador do catálogo passa com até 8 chumbadores nesta placa: aumente a placa (sobra) ou use chumbador químico/concretado.";
-                }
-                else
-                {
-                    string ch0 = edit.Chumbador; int f0 = edit.Fileiras, q0 = edit.PorFileira;
-                    var cands = Chumbadores.Lista.OrderBy(c => c.Furo).ThenBy(c => c.Rosca).ThenBy(c => c.Hef).ToList();
-                    foreach (Chumbador c in cands)
-                    {
-                        foreach (int[] arr in new[] { new[] { 2, 2 }, new[] { 2, 3 }, new[] { 3, 3 } })
-                        {
-                            if (arr[0] * arr[1] < f0 * q0) continue;
-                            edit.Chumbador = c.Nome; edit.Fileiras = Math.Max(arr[0], f0); edit.PorFileira = Math.Max(arr[1], q0);
-                            ResPlaca t = PlacaCalc.Calcular(m, n);
-                            if (t.Erro == "" && t.TemEsforcos && t.ChOk)
-                            {
-                                achou = true;
-                                msgDim = "Escolhido automaticamente (furo menor): " + t.Paraf.Count + " × " + c.Nome + " (" + c.Fabricante + ").";
-                                break;
-                            }
-                        }
-                        if (achou) break;
-                    }
-                    if (!achou) { edit.Chumbador = ch0; edit.Fileiras = f0; edit.PorFileira = q0; msgDim = "Nenhum chumbador do catálogo passa nesta placa."; }
-                }
-            }
-            else
-            {
-                int ic0 = Math.Max(0, Array.IndexOf(Parafusos.Classes, edit.Classe));
-                if (!prefFuroMenor)
-                {
-                    for (int ic = ic0; ic < Parafusos.Classes.Length && !achou; ic++)
-                        for (int id = 0; id < Parafusos.D.Length && !achou; id++)
-                        {
-                            edit.Classe = Parafusos.Classes[ic]; edit.Diametro = Parafusos.D[id];
-                            ResPlaca t = PlacaCalc.Calcular(m, n);
-                            if (t.Erro == "" && t.ChOk) achou = true;
-                        }
-                }
-                else
-                {
-                    for (int id = 0; id < Parafusos.D.Length && !achou; id++)
-                        for (int ic = ic0; ic < Parafusos.Classes.Length && !achou; ic++)
-                        {
-                            edit.Classe = Parafusos.Classes[ic]; edit.Diametro = Parafusos.D[id];
-                            ResPlaca t = PlacaCalc.Calcular(m, n);
-                            if (t.Erro == "" && t.ChOk) achou = true;
-                        }
-                }
-                msgDim = achou ? "Escolhido automaticamente: " + edit.Fileiras * edit.PorFileira + " × M" + Num.Fmt(edit.Diametro, 0) + " classe " + edit.Classe + "." : "Nenhum parafuso da tabela passa nesta placa.";
-            }
-            r = PlacaCalc.Calcular(m, n);
-            double ch = PlacaCalc.Chapas.FirstOrDefault(e => e >= r.EspNec - 1e-9);
-            if (ch > 0) edit.Esp = ch;
-            if (r.Sec != null) { double h = Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, edit.Eletrodo, edit.Esp); edit.Solda = h > 0 ? h : 25; }
+            if (Api == null || Membros.Count == 0) throw new InvalidOperationException("motor de cálculo não ligado a esta janela");
+            string k = rota + corpo.ToJsonString();
+            if (!cache.TryGetValue(k, out var j)) { j = Api(rota, corpo); cache[k] = j; }
+            return j;
+        }
+
+        // Verificação pelo motor; variantes (régua, trocar, sugerir) voltam resumidas, com triagem pela fixação.
+        (ResNbr R, List<(bool FixOk, double FixTaxa, bool Ok, double Taxa, double TNec, string Criterio)> V) Verificar(PlacaBase pl, IList<PlacaBase> variantes = null)
+        {
+            var vazio = new List<(bool, double, bool, double, double, string)>();
+            if (Api == null || Membros.Count == 0) return (ResNbr.ComErro("Motor de cálculo não ligado a esta janela: sem verificação."), vazio);
+            var corpo = Corpo(pl);
+            if (variantes != null && variantes.Count > 0) { corpo["variantes"] = new JsonArray(variantes.Select(v => (JsonNode)PlacaMotor.Dados(v)).ToArray()); corpo["triagem"] = "fixacao"; }
+            try { var j = Chamar("/api/placa_base/verificar", corpo); return (ResNbr.De(j), Lista(j["variantes"]).Select(ResNbr.Resumo).ToList()); }
+            catch (Exception ex) { return (ResNbr.ComErro("Motor: " + PlacaMotor.Mensagem(ex)), vazio); }
+        }
+
+        List<(bool FixOk, double FixTaxa, bool Ok, double Taxa, double TNec, string Criterio)> Variantes(IList<PlacaBase> vs) =>
+            vs.Count == 0 ? new List<(bool, double, bool, double, double, string)>() : Verificar(edit, vs).V;
+
+        // Variantes do passo 1: diâmetros (pré-concretado) ou os chumbadores do mesmo tipo (catálogo), para a régua e o "menor que passa".
+        List<(PlacaBase pl, Chumbador ch)> VariantesPasso1()
+        {
+            var l = new List<(PlacaBase, Chumbador)>();
+            var chAt = Chumbadores.Achar(edit.Chumbador);
+            if (chAt == null) foreach (double d in Parafusos.D) { var p = edit.Copiar(); p.Diametro = d; l.Add((p, null)); }
+            else foreach (var c in Chumbadores.Lista.Where(c => c.Quimico == chAt.Quimico).OrderBy(c => c.Rosca).ThenBy(c => c.Hef)) { var p = edit.Copiar(); p.Chumbador = c.Nome; l.Add((p, c)); }
+            return l;
+        }
+
+        // Dimensiona pelo motor (pior combinação ELU dos membros, nos dois eixos) segundo a preferência ("Mais leve" ou "Furo menor").
+        void Dimensionar(JsonArray membros = null)
+        {
+            JsonNode res;
+            try { var corpo = Corpo(edit, membros); corpo["preferencia"] = prefFuroMenor ? "furo" : "leve"; res = Chamar("/api/placa_base/dimensionar", corpo); }
+            catch (Exception ex) { msgDim = "Dimensionar: " + PlacaMotor.Mensagem(ex); return; }
+            if (!Bool(res, "achou")) { msgDim = S(res, "descricao"); return; }
+            var p = PlacaMotor.Placa(res["dados"]);
+            edit.Chumbador = p.Chumbador; edit.Diametro = p.Diametro; edit.Classe = p.Classe; edit.Fileiras = p.Fileiras; edit.PorFileira = p.PorFileira;
+            edit.Esp = p.Esp; edit.Solda = p.Solda; edit.Eletrodo = p.Eletrodo;
+            int nm = (membros ?? Membros).Count;
+            msgDim = "Escolhido pelo motor (NBR, pior combinação" + (nm > 1 ? " de " + nm + " bases" : "") + "): " + S(res, "descricao") + ".";
+        }
+
+        // Resultado do legado com as forças, a fixação e a chapa do motor: é o que os desenhos e os passos mostram.
+        static ResPlaca Vista(ResPlaca leg, ResNbr nb)
+        {
+            var v = leg.Copiar();
+            if (!nb.Valido) { v.TemEsforcos = false; v.Erro = nb.Erro != "" ? nb.Erro : leg.Erro; return v; }
+            v.TemEsforcos = true; v.Erro = "";
+            v.N = nb.N; v.V = nb.V; v.M = nb.M; v.Paraf = nb.Paraf.Select(p => (double[])p.Clone()).ToList();
+            v.Tmax = nb.Tmax; v.Fv = nb.Fv; v.Modelo = nb.Modelo + (nb.Fraco ? " · eixo fraco (Mz)" : ""); v.PivoY = double.NaN; v.EspNec = nb.TNec; v.OkMotor = nb.Fix.Ok; v.ApMotor = nb.Fix.Taxa;
+            return v;
         }
 
         public JanelaPlaca(Modelo m, No n)
@@ -169,7 +179,6 @@ namespace NovoFtool
             n.Placa = edit;
             pe = new PlacaEdit(edit);
             chumbAntes = original != null && !string.IsNullOrEmpty(original.Chumbador) ? original.Chumbador : "";
-            if (original == null) Dimensionar();
             refInicial = (original ?? edit).Copiar();
 
             Title = "Placa de base — nó " + n.Id;
@@ -254,7 +263,12 @@ namespace NovoFtool
                 }
             };
             Closing += (s, e) => { if (!Mudou) n.Placa = original; };
-            Loaded += (s, e) => Recalcular();   // Candidatos/AvaliarEm chegam depois do construtor
+            bool iniciou = false;
+            Loaded += (s, e) =>   // Api/Membros chegam depois do construtor: placa nova é dimensionada pelo motor aqui
+            {
+                if (original == null && !iniciou) { iniciou = true; Dimensionar(); refInicial = edit.Copiar(); }
+                Recalcular();
+            };
             Recalcular();
         }
 
@@ -274,26 +288,25 @@ namespace NovoFtool
         {
             FecharFlutuantes();
             msgDim = "";
-            if (parafuso) edit.Chumbador = null;
-            else if (string.IsNullOrEmpty(edit.Chumbador))
-            {
-                PlacaCalc.DimensionarChumbador(m, n);
-                if (string.IsNullOrEmpty(edit.Chumbador))
-                {
-                    var perto = Chumbadores.Lista.OrderBy(x => Math.Abs(x.Rosca - edit.Diametro)).ThenBy(x => x.Hef).FirstOrDefault();
-                    if (perto != null) edit.Chumbador = perto.Nome;
-                }
-            }
+            MudarTipo(parafuso ? 2 : 0);
             Recalcular();
         }
+        public ResNbr ResultadoMotor => nb;      // capturas: números do motor
+        public ResPlaca ResultadoLegado => leg;  // capturas: números do legado (comparação)
+        public void MostrarLegado(bool ver) { verLegado = ver; Recalcular(); }
+        public PlacaBase Placa => n.Placa;
+        public void DimensionarTudo() { Dimensionar(); Recalcular(); }   // capturas
+        public string Mensagem => msgDim;      // resultado ao fechar (null = removida)
 
         // ================= recálculo e montagem =================
         void Recalcular()
         {
             plano.FecharEditor(false);
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            leg = PlacaCalc.Calcular(m, n);
+            (nb, regua) = Verificar(edit, VariantesPasso1().Select(x => x.pl).ToList());
+            ResPlaca r = Vista(leg, nb);
             var sd = SoldaPilar(r);
-            plano.R = r; plano.P = edit;
+            plano.R = r; plano.P = edit; plano.Nbr = nb;
             vista3d.R = r; vista3d.P = edit; vista3d.Sd = sd;
 
             MontarCabecalho(r, sd);
@@ -307,38 +320,36 @@ namespace NovoFtool
             colDir.Children.Add(cardCh);
             colDir.Children.Add(cardSd);
             MontarMudancas(r);
+            MontarLegado();
 
             MontarRodape(r);
             if (overlayTrocar.Visibility == Visibility.Visible) PreencherOverlayTrocar();
             if (overlayAplicarEm.Visibility == Visibility.Visible) PreencherAplicarEm();
         }
 
-        bool FixOk(ResPlaca r) { return r.TemEsforcos && r.ChOk; }
-        bool ChapaOk(ResPlaca r) { return r.EspNec <= edit.Esp + 1e-9; }
-        double ApChapa(ResPlaca r) { return edit.Esp > 0 ? r.EspNec / edit.Esp : 0; }
+        bool FixOk(ResPlaca r) { return r.TemEsforcos && nb.Fix.Ok; }
+        bool ChapaOk(ResPlaca r) { return r.TemEsforcos && nb.Chapa.Ok; }
+        double ApChapa(ResPlaca r) { return nb.Chapa.Taxa; }
 
-        // ---------- 1) topo: veredito numa linha + chips dos passos + avisos compactos ----------
+        // ---------- 1) topo: veredito numa linha + chips dos passos + avisos compactos (tudo do motor) ----------
         void MontarCabecalho(ResPlaca r, ResSolda sd)
         {
             var dp = new DockPanel { LastChildFill = true };
-            bool sdOk = sd == null || sd.Passa;
             var falhas = new List<string>();
             if (r.TemEsforcos)
             {
-                bool capOk = r.NComb >= (r.Ch != null ? r.NRef : r.NExig) && (r.Ch == null || !r.Ch.Quimico || r.NAco >= r.NSeg);
-                if (!capOk) falhas.Add(r.Ch != null ? "chumbador insuficiente" : "parafuso insuficiente");
-                if (!r.EspacOk) falhas.Add("chumbadores muito próximos");
-                if (!ChapaOk(r)) falhas.Add("chapa fina demais");
-                if (!sdOk) falhas.Add("solda não passa");
+                if (!nb.Fix.Ok) falhas.Add("fixação (" + nb.Fix.Criterio + ")");
+                if (!nb.Chapa.Ok) falhas.Add(nb.Chapa.Criterio.StartsWith("concreto") ? "concreto sob a placa" : "chapa (" + nb.Chapa.Criterio + ")");
+                if (!nb.Solda.Ok) falhas.Add("solda (" + (nb.Solda.Criterio == "" ? "não verificada" : nb.Solda.Criterio) + ")");
             }
 
             // chips dos 3 passos (direita)
             var chips = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             if (r.TemEsforcos)
             {
-                chips.Children.Add(ChipPasso(1, "Fixação", r.ApFix, FixOk(r), () => IrPara(1)));
-                chips.Children.Add(ChipPasso(2, "Chapa", ApChapa(r), ChapaOk(r), () => IrPara(2)));
-                chips.Children.Add(ChipPasso(3, "Solda", sd != null ? sd.Ap : 0, sdOk, () => IrPara(3)));
+                chips.Children.Add(ChipPasso(1, "Fixação", nb.Fix.Taxa, nb.Fix.Ok, () => IrPara(1)));
+                chips.Children.Add(ChipPasso(2, "Chapa", nb.Chapa.Taxa, nb.Chapa.Ok, () => IrPara(2)));
+                chips.Children.Add(ChipPasso(3, "Solda", nb.Solda.Taxa, nb.Solda.Ok, () => IrPara(3)));
             }
             DockPanel.SetDock(chips, Dock.Right);
             dp.Children.Add(chips);
@@ -347,11 +358,7 @@ namespace NovoFtool
             if (!r.TemEsforcos) { nv = Nivel.Neutro; titulo = "Sem verificação"; glifo = "–"; }
             else if (falhas.Count > 0) { nv = Nivel.Erro; titulo = "Não passa — " + string.Join(", ", falhas); glifo = "✕"; }
             else if (r.Inclinada) { nv = Nivel.Alerta; titulo = "Placa resolvida — falta detalhar a ligação inclinada"; glifo = "!"; }
-            else
-            {
-                double apMax = Math.Max(r.ApFix, Math.Max(ApChapa(r), sd != null ? sd.Ap : 0));
-                nv = Nivel.Ok; titulo = "Passa · usa " + Pct(apMax) + " no item mais carregado"; glifo = "✓";
-            }
+            else { nv = Nivel.Ok; titulo = "Passa · usa " + Pct(nb.Taxa) + " no item mais carregado"; glifo = "✓"; }
             var cores = Cores(nv);
             var icone = new Border
             {
@@ -377,21 +384,30 @@ namespace NovoFtool
             if (!r.TemEsforcos) sub = r.Erro;
             else
                 sub = Num.Fmt(r.H, 0) + " × " + Num.Fmt(r.B, 0) + " × " + FmtEsp(edit.Esp) + " mm · " + DescFixAtual(r) + (r.Sec != null ? " · pilar " + r.Sec.Nome.Replace("x", "×") : "") +
-                      "      N = " + Num.Fmt(r.N, 2) + " kN   V = " + Num.Fmt(r.V, 2) + " kN   M = " + Num.Fmt(r.M, 2) + " kN·m";
-            var tSub = Tx(sub, 11.5, TemaPlant.BTexto2);
+                      "      N = " + Num.Fmt(nb.N, 2) + " kN   V = " + Num.Fmt(nb.V, 2) + " kN   M = " + Num.Fmt(nb.M, 2) + " kN·m  ·  " + nb.Comb + (Membros.Count > 1 ? " · " + nb.Barra : "") + " · eixo " + nb.Eixo;
+            var tSub = Tx(sub, 11.5, r.TemEsforcos ? TemaPlant.BTexto2 : TemaPlant.BErro);
             tSub.TextTrimming = TextTrimming.CharacterEllipsis;
             tSub.Margin = new Thickness(0, 2, 0, 0);
-            Dica(tSub, sub + (r.TemEsforcos ? "\nN, V e M no pé do pilar, nos eixos da placa (N > 0 = tração nas fixações)." : ""));
+            Dica(tSub, sub + (r.TemEsforcos ? "\nN, V e M no pé do pilar na combinação que governa (N > 0 = tração nas fixações), esforços de cálculo do motor." : ""));
             txt.Children.Add(tSub);
-            // Nucleo.cs é o método legado (pivô na borda, sem bloco de compressão, n global).
-            // Mantido para bater com a planilha; ver docs/v3/PLACA-BASE-V2.md.
-            var tLeg = Tx("Método legado (pivô na borda) — use o motor Python para o método NBR com bloco de compressão", 11.5, TemaPlant.BAlerta, FontWeights.SemiBold);
-            tLeg.TextWrapping = TextWrapping.Wrap;
-            tLeg.Margin = new Thickness(0, 3, 0, 0);
-            Dica(tLeg, "Este cálculo apoia a placa na borda e aplica o coeficiente global n. Ele subestima a tração nos chumbadores sob momento. O motor Python (prossen_estrutural.aco.placa_base) usa NBR 8800 6.6.5, bloco retangular, chapa CBCA e ACI 318 cap. 17 com esforços de cálculo.");
-            txt.Children.Add(tLeg);
+            if (r.TemEsforcos)
+            {
+                string casos = Membros.Count > 1 ? Pl.N(nb.NCombs, "caso", "casos") + " (combinações ELU × " + Membros.Count + " bases)" : Pl.N(nb.NCombs, "combinação ELU", "combinações ELU");
+                var tMet = Tx("Método NBR (motor): NBR 8800 6.6.5 + bloco de compressão · chapa CBCA · chumbador NBR 8800 6.3.3 + ACI 318 cap. 17 · pior de " + casos + ", eixos forte e fraco", 11, TemaPlant.BTexto3);
+                tMet.TextTrimming = TextTrimming.CharacterEllipsis;
+                tMet.Margin = new Thickness(0, 2, 0, 0);
+                Dica(tMet, NotaBiaxial());
+                txt.Children.Add(tMet);
+            }
             dp.Children.Add(txt);
             cabecalho.Child = dp;
+        }
+
+        string NotaBiaxial()
+        {
+            var b = nb.J?["biaxial"];
+            return S(b, "nota") + "\nPior taxa no eixo forte (My): " + Pct(D(b?["eixos"], "forte (My)")) + " · no eixo fraco (Mz): " + Pct(D(b?["eixos"], "fraco (Mz)")) +
+                   ".\nGoverna: " + nb.Comb + " · eixo " + nb.Eixo + ".";
         }
 
         Border ChipPasso(int num, string nome, double ap, bool ok, Action clique)
@@ -423,13 +439,9 @@ namespace NovoFtool
                            "(modelo do perfil perpendicular à placa) não valem para barra inclinada. Detalhe a ligação (gusset/cantoneira) à parte.";
                 l.Add(Chip("⚠ Ligação inclinada " + Num.Fmt(r.AngNormal, 0) + "°: detalhar", Nivel.Alerta, t, () => { abaAtiva = 1; Recalcular(); }));
             }
-            if (r.Ch != null && !string.IsNullOrEmpty(r.AvisoCoef))
-            {
-                bool risco = r.AvisoCoef.StartsWith("Grau de risco");
-                l.Add(Chip(risco ? "⚠ Risco não informado (adotado baixo)" : "⚠ Coeficiente abaixo do recomendado", Nivel.Alerta, r.AvisoCoef + "\nClique para ajustar no passo 1.", () => IrPara(1)));
-            }
-            if (!string.IsNullOrEmpty(r.Aviso) && r.Aviso.Contains("carga aplicada no próprio nó"))
-                l.Add(Chip("⚠ Carga no nó não entra", Nivel.Alerta, "Há carga aplicada no próprio nó da placa: ela vai direto ao apoio e não entra nas forças das fixações calculadas aqui."));
+            if (nb.Fraco) l.Add(Chip("Governa o eixo fraco (Mz)", Nivel.Info, NotaBiaxial()));
+            if (nb.Avisos.Count > 0)
+                l.Add(Chip("⚠ " + Pl.N(nb.Avisos.Count, "aviso do motor", "avisos do motor"), Nivel.Alerta, "• " + string.Join("\n• ", nb.Avisos) + "\nClique para ver o cálculo.", () => { abaAtiva = 4; Recalcular(); }));
             return l;
         }
 
@@ -576,27 +588,28 @@ namespace NovoFtool
 
             // tipo + Sugerir
             var linTipo = new DockPanel();
-            btSugerir = Botao("Sugerir", "dimens", MostrarSugerir, "Mostra as 3 melhores combinações fixação + chapa que passam com os coeficientes atuais (preferência: " + (prefFuroMenor ? "furo menor" : "mais leve") + ").");
+            btSugerir = Botao("Sugerir", "dimens", MostrarSugerir, "Mostra as 3 melhores combinações fixação + chapa que passam no motor (pior combinação; preferência: " + (prefFuroMenor ? "furo menor" : "mais leve") + ").");
             DockPanel.SetDock(btSugerir, Dock.Right);
             linTipo.Children.Add(btSugerir);
             linTipo.Children.Add(Segmentado(new List<(string, bool, Action, string)>
             {
                 ("Mecânico", tipo == 0, () => MudarTipo(0), "Chumbador de expansão (catálogo): instalação imediata no concreto pronto."),
                 ("Químico", tipo == 1, () => MudarTipo(1), "Chumbador com resina (ampola ou injeção): mais carga, precisa de cura."),
-                ("Parafuso", tipo == 2, () => MudarTipo(2), "Parafuso métrico verificado pela classe do aço (Sp / √(σ² + 3τ²)).")
+                ("Pré-concretado", tipo == 2, () => MudarTipo(2), "Chumbador com cabeça/porca concretado no bloco: aço pela NBR 8800 6.3.3 e concreto pelo ACI 318-19 cap. 17 (cone, arrancamento, fendilhamento, borda, alavanca).")
             }));
             corpo.Children.Add(linTipo);
 
             if (modoCh)
             {
-                var menorPassa = r.TemEsforcos
-                    ? Chumbadores.Lista.Where(c => c.Quimico == chAt.Quimico).OrderBy(c => c.Rosca).ThenBy(c => c.Hef).FirstOrDefault(c => PlacaCalc.CandidatoChumbador(r, edit, m, c).ChOk)
-                    : null;
+                var vs = VariantesPasso1();
+                int iMenor = -1;
+                for (int i = 0; i < Math.Min(vs.Count, regua.Count); i++) if (regua[i].FixOk) { iMenor = i; break; }
+                var menorPassa = iMenor >= 0 ? vs[iMenor].ch : null;
                 var linNome = new DockPanel { Margin = new Thickness(0, 8, 0, 0) };
                 var links = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-                var lkTrocar = Link("Trocar ›", AbrirOverlayTrocar, "Lista de todos os chumbadores do catálogo: recomendados, maiores e os que não servem aqui (com o motivo).");
+                var lkTrocar = Link("Trocar ›", AbrirOverlayTrocar, "Lista dos chumbadores do catálogo verificados pelo motor nesta placa: recomendados, maiores e os que não servem (com o critério).");
                 lkTrocar.HorizontalAlignment = HorizontalAlignment.Right;
-                var lkComp = Link("Comparar ›", () => AbrirComparar(chAt), "Compara 2 ou mais chumbadores lado a lado: catálogo, cargas, verificação nesta placa, usos e avisos.");
+                var lkComp = Link("Comparar ›", () => AbrirComparar(chAt), "Compara 2 ou mais chumbadores lado a lado pelo catálogo (cargas e coeficientes do fabricante; tabela do método legado).");
                 lkComp.HorizontalAlignment = HorizontalAlignment.Right; lkComp.Margin = new Thickness(0, 3, 0, 0);
                 links.Children.Add(lkTrocar); links.Children.Add(lkComp);
                 DockPanel.SetDock(links, Dock.Right);
@@ -604,7 +617,7 @@ namespace NovoFtool
                 var info = new StackPanel();
                 var wpNome = new WrapPanel();
                 wpNome.Children.Add(Tx(r.Paraf.Count + " × " + NomeCurtoCh(chAt), 14, TemaPlant.BTexto1, FontWeights.Bold));
-                if (menorPassa == chAt) { var tg = Chip("menor que passa", Nivel.Ok, "É o menor chumbador deste tipo que passa nesta placa.", null, 10.5); tg.Margin = new Thickness(8, 1, 0, 0); wpNome.Children.Add(tg); }
+                if (menorPassa == chAt) { var tg = Chip("menor que passa", Nivel.Ok, "É o menor chumbador deste tipo que passa nesta placa (motor, pior combinação).", null, 10.5); tg.Margin = new Thickness(8, 1, 0, 0); wpNome.Children.Add(tg); }
                 info.Children.Add(wpNome);
                 string tq = chAt.Torque > 0 ? " · torque " + Num.Fmt(chAt.Torque, 1) + " kgf·m" : "";
                 var det = Tx(chAt.Fabricante + " · furo Ø" + Num.Fmt(chAt.Furo, chAt.Furo == Math.Floor(chAt.Furo) ? 0 : 1) + " × " + Num.Fmt(chAt.Hef, 0) + " mm" + tq, 11.5, TemaPlant.BTexto2);
@@ -613,87 +626,86 @@ namespace NovoFtool
                 linNome.Children.Add(info);
                 corpo.Children.Add(linNome);
 
-                // quantidade (+ classe da barra se químico)
                 UIElement extra = null;
                 if (chAt.Quimico)
-                    extra = Horiz(Gap(10), Dica(Tx("barra", 12, TemaPlant.BTexto2), "Classe da barra roscada do chumbador químico (aço verificado por von Mises com Sp)."), Gap(6),
+                    extra = Horiz(Gap(10), Dica(Tx("barra", 12, TemaPlant.BTexto2), "Classe da barra roscada do chumbador químico (aço verificado pela NBR 8800 6.3.3)."), Gap(6),
                                   Combo(Parafusos.Classes, pe.ClasseBarra, s => { pe.ClasseBarra = s; Recalcular(); }, 66, "Classe da barra roscada (4.6 = barra comum, lado seguro)."));
                 corpo.Children.Add(Linha("Quantidade", Horiz(SegQuantidade(), extra), 8, "Fileiras × fixações por fileira, no contorno da placa."));
                 if (mostrarOutroArranjo || !ArranjoPadrao()) corpo.Children.Add(Linha("", LinhaOutroArranjo(), 6));
 
-                // coeficiente com a origem + os 3 controles que mudam o n
                 int iTipo = string.IsNullOrEmpty(edit.TipoCarga) ? 0 : Array.IndexOf(Chumbadores.Tipos, edit.TipoCarga.ToLowerInvariant()) + 1;
-                var opsTipo = new List<string> { "auto: " + Chumbadores.NomesTipos[r.TemEsforcos ? r.TipoCarga : 1] };
+                var opsTipo = new List<string> { "auto: " + Chumbadores.NomesTipos[leg.TemEsforcos ? leg.TipoCarga : 1] };
                 opsTipo.AddRange(Chumbadores.NomesTipos);
                 string riscoAt = (edit.Risco ?? "").ToLowerInvariant();
-                var opsRisco = new List<string> { "auto: " + (r.RiscoAlto ? "alto" : "baixo"), "baixo risco", "alto risco" };
+                var opsRisco = new List<string> { "auto: " + (leg.RiscoAlto ? "alto" : "baixo"), "baixo risco", "alto risco" };
                 int iRisco = riscoAt == "baixo" ? 1 : riscoAt == "alto" ? 2 : 0;
                 var cbTipo = Combo(opsTipo, opsTipo[Math.Max(0, iTipo)], s => { int i = opsTipo.IndexOf(s); pe.TipoCarga = i <= 0 ? "automático" : Chumbadores.NomesTipos[i - 1]; Recalcular(); }, 104,
                     "Tipo de carga (tabela Walsywa, catálogo pág. 07). Baixo / alto risco: estática 3 / 5 · variável 4 / 5 · dinâmica 7 / 15 · choque 5 / 10. Auto = dinâmica se houver carga giratória no modelo, senão variável.");
                 var cbRisco = Combo(opsRisco, opsRisco[iRisco], s => { int i = opsRisco.IndexOf(s); pe.Risco = i == 1 ? "baixo" : i == 2 ? "alto" : "automático"; Recalcular(); }, 106,
                     "Grau de risco. Alto = a falha pode ferir pessoas ou derrubar o equipamento (coeficiente maior). Auto = alto com carga giratória, senão baixo (com aviso).");
-                var bxFck = CaixaNum(Num.Fmt(edit.Fck > 0 ? edit.Fck : 20, 0), "MPa", 90, v => { edit.Fck = v; Recalcular(); },
-                    "fck do concreto da laje. Se for menor que o do ensaio do catálogo, a carga no concreto é reduzida por √(fck / fck do ensaio).", v => v > 0 && v < 200, "fck");
-                corpo.Children.Add(Linha("Carga", Horiz(cbTipo, Gap(6), cbRisco, Gap(6), bxFck), 8, "Condições que definem o coeficiente do chumbador (tabela Walsywa) e a resistência do concreto."));
-                corpo.Children.Add(Linha("Exigido", TextoCoefChumbador(r), 6));
+                corpo.Children.Add(Linha("Carga", Horiz(cbTipo, Gap(6), cbRisco), 8, "Condições que definem o coeficiente do chumbador (tabela Walsywa). O fck do concreto fica no passo 2."));
             }
             else
             {
-                int idAt = Array.IndexOf(Parafusos.D, edit.Diametro); if (idAt < 0) idAt = 4;
                 int icAt = Array.IndexOf(Parafusos.Classes, edit.Classe); if (icAt < 0) icAt = 3;
+                double hef = edit.Hef > 0 ? edit.Hef : 12 * edit.Diametro;
+                double furo = D(nb.R?["fixacao"], "furo") * 1000;
                 var info = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
-                info.Children.Add(Tx(r.Paraf.Count + " × M" + Num.Fmt(edit.Diametro, 0) + " classe " + edit.Classe, 14, TemaPlant.BTexto1, FontWeights.Bold));
-                var det = Tx("pré-carga " + Num.Fmt(r.Fi, 1) + " kN · torque " + Num.Fmt(r.Torque, 0) + " N·m · furo na chapa Ø" + Num.Fmt(edit.Diametro + (edit.Diametro <= 24 ? 2 : 3), 0) + " mm", 11.5, TemaPlant.BTexto2);
+                info.Children.Add(Tx(r.Paraf.Count + " × Ø" + Num.Fmt(edit.Diametro, 0) + " classe " + edit.Classe + " · pré-concretado", 14, TemaPlant.BTexto1, FontWeights.Bold));
+                var det = Tx("hef " + Num.Fmt(hef, 0) + " mm" + (edit.Hef > 0 ? "" : " (12·Ø)") + (double.IsNaN(furo) ? "" : " · furo alargado na chapa Ø" + Num.Fmt(furo, 1) + " mm") + " · cabeça/porca pesada", 11.5, TemaPlant.BTexto2);
                 det.Margin = new Thickness(0, 2, 0, 0);
                 info.Children.Add(det);
                 corpo.Children.Add(info);
                 corpo.Children.Add(Linha("Diâmetro", Regua(Parafusos.D.Length, i =>
                 {
                     double d = Parafusos.D[i];
-                    double seg = r.TemEsforcos ? PlacaCalc.SegurancaCom(r, edit, i, icAt) : double.PositiveInfinity;
-                    return ("M" + Num.Fmt(d, 0), seg >= r.NExig - 1e-9, Math.Abs(d - edit.Diametro) < 1e-6, "M" + Num.Fmt(d, 0) + " · segurança " + FmtN(seg), () => { edit.Diametro = d; Recalcular(); });
-                }), 8, "Verde = passa, vermelho = não passa, branco = atual. Clique para escolher."));
+                    var v = i < regua.Count ? regua[i] : (FixOk: false, FixTaxa: double.NaN, Ok: false, Taxa: double.NaN, TNec: double.NaN, Criterio: "");
+                    return ("Ø" + Num.Fmt(d, 0), v.FixOk, Math.Abs(d - edit.Diametro) < 1e-6, "Ø" + Num.Fmt(d, 0) + " · fixação " + (v.FixOk ? "usa " + Pct(v.FixTaxa) : "não passa (" + v.Criterio + ")") + " (motor, pior combinação)", () => { edit.Diametro = d; Recalcular(); });
+                }), 8, "Verde = passa, vermelho = não passa, branco = atual (motor, pior combinação). Clique para escolher."));
                 var itensCl = new List<(string, bool, Action, string)>();
-                foreach (string cl in Parafusos.Classes) { string c = cl; int ic = Array.IndexOf(Parafusos.Classes, cl); itensCl.Add((cl, edit.Classe == cl, (Action)(() => { edit.Classe = c; Recalcular(); }), "Classe " + cl + " (ISO 898-1), Sp = " + Num.Fmt(Parafusos.Sp[ic], 0) + " MPa")); }
+                foreach (string cl in Parafusos.Classes) { string c = cl; itensCl.Add((cl, edit.Classe == cl, (Action)(() => { edit.Classe = c; Recalcular(); }), "Classe " + cl + " (ISO 898-1): fub = " + cl.Split('.')[0] + "00 MPa")); }
                 corpo.Children.Add(Linha("Classe", Segmentado(itensCl, 28, 11.5), 6));
                 corpo.Children.Add(Linha("Quantidade", SegQuantidade(), 6));
                 if (mostrarOutroArranjo || !ArranjoPadrao()) corpo.Children.Add(Linha("", LinhaOutroArranjo(), 6));
-                var tc = Tx("n = " + Num.Fmt(r.NExig, 2) + " (coeficiente da placa, passo 2)" + (r.TemEsforcos ? " → obtido " + FmtN(r.NComb) : ""), 11.5, r.TemEsforcos && r.NComb < r.NExig ? TemaPlant.BErro : TemaPlant.BTexto1, null, true);
-                corpo.Children.Add(Linha("Exigido", tc, 8));
+                corpo.Children.Add(Linha("hef", Horiz(CaixaNum(Num.Fmt(edit.Hef, 0), "mm", 78, v => { edit.Hef = v; Recalcular(); },
+                    "Embutimento efetivo do chumbador com cabeça/porca (ACI 318-19 17.6.2). 0 = 12·Ø (CBCA p. 237).", v => v >= 0), Gap(8), Tx("0 = 12·Ø", 11, TemaPlant.BTexto3)), 6, "Embutimento efetivo hef."));
             }
-
-            return Passo(1, "Fixação", r.ApFix, FixOk(r), r.TemEsforcos, maisFix, () => { maisFix = !maisFix; Recalcular(); }, corpo, () => MaisFixacao(r, chAt));
+            corpo.Children.Add(Linha("Motor", TextoFixNbr(r), 8));
+            return Passo(1, "Fixação", nb.Fix.Taxa, nb.Fix.Ok, r.TemEsforcos, maisFix, () => { maisFix = !maisFix; Recalcular(); }, corpo, () => MaisFixacao(r, chAt));
         }
 
-        UIElement TextoCoefChumbador(ResPlaca r)
+        // Tração e corte nos chumbadores (motor) e o critério que governa a fixação.
+        UIElement TextoFixNbr(ResPlaca r)
         {
             var sp = new StackPanel();
-            if (!r.TemEsforcos || r.Ch == null) { sp.Children.Add(Tx("—", 12, TemaPlant.BTexto2)); return sp; }
-            double nTab = Chumbadores.Coef(r.TipoCarga, r.RiscoAlto);
-            string origem;
-            if (r.Ch.Tu <= 0) origem = "carga recomendada do fabricante";
-            else if (edit.CoefChumbador > 0) origem = "digitado (a tabela Walsywa pede " + Num.Fmt(nTab, 0) + ")";
-            else origem = "tabela Walsywa: " + Chumbadores.NomesTipos[r.TipoCarga] + ", " + (r.RiscoAlto ? "alto" : "baixo") + " risco";
+            if (!r.TemEsforcos) { sp.Children.Add(Tx("—", 12, TemaPlant.BTexto2)); return sp; }
+            int nt = nb.Paraf.Count(p => p[2] > 1e-9);
             var l1 = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = TemaPlant.BTexto2 };
-            l1.Inlines.Add(new System.Windows.Documents.Run("n = " + Num.Fmt(r.NRef, r.NRef == Math.Floor(r.NRef) ? 0 : 1)) { Foreground = TemaPlant.BTexto1, FontWeight = FontWeights.Bold });
-            l1.Inlines.Add(new System.Windows.Documents.Run(" · " + origem));
+            l1.Inlines.Add(new Run("T máx = " + Num.Fmt(nb.Tmax, 2) + " kN") { Foreground = TemaPlant.BTexto1, FontWeight = FontWeights.Bold });
+            l1.Inlines.Add(new Run(" (" + Pl.N(nt, "tracionado", "tracionados") + ") · corte " +
+                (nb.Mecanismo == "chumbadores" ? Num.Fmt(nb.Fv, 2) + " kN em " + Pl.N(nb.NEf, "chumbador", "chumbadores") + (edit.ArruelaSoldada ? " (arruela soldada)" : " (furo alargado)") : "por " + nb.Mecanismo)));
             sp.Children.Add(l1);
-            bool cOk = r.NComb >= r.NRef;
             var l2 = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11.5, Foreground = TemaPlant.BTexto2, Margin = new Thickness(0, 1, 0, 0) };
-            l2.Inlines.Add(new System.Windows.Documents.Run("obtido no concreto "));
-            l2.Inlines.Add(new System.Windows.Documents.Run(FmtN(r.NComb) + (cOk ? " ≥ " : " < ") + Num.Fmt(r.NRef, 1)) { Foreground = cOk ? TemaPlant.BSucesso : TemaPlant.BErro, FontWeight = FontWeights.SemiBold });
-            if (r.Ch.Quimico)
-            {
-                bool aOk = r.NAco >= r.NSeg;
-                l2.Inlines.Add(new System.Windows.Documents.Run(" · aço da barra "));
-                l2.Inlines.Add(new System.Windows.Documents.Run(FmtN(r.NAco) + (aOk ? " ≥ " : " < ") + Num.Fmt(r.NSeg, 1)) { Foreground = aOk ? TemaPlant.BSucesso : TemaPlant.BErro, FontWeight = FontWeights.SemiBold });
-            }
-            if (!r.EspacOk)
-            {
-                l2.Inlines.Add(new System.Windows.Documents.Run(" · furos a " + Num.Fmt(r.EspacMin, 0) + " mm < 6·d = " + Num.Fmt(Chumbadores.EspacMinimo(r.Ch), 0) + " mm (não instala)") { Foreground = TemaPlant.BErro, FontWeight = FontWeights.SemiBold });
-            }
+            l2.Inlines.Add(new Run("governa: " + nb.Fix.Criterio + " "));
+            l2.Inlines.Add(new Run(Pct(nb.Fix.Taxa)) { Foreground = nb.Fix.Ok ? TemaPlant.BSucesso : TemaPlant.BErro, FontWeight = FontWeights.SemiBold });
+            l2.Inlines.Add(new Run(" · " + nb.Fix.Comb + (nb.Fix.Fraco ? " · eixo fraco" : "")));
             sp.Children.Add(l2);
+            var fx = nb.R?["fixacao"];
+            if (r.Ch != null && !double.IsNaN(D(fx, "NRef")))
+            {
+                var l3 = Tx("catálogo: n = " + Num.Fmt(D(fx, "NRef"), 1) + " (" + (edit.CoefChumbador > 0 ? "digitado" : "tabela Walsywa") + ") sobre esforços de cálculo · obtido " + FmtN(D(fx, "NComb")), 11, TemaPlant.BTexto3, null, true);
+                sp.Children.Add(l3);
+            }
             return sp;
+        }
+
+        static CheckBox Marca(string texto, bool v, Action<bool> mudar, string dica)
+        {
+            var cb = new CheckBox { Content = Tx(texto, 12, TemaPlant.BTexto1), IsChecked = v, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center };
+            cb.Checked += (s, e) => mudar(true);
+            cb.Unchecked += (s, e) => mudar(false);
+            Dica(cb, dica);
+            return cb;
         }
 
         UIElement MaisFixacao(ResPlaca r, Chumbador chAt)
@@ -701,7 +713,7 @@ namespace NovoFtool
             var sp = new StackPanel();
             if (chAt != null)
             {
-                double nTab = r.TemEsforcos ? Chumbadores.Coef(r.TipoCarga, r.RiscoAlto) : 0;
+                double nTab = leg.TemEsforcos ? Chumbadores.Coef(leg.TipoCarga, leg.RiscoAlto) : 0;
                 var st = Stepper(edit.CoefChumbador > 0 ? "n = " + Num.Fmt(edit.CoefChumbador, 1) : "tabela (" + Num.Fmt(nTab, 0) + ")",
                     PassoValor(ValoresNCh, edit.CoefChumbador, -1, v => edit.CoefChumbador = v), PassoValor(ValoresNCh, edit.CoefChumbador, +1, v => edit.CoefChumbador = v), 110,
                     () => { string resp = Pergunta.Mostrar(this, "Coeficiente do chumbador", "Coeficiente do chumbador no concreto (0 = tabela Walsywa):", Num.Fmt(edit.CoefChumbador, 1)); double v; if (resp != null && Num.Ler(resp, out v) && v >= 0) { edit.CoefChumbador = v; Recalcular(); } },
@@ -710,14 +722,18 @@ namespace NovoFtool
             }
             else
             {
-                var cbRosca = new CheckBox { Content = Tx("Rosca no plano de corte", 12, TemaPlant.BTexto1), IsChecked = edit.RoscaNoCorte, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center };
-                cbRosca.Checked += (s, e) => { edit.RoscaNoCorte = true; Recalcular(); };
-                cbRosca.Unchecked += (s, e) => { edit.RoscaNoCorte = false; Recalcular(); };
-                Dica(cbRosca, "Marcado = o plano de cisalhamento passa pela rosca (área resistente menor).");
-                sp.Children.Add(Linha("Corte", cbRosca, 0));
+                sp.Children.Add(Linha("Corte", Marca("Rosca no plano de corte", edit.RoscaNoCorte, v => { edit.RoscaNoCorte = v; Recalcular(); }, "Marcado = o plano de cisalhamento passa pela rosca (NBR 8800 6.3.3.2: 0,4·Ab·fub)."), 0));
+                sp.Children.Add(Linha("Concreto", Marca("Não fissurado (ψc = 1,25)", edit.NaoFissurado, v => { edit.NaoFissurado = v; Recalcular(); }, "ACI 318-19 17.6.2.5: concreto não fissurado sob cargas de serviço. Desmarcado = fissurado (lado seguro)."), 6));
             }
-            sp.Children.Add(TituloSecao("Cálculo", null, 10));
-            sp.Children.Add(TabelaCompacta(CalcFix(r)));
+            sp.Children.Add(Linha("Arruela", Marca("Arruela soldada (todos ao corte)", edit.ArruelaSoldada, v => { edit.ArruelaSoldada = v; Recalcular(); },
+                "Com furo alargado só 2 chumbadores trabalham ao corte (DG1). Arruela soldada à placa faz todos trabalharem."), 8));
+            sp.Children.Add(Linha("Barra cis.", Horiz(CaixaNum(Num.Fmt(edit.LugB, 0), "mm", 74, v => { edit.LugB = v; Recalcular(); }, "Largura b da barra de cisalhamento. 0 = sem barra.", v => v >= 0, "b"), Gap(4),
+                CaixaNum(Num.Fmt(edit.LugT, 0), "mm", 66, v => { edit.LugT = v; Recalcular(); }, "Espessura t da barra.", v => v >= 0, "t"), Gap(4),
+                CaixaNum(Num.Fmt(edit.LugH, 0), "mm", 74, v => { edit.LugH = v; Recalcular(); }, "Altura h embutida no concreto.", v => v >= 0, "h")), 6,
+                "Barra de cisalhamento (shear lug): o corte vai por atrito (10% de Nd), depois pela barra, depois pelos chumbadores. Verifica pressão no concreto e flexão; cone ACI 349 e solda da barra não."));
+            sp.Children.Add(Linha("Graute", CaixaNum(Num.Fmt(edit.Graute, 0), "mm", 78, v => { edit.Graute = v; Recalcular(); }, "Espessura do graute (braço da flexão da barra).", v => v >= 0), 6));
+            sp.Children.Add(TituloSecao("Cálculo (motor, " + nb.Comb + ")", null, 10));
+            sp.Children.Add(TabelaCompacta(CalcNbr("fixacao")));
             return sp;
         }
 
@@ -751,19 +767,16 @@ namespace NovoFtool
             Chumbador atual = Chumbadores.Achar(edit.Chumbador);
             int tipoAt = atual == null ? 2 : atual.Quimico ? 1 : 0;
             if (tipo == tipoAt) return;
-            if (tipo == 2) { edit.Chumbador = null; Recalcular(); return; }
+            if (tipo == 2) { edit.Chumbador = null; msgDim = "Tipo trocado para pré-concretado."; Recalcular(); return; }
             bool quim = tipo == 1;
             var lista = Chumbadores.Lista.Where(c => c.Quimico == quim).OrderBy(c => c.Rosca).ThenBy(c => c.Hef).ToList();
             if (lista.Count == 0) return;
             double dRef = atual != null ? atual.Rosca : edit.Diametro;
             edit.Chumbador = lista.OrderBy(c => Math.Abs(c.Rosca - dRef)).ThenBy(c => c.Hef).First().Nome;   // base do tipo certo (coeficiente do chumbador)
-            ResPlaca rb = PlacaCalc.Calcular(m, n);
-            if (rb.TemEsforcos)
-            {
-                var ok = lista.FirstOrDefault(c => PlacaCalc.CandidatoChumbador(rb, edit, m, c).ChOk);
-                if (ok != null) edit.Chumbador = ok.Nome;
-            }
-            msgDim = "Tipo trocado para " + (quim ? "químico" : "mecânico") + ": " + NomeCurtoCh(Chumbadores.Achar(edit.Chumbador)) + ".";
+            var res = Variantes(lista.Select(c => { var p = edit.Copiar(); p.Chumbador = c.Nome; return p; }).ToList());
+            int i = res.FindIndex(x => x.FixOk);
+            if (i >= 0) edit.Chumbador = lista[i].Nome;
+            msgDim = "Tipo trocado para " + (quim ? "químico" : "mecânico") + ": " + NomeCurtoCh(Chumbadores.Achar(edit.Chumbador)) + (i >= 0 ? " (menor que passa no motor)." : " (nenhum do tipo passa).");
             Recalcular();
         }
 
@@ -778,7 +791,7 @@ namespace NovoFtool
             Recalcular();   // "Usar este chumbador" grava direto na placa em edição
         }
 
-        // ② Chapa
+        // ② Chapa (e o concreto sob ela)
         Border MontarPassoChapa(ResPlaca r)
         {
             var corpo = new StackPanel();
@@ -793,39 +806,42 @@ namespace NovoFtool
                 double v; if (resp != null && Num.Ler(resp, out v) && v > 0) { edit.Esp = v; Recalcular(); }
             }, "Espessuras comerciais. Clique no valor para digitar outra.");
             double massa = r.H * r.B * edit.Esp * 7850e-9;
-            var need = Tx(r.EspNec > 0 ? "necessária " + Num.Fmt(r.EspNec, 1) + " mm · " + Num.Fmt(massa, 1) + " kg" : "sem flexão · " + Num.Fmt(massa, 1) + " kg", 11.5, ChapaOk(r) ? TemaPlant.BTexto2 : TemaPlant.BErro);
+            bool espOk = r.EspNec <= edit.Esp + 1e-9;
+            var need = Tx(r.EspNec > 0 ? "CBCA " + Num.Fmt(r.EspNec, 1) + " mm · " + Num.Fmt(massa, 1) + " kg" : "sem flexão · " + Num.Fmt(massa, 1) + " kg", 11.5, espOk ? TemaPlant.BTexto2 : TemaPlant.BErro);
             need.HorizontalAlignment = HorizontalAlignment.Right;
+            Dica(need, "Espessura necessária pelo CBCA (1,25·W, pressão atuante), a maior entre as combinações. Conferência Pfeil/DG1 (plástico, 0,85·fck/γc): " + Num.Fmt(nb.TPfeil, 1) + " mm (" + nb.Governa + " dá a mais grossa; a verificação usa o CBCA).");
             var dpEsp = new DockPanel();
             DockPanel.SetDock(need, Dock.Right); dpEsp.Children.Add(need); dpEsp.Children.Add(st);
             corpo.Children.Add(Linha("Espessura", dpEsp, 0));
             corpo.Children.Add(Linha("", Regua(PlacaCalc.Chapas.Length, i =>
             {
                 double t = PlacaCalc.Chapas[i];
-                return (FmtEsp(t), t >= r.EspNec - 1e-9, Math.Abs(t - edit.Esp) < 1e-4, FmtEsp(t) + " mm · segurança " + SegChapa(r, t), () => { edit.Esp = t; Recalcular(); });
+                return (FmtEsp(t), t >= r.EspNec - 1e-9, Math.Abs(t - edit.Esp) < 1e-4, FmtEsp(t) + " mm · " + SegChapa(r, t), () => { edit.Esp = t; Recalcular(); });
             }), 4));
 
             // tamanho H × B + Ajustar
             var bH = CaixaNum(Num.Fmt(r.H, 0), "mm", 78, v => { if (edit.PeloPerfil) { edit.PeloPerfil = false; edit.B = r.B; } edit.H = v; Recalcular(); },
-                "Comprimento no plano do pórtico (H). Digitar desliga o \"medir pelo perfil\".", v => v > 0);
+                "Comprimento no plano do eixo forte do pilar (H). Digitar desliga o \"medir pelo perfil\".", v => v > 0);
             var bB = CaixaNum(Num.Fmt(r.B, 0), "mm", 78, v => { if (edit.PeloPerfil) { edit.PeloPerfil = false; edit.H = r.H; } edit.B = v; Recalcular(); },
-                "Largura fora do plano (B). Digitar desliga o \"medir pelo perfil\".", v => v > 0);
+                "Largura (B). Digitar desliga o \"medir pelo perfil\".", v => v > 0);
             var btAj = Botao("Ajustar tamanho", null, () => { AjustarTamanho(); Recalcular(); }, TextoRegrasTamanho());
             var dpTam = new DockPanel();
             DockPanel.SetDock(btAj, Dock.Right); dpTam.Children.Add(btAj);
             dpTam.Children.Add(Horiz(bH, Tx("  ×  ", 12, TemaPlant.BTexto2), bB));
             corpo.Children.Add(Linha("Tamanho", dpTam, 6, "H × B da chapa. Também dá para clicar nas cotas azuis do desenho."));
 
-            // aço + coeficiente da placa (e do parafuso / aço da barra) na mesma linha
             var bFy = CaixaNum(Num.Fmt(r.FyChapa, 0), "MPa", 96, v => { edit.FyChapa = v; Recalcular(); }, "Tensão de escoamento do aço da chapa (A36 = 250 MPa).", v => v > 0 && v < 2000, "fy");
-            bool modoCh = !string.IsNullOrEmpty(edit.Chumbador);
-            var stN = Stepper(edit.Seguranca > 0 ? "n = " + Num.Fmt(edit.Seguranca, 2) : "n auto " + Num.Fmt(m.Seguranca, 2),
-                PassoValor(ValoresN, edit.Seguranca, -1, v => edit.Seguranca = v), PassoValor(ValoresN, edit.Seguranca, +1, v => edit.Seguranca = v), 92,
-                () => { string resp = Pergunta.Mostrar(this, "Coeficiente da placa", "Coeficiente da chapa" + (modoCh ? " e do aço da barra" : " e do parafuso") + " (0 = o do modelo):", Num.Fmt(edit.Seguranca, 2)); double v; if (resp != null && Num.Ler(resp, out v) && v >= 0) { edit.Seguranca = v; Recalcular(); } },
-                "Coeficiente de segurança da chapa" + (modoCh ? " e do aço da barra roscada (químico)" : " e do parafuso (Sp / √(σ² + 3τ²))") + ". Origem: " + (edit.Seguranca > 0 ? "digitado nesta placa" : "o do modelo (aba Dimensionamento), n = " + Num.Fmt(m.Seguranca, 2)) + ". Clique no valor para digitar.");
-            var orig = Tx(edit.Seguranca > 0 ? "desta placa" : "do modelo", 11.5, TemaPlant.BTexto3);
-            corpo.Children.Add(Linha("Aço", Horiz(bFy, Gap(10), stN, Gap(8), orig), 6));
+            corpo.Children.Add(Linha("Aço", bFy, 6));
+            var bFck = CaixaNum(Num.Fmt(edit.Fck > 0 ? edit.Fck : 20, 0), "MPa", 90, v => { edit.Fck = v; Recalcular(); },
+                "fck do concreto do bloco: pressão de contato (NBR 8800 6.6.5), modos de concreto do ACI 318 e redução do catálogo √(fck / fck do ensaio).", v => v > 0 && v < 200, "fck");
+            var bBH = CaixaNum(Num.Fmt(edit.BlocoH, 0), "mm", 78, v => { edit.BlocoH = v; Recalcular(); }, "Bloco de concreto na direção H. 0 = não informado: A2 = A1 e bordas infinitas (com aviso).", v => v >= 0);
+            var bBB = CaixaNum(Num.Fmt(edit.BlocoB, 0), "mm", 78, v => { edit.BlocoB = v; Recalcular(); }, "Bloco de concreto na direção B. 0 = não informado.", v => v >= 0);
+            corpo.Children.Add(Linha("Concreto", Horiz(bFck, Gap(8), Tx("bloco", 12, TemaPlant.BTexto2), Gap(4), bBH, Tx(" × ", 12, TemaPlant.BTexto2), bBB), 6,
+                "Bloco de concreto sob a placa (centrado): A2 homotético para σc,Rd = fck/(γc·γn)·√(A2/A1) e as distâncias às bordas do ACI 318."));
+            var tc = Tx("σc,Rd = " + Num.Fmt(nb.SigmaRd, 2) + " MPa · " + (nb.TemBloco ? "bloco de compressão Y = " + Num.Fmt(nb.Y, 0) + " mm, fp = " + Num.Fmt(nb.Fp, 2) + " MPa" : nb.Modelo.ToLowerInvariant()), 11.5, TemaPlant.BTexto2, null, true);
+            if (r.TemEsforcos) corpo.Children.Add(Linha("", tc, 4));
 
-            return Passo(2, "Chapa", ApChapa(r), ChapaOk(r), r.TemEsforcos, maisCh, () => { maisCh = !maisCh; Recalcular(); }, corpo, () => MaisChapa(r));
+            return Passo(2, "Chapa", nb.Chapa.Taxa, nb.Chapa.Ok, r.TemEsforcos, maisCh, () => { maisCh = !maisCh; Recalcular(); }, corpo, () => MaisChapa(r));
         }
 
         UIElement MaisChapa(ResPlaca r)
@@ -840,11 +856,8 @@ namespace NovoFtool
                 sp.Children.Add(Linha("Sobra", CaixaNum(Num.Fmt(edit.Sobra, 0), "mm", 78, v => { edit.Sobra = v; Recalcular(); }, "Folga da placa além do perfil, em cada lado.", v => v >= 0), 6));
             sp.Children.Add(Linha("Borda", Horiz(CaixaNum(Num.Fmt(edit.Borda, 0), "mm", 78, v => { edit.Borda = v; Recalcular(); }, "Do centro dos furos externos até a borda da chapa.", v => v > 0 && 2 * v < r.H && 2 * v < r.B),
                 Gap(8), Tx("centro do furo até a borda", 11.5, TemaPlant.BTexto3)), 6));
-            var cbPivo = new CheckBox { Content = Tx("Giro na mesa comprimida do perfil", 12, TemaPlant.BTexto1), IsChecked = edit.PivoNaMesa, Cursor = Cursors.Hand, Margin = new Thickness(0, 8, 0, 0) };
-            cbPivo.Checked += (s, e) => { edit.PivoNaMesa = true; Recalcular(); };
-            cbPivo.Unchecked += (s, e) => { edit.PivoNaMesa = false; Recalcular(); };
-            Dica(cbPivo, "Marcado = a placa gira na mesa comprimida do perfil; desmarcado = na borda comprimida da placa.");
-            sp.Children.Add(cbPivo);
+            sp.Children.Add(Linha("Altura bloco", Horiz(CaixaNum(Num.Fmt(edit.BlocoAltura, 0), "mm", 78, v => { edit.BlocoAltura = v; Recalcular(); }, "Altura do bloco de concreto (ψh,V do ACI 318 17.7.2.6). 0 = não informada.", v => v >= 0),
+                Gap(8), Tx("0 = não informada", 11, TemaPlant.BTexto3)), 6));
             if (!string.IsNullOrEmpty(edit.Chumbador))
             {
                 var cbCone = new CheckBox { Content = Tx("Ajustar tamanho sem sobrepor cones (3·hef)", 12, TemaPlant.BTexto1), IsChecked = semSobreporCones, Cursor = Cursors.Hand, Margin = new Thickness(0, 8, 0, 0) };
@@ -852,8 +865,8 @@ namespace NovoFtool
                 Dica(cbCone, "Marcado: \"Ajustar tamanho\" usa espaçamento ≥ 3·hef entre chumbadores, para o catálogo valer sem redução por cones sobrepostos (placa maior). Desmarcado: usa o mínimo para instalar e aplica a redução ψ.");
                 sp.Children.Add(cbCone);
             }
-            sp.Children.Add(TituloSecao("Cálculo", null, 10));
-            sp.Children.Add(TabelaCompacta(CalcChapa(r)));
+            sp.Children.Add(TituloSecao("Cálculo (motor, " + nb.Comb + ")", null, 10));
+            sp.Children.Add(TabelaCompacta(CalcNbr("chapa")));
             return sp;
         }
 
@@ -922,7 +935,7 @@ namespace NovoFtool
                 ti.Margin = new Thickness(0, 6, 0, 0);
                 corpo.Children.Add(ti);
             }
-            return Passo(3, "Solda pilar–placa", sd != null ? sd.Ap : 0, sdOk, sd != null, maisSd, () => { maisSd = !maisSd; Recalcular(); }, corpo, () => TabelaCompacta(CalcSolda(sd)));
+            return Passo(3, "Solda pilar–placa", nb.Solda.Taxa, nb.Solda.Ok, r.TemEsforcos, maisSd, () => { maisSd = !maisSd; Recalcular(); }, corpo, () => TabelaCompacta(CalcSolda(sd)));
         }
 
         // "Comparado ao que estava" (linha discreta no fim da coluna)
@@ -949,6 +962,45 @@ namespace NovoFtool
             colDir.Children.Add(tb);
         }
 
+        // "Comparar com método legado" (recolhido): o Nucleo.cs com pivô na borda e coeficiente n global, só para conferir a planilha.
+        void MontarLegado()
+        {
+            var sp = new StackPanel();
+            var lk = Link(verLegado ? "Comparar com método legado ▴" : "Comparar com método legado ▾", () => { verLegado = !verLegado; Recalcular(); },
+                "Método antigo do Estructto (Nucleo.cs): pivô na borda, sem bloco de compressão, coeficiente n global. Subestima a tração nos chumbadores (até ~3,3×). Só para comparar com a planilha.", 11.5);
+            lk.Foreground = TemaPlant.BTexto3;
+            sp.Children.Add(lk);
+            if (verLegado)
+            {
+                var l = new List<(string, string, string, int)>();
+                if (leg == null || !leg.TemEsforcos) l.Add(("Legado", "", leg?.Erro ?? "—", 0));
+                else
+                {
+                    l.Add(("Combinação (legado)", "pior pelo critério do legado", CombLegado ?? "—", 0));
+                    l.Add(("Esforços", "N, V, M no pé (eixo forte)", "N = " + Num.Fmt(leg.N, 2) + " · V = " + Num.Fmt(leg.V, 2) + " · M = " + Num.Fmt(leg.M, 2), 0));
+                    l.Add(("Tração máx. · legado × NBR", "pivô na borda × bloco de compressão", Num.Fmt(leg.Tmax, 2) + " × " + Num.Fmt(nb.Tmax, 2) + " kN", 0));
+                    l.Add(("Corte por fixação · legado × NBR", "V/n × atrito/barra/n_ef", Num.Fmt(leg.Fv, 2) + " × " + Num.Fmt(nb.Fv, 2) + " kN", 0));
+                    l.Add(("Segurança (legado)", "n obtido ≥ n exigido", FmtN(leg.NComb) + " ≥ " + Num.Fmt(leg.Ch != null ? leg.NRef : leg.NExig, 2), leg.ChOk ? 1 : -1));
+                    l.Add(("Chapa · legado × CBCA", "faixas elásticas com n × NBR", Num.Fmt(leg.EspNec, 1) + " × " + Num.Fmt(nb.TNec, 1) + " mm", 0));
+                    l.Add(("Coeficiente n (legado)", edit.Seguranca > 0 ? "desta placa" : "do modelo", Num.Fmt(leg.NSeg, 2), 0));
+                }
+                var bd = new Border { Background = TemaPlant.BSup1, CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 4, 6, 6), Margin = new Thickness(0, 4, 0, 0) };
+                var c = new StackPanel();
+                c.Children.Add(Tx("Não usar para projeto: o veredito desta janela é o do motor (NBR).", 11, TemaPlant.BAlerta, FontWeights.SemiBold, true));
+                c.Children.Add(TabelaCompacta(l));
+                var stN = Stepper(edit.Seguranca > 0 ? "n = " + Num.Fmt(edit.Seguranca, 2) : "n auto " + Num.Fmt(m.Seguranca, 2),
+                    PassoValor(ValoresN, edit.Seguranca, -1, v => edit.Seguranca = v), PassoValor(ValoresN, edit.Seguranca, +1, v => edit.Seguranca = v), 92, null,
+                    "Coeficiente global n do método legado (0 = o do modelo). Não entra no método NBR (esforços de cálculo).");
+                var cbPivo = Marca("Giro na mesa", edit.PivoNaMesa, v => { edit.PivoNaMesa = v; Recalcular(); }, "Legado: a placa gira na mesa comprimida do perfil (desmarcado: na borda da placa).");
+                c.Children.Add(Linha("Legado", Horiz(stN, Gap(10), cbPivo), 6));
+                bd.Child = c;
+                sp.Children.Add(bd);
+            }
+            sp.Margin = new Thickness(2, 4, 2, 6);
+            if (verLegado) sp.Loaded += (s, e) => sp.BringIntoView();
+            colDir.Children.Add(sp);
+        }
+
         // ---------- 4) rodapé ----------
         void MontarRodape(ResPlaca r)
         {
@@ -956,8 +1008,11 @@ namespace NovoFtool
             var dir = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             if (original != null) dir.Children.Add(B("Remover placa", () => { n.Placa = null; Mudou = true; Close(); }, false, "Tira a placa de base deste nó."));
             dir.Children.Add(B("Cancelar", () => { n.Placa = original; Close(); }, false, "Fecha sem mudar nada (Esc)."));
-            var btAp = B(marcados.Count > 0 ? "Aplicar em " + (marcados.Count + 1) + " nós" : "Aplicar", () => { AplicarEm.Clear(); AplicarEm.AddRange(Candidatos.Where(x => marcados.Contains(x.Id))); Mudou = true; Close(); }, true,
-                "Grava esta placa no nó " + n.Id + (marcados.Count > 0 ? " e em " + string.Join(", ", Candidatos.Where(c => marcados.Contains(c.Id)).Select(c => "nó " + c.Id)) : "") + ".");
+            int nOutros = marcados.Count;
+            string rotAp = AplicarNoGrupo && Grupo != null ? "Aplicar ao grupo" + (nOutros > 0 ? " + " + nOutros : "") : nOutros > 0 ? "Aplicar em " + (nOutros + 1) + " nós" : "Aplicar";
+            var btAp = B(rotAp, () => { AplicarEm.Clear(); AplicarEm.AddRange(marcados.Select(i => Outros[i].No)); Mudou = true; Close(); }, true,
+                "Grava esta placa como projeto do grupo de ligações " + (AplicarNoGrupo && Grupo != null ? Grupo.Value.Nome + " (" + Grupo.Value.Nos.Count + " bases)" : "deste nó") +
+                (nOutros > 0 ? " e nos nós " + string.Join(", ", marcados.Select(i => Outros[i].No)) : "") + ".");
             btAp.IsDefault = false;
             dir.Children.Add(btAp);
             foreach (Button b in dir.Children.OfType<Button>()) { b.Height = 28; b.MinWidth = 92; }
@@ -966,20 +1021,20 @@ namespace NovoFtool
 
             var esq = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             esq.Children.Add(Botao("Dimensionar tudo", "dimens", () => { Dimensionar(); Recalcular(); },
-                "Escolhe sozinho a menor fixação, a chapa e a solda que passam neste nó, segundo a preferência ao lado.", 28));
+                "O motor escolhe a menor fixação que passa em todas as combinações (e nos dois eixos), a chapa comercial ≥ t do CBCA e a perna da solda.", 28));
             esq.Children.Add(Gap(8));
             esq.Children.Add(Segmentado(new List<(string, bool, Action, string)>
             {
                 ("Mais leve", !prefFuroMenor, () => { prefFuroMenor = false; Recalcular(); }, "Ao dimensionar e sugerir, prefere a menor fixação e a chapa mais fina que passam."),
                 ("Furo menor", prefFuroMenor, () => { prefFuroMenor = true; Recalcular(); }, "Ao dimensionar e sugerir, prefere o menor furo no concreto (broca menor).")
             }, 28));
-            if (AvaliarEm != null && Candidatos.Count > 0)
+            if (Api != null && (Outros.Count > 0 || Grupo != null))
             {
                 esq.Children.Add(Gap(16));
                 esq.Children.Add(new Border { Width = 1, Height = 22, Background = TemaPlant.BBordaSutil });
                 esq.Children.Add(Gap(16));
-                esq.Children.Add(Botao("Aplicar também em…" + (marcados.Count > 0 ? " (" + marcados.Count + ")" : ""), "copiar", MostrarAplicarEm,
-                    "Outros pés de pilar que podem receber a mesma placa, com o pior caso de cada um; dimensionar pelo pior caso.", 28));
+                esq.Children.Add(Botao("Aplicar também em…" + (marcados.Count > 0 ? " (" + marcados.Count + ")" : AplicarNoGrupo ? " (grupo)" : ""), "copiar", MostrarAplicarEm,
+                    "Outros pés de pilar selecionados e o grupo de ligações das bases, cada um verificado pelo motor na sua pior combinação.", 28));
             }
             DockPanel.SetDock(esq, Dock.Left);
             rodape.Children.Add(esq);
@@ -994,7 +1049,7 @@ namespace NovoFtool
         void MostrarSugerir()
         {
             FecharFlutuantes();
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            ResPlaca r = Vista(leg, nb);
             var ops = MelhoresOpcoes(r);
             var sp = new StackPanel();
             var cab = new DockPanel { Margin = new Thickness(0, 0, 0, 2) };
@@ -1002,7 +1057,7 @@ namespace NovoFtool
             DockPanel.SetDock(fx, Dock.Right); cab.Children.Add(fx);
             cab.Children.Add(Tx("Sugestões que passam", 13.5, TemaPlant.BTexto1, FontWeights.SemiBold));
             sp.Children.Add(cab);
-            sp.Children.Add(Tx("Preferência: " + (prefFuroMenor ? "furo menor" : "mais leve") + " · com os coeficientes e condições atuais", 11, TemaPlant.BTexto3));
+            sp.Children.Add(Tx("Preferência: " + (prefFuroMenor ? "furo menor" : "mais leve") + " · motor, pior combinação, com as condições atuais", 11, TemaPlant.BTexto3));
             if (ops.Count == 0)
             {
                 var t = Tx(r.TemEsforcos ? "Nenhuma combinação do catálogo passa. Aumente a placa (Ajustar tamanho) ou a quantidade." : "Sem esforços: calcule a estrutura.", 12, TemaPlant.BAlerta, null, true);
@@ -1074,7 +1129,7 @@ namespace NovoFtool
             DockPanel.SetDock(fx, Dock.Right); lt.Children.Add(fx);
             lt.Children.Add(Tx("Aplicar esta placa também em…", 15, TemaPlant.BTexto1, FontWeights.SemiBold));
             cab.Children.Add(lt);
-            var sub = Tx("Cada nó é avaliado com ESTA placa na sua pior combinação de cargas. Marque os nós que devem receber a mesma placa ao clicar em Aplicar.", 11.5, TemaPlant.BTexto2, null, true);
+            var sub = Tx("O motor verifica ESTA placa em cada base, na pior combinação ELU e nos dois eixos. Marque o grupo de ligações e/ou os outros pés selecionados que devem receber a mesma placa.", 11.5, TemaPlant.BTexto2, null, true);
             sub.Margin = new Thickness(0, 4, 0, 0);
             cab.Children.Add(sub);
             DockPanel.SetDock(cab, Dock.Top);
@@ -1099,87 +1154,93 @@ namespace NovoFtool
             overlayAplicarEm.Visibility = Visibility.Visible;
         }
 
-        static bool PassaEm(ResPlaca t, PlacaBase pl) { return t.TemEsforcos ? t.Erro == "" && t.ChOk && t.EspNec <= pl.Esp + 1e-9 : t.Erro.StartsWith("Sem esforços"); }
-        static double NotaEm(ResPlaca t, PlacaBase pl) { return !t.TemEsforcos ? 0 : Math.Max(t.ApFix, pl.Esp > 0 ? t.EspNec / pl.Esp : 0); }
-
         void PreencherAplicarEm()
         {
             listaAplicarEm.Children.Clear();
-            if (AvaliarEm == null || Candidatos.Count == 0) { listaAplicarEm.Children.Add(Tx("Não há outros pés de pilar onde esta placa caiba.", 12, TemaPlant.BTexto2)); return; }
-            ResPlaca r = PlacaCalc.Calcular(m, n);
-            var todos = new List<(No no, double nota, bool passa)> { (n, NotaEm(r, edit), PassaEm(r, edit)) };
-            todos.AddRange(Candidatos.Select(no => { var t = AvaliarEm(no, edit.Copiar()); return (no, NotaEm(t, edit), PassaEm(t, edit)); }));
-            var pior = todos.OrderByDescending(x => x.nota).First();
+            if (Api == null || (Outros.Count == 0 && Grupo == null)) { listaAplicarEm.Children.Add(Tx("Selecione outros pés de pilar na vista 3D (ou identifique os grupos de ligações) para aplicar a mesma placa.", 12, TemaPlant.BTexto2, null, true)); return; }
+            // uma chamada: este pé, os outros selecionados e o grupo; o motor devolve o pior de cada membro
+            var todos = new JsonArray(Membros.Select(x => x.DeepClone()).ToArray());
+            foreach (var o in Outros) todos.Add(o.Membro.DeepClone());
+            JsonNode res = null;
+            try { res = Chamar("/api/placa_base/verificar", Corpo(edit, todos)); } catch (Exception ex) { listaAplicarEm.Children.Add(Tx("Motor: " + PlacaMotor.Mensagem(ex), 12, TemaPlant.BErro, null, true)); return; }
+            var porNo = Lista(res["membros"]).ToDictionary(x => S(x, "no"), x => (Taxa: D(x, "taxa"), Ok: Bool(x, "ok"), Comb: S(x, "combinacao")));
+            (double Taxa, bool Ok, string Comb) De(string no) => porNo.TryGetValue(no, out var v) ? v : (double.NaN, false, "");
 
-            var tit = Tx("Pior caso: nó " + pior.no.Id + (pior.no == n ? " (este)" : "") + " — usa " + Pct(pior.nota) + (pior.passa ? "" : ", não passa"), 12.5, pior.passa ? TemaPlant.BTexto1 : TemaPlant.BErro, FontWeights.SemiBold);
-            tit.Margin = new Thickness(0, 2, 0, 8);
-            listaAplicarEm.Children.Add(tit);
-            foreach (var x in todos)
+            void LinhaNo(FrameworkElement esq, string no, bool pior)
             {
-                var no = x.no;
-                var g = new Grid { Margin = new Thickness(0, 0, 0, 0), MinHeight = 32 };
+                var x = De(no);
+                var g = new Grid { MinHeight = 32 };
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
-                string rot = "Nó " + no.Id + (no == n ? " (este)" : no.Placa != null ? " · já tem placa" : " · sem placa");
-                FrameworkElement esq;
-                if (no == n) { esq = Tx("      " + rot, 12, TemaPlant.BTexto1); }
-                else
-                {
-                    var cb = new CheckBox { Content = Tx(rot, 12, TemaPlant.BTexto1), IsChecked = marcados.Contains(no.Id), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center };
-                    cb.Checked += (s, e) => { marcados.Add(no.Id); Recalcular(); };
-                    cb.Unchecked += (s, e) => { marcados.Remove(no.Id); Recalcular(); };
-                    Dica(cb, "Marque para copiar esta placa para o nó " + no.Id + " ao clicar em Aplicar" + (no.Placa != null ? " (substitui a placa que ele tem)." : "."));
-                    esq = cb;
-                }
                 g.Children.Add(esq);
-                var bar = BarraCap(x.nota, x.passa, 6); bar.Margin = new Thickness(0, 0, 10, 0); Grid.SetColumn(bar, 1); g.Children.Add(bar);
-                var pc = Tx(Pct(x.nota), 12, Cores(NivelAp(x.nota, x.passa)).fg, FontWeights.SemiBold); pc.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(pc, 2); g.Children.Add(pc);
-                if (no == pior.no) { var tg = Chip("pior caso", x.passa ? Nivel.Alerta : Nivel.Erro, null, null, 10.5); tg.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(tg, 3); g.Children.Add(tg); }
-                else if (!x.passa) { var tg = Chip("não passa", Nivel.Erro, null, null, 10.5); tg.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(tg, 3); g.Children.Add(tg); }
+                var bar = BarraCap(x.Taxa, x.Ok, 6); bar.Margin = new Thickness(0, 0, 10, 0); Grid.SetColumn(bar, 1); g.Children.Add(bar);
+                var pc = Tx(Pct(x.Taxa), 12, Cores(NivelAp(x.Taxa, x.Ok)).fg, FontWeights.SemiBold); pc.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(pc, 2); g.Children.Add(pc);
+                Dica(g, "Nó " + no + ": pior combinação " + x.Comb + ".");
+                if (pior || !x.Ok) { var tg = Chip(pior ? "pior caso" : "não passa", x.Ok ? Nivel.Alerta : Nivel.Erro, null, null, 10.5); tg.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(tg, 3); g.Children.Add(tg); }
                 listaAplicarEm.Children.Add(new Border { BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Child = g });
             }
-            var bts = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 6) };
-            bool todosMarc = Candidatos.All(c => marcados.Contains(c.Id));
-            bts.Children.Add(Botao(todosMarc ? "Desmarcar todos" : "Marcar todos", null, () => { if (todosMarc) marcados.Clear(); else foreach (No c in Candidatos) marcados.Add(c.Id); Recalcular(); }, "Marca ou desmarca todos os nós de apoio onde cabe uma placa."));
-            bts.Children.Add(Gap(8));
-            bts.Children.Add(Botao("Dimensionar pelo pior caso", "dimens", () => { DimensionarGrupo(); Recalcular(); },
-                marcados.Count > 0 ? "Escolhe a menor fixação e chapa que passam neste nó E nos marcados, cada um na sua pior combinação." : "Escolhe a menor fixação e chapa que passam em TODOS os nós da lista, cada um na sua pior combinação."));
-            listaAplicarEm.Children.Add(bts);
-            lblAplicarEm.Text = marcados.Count > 0 ? "Ao aplicar, a placa vai também para: " + string.Join(", ", Candidatos.Where(c => marcados.Contains(c.Id)).Select(c => "nó " + c.Id)) + "." : (msgDim.StartsWith("Dimensionado pelo pior") ? msgDim : "Nenhum outro nó marcado.");
-        }
-
-        // Menor fixação (na preferência ativa) que passa em todos os nós do grupo; chapa pela maior espessura necessária
-        void DimensionarGrupo()
-        {
-            if (AvaliarEm == null) { Dimensionar(); return; }
-            var grupo = new List<No> { n };
-            grupo.AddRange(marcados.Count > 0 ? Candidatos.Where(c => marcados.Contains(c.Id)) : Candidatos);
-            Func<PlacaBase, bool> fixOk = pl => grupo.All(no => { var t = AvaliarEm(no, pl); return t.TemEsforcos ? t.Erro == "" && t.ChOk : t.Erro.StartsWith("Sem esforços"); });
-            PlacaBase achou = null;
-            if (!string.IsNullOrEmpty(edit.Chumbador))
+            string este = S(Membros[0], "no");
+            string piorNo = porNo.OrderByDescending(kv => double.IsNaN(kv.Value.Taxa) ? double.MaxValue : kv.Value.Taxa).Select(kv => kv.Key).FirstOrDefault();
+            var tit = Tx("Pior caso: nó " + piorNo + " — usa " + Pct(De(piorNo).Taxa) + (De(piorNo).Ok ? "" : ", não passa"), 12.5, De(piorNo).Ok ? TemaPlant.BTexto1 : TemaPlant.BErro, FontWeights.SemiBold);
+            tit.Margin = new Thickness(0, 2, 0, 8);
+            listaAplicarEm.Children.Add(tit);
+            if (Grupo is var (gid, gnome, gnos))
             {
-                var cands = (prefFuroMenor ? Chumbadores.Lista.OrderBy(c => c.Furo).ThenBy(c => c.Rosca) : Chumbadores.Lista.OrderBy(c => c.Rosca)).ThenBy(c => c.Hef).ToList();
-                foreach (int[] arr in new[] { new[] { 2, 2 }, new[] { 2, 3 }, new[] { 3, 3 } })
+                var cbG = Marca("Grupo de ligações " + gnome + " (" + Pl.N(gnos.Count, "base", "bases") + ")", AplicarNoGrupo, v => { AplicarNoGrupo = v; Recalcular(); },
+                    "O projeto da placa vale para o grupo inteiro (fonte única: grupos de ligações do modelo). Desmarcado: este nó sai do grupo e fica com a sua placa.");
+                cbG.Margin = new Thickness(0, 4, 0, 4);
+                listaAplicarEm.Children.Add(cbG);
+                if (AplicarNoGrupo)
                 {
-                    foreach (Chumbador c in cands) { var pl = edit.Copiar(); pl.Chumbador = c.Nome; pl.Fileiras = arr[0]; pl.PorFileira = arr[1]; if (fixOk(pl)) { achou = pl; break; } }
-                    if (achou != null) break;
+                    var gm = new JsonArray(gnos.Select(no => (JsonNode)new JsonObject { ["no"] = no }).ToArray());
+                    var vg = Grupo.Value.Nos.Count > 1 ? VerificarGrupo() : null;
+                    if (vg != null) listaAplicarEm.Children.Add(Tx("Grupo inteiro: pior " + Pct(vg.Taxa) + (vg.Ok ? "" : " — não passa") + " (" + vg.Comb + " · " + vg.Barra + ")", 11.5, vg.Ok ? TemaPlant.BTexto2 : TemaPlant.BErro, null, true));
                 }
             }
-            else
+            LinhaNo(Tx("      Nó " + este + " (este)", 12, TemaPlant.BTexto1), este, piorNo == este);
+            for (int i = 0; i < Outros.Count; i++)
             {
-                for (int id = 0; id < Parafusos.D.Length && achou == null; id++)
-                    for (int ic = 0; ic < Parafusos.Classes.Length; ic++) { var pl = edit.Copiar(); pl.Diametro = Parafusos.D[id]; pl.Classe = Parafusos.Classes[ic]; if (fixOk(pl)) { achou = pl; break; } }
+                int k = i; var o = Outros[i];
+                var cb = Marca("Nó " + o.No + (o.TemPlaca ? " · já tem placa" : " · sem placa"), marcados.Contains(k), v => { if (v) marcados.Add(k); else marcados.Remove(k); Recalcular(); },
+                    "Marque para gravar esta placa também no nó " + o.No + " ao clicar em Aplicar" + (o.TemPlaca ? " (substitui a placa que ele tem)." : "."));
+                LinhaNo(cb, o.No, piorNo == o.No);
             }
-            if (achou == null) { msgDim = "Nenhuma fixação do catálogo passa em todos os nós escolhidos."; return; }
-            double espNec = grupo.Max(no => { var t = AvaliarEm(no, achou); return t.TemEsforcos ? t.EspNec : 0; });
-            double ch = PlacaCalc.Chapas.FirstOrDefault(e => e >= espNec - 1e-9);
-            achou.Esp = ch > 0 ? ch : PlacaCalc.Chapas.Last();
-            edit.Chumbador = achou.Chumbador; edit.Diametro = achou.Diametro; edit.Classe = achou.Classe; edit.Fileiras = achou.Fileiras; edit.PorFileira = achou.PorFileira; edit.Esp = achou.Esp;
-            var r = PlacaCalc.Calcular(m, n);
-            if (r.Sec != null) { double h = Solda.Minima(r.Sec, r.Deitado, r.NBarra, r.VBarra, r.MBarra, edit.Eletrodo, edit.Esp); edit.Solda = h > 0 ? h : 25; }
-            msgDim = "Dimensionado pelo pior caso entre os nós " + string.Join(", ", grupo.Select(g => g.Id)) + ".";
+            var bts = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 6) };
+            if (Outros.Count > 0)
+            {
+                bool todosMarc = Enumerable.Range(0, Outros.Count).All(marcados.Contains);
+                bts.Children.Add(Botao(todosMarc ? "Desmarcar todos" : "Marcar todos", null, () => { if (todosMarc) marcados.Clear(); else for (int i = 0; i < Outros.Count; i++) marcados.Add(i); Recalcular(); }, "Marca ou desmarca os outros pés selecionados."));
+                bts.Children.Add(Gap(8));
+            }
+            bts.Children.Add(Botao("Dimensionar pelo pior caso", "dimens", () => { Dimensionar(MembrosAplicar()); Recalcular(); },
+                "O motor escolhe a menor fixação e a chapa que passam neste nó, nos marcados" + (AplicarNoGrupo ? " e no grupo" : "") + ", cada um em todas as combinações."));
+            listaAplicarEm.Children.Add(bts);
+            lblAplicarEm.Text = (AplicarNoGrupo && Grupo != null ? "Ao aplicar, a placa vai para o grupo " + Grupo.Value.Nome : "Ao aplicar, a placa vai só para este nó") +
+                                (marcados.Count > 0 ? " e para " + string.Join(", ", marcados.Select(i => "nó " + Outros[i].No)) : "") + ".";
+        }
+
+        // Membros que recebem a placa: este, os marcados e (se marcado) o grupo inteiro; sem repetir.
+        JsonArray MembrosAplicar()
+        {
+            var l = new JsonArray(Membros.Select(x => x.DeepClone()).ToArray());
+            foreach (int i in marcados) l.Add(Outros[i].Membro.DeepClone());
+            if (AplicarNoGrupo && GrupoMembros != null) foreach (var x in GrupoMembros) l.Add(x.DeepClone());
+            var vistos = new HashSet<string>();
+            return new JsonArray(l.Where(x => vistos.Add(S(x, "barra") + "/" + S(x, "ponta"))).Select(x => x.DeepClone()).ToArray());
+        }
+        public List<JsonObject> GrupoMembros;   // membros {barra, ponta, no} do grupo (quem abre informa junto com Grupo)
+
+        ResNbr.Passo VerificarGrupo()
+        {
+            if (GrupoMembros == null) return null;
+            try
+            {
+                var r = ResNbr.De(Chamar("/api/placa_base/verificar", Corpo(edit, new JsonArray(GrupoMembros.Select(x => (JsonNode)x.DeepClone()).ToArray()))));
+                return new ResNbr.Passo { Taxa = r.Taxa, Ok = r.Ok, Comb = r.Comb, Barra = r.Barra };
+            }
+            catch { return null; }
         }
 
         // Trocar chumbador: lista agrupada (recomendados, maiores, não servem) com busca e filtro
@@ -1255,18 +1316,20 @@ namespace NovoFtool
             }));
 
             listaTrocar.Children.Clear();
-            ResPlaca r = PlacaCalc.Calcular(m, n);
+            ResPlaca r = Vista(leg, nb);
             string q = (filtroBuscaCh ?? "").Trim().ToLowerInvariant();
-            var todos = Chumbadores.Lista.Where(c =>
+            var filtrados = Chumbadores.Lista.Where(c =>
             {
                 if (filtroTipoCh == 1 && c.Quimico) return false;
                 if (filtroTipoCh == 2 && !c.Quimico) return false;
                 if (q != "" && !(c.Nome.ToLowerInvariant().Contains(q) || c.Fabricante.ToLowerInvariant().Contains(q) || c.Pol.ToLowerInvariant().Contains(q) || c.Codigo.ToLowerInvariant().Contains(q)))
                     return false;
                 return true;
-            }).Select(c => { ResPlaca tc = PlacaCalc.CandidatoChumbador(r, edit, m, c); return new { Ch = c, Res = tc, Ok = tc.ChOk }; }).ToList();
+            }).ToList();
+            var res = Variantes(filtrados.Select(c => { var pl = edit.Copiar(); pl.Chumbador = c.Nome; return pl; }).ToList());
+            var todos = filtrados.Select((c, i) => i < res.Count ? new { Ch = c, Res = res[i], Ok = res[i].FixOk } : new { Ch = c, Res = (false, double.NaN, false, double.NaN, double.NaN, "sem resposta do motor"), Ok = false }).ToList();
 
-            var passam = todos.Where(x => x.Ok).OrderBy(x => x.Ch.Rosca).ThenBy(x => x.Ch.Hef).ThenBy(x => x.Res.ApFix).ToList();
+            var passam = todos.Where(x => x.Ok).OrderBy(x => x.Ch.Rosca).ThenBy(x => x.Ch.Hef).ThenBy(x => x.Res.Item2).ToList();
             var recom = passam.Take(3).ToList();
             var maiores = passam.Skip(3).ToList();
             var naoServem = todos.Where(x => !x.Ok).OrderBy(x => x.Ch.Rosca).ThenBy(x => x.Ch.Hef).ToList();
@@ -1277,7 +1340,7 @@ namespace NovoFtool
                 t.Margin = new Thickness(16, 12, 16, 4);
                 listaTrocar.Children.Add(t);
             }
-            void LinhaCandidato(Chumbador c, ResPlaca tc, bool ok)
+            void LinhaCandidato(Chumbador c, (bool FixOk, double FixTaxa, bool Ok, double Taxa, double TNec, string Criterio) tc, bool ok)
             {
                 bool emUso = r.Ch == c;
                 bool eraAntes = !emUso && !string.IsNullOrEmpty(chumbAntes) && (c.Nome == chumbAntes || c.Codigo == chumbAntes);
@@ -1293,7 +1356,7 @@ namespace NovoFtool
                 }
                 if (emUso) bd.BorderBrush = TemaPlant.BAcento;
                 var dp = new DockPanel();
-                FrameworkElement dir = emUso ? (FrameworkElement)Chip("em uso", Nivel.Info, null, null, 10.5) : Tx(ok ? Pct(tc.ApFix) : "✕", 12, ok ? Cores(NivelAp(tc.ApFix, true)).fg : TemaPlant.BErro, FontWeights.SemiBold);
+                FrameworkElement dir = emUso ? (FrameworkElement)Chip("em uso", Nivel.Info, null, null, 10.5) : Tx(ok ? Pct(tc.FixTaxa) : "✕", 12, ok ? Cores(NivelAp(tc.FixTaxa, true)).fg : TemaPlant.BErro, FontWeights.SemiBold);
                 dir.VerticalAlignment = VerticalAlignment.Center; dir.Margin = new Thickness(12, 0, 0, 0);
                 DockPanel.SetDock(dir, Dock.Right); dp.Children.Add(dir);
                 var diam = Tx(c.Pol, 14, ok ? TemaPlant.BTexto1 : TemaPlant.BTexto3, FontWeights.SemiBold); diam.Width = 50;
@@ -1306,16 +1369,13 @@ namespace NovoFtool
                 meio.Children.Add(lin1);
                 if (!ok)
                 {
-                    string motivo;
-                    if (!tc.EspacOk) motivo = "não cabe: furos a " + Num.Fmt(tc.EspacMin, 0) + " mm < mín. " + Num.Fmt(Chumbadores.EspacMinimo(c), 0) + " mm";
-                    else if (c.Quimico && tc.NAco < tc.NSeg && tc.NComb >= tc.NRef) motivo = "aço da barra: segurança " + Num.Fmt(tc.NAco, 1) + " < " + Num.Fmt(tc.NSeg, 1) + " exigida";
-                    else motivo = "segurança " + FmtN(tc.NComb, 1) + " < " + Num.Fmt(tc.NRef, 1) + " exigida";
+                    string motivo = (tc.Criterio == "" ? "não passa" : tc.Criterio) + (double.IsNaN(tc.FixTaxa) || double.IsInfinity(tc.FixTaxa) ? "" : " · " + Pct(tc.FixTaxa));
                     var tm = Tx(motivo, 11, TemaPlant.BErro); tm.Margin = new Thickness(0, 2, 0, 0);
                     meio.Children.Add(tm);
                 }
                 else
                 {
-                    var br = BarraCap(tc.ApFix, true, 4); br.Margin = new Thickness(0, 5, 0, 0);
+                    var br = BarraCap(tc.FixTaxa, true, 4); br.Margin = new Thickness(0, 5, 0, 0);
                     meio.Children.Add(br);
                 }
                 dp.Children.Add(meio);
@@ -1410,66 +1470,40 @@ namespace NovoFtool
             return g;
         }
 
-        // A espessura necessária já inclui n e a flexão cresce com t², então a segurança real de uma chapa t é n·(t/tnec)²
+        // Aproveitamento da chapa t pela flexão (CBCA): M cresce com t², então usa (t,nec/t)².
         string SegChapa(ResPlaca r, double t)
         {
-            if (r.EspNec <= 0) return "∞";
-            return Num.Fmt(r.NSeg * (t / r.EspNec) * (t / r.EspNec), 2);
+            if (r.EspNec <= 0) return "sem flexão";
+            double a = r.EspNec / t;
+            return "flexão usa " + Pct(a * a);
         }
 
-        // ---------- linhas de cálculo (grandeza, expressão, valor, estado) ----------
-        List<(string, string, string, int)> CalcFix(ResPlaca r)
+        // Valor com a unidade do motor: m → mm, kN/m² → MPa.
+        static string ValMotor(double v, string un)
         {
-            var l = new List<(string, string, string, int)>();
-            if (!r.TemEsforcos) { l.Add(("Sem verificação", "", r.Erro, 0)); return l; }
-            l.Add(("Esforços no pé do pilar", "combinação crítica, eixos da placa", "N = " + Num.Fmt(r.N, 2) + " · V = " + Num.Fmt(r.V, 2) + " kN · M = " + Num.Fmt(r.M, 2) + " kN·m", 0));
-            l.Add(("Tração no mais carregado", "placa rígida: " + (string.IsNullOrEmpty(r.Modelo) ? "" : char.ToLowerInvariant(r.Modelo[0]) + r.Modelo.Substring(1)), Num.Fmt(r.Tmax, 2) + " kN", 0));
-            l.Add(("Corte por fixação", "Fv = V / " + r.Paraf.Count, Num.Fmt(r.Fv, 2) + " kN", 0));
-            if (r.Ch != null)
-            {
-                var c = r.Ch;
-                l.Add(("Carga do catálogo", c.Tu > 0 ? "Tu (ruptura) e Vu, concreto do ensaio fck = " + Num.Fmt(c.Fck, 0) + " MPa" : "Trec e Vrec (recomendadas)",
-                    (c.Tu > 0 ? Num.Fmt(c.TuKN, 2) : Num.Fmt(c.TuRecKN, 2)) + " / " + (c.Tu > 0 ? (c.Vu > 0 ? Num.Fmt(c.VuKN, 2) : "—") : Num.Fmt(c.VuRecKN, 2)) + " kN", 0));
-                l.Add(("Redução pelo concreto ψc", "min(1; √(fck laje / fck ensaio)) = √(" + Num.Fmt(r.FckLaje, 0) + " / " + Num.Fmt(c.Fck, 0) + ")", Num.Fmt(r.FFck, 3), 0));
-                l.Add(("Cones sobrepostos ψ", "área da união dos cones 3·hef / (n · 9·hef²)", Num.Fmt(r.PsiCone, 3), 0));
-                l.Add(("Tração de referência", "Tref = T,cat · ψc · ψ", Num.Fmt(r.Tref, 2) + " kN", 0));
-                l.Add(("Corte de referência", "Vref = V,cat", r.Vref > 0 ? Num.Fmt(r.Vref, 2) + " kN" : "no aço da barra", 0));
-                l.Add(("Coeficiente exigido", c.Tu > 0 ? (edit.CoefChumbador > 0 ? "digitado" : "tabela Walsywa: " + Chumbadores.NomesTipos[r.TipoCarga] + ", " + (r.RiscoAlto ? "alto" : "baixo") + " risco") : "carga recomendada → n = 1", "n = " + Num.Fmt(r.NRef, 1), 0));
-                l.Add(("Segurança no concreto", "n = [(T/Tref)^5/3 + (V/Vref)^5/3]^−3/5", FmtN(r.NComb) + (r.NComb >= r.NRef ? " ≥ " : " < ") + Num.Fmt(r.NRef, 1), r.NComb >= r.NRef ? 1 : -1));
-                if (c.Quimico)
-                    l.Add(("Aço da barra (cl. " + r.ClasseBarra + ")", "Sp / √(σ² + 3τ²) = " + Num.Fmt(r.SpBarra, 0) + " / √(" + Num.Fmt(r.Sigma, 0) + "² + 3·" + Num.Fmt(r.Tau, 0) + "²)", FmtN(r.NAco) + (r.NAco >= r.NSeg ? " ≥ " : " < ") + Num.Fmt(r.NSeg, 1), r.NAco >= r.NSeg ? 1 : -1));
-                l.Add(("Espaçamento entre furos", "s ≥ 6·d = " + Num.Fmt(Chumbadores.EspacMinimo(c), 0) + " mm (sem redução a partir de 3·hef = " + Num.Fmt(c.S > 0 ? c.S : 3 * c.Hef, 0) + " mm)", Num.Fmt(r.EspacMin, 0) + " mm", r.EspacOk ? 1 : -1));
-            }
-            else
-            {
-                l.Add(("Tensão normal", "σ = Tmáx / At", Num.Fmt(r.Sigma, 0) + " MPa", 0));
-                l.Add(("Tensão de corte", "τ = Fv / " + (edit.RoscaNoCorte ? "Ar (rosca)" : "Ad (fuste)"), Num.Fmt(r.Tau, 0) + " MPa", 0));
-                l.Add(("Segurança do parafuso", "n = Sp / √(σ² + 3τ²), Sp = " + Num.Fmt(r.Sp, 0) + " MPa", FmtN(r.NComb) + (r.NComb >= r.NExig ? " ≥ " : " < ") + Num.Fmt(r.NExig, 2), r.NComb >= r.NExig ? 1 : -1));
-                l.Add(("Pré-carga / torque", "Fi = 0,75·At·Sp · T = 0,2·Fi·d", Num.Fmt(r.Fi, 1) + " kN / " + Num.Fmt(r.Torque, 0) + " N·m", 0));
-            }
-            return l;
+            if (double.IsNaN(v)) return "—";
+            if (double.IsInfinity(v)) return "∞";
+            if (un == "m") return Num.Fmt(v * 1000, 1) + " mm";
+            if (un == "kN/m²") return Num.Fmt(v / 1000, 1) + " MPa";
+            return Num.Fmt(v, Math.Abs(v) >= 100 ? 0 : 2) + (string.IsNullOrEmpty(un) ? "" : " " + un);
         }
 
-        List<(string, string, string, int)> CalcChapa(ResPlaca r)
+        // Verificações do motor do passo (combinação que governa a placa): grandeza (item), solicitante / resistente, taxa.
+        List<(string, string, string, int)> CalcNbr(string passo)
         {
             var l = new List<(string, string, string, int)>();
-            if (!r.TemEsforcos) { l.Add(("Sem verificação", "", r.Erro, 0)); return l; }
-            if (r.EspNec <= 0) { l.Add(("Flexão da chapa", "sem tração nos furos e sem balanço comprimido", "não trabalha", 1)); }
-            else
+            if (!nb.Valido) { l.Add(("Sem verificação", "", nb.Erro, 0)); return l; }
+            foreach (var v in nb.Verificacoes(passo))
             {
-                if (r.EspNecT > 0)
-                {
-                    l.Add(("Fileira crítica", "tração somada da fileira", Num.Fmt(r.TLinha, 2) + " kN", 0));
-                    l.Add(("Braço até o perfil", "a = |y| − h/2 (≥ d)", Num.Fmt(r.Braco, 0) + " mm", 0));
-                    l.Add(("Largura efetiva", "b = mín(B; n · (2a + d))", Num.Fmt(r.LargEf, 0) + " mm", 0));
-                    l.Add(("t pelo lado tracionado", "t = √(6 · T · a · n / (b · fy))", Num.Fmt(r.EspNecT, 1) + " mm", 0));
-                }
-                if (r.EspNecC > 0)
-                    l.Add(("t pelo lado comprimido", "t = √(6 · C · e · n / (B · fy)), C = " + Num.Fmt(r.CConc, 1) + " kN, e = " + Num.Fmt(r.BracoC, 0) + " mm", Num.Fmt(r.EspNecC, 1) + " mm", 0));
-                l.Add(("Espessura necessária", "o maior dos dois lados", Num.Fmt(r.EspNec, 1) + " mm", 0));
+                double t = D(v, "taxa"); string un = S(v, "unidade");
+                l.Add((S(v, "nome"), S(v, "item"), ValMotor(D(v, "solicitante"), un) + " / " + ValMotor(D(v, "resistente"), un) + " · " + Pct(double.IsNaN(t) ? double.PositiveInfinity : t), !double.IsNaN(t) && t <= 1 + 1e-9 ? 1 : -1));
             }
-            l.Add(("Chapa adotada", "t ≥ t,nec · segurança real n·(t/t,nec)² = " + SegChapa(r, edit.Esp), FmtEsp(edit.Esp) + " mm", ChapaOk(r) ? 1 : -1));
-            l.Add(("Coeficiente / aço", "n da placa · fy da chapa", Num.Fmt(r.NSeg, 2) + " · " + Num.Fmt(r.FyChapa, 0) + " MPa", 0));
+            if (passo == "chapa")
+            {
+                l.Add(("Espessura CBCA × Pfeil", "t ≥ √(6·M/(1,25·fy/γa1)) × √(4·M·γa1/fy) com 0,85·fck/γc", Num.Fmt(nb.TNec, 1) + " × " + Num.Fmt(nb.TPfeil, 1) + " mm (" + nb.Governa + ")", 0));
+                l.Add(("Concreto", "σc,Rd = fck/(γc·γn)·√(A2/A1) ≤ fck", Num.Fmt(nb.SigmaRd, 2) + " MPa · " + nb.Modelo + (nb.TemBloco ? ", Y = " + Num.Fmt(nb.Y, 0) + " mm" : ""), 0));
+            }
+            if (passo == "fixacao") l.Add(("Corte", "atrito → barra → chumbadores", nb.Mecanismo + (nb.Mecanismo == "chumbadores" ? ", " + nb.NEf + " efetivos, Fv = " + Num.Fmt(nb.Fv, 2) + " kN" : ""), 0));
             return l;
         }
 
@@ -1490,7 +1524,7 @@ namespace NovoFtool
             return l;
         }
 
-        // ---------- aba Cálculo: tabelas legíveis ----------
+        // ---------- aba Cálculo: tabelas legíveis (motor) ----------
         FrameworkElement AbaCalculo(ResPlaca r, ResSolda sd)
         {
             var sp = new StackPanel { Margin = new Thickness(18, 4, 18, 18) };
@@ -1500,7 +1534,7 @@ namespace NovoFtool
                 sp.Children.Add(Tx(r.Erro, 12.5, TemaPlant.BTexto2, null, true));
                 return new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             }
-            UIElement Cab(string nome, double ap, bool ok)
+            UIElement Cab(double ap, bool ok)
             {
                 var d = new StackPanel { Orientation = Orientation.Horizontal };
                 var b = BarraCap(ap, ok, 6); b.Width = 120; b.Margin = new Thickness(0, 0, 10, 0);
@@ -1510,17 +1544,27 @@ namespace NovoFtool
                 d.Children.Add(ch);
                 return d;
             }
-            sp.Children.Add(TituloSecao("1 · Fixação — " + (r.Ch != null ? r.Paraf.Count + " × " + r.Ch.Nome + " (" + r.Ch.Fabricante + ")" : r.Paraf.Count + " × M" + Num.Fmt(edit.Diametro, 0) + " classe " + edit.Classe), Cab("", r.ApFix, FixOk(r)), 12));
-            sp.Children.Add(TabelaCalc(CalcFix(r)));
-            sp.Children.Add(TituloSecao("2 · Chapa " + FmtEsp(edit.Esp) + " mm", Cab("", ApChapa(r), ChapaOk(r)), 16));
-            sp.Children.Add(TabelaCalc(CalcChapa(r)));
-            if (sd != null)
+            var cab = Tx("Motor, método NBR · governa " + nb.Comb + (Membros.Count > 1 ? " (" + nb.Barra + ")" : "") + " · eixo " + nb.Eixo + " · N = " + Num.Fmt(nb.N, 2) + " kN, V = " + Num.Fmt(nb.V, 2) + " kN, M = " + Num.Fmt(nb.M, 2) + " kN·m", 12, TemaPlant.BTexto1, FontWeights.SemiBold, true);
+            cab.Margin = new Thickness(0, 10, 0, 2);
+            sp.Children.Add(cab);
+            sp.Children.Add(Tx(NotaBiaxial(), 11.5, TemaPlant.BTexto3, null, true));
+            sp.Children.Add(TituloSecao("1 · Fixação — " + DescFixAtual(r) + " · pior: " + nb.Fix.Comb + (nb.Fix.Fraco ? " (eixo fraco)" : ""), Cab(nb.Fix.Taxa, nb.Fix.Ok), 12));
+            sp.Children.Add(TabelaCalc(CalcNbr("fixacao"), 260));
+            var forcas = nb.Paraf.Select((p, i) => ("Chumbador " + (i + 1) + " (y; z) = (" + Num.Fmt(p[0], 0) + "; " + Num.Fmt(p[1], 0) + ") mm", "bloco de compressão", "T = " + Num.Fmt(p[2], 2) + " kN", 0)).ToList();
+            sp.Children.Add(TabelaCalc(forcas, 260));
+            sp.Children.Add(TituloSecao("2 · Chapa " + FmtEsp(edit.Esp) + " mm e concreto — pior: " + nb.Chapa.Comb + (nb.Chapa.Fraco ? " (eixo fraco)" : ""), Cab(nb.Chapa.Taxa, nb.Chapa.Ok), 16));
+            sp.Children.Add(TabelaCalc(CalcNbr("chapa"), 260));
+            sp.Children.Add(TituloSecao("3 · Solda pilar–placa" + (sd != null ? " — filete " + Num.Fmt(sd.H, 0) + " mm, " + (string.IsNullOrEmpty(edit.Eletrodo) ? "E70" : edit.Eletrodo) + "XX" : "") + " — pior: " + nb.Solda.Comb, Cab(nb.Solda.Taxa, nb.Solda.Ok), 16));
+            sp.Children.Add(TabelaCalc(CalcSolda(sd)));
+            var combs = Lista(nb.J?["combinacoes"]).Take(12).Select(c => (S(c, "combinacao") + (Membros.Count > 1 ? " · " + S(c, "barra") : ""), "eixo " + S(c, "eixo") + " · N = " + Num.Fmt(D(c, "N"), 1) + ", My = " + Num.Fmt(D(c, "My"), 1) + ", Mz = " + Num.Fmt(D(c, "Mz"), 1), Pct(D(c, "taxa")), Bool(c, "ok") ? 1 : -1)).ToList();
+            sp.Children.Add(TituloSecao("4 · Combinações (as " + combs.Count + " piores de " + nb.NCombs + ")", null, 16));
+            sp.Children.Add(TabelaCalc(combs, 260));
+            if (nb.Avisos.Count > 0)
             {
-                sp.Children.Add(TituloSecao("3 · Solda pilar–placa — filete " + Num.Fmt(sd.H, 0) + " mm, " + (string.IsNullOrEmpty(edit.Eletrodo) ? "E70" : edit.Eletrodo) + "XX", Cab("", sd.Ap, sd.Passa), 16));
-                sp.Children.Add(TabelaCalc(CalcSolda(sd)));
+                sp.Children.Add(TituloSecao("Avisos do motor", null, 16));
+                foreach (string a in nb.Avisos) sp.Children.Add(Tx("• " + a, 11.5, TemaPlant.BTexto2, null, true));
             }
-            var nota = Tx((r.Ch != null ? "Cargas de catálogo valem para o concreto indicado e as distâncias mínimas do fabricante (borda do concreto: conferir na obra). " : "") +
-                          "Não verifica pressão no concreto nem ancoragem." + (r.Inclinada ? " Barra inclinada: chapa e solda acima valem para o pilar perpendicular; detalhar a ligação à parte." : ""), 11.5, TemaPlant.BTexto3, null, true);
+            var nota = Tx("Esforços de cálculo (ELU) do motor, sem coeficiente global. Limitações: " + string.Join(" ", Lista(nb.R?["limitacoes"]).Select(x => x.GetValue<string>())), 11, TemaPlant.BTexto3, null, true);
             nota.Margin = new Thickness(0, 12, 0, 0);
             sp.Children.Add(nota);
             return new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -1549,14 +1593,15 @@ namespace NovoFtool
                 sp.Children.Add(g);
                 return new Border { Background = TemaPlant.BSup2, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 10, 12, 10), Margin = new Thickness(0, 0, 0, 10), Child = sp };
             }
-            double furo = r.Dia + (r.Dia <= 24 ? 2 : 3);
+            double furoM = D(nb.R?["fixacao"], "furo") * 1000;
+            double furo = r.Ch == null && !double.IsNaN(furoM) ? furoM : r.Dia + (r.Dia <= 24 ? 2 : 3);
             var chapa = new List<(string, string)>
             {
                 ("Dimensões", Num.Fmt(r.H, 0) + " × " + Num.Fmt(r.B, 0) + " × " + FmtEsp(edit.Esp) + " mm (no plano × fora × espessura)"),
                 ("Aço", "fy = " + Num.Fmt(r.FyChapa, 0) + " MPa"),
                 ("Massa", Num.Fmt(r.H * r.B * edit.Esp * 7850e-9, 2) + " kg"),
-                ("Espessura necessária", Num.Fmt(r.EspNec, 1) + " mm · segurança " + SegChapa(r, edit.Esp)),
-                ("Furos na chapa", r.Paraf.Count + " × Ø" + Num.Fmt(furo, 0) + " mm (folga padrão)"),
+                ("Espessura necessária", "CBCA " + Num.Fmt(r.EspNec, 1) + " mm (Pfeil " + Num.Fmt(nb.TPfeil, 1) + " mm) · " + SegChapa(r, edit.Esp)),
+                ("Furos na chapa", r.Paraf.Count + " × Ø" + Num.Fmt(furo, 1) + " mm" + (r.Ch == null ? " (alargado, AISC tab. 14-2)" : " (folga padrão)")),
                 ("Arranjo", Pl.N(edit.Fileiras, "fileira", "fileiras") + " × " + edit.PorFileira + " · borda " + Num.Fmt(edit.Borda, 0) + " mm até o centro do furo"),
                 ("Posições (y; z) mm", string.Join("   ", r.Paraf.Select(p => "(" + Num.Fmt(p[0], 0) + "; " + Num.Fmt(p[1], 0) + ")"))),
             };
@@ -1571,11 +1616,11 @@ namespace NovoFtool
             }
             else
             {
-                fix.Add(("Fixação", r.Paraf.Count + " × M" + Num.Fmt(edit.Diametro, 0) + " classe " + edit.Classe + (edit.RoscaNoCorte ? " (rosca no plano de corte)" : "")));
-                fix.Add(("Aperto", "pré-carga " + Num.Fmt(r.Fi, 1) + " kN · torque " + Num.Fmt(r.Torque, 0) + " N·m"));
+                fix.Add(("Fixação", r.Paraf.Count + " × chumbador pré-concretado Ø" + Num.Fmt(edit.Diametro, 0) + " classe " + edit.Classe + " com porca pesada" + (edit.RoscaNoCorte ? " (rosca no plano de corte)" : "")));
+                fix.Add(("Embutimento", "hef = " + Num.Fmt(edit.Hef > 0 ? edit.Hef : 12 * edit.Diametro, 0) + " mm" + (edit.ArruelaSoldada ? " · arruela soldada" : "")));
             }
             fix.Add(("Maior tração / corte", Num.Fmt(r.Tmax, 2) + " kN / " + Num.Fmt(r.Fv, 2) + " kN por fixação"));
-            fix.Add(("Segurança", FmtN(r.NComb)));
+            fix.Add(("Aproveitamento (motor)", Pct(nb.Fix.Taxa) + (nb.Fix.Ok ? " · passa" : " · NÃO PASSA") + " (" + nb.Fix.Criterio + ")"));
             var solda = new List<(string, string)>();
             if (sd != null && sd.Erro == "")
             {
@@ -1588,9 +1633,10 @@ namespace NovoFtool
             }
             var esf = new List<(string, string)>
             {
-                ("Esforços no pé", "N = " + Num.Fmt(r.N, 2) + " kN · V = " + Num.Fmt(r.V, 2) + " kN · M = " + Num.Fmt(r.M, 2) + " kN·m"),
+                ("Esforços no pé", "N = " + Num.Fmt(r.N, 2) + " kN · V = " + Num.Fmt(r.V, 2) + " kN · M = " + Num.Fmt(r.M, 2) + " kN·m (" + nb.Comb + ", eixo " + nb.Eixo + ")"),
                 ("Pilar", r.Sec != null ? r.Sec.Nome : "—"),
-                ("Coef. da placa", "n = " + Num.Fmt(r.NSeg, 2) + (edit.Seguranca > 0 ? " (desta placa)" : " (do modelo)"))
+                ("Concreto", "fck " + Num.Fmt(edit.Fck > 0 ? edit.Fck : 20, 0) + " MPa · bloco " + (edit.BlocoH > 0 && edit.BlocoB > 0 ? Num.Fmt(edit.BlocoH, 0) + " × " + Num.Fmt(edit.BlocoB, 0) + " mm" : "não informado (A2 = A1)")),
+                ("Método", "motor, NBR 8800 6.6.5 + CBCA + ACI 318 cap. 17, esforços de cálculo")
             };
             var g2 = new Grid { Margin = new Thickness(14, 12, 14, 4) };
             g2.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1606,50 +1652,37 @@ namespace NovoFtool
             return new ScrollViewer { Content = g2, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         }
 
-        // ---------- Sugerir: até 3 combinações fixação + chapa que passam ----------
-        ResPlaca Testar(PlacaBase pl) { n.Placa = pl; try { return PlacaCalc.Calcular(m, n); } finally { n.Placa = edit; } }
-
+        // ---------- Sugerir: até 3 combinações fixação + chapa que passam (motor) ----------
         static string DescFix(PlacaBase p, int qt)
         {
             var c = Chumbadores.Achar(p.Chumbador);
-            return qt + " × " + (c != null ? NomeCurtoCh(c) : "M" + Num.Fmt(p.Diametro, 0) + " cl. " + p.Classe);
+            return qt + " × " + (c != null ? NomeCurtoCh(c) : "Ø" + Num.Fmt(p.Diametro, 0) + " cl. " + p.Classe);
         }
 
         List<(PlacaBase pl, string txt, double kg, double ap)> MelhoresOpcoes(ResPlaca r)
         {
             var res = new List<(PlacaBase, string, double, double)>();
             if (!r.TemEsforcos) return res;
-            void Add(PlacaBase pl, ResPlaca t)
-            {
-                double esp = PlacaCalc.Chapas.FirstOrDefault(e => e >= t.EspNec - 1e-9);
-                if (esp <= 0) return;
-                pl.Esp = esp;
-                res.Add((pl, DescFix(pl, t.Paraf.Count) + " · chapa " + FmtEsp(esp) + " mm", t.H * t.B * esp * 7850e-9, t.ApFix));
-            }
+            var cands = new List<PlacaBase>();
             if (!string.IsNullOrEmpty(edit.Chumbador))
             {
-                var cands = (prefFuroMenor ? Chumbadores.Lista.OrderBy(c => c.Furo).ThenBy(c => c.Rosca) : Chumbadores.Lista.OrderBy(c => c.Rosca)).ThenBy(c => c.Hef).ToList();
+                var chs = (prefFuroMenor ? Chumbadores.Lista.OrderBy(c => c.Furo).ThenBy(c => c.Rosca) : Chumbadores.Lista.OrderBy(c => c.Rosca)).ThenBy(c => c.Hef).ToList();
                 foreach (int[] arr in new[] { new[] { 2, 2 }, new[] { 2, 3 }, new[] { 3, 3 } })
-                {
-                    foreach (Chumbador c in cands)
-                    {
-                        if (res.Count >= 3) break;
-                        var pl = edit.Copiar(); pl.Chumbador = c.Nome; pl.Fileiras = arr[0]; pl.PorFileira = arr[1];
-                        var t = Testar(pl);
-                        if (t.Erro == "" && t.TemEsforcos && t.ChOk && !res.Any(x => x.Item1.Chumbador == c.Nome)) Add(pl, t);
-                    }
-                    if (res.Count >= 3) break;
-                }
+                    foreach (Chumbador c in chs) { var pl = edit.Copiar(); pl.Chumbador = c.Nome; pl.Fileiras = arr[0]; pl.PorFileira = arr[1]; cands.Add(pl); }
             }
             else
+                foreach (double d in Parafusos.D) foreach (string cl in Parafusos.Classes) { var pl = edit.Copiar(); pl.Diametro = d; pl.Classe = cl; cands.Add(pl); }
+            var v = Variantes(cands);
+            var vistos = new HashSet<string>();
+            for (int i = 0; i < Math.Min(v.Count, cands.Count) && res.Count < 3; i++)
             {
-                for (int id = 0; id < Parafusos.D.Length && res.Count < 3; id++)
-                    for (int ic = 0; ic < Parafusos.Classes.Length; ic++)
-                    {
-                        var pl = edit.Copiar(); pl.Diametro = Parafusos.D[id]; pl.Classe = Parafusos.Classes[ic];
-                        var t = Testar(pl);
-                        if (t.Erro == "" && t.TemEsforcos && t.ChOk) { Add(pl, t); break; }
-                    }
+                var pl = cands[i];
+                string chave = string.IsNullOrEmpty(pl.Chumbador) ? "d" + pl.Diametro : pl.Chumbador;
+                if (!v[i].FixOk || double.IsNaN(v[i].TNec) || !vistos.Add(chave)) continue;
+                double esp = PlacaCalc.Chapas.FirstOrDefault(e => e >= v[i].TNec - 1e-9);
+                if (esp <= 0) continue;
+                pl.Esp = esp;
+                res.Add((pl, DescFix(pl, pl.Fileiras * pl.PorFileira) + " · chapa " + FmtEsp(esp) + " mm", r.H * r.B * esp * 7850e-9, v[i].FixTaxa));
             }
             return res;
         }

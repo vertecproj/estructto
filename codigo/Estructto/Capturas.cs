@@ -1044,6 +1044,7 @@ namespace NovoFtool
                 if (so == "a1") so1(() => CapturasA1(w, caminhoModelo));          // só as 54) do produto 3D único (A1)
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
+                if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado
                 w.MostrarDiagrama(Diagrama.Nenhum);
@@ -1157,7 +1158,7 @@ namespace NovoFtool
                 {
                     var d0 = w.EspacialAtivo;
                     bool capturouParafuso = false;
-                    foreach (string noP in d0.Placas.Keys.ToList())
+                    foreach (string noP in d0.Placas.Keys.Concat(MainWindow.NosComPlaca(d0)).Distinct().ToList())
                     {
                         w.placaAberta = null;
                         Esperar(w.AbrirPlacaEsp(noP));
@@ -1194,7 +1195,7 @@ namespace NovoFtool
                     }
                     if (w.placaComparar is var (mc, nc) && mc != null)
                     {
-                        nc.Placa ??= d0.Placas.Values.FirstOrDefault()?.Copiar();
+                        nc.Placa ??= new PlacaBase { PeloPerfil = true, Sobra = 100, H = 400, B = 300, Esp = 19, Fileiras = 2, PorFileira = 2, Borda = 50, Diametro = 16, Classe = "8.8", FyChapa = 250, Chumbador = "WB 58500" };
                         ResPlaca rpComp = PlacaCalc.Calcular(mc, nc);
                         var jc = new JanelaComparar(mc, nc, rpComp, nc.Placa, new[] { "CB 12300", "WB 12400", "WQE 500 1/2\"" });
                         PrepararDialogoForaDaTela(jc);

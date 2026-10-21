@@ -1026,6 +1026,17 @@ namespace Portico
         public double Solda { get; set; }        // perna do filete pilar-placa, mm (0 = dimensionar)
         public string Eletrodo { get; set; }     // "E70" etc. (vazio = E70)
         public double Seguranca { get; set; }    // coeficiente da placa (chapa, parafuso, aco da barra); 0 = o do modelo (aba Analise)
+        // metodo NBR do motor (aco/placa_base.py, docs/v3/PLACA-BASE-V2.md); 0 = nao informado
+        public double BlocoH { get; set; }       // mm, bloco de concreto na direcao H (A2); 0 = A2 = A1, sem bordas
+        public double BlocoB { get; set; }       // mm, na direcao B
+        public double BlocoAltura { get; set; }  // mm (psi h,V do ACI)
+        public double Hef { get; set; }          // mm, embutimento do chumbador pre-concretado; 0 = 12.d
+        public bool NaoFissurado { get; set; }   // concreto nao fissurado (ACI psi c); padrao = fissurado
+        public double LugB { get; set; }         // mm, barra de cisalhamento: largura (0 = sem barra)
+        public double LugT { get; set; }         // mm, espessura
+        public double LugH { get; set; }         // mm, altura embutida
+        public double Graute { get; set; }       // mm
+        public bool ArruelaSoldada { get; set; } // todos os chumbadores ao corte (senao, furo alargado: 2 efetivos)
 
         public PlacaBase Copiar() { return (PlacaBase)MemberwiseClone(); }
     }
@@ -1064,9 +1075,11 @@ namespace Portico
         public string Aviso = "";
         public double PsiCone = 1, TuEf;          // fator dos cones sobrepostos e tracao ultima efetiva por chumbador (kN)
         public bool EspacOk { get { return Ch == null || EspacMin <= 0 || EspacMin >= Chumbadores.EspacMinimo(Ch) - 1e-9; } }   // minimo fisico 6.d; abaixo de 3.hef so reduz Tu
-        public bool ChOk { get { return NComb >= (Ch != null ? NRef : NExig) && (Ch == null || !Ch.Quimico || NAco >= NSeg) && EspacOk; } }
-        public double ApFix { get { double ac = double.IsInfinity(NComb) ? 0 : (Ch != null ? NRef : NExig) / NComb, aa = Ch != null && Ch.Quimico && !double.IsInfinity(NAco) ? NSeg / NAco : 0; return Math.Max(ac, aa); } }
+        public bool? OkMotor; public double? ApMotor;   // fixacao verificada pelo motor (metodo NBR, Estructto/PlacaMotor.cs): prevalece sobre o legado
+        public bool ChOk { get { return OkMotor ?? (NComb >= (Ch != null ? NRef : NExig) && (Ch == null || !Ch.Quimico || NAco >= NSeg) && EspacOk); } }
+        public double ApFix { get { if (ApMotor.HasValue) return ApMotor.Value; double ac = double.IsInfinity(NComb) ? 0 : (Ch != null ? NRef : NExig) / NComb, aa = Ch != null && Ch.Quimico && !double.IsInfinity(NAco) ? NSeg / NAco : 0; return Math.Max(ac, aa); } }
         public bool Passa { get { return Erro == "" && ChOk && !Inclinada; } }
+        public ResPlaca Copiar() { var r = (ResPlaca)MemberwiseClone(); r.Paraf = Paraf.Select(p => (double[])p.Clone()).ToList(); return r; }
         public string Fixacao { get { return Ch != null ? Ch.Nome : "M" + Dia.ToString("0"); } }
     }
 
