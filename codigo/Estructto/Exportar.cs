@@ -41,21 +41,28 @@ namespace NovoFtool
             var nos = m.Nos.ToDictionary(n => n.Id);
             var formas = new Dictionary<string, GeometriaPerfis.Contorno>();
             var r = new List<Peca>();
+            GeometriaPerfis.Contorno Forma(string sec)
+            {
+                if (formas.TryGetValue(sec ?? "", out var f)) return f;
+                Perfil3D p = null; try { p = perfil?.Invoke(sec ?? ""); } catch { }
+                return formas[sec ?? ""] = GeometriaPerfis.CriarContorno(p, 0.1);
+            }
+            // pontas cortadas como no Realista (regra das juntas; ligações com pontas do motor quando a vista as tem)
+            Point3D Pn(int id) => new Point3D(nos[id].X, nos[id].Y, nos[id].Z);
+            var cortes = Render3DGeometria.Juntas(m,
+                b => nos.ContainsKey(b.Ni) && nos.ContainsKey(b.Nj) ? (Pn(b.Ni), Pn(b.Nj)) : (new Point3D(), new Point3D()), b => Forma(b.Secao),
+                (b, emI) => Forma(b.Secao).Concreto ? 0 : 0.012, (b, emI) => double.NaN);
             foreach (Barra3D b in m.Barras)
             {
                 if (!nos.TryGetValue(b.Ni, out No3D ni) || !nos.TryGetValue(b.Nj, out No3D nj)) continue;
                 Point3D a = new Point3D(ni.X, ni.Y, ni.Z), c = new Point3D(nj.X, nj.Y, nj.Z);
                 if ((c - a).Length < 1e-9) continue;
-                string sec = b.Secao ?? "";
-                if (!formas.TryGetValue(sec, out var f))
-                {
-                    Perfil3D p = null; try { p = perfil?.Invoke(sec); } catch { }
-                    formas[sec] = f = GeometriaPerfis.CriarContorno(p, 0.1);
-                }
+                string sec = b.Secao ?? ""; var f = Forma(sec);
+                cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
                 r.Add(new Peca
                 {
                     Id = IdBarra(b), Secao = sec, A = new Point3D(a.X * Mm, a.Y * Mm, a.Z * Mm), B = new Point3D(c.X * Mm, c.Y * Mm, c.Z * Mm),
-                    Solido = GeometriaPerfis.Extrudar(f, a, c, b.Rot + b.RotPerfil, Mm, b.Cardinal),
+                    Solido = GeometriaPerfis.Extrudar(f, a, c, b.Rot + b.RotPerfil, Mm, b.Cardinal, ci, cj),
                 });
             }
             return r;
@@ -246,6 +253,14 @@ namespace NovoFtool
                 var zs = pc[0].Solido.Lados.SelectMany(q => q).Select(q => q.Z).ToList();
                 Ok("exportar: cardinal 8 desloca o sólido H/2 (z " + zs.Min().ToString("0.#", CultureInfo.InvariantCulture) + " a " + zs.Max().ToString("0.#", CultureInfo.InvariantCulture) + " mm)",
                    Math.Abs(zs.Max()) < 1e-6 && Math.Abs(zs.Min() + 200) < 1e-6);
+            }
+
+            {   // pontas cortadas como no Realista: viga I 200 chega num pilar I 200 (mesa) e para na face + 12 mm (x = 112 mm)
+                var mc = new Modelo3D(); mc.Nos.Add(new No3D { Id = 1 }); mc.Nos.Add(new No3D { Id = 2, Z = 3 }); mc.Nos.Add(new No3D { Id = 3, X = 4, Z = 3 });
+                mc.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "I200" }); mc.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "I200" });
+                var pc = Exportador.Pecas(mc, _ => new Perfil3D { Forma = "I", H = 0.2, B = 0.1, Tw = 0.006, Tf = 0.008 });
+                double xmin = pc[1].Solido.Lados.SelectMany(q => q).Min(q => q.X);
+                Ok("exportar: viga cortada na face do pilar + folga (início em x = " + xmin.ToString("0.#", CultureInfo.InvariantCulture) + " mm), sólido fechado", Math.Abs(xmin - 112) < 1e-6 && Exportador.Fechado(pc[1].Solido));
             }
 
             Modelo m2 = Modelo.DeXml(File.ReadAllText(Path.Combine(raiz, "exemplos", "guincho-coluna-escorada.estructto")));

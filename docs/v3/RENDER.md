@@ -128,6 +128,36 @@ cope e filete triangular também.
 Autoverificação (`Estructto.exe --testes-exportar`): 12 asserções novas (`render3d:` juntas, esquadria, extrusão com corte,
 triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, placa de base).
 
+## Pontas do motor e interferência (G4)
+
+- `Ligacao3D.Ponta`: a ponta da barra que chega (`geometria.pontas`, `barra = 0`, contrato em [PONTAS-CONTRATO.md](PONTAS-CONTRATO.md)),
+  lida no referencial local da ligação (m). O Render3D a converte para o mundo e passa a `Juntas(..., motor)`: o plano do motor
+  manda (sem o limite 0,3·L), `cope` (sup/inf/esq/dir) vira trecho de contorno recortado (`Recortar` corta também em u),
+  `angulo` vira 2º plano paralelo à face do apoio e `boca_peixe` vira o cilindro do receptor. Sem `pontas` (modelo antigo,
+  ligação local, proposta que o motor não desenha): a regra das juntas de antes (Review Focus 3).
+- `Corte.Extra` (2º plano) e `Corte.Raio/EixoO/EixoA` (cilindro): `Extrudar` corta cada aresta no mais fundo dos cortes.
+  Também sem o motor: barra oblíqua ao apoio (diagonal, água do telhado) ganha o plano `angulo` (nenhum canto entra no
+  apoio); tubo redondo em tubo redondo ganha a boca de peixe; a esquadria recua a espessura da chapa da cumeeira; barra que
+  chega no pé de um pilar com placa de base para fora da placa; na mesma classe, a contínua é a de maior área (tesoura HP,
+  não a terça Ue de mesma altura). O limite 0,3·L só vale para diagonais.
+- Ligações locais (propostas que o motor não desenha, ex.: UPN): chapa simples e gusset encostam na face da peça (alma do I,
+  costas do U/L, lado do tubo), não atravessam o perfil; viga que entra entre as mesas de um apoio I leva cope em cada mesa
+  que bate; apoio U/L/tubo: a viga para na face; enrijecedores só em pilar I; chapa de topo não passa da face de pilar estreito.
+- Gusset do motor: o contrato desenha o apoio no plano xz local; no mundo o referencial gira em torno de x até o apoio real
+  e a chapa encosta na face da diagonal. Se ainda entra numa peça do nó, a chapa anda no plano dela até a face (`FolgaGusset`).
+- DWG/DXF/STEP (`Exportador.Pecas`): as barras saem cortadas pelos planos de `Juntas` (regra das juntas, folga 12 mm); só o
+  plano principal (o 2º plano e a boca de peixe deixariam tampas fora de um plano, e o STEP facetado quer faces planas).
+  As chapas das ligações continuam fora da exportação.
+- `Estructto.exe --testes-interferencia <arquivo|galpao> [pasta]`: abre o modelo (galpao = assistente de novo projeto),
+  identifica, monta o Realista com as ligações e lista os pares de sólidos (barras, chapas, cantoneiras; parafusos e soldas
+  não) que se interpenetram mais de 1 mm (`Render3DGeometria.Interferencias`: AABB e pontos das arestas dentro da outra
+  malha, longe da superfície dela). Grava `interferencia.txt` (com o corte e a ligação de cada ponta envolvida), o
+  gerenciador e close-ups (pior par, viga–pilar, gusset, placa de base, pilar caixão/tubo). Sai 0 só sem pares.
+- Resultado (21/10/2026): PLATAFORMA 211 → 7 pares, galpão do assistente 24 → 2. O que resta são propostas que disputam o
+  mesmo espaço: gusset grande (geometria do motor) contra a chapa da cumeeira de um nó a 186 mm; chapa de topo de UPN 120
+  (b = 55) em pilar UPN 50 (face 38) contra a chapa simples da face vizinha; barras de 13 e 97 mm no nó N1105; no galpão,
+  o gusset do contraventamento (apoio = pilar) contra a tesoura no beiral (≈ 3,7 mm).
+
 ## Limites e próximos passos
 
 - Mapa de ambiente: cubo procedural 64² com mips (`Render3D.CeuDds`, céu de estúdio em degradê com Z para cima), só reflexo

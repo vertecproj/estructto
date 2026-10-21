@@ -116,6 +116,11 @@ Janela não modal (`JanelaLigacoesGrupos`):
   verificações. Em placa de base, o botão abre a **JanelaPlaca** com o pilar que governa (pórtico 2D de uma barra com N, V, M da
   pior combinação na base; eixo fraco se o pior foi com Mz) e Aplicar grava a placa no projeto do grupo.
 - Escolher um grupo (ou ligações) seleciona os nós e as barras na Vista3D (`Vista3D.Selecionar`).
+- **Todos os nós** (G4): o cabeçalho conta os nós (`N nós (k sem ligação)`). Os nós que o motor não transforma em ligação
+  (`sem_tipo` do identificar: ponta livre, só barras contínuas, ângulo < 20°...) ficam no cartão **Nós sem ligação**, no fim
+  da lista; escolhê-lo mostra cada nó com o motivo e seleciona esses nós na Vista3D. Antes o `sem_tipo` era descartado.
+  Na PLATAFORMA (114 nós) e no galpão do assistente (30 nós) todos os nós caem em grupos (0 sem ligação): o motor atual já
+  identifica todos; o motor instalado antigo (%LOCALAPPDATA%\Estructto\motor, 0.9.1) também (conferido pela API).
 - Sem cálculo, Dimensionar roda o F5 antes. Re-identificar guarda as edições (seção 3).
 
 Capturas: `ESTRUCTTO_CAPTURAS=ligacoes` (galpão do motor calculado, gerenciador, destaque 3D, base dimensionada, placa da pior base,

@@ -134,6 +134,11 @@ namespace NovoFtool
         // Inclinada: barra inclinada contra pilar; o plano de corte é paralelo à face do pilar (N = normal da face, horizontal), não perpendicular à barra.
         public double Face; public bool Inclinada;
         public bool NaMesa;   // a barra chega na face da mesa do pilar (eixo forte); falso = chega na ponta das mesas, ligação na alma (eixo fraco)
+        // Recortes de sólido além do plano (contrato pontas, docs/v3/PONTAS-CONTRATO.md): Extra = 2º plano (recorte "angulo":
+        // paralelo à face do apoio); Raio > 0 = cilindro do tubo receptor (boca de peixe, eixo EixoA por EixoO). Vale o mais fundo na barra.
+        public Corte Extra; public Point3D EixoO; public Vector3D EixoA; public double Raio;
+        public bool Motor;    // plano vindo das pontas do motor (sem a regra das juntas)
+        public double FolgaAngulo = double.NaN; public bool Boca;   // pedidos do motor: recorte "angulo" (folga) e "boca_peixe"; Juntas monta no mundo
     }
 
     public static class Render3DGeometria
@@ -152,7 +157,8 @@ namespace NovoFtool
         // dois banzos do mesmo nível que se encontram sem peça contínua = esquadria pela bissetriz; viga secundária para na face
         // da viga mais alta. folga(b, emI) = vão entre a ponta e a face (m); recuoFixo(b, emI) = recuo imposto (NaN = regra).
         public static Dictionary<(Barra3D, bool), Corte> Juntas(Modelo3D mod, Func<Barra3D, (Point3D A, Point3D C)> pontos, Func<Barra3D, Contorno> forma,
-                                                                  Func<Barra3D, bool, double> folga, Func<Barra3D, bool, double> recuoFixo)
+                                                                  Func<Barra3D, bool, double> folga, Func<Barra3D, bool, double> recuoFixo,
+                                                                  Func<Barra3D, bool, Corte> motor = null)
         {
             var porNo = new Dictionary<int, List<Ponta>>();
             foreach (Barra3D b in mod.Barras)
@@ -171,7 +177,7 @@ namespace NovoFtool
             var cortes = new Dictionary<(Barra3D, bool), Corte>();
             foreach (var kv in porNo)
             {
-                var ord = kv.Value.OrderByDescending(p => p.Rank).ThenByDescending(p => p.F.H).ThenByDescending(p => p.L).ToList();
+                var ord = kv.Value.OrderByDescending(p => p.Rank).ThenByDescending(p => AreaSecao(p.F)).ThenByDescending(p => p.L).ToList();   // mesma classe: a de maior área é a contínua (tesoura HP, não a terça Ue de mesma altura)
                 Ponta top = ord[0];
                 Ponta par = ord.Skip(1).FirstOrDefault(q => q.Rank == top.Rank && Vector3D.DotProduct(q.D, top.D) < -0.98);
                 var continuas = new HashSet<Ponta> { top }; if (par != null) continuas.Add(par);
@@ -180,16 +186,31 @@ namespace NovoFtool
                 {
                     Ponta o2 = ord.First(q => q != top && q.Rank == top.Rank);
                     Vector3D n = top.D - o2.D; n.Normalize();
-                    foreach (Ponta q in new[] { top, o2 }) cortes[(q.B, q.EmI)] = new Corte { P = q.No, N = n, Esquadria = true, Contra = q == top ? o2.B : top.B };
+                    foreach (Ponta q in new[] { top, o2 })   // recuoFixo (chapa de topo da cumeeira): o plano recua a espessura da chapa para dentro da barra
+                    {
+                        double off = recuoFixo(q.B, q.EmI); Vector3D nq = Vector3D.DotProduct(n, q.D) > 0 ? n : -n;
+                        cortes[(q.B, q.EmI)] = new Corte { P = q.No + nq * (double.IsNaN(off) ? 0 : off), N = n, Esquadria = true, Contra = q == top ? o2.B : top.B };
+                    }
                     continuas.Add(o2);
                 }
                 foreach (Ponta q in ord)
                 {
+                    Corte km = motor?.Invoke(q.B, q.EmI);
+                    if (km != null)   // pontas do motor: o plano manda (sem o limite 0,3·L); angulo e boca de peixe montados no mundo
+                    {
+                        km.Motor = true; km.Recuo = Vector3D.DotProduct(km.P - q.No, q.D); km.Contra = q == top ? null : top.B;
+                        km.NaMesa = top.F.H * Math.Abs(Vector3D.DotProduct(q.D, top.U)) <= top.F.B * Math.Abs(Vector3D.DotProduct(q.D, top.V));
+                        if (!double.IsNaN(km.FolgaAngulo)) km.Extra = Angulo(q, top, km.FolgaAngulo);
+                        if (km.Boca) Boca(km, q, top);
+                        cortes[(q.B, q.EmI)] = km;
+                        continue;
+                    }
+                    if (cortes.TryGetValue((q.B, q.EmI), out Corte ke) && ke.Esquadria) continue;   // já cortada na esquadria
                     double fixo = recuoFixo(q.B, q.EmI);
                     if (continuas.Contains(q) && double.IsNaN(fixo)) continue;
                     double fd = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max();
                     double recuo = double.IsNaN(fixo) ? fd + folga(q.B, q.EmI) : fixo;
-                    recuo = Math.Min(recuo, 0.3 * q.L);
+                    if (q.Rank == 1 && double.IsNaN(fixo)) recuo = Math.Min(recuo, 0.3 * q.L);   // só diagonal: viga curta demais some (cortada até a chapa) em vez de entrar no apoio
                     if (recuo <= 1e-6) continue;
                     var k = new Corte { P = q.No + q.D * recuo, N = q.D, Recuo = recuo, Face = fd, Contra = continuas.Contains(q) ? null : top.B };
                     // viga inclinada (água do telhado) contra pilar: a chapa fica rente à face do pilar (vertical) e a viga é cortada nesse plano;
@@ -205,10 +226,40 @@ namespace NovoFtool
                         }
                     }
                     k.NaMesa = top.F.H * Math.Abs(Vector3D.DotProduct(q.D, top.U)) <= top.F.B * Math.Abs(Vector3D.DotProduct(q.D, top.V));
+                    if (k.Contra != null && Redondo(q.F) && Redondo(top.F) && q.F.H <= top.F.H + 1e-9) { k.P = q.No; k.N = q.D; k.Inclinada = false; Boca(k, q, top); }   // tubo em tubo: boca de peixe
+                    else if (k.Contra != null && !k.Inclinada && (q.Rank == 1 || double.IsNaN(fixo))) k.Extra = Angulo(q, top, folga(q.B, q.EmI));   // barra oblíqua ao apoio (diagonal, água do telhado): nenhum canto entra nele
                     cortes[(q.B, q.EmI)] = k;
                 }
             }
             return cortes;
+        }
+
+        // Área da seção (m²): soma com sinal dos laços (furos giram ao contrário).
+        static double AreaSecao(Contorno f)
+        {
+            double a = 0;
+            foreach (Point[] l in f.Lacos) for (int k = 0; k < l.Length; k++) a += l[k].X * l[(k + 1) % l.Length].Y - l[(k + 1) % l.Length].X * l[k].Y;
+            return Math.Abs(a / 2);
+        }
+
+        static bool Redondo(Contorno f) => !f.Concreto && f.Liso.Count > 0 && f.Liso[0];
+
+        // Recorte "angulo": plano paralelo à face do apoio (no plano barra–apoio), afastado dela pela folga.
+        static Corte Angulo(Ponta q, Ponta top, double folga)
+        {
+            Vector3D perp = q.D - Vector3D.DotProduct(q.D, top.D) * top.D;
+            if (perp.Length < 1e-6) return null;
+            perp.Normalize();
+            double ext = top.F.B / 2 * Math.Abs(Vector3D.DotProduct(perp, top.U)) + top.F.H / 2 * Math.Abs(Vector3D.DotProduct(perp, top.V));
+            return new Corte { P = top.No + perp * (ext + folga), N = perp };
+        }
+
+        // Boca de peixe: cilindro do receptor; o recuo informado é o fundo da sela.
+        static void Boca(Corte k, Ponta q, Ponta top)
+        {
+            k.EixoO = top.No; k.EixoA = top.D; k.Raio = top.F.H / 2;
+            double s = Vector3D.CrossProduct(q.D, top.D).Length, r = q.F.H / 2;
+            if (!k.Motor && s > 1e-6) k.Recuo = Math.Sqrt(Math.Max(0, k.Raio * k.Raio - r * r)) / s;
         }
 
         // Distância, ao longo de d (saindo do nó), até sair da caixa da seção da peça contínua.
@@ -226,13 +277,24 @@ namespace NovoFtool
         public static void Extrudar(MalhaDx m, Contorno f, Point3D a, Point3D c, Vector3D u, Vector3D v, Corte ca, Corte cc, Color4 cor, bool arestas, bool faces = true)
         {
             Vector3D e = c - a; double len = e.Length; if (len < 1e-9) return; e /= len;
-            Point3D Fim(Point3D p, Corte k)
+            // ponta: plano, 2º plano (angulo) e cilindro (boca de peixe); vale o corte mais fundo na barra (ini: maior t; fim: menor)
+            double Plano(Point3D p, Corte k) { double nd = Vector3D.DotProduct(e, k.N); return Math.Abs(nd) < 1e-6 ? double.NaN : Vector3D.DotProduct(k.P - p, k.N) / nd; }
+            double Fundo(double t0, double t1, bool ini) => double.IsNaN(t1) ? t0 : double.IsNaN(t0) ? t1 : ini ? Math.Max(t0, t1) : Math.Min(t0, t1);
+            Point3D Fim(Point3D p, Corte k, bool ini)
             {
                 if (k == null) return p;
-                double nd = Vector3D.DotProduct(e, k.N); if (Math.Abs(nd) < 1e-6) return p;
-                return p + e * (Vector3D.DotProduct(k.P - p, k.N) / nd);
+                double t = Plano(p, k);
+                if (k.Extra != null) t = Fundo(t, Plano(p, k.Extra), ini);
+                if (k.Raio > 0)
+                {
+                    Vector3D A = k.EixoA, w = p - k.EixoO; A.Normalize();
+                    Vector3D wp = w - Vector3D.DotProduct(w, A) * A, ep = e - Vector3D.DotProduct(e, A) * A;
+                    double qa = ep.LengthSquared, qb = 2 * Vector3D.DotProduct(wp, ep), qc = wp.LengthSquared - k.Raio * k.Raio, disc = qb * qb - 4 * qa * qc;
+                    if (qa > 1e-9 && disc >= 0) t = Fundo(t, ((ini ? 1 : -1) * Math.Sqrt(disc) - qb) / (2 * qa), ini);
+                }
+                return double.IsNaN(t) ? p : p + e * t;
             }
-            if (Vector3D.DotProduct(Fim(c, cc) - Fim(a, ca), e) <= 1e-6) return;   // recortes engoliram a barra
+            if (Vector3D.DotProduct(Fim(c, cc, false) - Fim(a, ca, true), e) <= 1e-6) return;   // recortes engoliram a barra
             for (int li = 0; li < f.Lacos.Count; li++)
             {
                 Point[] q = f.Lacos[li]; bool liso = f.Liso[li]; int n = q.Length;
@@ -241,7 +303,7 @@ namespace NovoFtool
                 for (int k = 0; k < n; k++)
                 {
                     Vector3D off = u * q[k].X + v * q[k].Y;
-                    pa[k] = Fim(a + off, ca); pc[k] = Fim(c + off, cc);
+                    pa[k] = Fim(a + off, ca, true); pc[k] = Fim(c + off, cc, false);
                     nr[k] = area < 0 ? -off : off; if (nr[k].Length > 1e-12) nr[k].Normalize();   // liso: normal radial (para fora do material)
                 }
                 for (int k = 0; k < n; k++)
@@ -254,8 +316,8 @@ namespace NovoFtool
             if (!faces) return;
             for (int t = 0; t + 2 < f.Tampa.Count; t += 3)   // tampas nos planos de corte
             {
-                Point3D A(Point p) => Fim(a + u * p.X + v * p.Y, ca);
-                Point3D Cc(Point p) => Fim(c + u * p.X + v * p.Y, cc);
+                Point3D A(Point p) => Fim(a + u * p.X + v * p.Y, ca, true);
+                Point3D Cc(Point p) => Fim(c + u * p.X + v * p.Y, cc, false);
                 m.Tri(Cc(f.Tampa[t]), Cc(f.Tampa[t + 1]), Cc(f.Tampa[t + 2]), cor);
                 m.Tri(A(f.Tampa[t + 2]), A(f.Tampa[t + 1]), A(f.Tampa[t]), cor);
             }
@@ -316,24 +378,27 @@ namespace NovoFtool
 
         // Contorno com cope: corta o laço único (I, U, L; tubos e maciços não) fora da faixa vMin ≤ v ≤ vMax (Sutherland-Hodgman,
         // basta para um semiplano horizontal), tampa refeita por orelhas. null = nada sobra ou seção sem cope.
-        public static Contorno Recortar(Contorno f, double vMin, double vMax)
+        // uMin/uMax: copes laterais (esq/dir do contrato pontas: bordas das mesas da viga mais larga que o vão entre as mesas do apoio).
+        public static Contorno Recortar(Contorno f, double vMin, double vMax, double uMin = double.NegativeInfinity, double uMax = double.PositiveInfinity)
         {
-            if (f.Concreto || f.Lacos.Count != 1 || vMax - vMin < 1e-4) return null;
-            List<Point> Corta(List<Point> q, double lim, bool abaixo)
+            if (f.Concreto || f.Lacos.Count != 1 || vMax - vMin < 1e-4 || uMax - uMin < 1e-4) return null;
+            List<Point> Corta(List<Point> q, double lim, bool abaixo, bool emU = false)
             {
+                if (double.IsInfinity(lim)) return q;
                 var r = new List<Point>();
-                bool Dentro(Point x) => abaixo ? x.Y <= lim : x.Y >= lim;
+                double C(Point x) => emU ? x.X : x.Y;
+                bool Dentro(Point x) => abaixo ? C(x) <= lim : C(x) >= lim;
                 for (int i = 0; i < q.Count; i++)
                 {
                     Point a = q[i], b = q[(i + 1) % q.Count];
                     if (Dentro(a)) r.Add(a);
-                    if (Dentro(a) != Dentro(b)) r.Add(new Point(a.X + (b.X - a.X) * (lim - a.Y) / (b.Y - a.Y), lim));
+                    if (Dentro(a) != Dentro(b)) { double s = (lim - C(a)) / (C(b) - C(a)); r.Add(new Point(a.X + (b.X - a.X) * s, a.Y + (b.Y - a.Y) * s)); }
                 }
                 return r;
             }
-            var l = Corta(Corta(f.Lacos[0].ToList(), vMax, true), vMin, false);
+            var l = Corta(Corta(Corta(Corta(f.Lacos[0].ToList(), vMax, true), vMin, false), uMax, true, true), uMin, false, true);
             if (l.Count < 3) return null;
-            var c = new Contorno { H = vMax - vMin, B = f.B, Tw = f.Tw, Tf = f.Tf };
+            var c = new Contorno { H = vMax - vMin, B = Math.Min(f.B, uMax - uMin), Tw = f.Tw, Tf = f.Tf, Forma = f.Forma };
             Point[] arr = l.ToArray(); c.Laco(arr);
             foreach (int[] t in Triangular(arr)) { c.Tampa.Add(arr[t[0]]); c.Tampa.Add(arr[t[1]]); c.Tampa.Add(arr[t[2]]); }
             return c;
@@ -392,6 +457,91 @@ namespace NovoFtool
                 }
             }
             return (arestas.Values.All(n => n == 0), vol);
+        }
+
+        // ---------- interferência (Estructto.exe --testes-interferencia) ----------
+
+        // Pares de sólidos (malhas fechadas) que se interpenetram mais que tol (m): AABB e depois pontos de cada malha
+        // (vértices e pontos ao longo das arestas, a cada ≤ passo) dentro da outra (raio par/ímpar) e longe da superfície dela
+        // mais que tol — encostar (chapa na mesa, solda na face) não conta. Devolve (i, j, profundidade em m).
+        // ponytail: amostra arestas, não faz interseção triângulo-triângulo; uma lâmina fina cruzando sem vértice dentro escapa.
+        public static List<(int A, int B, double Prof)> Interferencias(IList<MalhaDx> s, double tol = 0.001, double passo = 0.02)
+        {
+            var caixa = s.Select(m =>
+            {
+                if (m.P.Count == 0) return (Min: new Vector3(float.MaxValue), Max: new Vector3(float.MinValue));
+                Vector3 mi = m.P[0], ma = m.P[0];
+                foreach (Vector3 p in m.P) { mi = Vector3.Min(mi, p); ma = Vector3.Max(ma, p); }
+                return (Min: mi, Max: ma);
+            }).ToList();
+            float t = (float)tol;
+            var r = new List<(int, int, double)>();
+            for (int i = 0; i < s.Count; i++)
+                for (int j = i + 1; j < s.Count; j++)
+                {
+                    var (a0, a1) = caixa[i]; var (b0, b1) = caixa[j];
+                    if (a0.X > b1.X - t || b0.X > a1.X - t || a0.Y > b1.Y - t || b0.Y > a1.Y - t || a0.Z > b1.Z - t || b0.Z > a1.Z - t) continue;
+                    double p = Math.Max(Penetracao(s[i], s[j], caixa[j], tol, passo), Penetracao(s[j], s[i], caixa[i], tol, passo));
+                    if (p > tol) r.Add((i, j, p));
+                }
+            return r;
+        }
+
+        // Maior distância à superfície de b de um ponto de a que está dentro de b (0 = nenhum).
+        static double Penetracao(MalhaDx a, MalhaDx b, (Vector3 Min, Vector3 Max) cb, double tol, double passo)
+        {
+            float t = (float)tol; double pior = 0;
+            bool NaCaixa(Vector3 p) => p.X > cb.Min.X + t && p.X < cb.Max.X - t && p.Y > cb.Min.Y + t && p.Y < cb.Max.Y - t && p.Z > cb.Min.Z + t && p.Z < cb.Max.Z - t;
+            void Testa(Vector3 p)
+            {
+                if (!NaCaixa(p) || !Dentro(b, p)) return;
+                double d = Distancia(b, p);
+                if (d > pior) pior = d;
+            }
+            for (int k = 0; k + 2 < a.T.Count; k += 3)
+                for (int e = 0; e < 3; e++)
+                {
+                    Vector3 p = a.P[a.T[k + e]], q = a.P[a.T[k + (e + 1) % 3]];
+                    int n = Math.Max(1, (int)Math.Ceiling((q - p).Length() / passo));
+                    for (int m = 0; m < n; m++) Testa(Vector3.Lerp(p, q, (float)m / n));
+                }
+            return pior > tol ? pior : 0;
+        }
+
+        static bool Dentro(MalhaDx b, Vector3 o)
+        {
+            var dir = Vector3.Normalize(new Vector3(0.5773f, 0.6129f, 0.5397f));   // direção "torta": não corre ao longo de arestas
+            int n = 0;
+            for (int k = 0; k + 2 < b.T.Count; k += 3)
+            {
+                Vector3 v0 = b.P[b.T[k]], e1 = b.P[b.T[k + 1]] - v0, e2 = b.P[b.T[k + 2]] - v0;
+                Vector3 h = Vector3.Cross(dir, e2); float det = Vector3.Dot(e1, h);
+                if (Math.Abs(det) < 1e-12f) continue;
+                Vector3 s = o - v0; float u = Vector3.Dot(s, h) / det; if (u < 0 || u > 1) continue;
+                Vector3 q = Vector3.Cross(s, e1); float v = Vector3.Dot(dir, q) / det; if (v < 0 || u + v > 1) continue;
+                if (Vector3.Dot(e2, q) / det > 0) n++;
+            }
+            return n % 2 == 1;
+        }
+
+        static double Distancia(MalhaDx b, Vector3 p)
+        {
+            double d = double.MaxValue;
+            for (int k = 0; k + 2 < b.T.Count; k += 3) d = Math.Min(d, DistTri(p, b.P[b.T[k]], b.P[b.T[k + 1]], b.P[b.T[k + 2]]));
+            return d;
+        }
+
+        // Distância ponto-triângulo (Ericson, Real-Time Collision Detection 5.1.5).
+        static double DistTri(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            Vector3 ab = b - a, ac = c - a, ap = p - a;
+            float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap); if (d1 <= 0 && d2 <= 0) return (p - a).Length();
+            Vector3 bp = p - b; float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp); if (d3 >= 0 && d4 <= d3) return (p - b).Length();
+            float vc = d1 * d4 - d3 * d2; if (vc <= 0 && d1 >= 0 && d3 <= 0) return (p - (a + ab * (d1 / (d1 - d3)))).Length();
+            Vector3 cp = p - c; float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp); if (d6 >= 0 && d5 <= d6) return (p - c).Length();
+            float vb = d5 * d2 - d1 * d6; if (vb <= 0 && d2 >= 0 && d6 <= 0) return (p - (a + ac * (d2 / (d2 - d6)))).Length();
+            float va = d3 * d6 - d5 * d4; if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return (p - (b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6))))).Length();
+            float den = 1 / (va + vb + vc); return (p - (a + ab * (vb * den) + ac * (vc * den))).Length();
         }
 
         // Autoverificação (Estructto.exe --testes-exportar também chama): triangulação, recortes e sólidos fechados.
@@ -493,6 +643,44 @@ namespace NovoFtool
                         afirmar(Math.Abs(Math.Abs(k2.P.X) - (fPilar.Tw / 2 + 0.012)) < 1e-3, "viga inclinada / pilar " + rt + ": viga para 12 mm da alma");
                     }
                 }
+            }
+
+            {   // interferência: caixas sobrepostas 5 cm = 1 par; encostadas = 0
+                var cb = new Color4(1, 1, 1, 1);
+                MalhaDx Cx(double x) { var mx = new MalhaDx(); mx.Caixa(new Point3D(x, 0, 0), 0.2, 0.2, 0.2, cb); return mx; }
+                var ip = Interferencias(new[] { Cx(0), Cx(0.15) }); var it = Interferencias(new[] { Cx(0), Cx(0.2) });
+                afirmar(ip.Count == 1 && ip[0].Prof > 0.02 && ip[0].Prof <= 0.05 + 1e-6 && it.Count == 0, "interferência: caixas sobrepostas 5 cm = 1 par (prof. " + (ip.Count > 0 ? (ip[0].Prof * 1000).ToString("0") : "—") + " mm); encostadas = 0");
+                // pórtico acima com os cortes das juntas: pilar, viga e diagonal (recorte angulo) não se interpenetram
+                MalhaDx Solido(Barra3D b, Dictionary<(Barra3D, bool), Corte> cs, Contorno f)
+                {
+                    var ms = new MalhaDx(); var a0 = new Point3D(nos[b.Ni].X, 0, nos[b.Ni].Z); var c0 = new Point3D(nos[b.Nj].X, 0, nos[b.Nj].Z);
+                    Vector3D eb = c0 - a0; eb.Normalize(); Vector3D vb = Modelo3D.EixoY(eb, 0), ub = Vector3D.CrossProduct(vb, eb);
+                    cs.TryGetValue((b, true), out Corte k1); cs.TryGetValue((b, false), out Corte k2);
+                    Extrudar(ms, f, a0, c0, ub, vb, k1, k2, cb, false); return ms;
+                }
+                var pecas = new[] { Solido(pilar, cortes, fPilar), Solido(viga, cortes, fViga), Solido(diag, cortes, fViga) };
+                var ij = Interferencias(pecas);
+                afirmar(ij.Count == 0 && cd.Extra != null, "diagonal com recorte angulo: pilar, viga e diagonal sem interferência (" + ij.Count + " pares)");
+                // pontas do motor: plano no recuo dado (sem o limite 0,3·L) e cope lateral (esq) no contorno
+                var cm = Juntas(mod, b => (new Point3D(nos[b.Ni].X, 0, nos[b.Ni].Z), new Point3D(nos[b.Nj].X, 0, nos[b.Nj].Z)), b => b == pilar ? fPilar : fViga,
+                                (b, emI) => 0.01, (b, emI) => double.NaN, (b, emI) => b == viga && emI ? new Corte { P = new Point3D(1.5, 0, 3), N = new Vector3D(-1, 0, 0) } : null);
+                afirmar(cm[(viga, true)].Motor && Math.Abs(cm[(viga, true)].Recuo - 1.5) < 1e-9 && Math.Abs(cortes[(viga, true)].Recuo - 0.16) < 1e-9, "pontas do motor: recuo 1,5 m sem o limite 0,3·L; sem elas, a regra das juntas (0,16 m)");
+                Contorno fl = Recortar(fViga, -fViga.H / 2, fViga.H / 2, double.NegativeInfinity, fViga.B / 2 - 0.02);
+                afirmar(fl != null && Math.Abs(fl.Lacos[0].Max(p => p.X) - (fViga.B / 2 - 0.02)) < 1e-9 && fl.Lacos[0].Min(p => p.X) < -fViga.B / 2 + 1e-9, "cope lateral: borda das mesas cortada em u = B/2 − 20 mm, o outro lado inteiro");
+                // tubo em tubo (quadro tubular): boca de peixe, ramal Ø 114 em banzo Ø 168 a 60°, sem interferência e encostado no banzo
+                var mt = new Modelo3D(); mt.Nos.Add(new No3D { Id = 1 }); mt.Nos.Add(new No3D { Id = 2, X = 4 }); mt.Nos.Add(new No3D { Id = 3, X = 2 }); mt.Nos.Add(new No3D { Id = 4, X = 3, Z = 1.732 });
+                var b1 = new Barra3D { Id = 1, Ni = 1, Nj = 3 }; var b2 = new Barra3D { Id = 2, Ni = 3, Nj = 2 }; var br = new Barra3D { Id = 3, Ni = 3, Nj = 4 };
+                mt.Barras.AddRange(new[] { b1, b2, br });
+                var nt = mt.Nos.ToDictionary(n => n.Id);
+                Contorno fB = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "TC", H = 0.168, Tw = 0.008 }, 0.1), fR = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "TC", H = 0.114, Tw = 0.006 }, 0.1);
+                Func<Barra3D, (Point3D, Point3D)> pt = b => (new Point3D(nt[b.Ni].X, 0, nt[b.Ni].Z), new Point3D(nt[b.Nj].X, 0, nt[b.Nj].Z));
+                var ct = Juntas(mt, pt, b => b == br ? fR : fB, (b, emI) => 0, (b, emI) => double.NaN);
+                MalhaDx Sol(Barra3D b) { var ms = new MalhaDx(); var (a0, c0) = pt(b); Vector3D eb = c0 - a0; eb.Normalize(); Vector3D vb = Modelo3D.EixoY(eb, 0), ub = Vector3D.CrossProduct(vb, eb);
+                                         ct.TryGetValue((b, true), out Corte k1); ct.TryGetValue((b, false), out Corte k2); Extrudar(ms, b == br ? fR : fB, a0, c0, ub, vb, k1, k2, cb, false); return ms; }
+                MalhaDx sr = Sol(br);
+                double rmin = sr.P.Min(p => Math.Sqrt(p.Y * p.Y + p.Z * p.Z));   // distância ao eixo do banzo (eixo X)
+                afirmar(ct.TryGetValue((br, true), out Corte kb) && kb.Raio > 0 && Interferencias(new[] { Sol(b1), Sol(b2), sr }).Count == 0 && Math.Abs(rmin - 0.084) < 1e-3,
+                        "boca de peixe: ramal tubular sem interferência com o banzo e encostado nele (menor distância ao eixo " + (rmin * 1000).ToString("0.0") + " mm, R = 84)");
             }
 
             var m = new MalhaDx();

@@ -32,6 +32,11 @@ namespace NovoFtool
         public readonly List<Parafuso> Parafusos = new List<Parafuso>();
         public readonly List<Solda> Soldas = new List<Solda>();
         public readonly List<Recorte> Recortes = new List<Recorte>();
+        // Ponta da barra que chega calculada pelo motor (geometria.pontas, barra 0; docs/v3/PONTAS-CONTRATO.md): plano de corte no
+        // referencial local da ligação, em m, e os recortes (cope com Posicao topo/base/esq/dir e Altura/Comprimento em mm,
+        // angulo com Folga em mm, boca_peixe). null = modelo/ligação sem pontas: vale a regra das juntas (Render3DGeometria.Juntas).
+        public sealed class PontaMotor { public Vector3D P, N; public readonly List<Recorte> Recortes = new List<Recorte>(); }
+        public PontaMotor Ponta;
 
         // Recorte "recuo" da barra dada ("viga" = a que chega; "pilar" = a contínua). Folga (m) = vão entre a ponta e a face
         // da peça contínua; XPonta (m) = posição da ponta a partir do nó (o motor manda x_ponta). NaN = sem recorte: vale a regra das juntas.
@@ -60,6 +65,17 @@ namespace NovoFtool
             {
                 var pr = r["parametros"];
                 l.Recortes.Add(new Recorte { Barra = (string)r["barra"], Tipo = (string)r["tipo"], Folga = D(pr, "folga", double.NaN), XPonta = D(pr, "x_ponta", double.NaN), Altura = D(pr, "altura"), Comprimento = D(pr, "comprimento"), Posicao = (string)pr?["posicao"] ?? "topo" });
+            }
+            var pm = (g["pontas"] as JsonArray)?.FirstOrDefault(p => D(p, "barra", -1) == 0 && p?["plano"] != null);
+            if (pm != null)
+            {
+                l.Ponta = new PontaMotor { P = V3(pm["plano"]["ponto"]), N = V3(pm["plano"]["normal"]) };
+                foreach (var r in pm["recortes"]?.AsArray() ?? new JsonArray())
+                {
+                    string t = (string)r["tipo"], face = (string)r["face"];
+                    l.Ponta.Recortes.Add(new Recorte { Barra = "viga", Tipo = t, Altura = D(r, "altura") * 1000, Comprimento = D(r, "comprimento") * 1000, Folga = D(r, "folga", double.NaN) * 1000,
+                                                       Posicao = face == "sup" ? "topo" : face == "inf" ? "base" : face ?? "topo" });
+                }
             }
             return l;
         }
@@ -95,11 +111,11 @@ namespace NovoFtool
 
         // Chapa de topo estendida viga-pilar (mesa do pilar): chapa na face do pilar, 8 parafusos, solda em todo o contorno da
         // viga, enrijecedores no pilar nos níveis das mesas. face = distância do nó à face do pilar (m).
-        public static Ligacao3D ChapaDeTopo(int no, Barra3D viga, bool emI, Contorno fViga, double face, double tfPilar, double faceY)
+        public static Ligacao3D ChapaDeTopo(int no, Barra3D viga, bool emI, Contorno fViga, double face, double tfPilar, double faceY, bool enrijecer = true, double largFace = double.NaN)
         {
             double H = fViga.H * 1000, B = fViga.B * 1000, tf = fViga.Tf * 1000, s = emI ? -1 : 1;
             double esp = H < 300 ? 16 : 20, ext = H < 400 ? 60 : 80, d = H < 300 ? 16 : 20;
-            double bp = Math.Max(B, 150), hp = H + 2 * ext, x0 = Math.Round(face * 1000, 1);
+            double bp = Math.Max(B, Math.Min(150, double.IsNaN(largFace) ? 150 : largFace * 1000)), hp = H + 2 * ext, x0 = Math.Round(face * 1000, 1);   // pilar estreito: a chapa não passa da face dele
             var l = new Ligacao3D { No = no, Barra = viga.Id, Nome = "Chapa de topo estendida" };
             l.Chapas.Add(new Ligacao3D.Chapa { Nome = "chapa de topo", Origem = new Vector3D(x0, -bp / 2, -hp / 2), Normal = new Vector3D(1, 0, 0), U = new Vector3D(0, 1, 0), Espessura = esp, Contorno = Ret(0, 0, bp, hp) });
             double g = bp - 70;
@@ -108,44 +124,68 @@ namespace NovoFtool
                     l.Parafusos.Add(new Ligacao3D.Parafuso { D = d, Comprimento = esp + tfPilar * 1000 + 12, Pega = esp + tfPilar * 1000, Origem = new Vector3D(x0 + esp, y, z), Eixo = new Vector3D(-1, 0, 0) });
             l.Soldas.Add(new Ligacao3D.Solda { Perna = 6, Pontos = ContornoLocal(fViga, x0 + esp, s) });
             double tfc = tfPilar * 1000, hw = Math.Max(40, faceY * 1000 - tfc);
-            foreach (double z in new[] { H / 2 - tf / 2, -(H / 2 - tf / 2) })   // enrijecedores entre as mesas do pilar
+            if (enrijecer) foreach (double z in new[] { H / 2 - tf / 2, -(H / 2 - tf / 2) })   // enrijecedores entre as mesas do pilar (só pilar I: no U/tubo a alma não é centrada)
                 l.Chapas.Add(new Ligacao3D.Chapa { Nome = "enrijecedor", Origem = new Vector3D(-(x0 - tfc), -hw, z - 5), Normal = new Vector3D(0, 0, 1), U = new Vector3D(1, 0, 0), Espessura = 10, Contorno = Ret(0, 0, 2 * (x0 - tfc), 2 * hw) });
             l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "recuo", Folga = esp });
             return l;
         }
 
-        // Chapa simples (shear tab) soldada na peça contínua e parafusada na alma da viga (3 parafusos). Com o perfil de apoio
-        // (viga em viga, I/U): a chapa vai na alma do apoio, a viga entra até 12 mm da alma (x_ponta) com cope na mesa de cima.
+        // Face da peça onde a chapa encosta, no referencial local (mm): alma do I (centrada, lado +y); costas da alma do U e da
+        // aba do L (u = −B/2, y = s·u); lado do tubo. sinal = lado para onde a chapa cresce (+1 = +y).
+        static (double y, double sinal) FaceChapa(Contorno f, bool emI)
+        {
+            double s = emI ? -1 : 1;
+            if (f.Forma == "U" || f.Forma == "L") return (-s * f.B / 2 * 1000, -s);
+            if (f.Forma == "TR" || f.Forma == "TC" || f.Forma == "CIRC") return (f.B / 2 * 1000, 1);
+            return (f.Tw / 2 * 1000, 1);
+        }
+
+        // Chapa simples (shear tab) soldada na peça contínua e parafusada na alma da viga (3 parafusos). Com perfil de apoio I
+        // (viga em viga): a chapa vai na alma do apoio, a viga entra até 12 mm da alma (x_ponta) com cope em cada mesa que bate
+        // nas mesas do apoio (regra do contrato pontas). Apoio U/L/tubo: a viga para na face (a alma do U não é centrada).
+        // A chapa fica na face da alma da viga (I) ou nas costas da alma (U, L), com altura que cabe na viga.
         public static Ligacao3D ChapaSimples(int no, Barra3D viga, bool emI, Contorno fViga, double face, Contorno fApoio = null)
         {
-            bool naAlma = fApoio != null && !fApoio.Concreto && fApoio.Lacos.Count == 1 && fApoio.Tw > 0 && fApoio.Tf > 0;
+            bool naAlma = fApoio != null && fApoio.Forma == "I" && !fApoio.Concreto && fApoio.Lacos.Count == 1 && fApoio.Tw > 0 && fApoio.Tf > 0;
             if (naAlma) face = fApoio.Tw / 2;
-            double H = fViga.H * 1000, tw = fViga.Tw * 1000, x0 = Math.Round(face * 1000, 1), esp = 10, lp = 100, hp = Math.Max(90, H - 80);
-            if (naAlma) hp = Math.Max(90, Math.Min(hp, H - 2 * (fApoio.Tf * 1000 + 15) - 20));
+            var (yf, sg) = FaceChapa(fViga, emI);
+            bool costas = fViga.Forma == "U" || fViga.Forma == "L" || fViga.Forma == "TR" || fViga.Forma == "TC" || fViga.Forma == "CIRC";
+            double H = fViga.H * 1000, tw = fViga.Tw * 1000, tf = fViga.Tf * 1000, x0 = Math.Round(face * 1000, 1), esp = 10, lp = 100;
+            double hp = Math.Min(Math.Max(90, H - 80), costas ? H - 10 : H - 2 * tf - 10);   // entre as mesas (I) ou nas costas (U, L, tubo)
+            if (naAlma) hp = Math.Min(hp, fApoio.H * 1000 - 2 * (fApoio.Tf * 1000 + 15));
+            hp = Math.Max(hp, 20);
             var l = new Ligacao3D { No = no, Barra = viga.Id, Nome = "Chapa simples" };
-            l.Chapas.Add(new Ligacao3D.Chapa { Nome = "chapa simples", Origem = new Vector3D(x0, tw / 2, -hp / 2), Normal = new Vector3D(0, 1, 0), U = new Vector3D(0, 0, 1), Espessura = esp, Contorno = Ret(0, 0, hp, lp) });
-            int n = hp >= 170 ? 3 : 2; double passo = Math.Min(70, (hp - 60) / Math.Max(1, n - 1));
+            l.Chapas.Add(new Ligacao3D.Chapa { Nome = "chapa simples", Origem = new Vector3D(x0, yf, -sg * hp / 2), Normal = new Vector3D(0, sg, 0), U = new Vector3D(0, 0, sg), Espessura = esp, Contorno = Ret(0, 0, hp, lp) });
+            int n = hp >= 170 ? 3 : hp >= 80 ? 2 : 1; double passo = n > 1 ? Math.Min(70, (hp - 60) / (n - 1)) : 0;
+            double pega = esp + tw;
             for (int k = 0; k < n; k++)
-                l.Parafusos.Add(new Ligacao3D.Parafuso { D = 16, Comprimento = esp + tw + 14, Pega = esp + tw, Origem = new Vector3D(x0 + 50, tw / 2 + esp, (k - (n - 1) / 2.0) * passo), Eixo = new Vector3D(0, -1, 0) });
-            foreach (double y in new[] { tw / 2, tw / 2 + esp })   // filete dos dois lados da chapa
+                l.Parafusos.Add(new Ligacao3D.Parafuso { D = 16, Comprimento = pega + 14, Pega = pega, Origem = new Vector3D(x0 + 50, yf + sg * esp, (k - (n - 1) / 2.0) * passo), Eixo = new Vector3D(0, -sg, 0) });
+            foreach (double y in new[] { yf, yf + sg * esp })   // filete dos dois lados da chapa
                 l.Soldas.Add(new Ligacao3D.Solda { Perna = 6, Pontos = new[] { new Vector3D(x0, y, -hp / 2), new Vector3D(x0, y, hp / 2) } });
             if (!naAlma) { l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "recuo", Folga = 12 }); return l; }
             l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "recuo", XPonta = x0 + 12 });
-            l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "cope", Posicao = "topo", Altura = Math.Round(fApoio.Tf * 1000 + 15), Comprimento = Math.Round((fApoio.B - fApoio.Tw) / 2 * 1000 + 25) });
+            double livre = fApoio.H / 2 - fApoio.Tf, alt = Math.Round(fApoio.Tf * 1000 + 15), comp = Math.Round((fApoio.B - fApoio.Tw) / 2 * 1000 + 25);
+            if (fViga.H / 2 > livre - 1e-9)   // ponytail: eixos da viga e do apoio no mesmo nível (sem os pontos cardinais)
+                foreach (string pos in new[] { "topo", "base" })
+                    l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "cope", Posicao = pos, Altura = Math.Round((fViga.H / 2 - livre) * 1000 + 15), Comprimento = comp });
+            else l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "cope", Posicao = "topo", Altura = alt, Comprimento = comp });
             return l;
         }
 
-        // Gusset de diagonal: chapa no plano da diagonal, parafusos ao longo dela, solda na peça contínua. recuo = recuo da diagonal (m).
+        // Gusset de diagonal: chapa paralela ao plano xz local, encostada na face da diagonal (FaceChapa: costas do U/L, lado do
+        // I ou do tubo; antes cortava a peça ao meio), parafusos ao longo dela, solda na peça contínua. recuo = recuo da diagonal (m).
         public static Ligacao3D Gusset(int no, Barra3D diag, bool emI, Contorno fDiag, double recuo)
         {
             double B = Math.Max(fDiag.B, fDiag.H) * 1000, t = Math.Max(fDiag.Tw, 0.006) * 1000, esp = 10;
             double xr = Math.Round(recuo * 1000, 1), xb = 0.4 * xr, x1 = xr + 220;
+            var (yf, sg) = FaceChapa(fDiag, emI);
+            if (fDiag.Forma == "I") yf = fDiag.B / 2 * 1000;   // I: por fora da ponta das mesas
             var l = new Ligacao3D { No = no, Barra = diag.Id, Nome = "Gusset" };
-            l.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, esp / 2, 0), Normal = new Vector3D(0, -1, 0), U = new Vector3D(1, 0, 0), Espessura = esp,
-                                               Contorno = new[] { new Point(xb, -(B / 2 + 90)), new Point(x1, -(B / 2 + 30)), new Point(x1, B / 2 + 30), new Point(xb, B / 2 + 90) } });
+            l.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, yf, 0), Normal = new Vector3D(0, sg, 0), U = new Vector3D(sg, 0, 0), Espessura = esp,
+                                               Contorno = new[] { new Point(sg * xb, -(B / 2 + 90)), new Point(sg * x1, -(B / 2 + 30)), new Point(sg * x1, B / 2 + 30), new Point(sg * xb, B / 2 + 90) } });
             for (int k = 0; k < 3; k++)
-                l.Parafusos.Add(new Ligacao3D.Parafuso { D = 16, Comprimento = esp + t + 20, Pega = esp + t, Origem = new Vector3D(xr + 40 + 60 * k, esp / 2 + t / 2 + 2, 0), Eixo = new Vector3D(0, -1, 0) });
-            foreach (double y in new[] { -esp / 2, esp / 2 })
+                l.Parafusos.Add(new Ligacao3D.Parafuso { D = 16, Comprimento = esp + t + 20, Pega = esp + t, Origem = new Vector3D(xr + 40 + 60 * k, yf + sg * esp, 0), Eixo = new Vector3D(0, -sg, 0) });
+            foreach (double y in new[] { yf, yf + sg * esp })
                 l.Soldas.Add(new Ligacao3D.Solda { Perna = 6, Pontos = new[] { new Vector3D(xb, y, -(B / 2 + 90)), new Vector3D(xb, y, B / 2 + 90) } });
             l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "recuo", Folga = xr });
             return l;
@@ -193,7 +233,7 @@ namespace NovoFtool
                 if (vert.Contains(b)) continue;
                 bool horiz = Math.Abs(nos[b.Nj].Z - nos[b.Ni].Z) < 0.2 * (P(nos[b.Nj]) - P(nos[b.Ni])).Length;
                 if (!horiz) r.Add(Gusset(no, b, emI, f, c.Recuo));
-                else if (vert.Contains(c.Contra) && c.NaMesa) { Contorno fp = forma(c.Contra); r.Add(ChapaDeTopo(no, b, emI, f, face, fp.Tf, Math.Max(fp.B, fp.H) / 2)); }
+                else if (vert.Contains(c.Contra) && c.NaMesa) { Contorno fp = forma(c.Contra); r.Add(ChapaDeTopo(no, b, emI, f, face, fp.Tf, Math.Max(fp.B, fp.H) / 2, fp.Forma == "I", fp.B)); }
                 else r.Add(ChapaSimples(no, b, emI, f, face, forma(c.Contra)));
             }
             foreach (No3D n in mod.Nos.Where(n => n.Apoios.Any(x => x)))
@@ -219,6 +259,7 @@ namespace NovoFtool
             double H = f.H * 1000, B = f.B * 1000, esp = H < 300 ? 16 : 20, d = H < 300 ? 16 : 20, ext = H < 400 ? 60 : 80;
             double hc = H / Math.Max(0.3, Math.Abs(W.Z)), bp = Math.Max(B, 150), hp = hc + 2 * ext, g = bp - 70;
             var l = new Ligacao3D { No = no, Barra = b.Id, Nome = "Chapa de topo (cumeeira)" };
+            l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "recuo", XPonta = esp });   // a barra termina na face da chapa (Juntas recua o plano da esquadria)
             l.Chapas.Add(new Ligacao3D.Chapa { Nome = "chapa de topo", Origem = U * (-bp / 2) + W * (-hp / 2), Normal = nLocal, U = U, Espessura = esp, Contorno = Ret(0, 0, bp, hp) });
             if (parafusos)
                 foreach (double w in new[] { hc / 2 + ext / 2, hc / 2 - 45, -(hc / 2 - 45), -(hc / 2 + ext / 2) })
@@ -253,7 +294,7 @@ namespace NovoFtool
             string tipo = p.Pendente ?? "";
             double face = c.Face;
             if (tipo.StartsWith("gusset") || tipo.StartsWith("no_trelica") || dz > 0.2) r.Add(Gusset(p.No, b, emI, f, c.Recuo));
-            else if (tipo.StartsWith("viga_pilar_mesa") && tipo.Contains("rigida") && fc.Lacos.Count == 1 && c.NaMesa) r.Add(ChapaDeTopo(p.No, b, emI, f, face, fc.Tf, Math.Max(fc.B, fc.H) / 2));
+            else if (tipo.StartsWith("viga_pilar_mesa") && tipo.Contains("rigida") && fc.Lacos.Count == 1 && c.NaMesa) r.Add(ChapaDeTopo(p.No, b, emI, f, face, fc.Tf, Math.Max(fc.B, fc.H) / 2, fc.Forma == "I", fc.B));
             else r.Add(ChapaSimples(p.No, b, emI, f, face, fc));
             return r;
         }
