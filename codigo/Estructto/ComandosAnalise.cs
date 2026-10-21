@@ -35,12 +35,8 @@ namespace NovoFtool
             finally { Mouse.OverrideCursor = cursor; }
         }
 
-        // O motor responde {"erro": "..."}; mostra só o texto.
-        public static string MensagemMotor(Exception ex)
-        {
-            try { var j = JsonNode.Parse(ex.Message); var e = j?["erro"]; if (e != null) return e.ToString(); } catch { }
-            return ex.Message;
-        }
+        // Texto do erro: MotorErro já traz o detalhe legível (Motor.cs, MotorErro.Texto).
+        public static string MensagemMotor(Exception ex) => ex.Message;
 
         static void Mostrar(Window dono, Window j) { j.Owner = dono; j.Show(); }
 

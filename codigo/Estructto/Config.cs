@@ -9,7 +9,7 @@ namespace NovoFtool
     public static class Config
     {
         // execução automática (--capturas, --teste-*): pasta própria no %TEMP%, para não sujar recentes e recuperação do usuário
-        static readonly string Pasta = Environment.GetCommandLineArgs().Any(a => a == "--capturas" || a.StartsWith("--teste"))
+        internal static readonly string Pasta = Environment.GetCommandLineArgs().Any(a => a == "--capturas" || a.StartsWith("--teste"))
             ? Path.Combine(Path.GetTempPath(), "Estructto", "config-automacao")
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool");
         static string ArqRecentes { get { return Path.Combine(Pasta, "recentes.txt"); } }

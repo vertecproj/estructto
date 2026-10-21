@@ -56,11 +56,7 @@ namespace NovoFtool
         }
 
         // Mensagem do erro do motor ({"erro", "mensagem"}) ou da exceção.
-        public static string Mensagem(Exception ex)
-        {
-            if (ex is MotorErro me) { try { var j = JsonNode.Parse(me.Message); string s = S(j, "mensagem"); if (s != "") return s; } catch { } }
-            return ex.Message;
-        }
+        public static string Mensagem(Exception ex) => ex.Message;   // MotorErro já lê "mensagem"/"detalhe" (Motor.cs)
     }
 
     public partial class DocumentoEspacial

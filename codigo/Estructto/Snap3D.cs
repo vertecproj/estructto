@@ -139,7 +139,7 @@ namespace NovoFtool
             Cand? adiado = null;
             if (objetos && g != null)
             {
-                Cand? melhor = Objetos(g, tela, c, base0, m, olho);
+                Cand? melhor = Objetos(g, tela, c, base0, m, olho, pl);
                 Pausa(melhor, g, tela, c, base0, tMs, m);
                 if (melhor != null)
                 {
@@ -290,7 +290,7 @@ namespace NovoFtool
 
         // ---------- modos de objeto ----------
 
-        Cand? Objetos(GeoSnap g, Func<Point3D, Point> tela, Point c, Point3D? base0, ModoSnap m, Vector3D? olho)
+        Cand? Objetos(GeoSnap g, Func<Point3D, Point> tela, Point c, Point3D? base0, ModoSnap m, Vector3D? olho, PlanoTrabalho pl = null)
         {
             double ap = Abertura;
             var cs = new List<Cand>();
@@ -384,7 +384,13 @@ namespace NovoFtool
 
             if (cs.Count == 0) return null;
             double dmin = cs.Min(x => x.D);
-            return cs.Where(x => x.D <= dmin + Empate).OrderBy(x => Array.IndexOf(Prioridade, x.T)).ThenBy(x => x.D).First();
+            Cand best = cs.Where(x => x.D <= dmin + Empate).OrderBy(x => Array.IndexOf(Prioridade, x.T)).ThenBy(x => x.D).First();
+            // E2E-04: pontos do mesmo tipo no mesmo pixel (em planta, topo e pé do pilar): vale o do plano de trabalho,
+            // depois o mais perto de quem olha. Antes valia a ordem da lista (a ponta A, o pé).
+            Point pb = tela(best.P); Vector3D oo = olho ?? new Vector3D(0, 0, 1);
+            double Fora(Point3D p) => pl == null ? 0 : Math.Round((p - pl.Projetar(p)).Length, 6);
+            return cs.Where(x => x.T == best.T && (tela(x.P) - pb).Length < 0.5)
+                     .OrderBy(x => Fora(x.P)).ThenByDescending(x => Vector3D.DotProduct((Vector3D)x.P, oo)).First();
         }
 
         // Aquisição por pausa (OTRACK/EXT): cursor parado TempoAquisicao ms sobre o mesmo ponto adquire; de novo, remove.
@@ -541,6 +547,12 @@ namespace NovoFtool
             Ok("nó solto: ⊗ em (10,2,0)", r.Tipo == TipoSnap.No && Perto(r.P, 10, 2, 0));
             r = R(s1, Px(0, 0) + new Vector(1, 1));
             Ok("empate nó × extremidade no mesmo ponto: extremidade (prioridade)", r.Tipo == TipoSnap.Extremidade);
+            // E2E-04: pilar (20,20,0)-(20,20,6) visto de topo: pé e topo no mesmo pixel; a ponta A (1ª da lista) é o pé
+            var gp = new GeoSnap(); gp.Segs.Add(new SegSnap { A = new Point3D(20, 20, 0), B = new Point3D(20, 20, 6), Dono = "P1" });
+            Point3D? Pilar(PlanoTrabalho pp) => Novo().Resolver(gp, Tela, NoPlano, pp, Px(20, 20) + new Vector(2, 1), null, 0, false, olho).P;
+            Ok("E2E-04 planta, plano z=6: extremidade no topo (20,20,6)", Perto(Pilar(PlanoTrabalho.Horizontal(6)), 20, 20, 6));
+            Ok("E2E-04 planta, plano z=0: extremidade no pé (20,20,0)", Perto(Pilar(PlanoTrabalho.Horizontal(0)), 20, 20, 0));
+            Ok("E2E-04 planta, plano z=3 (nenhuma ponta nele): a mais perto do olho (20,20,6)", Perto(Pilar(PlanoTrabalho.Horizontal(3)), 20, 20, 6));
             r = R(s1, Px(8, 1.3) + new Vector(4, 0), new Point3D(10, 1, 0));
             Ok("perpendicular de (10,1) em B3: pé (8,1,0)", r.Tipo == TipoSnap.Perpendicular && Perto(r.P, 8, 1, 0));
             var sNea = Novo(); sNea.Modos = ModoSnap.Proximo | ModoSnap.Extremidade;

@@ -36,6 +36,9 @@ namespace NovoFtool
         // Erro HTTP do motor vira MotorErro com a mensagem que o motor mandou.
         public static async Task<JsonNode> Chamar(string metodo, string rota, object corpo = null)
         {
+            // E2E-03: dentro de uma operação composta (Exclusivo) o motor não pode trocar por baixo: um motor novo sobe vazio e
+            // o resto da operação (ex.: o F5) iria para ele sem o modelo. Fora dela, Garantir sobe outro em silêncio (próxima ação).
+            if (geracaoOp.Value is int g && (g != geracao || !Ligado)) { Desligar(); throw Parou(); }
             await Garantir();
             if (TrocaModelo(metodo, rota)) Dono = null;
             var req = new HttpRequestMessage(new HttpMethod(metodo), origem + rota);
@@ -49,7 +52,9 @@ namespace NovoFtool
                     req.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 }
             }
-            var resp = await http.SendAsync(req);
+            HttpResponseMessage resp;
+            try { resp = await http.SendAsync(req); }
+            catch (HttpRequestException) { Desligar(); throw Parou(); }   // conexão caiu: o motor morreu (ou travou) no meio da chamada
             var texto = await resp.Content.ReadAsStringAsync();
             if (!resp.IsSuccessStatusCode) throw new MotorErro((int)resp.StatusCode, texto);
             return string.IsNullOrWhiteSpace(texto) ? null : JsonNode.Parse(texto);
@@ -70,9 +75,12 @@ namespace NovoFtool
         public static async Task<T> Exclusivo<T>(Func<Task<T>> op)
         {
             await fila.WaitAsync();
-            try { await Garantir(); return await op(); }
-            finally { fila.Release(); }
+            try { await Garantir(); geracaoOp.Value = geracao; return await op(); }
+            finally { geracaoOp.Value = null; fila.Release(); }
         }
+        static int geracao;                                                       // conta as partidas do motor
+        static readonly System.Threading.AsyncLocal<int?> geracaoOp = new System.Threading.AsyncLocal<int?>();   // partida em que a operação Exclusivo começou
+        static MotorErro Parou() => new MotorErro(0, "o motor de cálculo parou no meio da operação (encerrou ou foi fechado). Ele é reiniciado sozinho na próxima ação: repita o comando.");
         public static Task Exclusivo(Func<Task> op) => Exclusivo(async () => { await op(); return true; });
 
         public static Task<JsonNode> Get(string rota) => Chamar("GET", rota);
@@ -93,21 +101,22 @@ namespace NovoFtool
 
         static async Task Iniciar()
         {
-            Dono = null;
+            Dono = null; geracao++;
             int porta = PortaLivre();
             origem = "http://127.0.0.1:" + porta;
             string pasta = Pasta;
             Directory.CreateDirectory(pasta);
             string args = $"--porta {porta} --pasta \"{pasta}\"";
-            // procura: motor\ ao lado do exe; motor\ instalado por usuário (%LOCALAPPDATA%\Estructto\motor); ESTRUCTTO_MOTOR (fonte)
+            // procura: ESTRUCTTO_MOTOR (fonte; escolha explícita do desenvolvedor, ganha de tudo — E2E-08); motor\ ao lado do exe;
+            // motor\ instalado por usuário (%LOCALAPPDATA%\Estructto\motor).
             // só vale pacote completo (exe + _internal com os dados): pasta pela metade ou empacotamento antigo sem dados é pulado
+            var dev = Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR");
             var exe = new[] { Path.Combine(AppContext.BaseDirectory, "motor"), PastaMotorUsuario }
                 .Where(d => File.Exists(Path.Combine(d, "_internal", "prossen_estrutural", "dados", "cype_ed3_gramatica.json")))
                 .Select(d => Path.Combine(d, "estructto-motor.exe")).FirstOrDefault(File.Exists);
-            var dev = Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR");
             ProcessStartInfo psi;
-            if (exe != null) psi = new ProcessStartInfo(exe, args);
-            else if (!string.IsNullOrEmpty(dev)) psi = new ProcessStartInfo("python", "-m prossen_estrutural.web " + args + " --pai " + Environment.ProcessId) { WorkingDirectory = dev };   // --pai so no fonte: o exe empacotado antigo nao conhece a opcao (fica com o Job)
+            if (!string.IsNullOrEmpty(dev)) psi = new ProcessStartInfo("python", "-m prossen_estrutural.web " + args + " --pai " + Environment.ProcessId) { WorkingDirectory = dev };   // --pai so no fonte: o exe empacotado antigo nao conhece a opcao (fica com o Job)
+            else if (exe != null) psi = new ProcessStartInfo(exe, args);
             else throw new MotorErro(0, "motor de cálculo não encontrado. Mantenha a pasta \"motor\" ao lado do Estructto.exe (vem no .zip da release) ou instale-a em " + PastaMotorUsuario + ".");
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
@@ -169,9 +178,37 @@ namespace NovoFtool
         }
     }
 
+    // Erro do motor. Corpo = o que o motor mandou ({"erro", "detalhe", "erros": [{campo, mensagem}] ou [texto], "mensagem"});
+    // Message = texto para gente (E2E-06/E2E-09): todo "ex.Message" de quem chama o motor já sai legível.
     public class MotorErro : Exception
     {
         public int Status;
-        public MotorErro(int status, string msg) : base(msg) { Status = status; }
+        public readonly string Corpo, Codigo;   // Codigo = "erro" do corpo ("entrada_invalida", "mecanismo"...); null se não veio JSON
+        public MotorErro(int status, string corpo) : base(Texto(corpo, out string cod)) { Status = status; Corpo = corpo; Codigo = cod; }
+
+        public static string Texto(string corpo, out string codigo)
+        {
+            codigo = null;
+            JsonObject j = null;
+            try { j = JsonNode.Parse(corpo ?? "") as JsonObject; } catch (System.Text.Json.JsonException) { }
+            if (j == null) return corpo;
+            static string S(JsonNode n) => n is JsonValue v && v.TryGetValue(out string t) ? t : n?.ToJsonString();
+            codigo = S(j["erro"]);
+            string det = S(j["detalhe"]) ?? S(j["mensagem"]) ?? "";
+            if (codigo == "interno") det = "erro interno do motor de cálculo (detalhes no log do motor)";
+            var m = System.Text.RegularExpressions.Regex.Match(det, @"nó (\S+), GL (\w+)");
+            if (codigo == "mecanismo") det = "Mecanismo (estrutura instável)" + (m.Success ? ": o nó " + m.Groups[1].Value + " está livre em " + m.Groups[2].Value + "; confira os apoios e as ligações" : ": " + det);
+            // validação: "sem_barras: o modelo não tem barras; sem_casos: ..." -> sem os códigos
+            det = System.Text.RegularExpressions.Regex.Replace(det, @"(^|;\s*)[a-z]+_[a-z_]+:\s", "$1");
+            var partes = new System.Collections.Generic.List<string>();
+            if (det != "") partes.Add(det);
+            foreach (var e in j["erros"] as JsonArray ?? new JsonArray())
+            {
+                string t = e is JsonObject o ? (S(o["campo"]) is string c && c != "" ? c + ": " : "") + S(o["mensagem"]) : S(e);
+                if (!string.IsNullOrEmpty(t) && !partes.Any(x => x.Contains(S((e as JsonObject)?["mensagem"]) ?? t))) partes.Add(t);
+            }
+            if (partes.Count == 0) partes.Add(codigo ?? corpo);
+            return string.Join(" · ", partes);
+        }
     }
 }

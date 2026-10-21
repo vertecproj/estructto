@@ -275,7 +275,7 @@ namespace NovoFtool
             if (dados != null)
             {
                 try { p = await Inicio.Acoes.Previa(dados); (br, ax) = Miniatura3D.DePrevia(p); }
-                catch (MotorErro ex) { string m = ex.Message; try { m = System.Text.Json.Nodes.JsonNode.Parse(m)?["detalhe"]?.ToString() ?? m; } catch { } aviso = "⚠ " + m; }
+                catch (MotorErro ex) { aviso = "⚠ " + ex.Message; }
                 catch (Exception) { aviso = "Motor indisponível: prévia só da grade."; }
             }
             if (v != versaoPrevia) return;
