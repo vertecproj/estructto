@@ -1051,7 +1051,7 @@ namespace NovoFtool
             var d = await ComandosAnalise.BuscarTipos(this);
             if (d == null) return;
             var j = new JanelaLigacaoProjeto(d, tipo) { Owner = this };
-            j.AbrirPlaca = jp => { Activate(); AcionarFerramenta(Ferramenta.Placa); };   // nó selecionado abre a placa; senão pede o clique no nó
+            j.AbrirPlaca = jp => { Activate(); _ = AbrirPlacaEsp(null); };   // placa do pé de pilar (Legado3D.cs): nó selecionado ou pede o clique
             j.Show();
         }
 
