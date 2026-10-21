@@ -101,6 +101,8 @@ namespace NovoFtool
         async void TesteMotor(string png)
         {
             string txt = System.IO.Path.ChangeExtension(png, ".txt");
+            // o arquivo da linha de comando abre de forma assíncrona (motor frio): espera o documento 3D antes de verificar
+            for (int k = 0; k < 600 && EspacialAtivo == null; k++) await Task.Delay(100);
             cbMotor ??= CriarCbMotor();   // legado escondido: Interno + motor (fora da faixa)
             cbMotor.SelectedIndex = 1;
             _ = ComMotor(true, ComandosAnalise.AbrirVerificacaoBarras);
