@@ -994,14 +994,15 @@ def _viga_viga(d, e):
     vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")
     rec = recortes_viga_viga(vg, sp, d["folga"], d["desnivel"])
     rp = d.get("_recortes_ponta") or {}
-    # G2: Gerdau 3.3 manda onde dá recorte; onde não dá, vale o cope da ponta (pontas.py)
-    rec = {k: v or rp.get(k, 0.0) for k, v in rec.items()}
+    # G2: recorte desenhado = calculado, conservador: o maior entre Gerdau 3.3 e o cope da ponta (pontas.py)
+    rec = {k: max(v, rp.get(k, 0.0)) for k, v in rec.items()}
     dd = dict(d, apoio="alma_viga", **rec)
     if d["conector"] == "chapa_simples":
         res = _chapa_simples(dd, e, "viga_viga_recorte")
     else:
         res = _cantoneira_dupla(dd, e, "viga_viga_recorte")
     res["valores"].update({k + "_mm": v / MM for k, v in rec.items()})
+    res["recortes_usados"] = rec   # com_pontas devolve à ponta (render = cálculo)
     if d["desnivel"] > 0:
         z = d["desnivel"]
         for x in res["geometria"]["recortes"]:

@@ -696,6 +696,15 @@ def com_pontas(tipo, verificar):
                     raise
                 motivo, ctx["comprimento"], aprox = BARRA_CURTA, math.inf, []
                 dados["contexto_pontas"] = ctx
+        usados = r.pop("recortes_usados", None)
+        if usados and pts:   # o módulo ajustou o recorte: a ponta desenha o que foi calculado
+            _p0 = pts[0]
+            raio = next((c["raio"] for c in _p0["recortes"] if c["tipo"] == "cope"), 0.010)
+            _p0["recortes"] = [c for c in _p0["recortes"] if not (c["tipo"] == "cope" and c["face"] in ("sup", "inf"))]
+            for face in ("sup", "inf"):
+                if usados.get(f"recorte_{face}_h", 0.0) > 0:
+                    _p0["recortes"].append(dict(tipo="cope", face=face, altura=usados[f"recorte_{face}_h"],
+                                                comprimento=usados[f"recorte_{face}_c"], raio=raio))
         geo = r.get("geometria") or (geometria_basica(tipo, dados) if tipo in _TIPOS else None) or {}
         geo.setdefault("pontas", pts)
         r["geometria"] = geo

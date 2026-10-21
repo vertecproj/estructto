@@ -113,10 +113,15 @@ class TestCopeNoCalculo(unittest.TestCase):
                 self.assertIn("viga recortada (dois recortes): flambagem local da alma", nomes)
                 self.assertIn("alma da viga recortada: colapso por rasgamento", nomes)
 
-    def test_viga_viga_recorte_mantem_gerdau(self):
+    def test_viga_viga_recorte_desenho_igual_calculo(self):
+        """Recorte = max(Gerdau 3.3, cope da ponta); a ponta desenha o mesmo (W310x38.7 em W250x73, V = 100 kN)."""
         e = _EX["viga_viga_recorte"]
         r = L.verificar_ligacao("viga_viga_recorte", e["dados"], e["esforcos"])
-        self.assertAlmostEqual(r["taxa"], 1.0456, places=3)   # igual ao G1: Gerdau 3.3 manda onde dá recorte
+        self.assertAlmostEqual(r["taxa"], 1.197, places=3)
+        copes = {c["face"]: c for c in r["geometria"]["pontas"][0]["recortes"]}
+        for f in ("sup", "inf"):
+            self.assertAlmostEqual(copes[f]["altura"] * 1e3, r["valores"][f"recorte_{f}_h_mm"])
+            self.assertAlmostEqual(copes[f]["comprimento"] * 1e3, r["valores"][f"recorte_{f}_c_mm"])
 
 
 class TestComprimentoLivre(unittest.TestCase):
