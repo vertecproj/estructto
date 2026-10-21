@@ -147,26 +147,26 @@ namespace NovoFtool
 
         // 42) Vista 3D Realista x analítica: guincho (modelo 2D), pórtico espacial 2 x 2 e exemplos do motor (concreto e galpão).
         // Atalho para iterar só nelas: variável ESTRUCTTO_CAPTURAS=3d.
-        // V1: seta de carga atrás de uma viga. Realista: a viga a esconde; "sempre visíveis": a seta aparece por cima.
+        // V1: seta e nó escolhido atrás de uma viga (pórtico 2x2 real). Sem "sempre visíveis" a viga os esconde (Realista DX e
+        // Sombreado nativo); com ele a seta e o nó aparecem por cima.
         static void CapturasCargasProfundidade(MainWindow w)
         {
-            var esp = new Modelo3D();
-            esp.Nos.Add(new No3D { Id = 1, X = 0, Y = 0, Z = 3, Apoios = new bool[6] });
-            esp.Nos.Add(new No3D { Id = 2, X = 6, Y = 0, Z = 3, Apoios = new bool[6] });
-            esp.Nos.Add(new No3D { Id = 3, X = 3, Y = 1.5, Z = 3, Apoios = new bool[6] });
-            esp.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W 310 x 38,7" });
-            esp.Cargas.Add(new Carga3D { No = 3, F = new System.Windows.Media.Media3D.Vector3D(0, -10, -5) });
-            esp.Cargas.Add(new Carga3D { No = 2, F = new System.Windows.Media.Media3D.Vector3D(0, 0, -10) });
             Esperar(w.NovoEmBranco(true));
-            w.DefinirRealista(true);
+            var esp = Portico2x2();
+            esp.Cargas.Add(new Carga3D { No = 17, F = new System.Windows.Media.Media3D.Vector3D(0, -10, -5) });   // nó (6, 10, 3,5): atrás da viga da frente
             w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = false;
             w.vista3D.Carregar(esp, false);
-            foreach (bool topo in new[] { false, true })
+            w.vista3D.Escolher(esp.Nos[16]);
+            foreach (var (est, nome) in new[] { (EstiloVisual.Realista, "dx"), (EstiloVisual.Sombreado, "nativo") })
             {
-                w.vista3D.CargasSempre = topo;
-                w.vista3D.Reconstruir();
-                w.vista3D.Focar(new System.Windows.Media.Media3D.Point3D(3, 0.5, 3.4), 2, -90, 0);
-                CapturarPrincipal(w, "58-cargas-profundidade-" + (topo ? "sempre" : "oculta"));
+                w.DefinirEstilo(est);
+                foreach (bool topo in new[] { false, true })
+                {
+                    w.vista3D.CargasSempre = topo;
+                    w.vista3D.Reconstruir();
+                    w.vista3D.Focar(new System.Windows.Media.Media3D.Point3D(6, 5, 3.5), 6, -90, 0);
+                    CapturarPrincipal(w, "58-cargas-profundidade-" + nome + "-" + (topo ? "sempre" : "oculta"));
+                }
             }
             w.vista3D.CargasSempre = null;
             w.FecharEspaciaisSemPerguntar();

@@ -35,7 +35,7 @@ namespace NovoFtool
         public Func<Barra3D, bool> Selecionada;
         public Func<No3D, double> Apoio;   // meio lado do bloco de apoio (0 = sem apoio)
         public double Raio, Z0; public Rect3D Caixa;
-        public System.Windows.Media.Media3D.MeshGeometry3D Cargas;   // setas das cargas com teste de profundidade (null = nenhuma)
+        public System.Windows.Media.Media3D.MeshGeometry3D Cargas, NosSel;   // setas e nós escolhidos com teste de profundidade (null = nenhum)   // setas das cargas com teste de profundidade (null = nenhuma)
         public bool Amostras;              // sem ligações do motor: gera as de exemplo (LigacoesAmostra.Gerar)
     }
 
@@ -75,7 +75,7 @@ namespace NovoFtool
         public readonly Viewport3DX Vista;
         readonly HxCamera cam = new HxCamera { NearPlaneDistance = 1, FarPlaneDistance = 100 };
         readonly HelixToolkit.Wpf.SharpDX.PerspectiveCamera pcam = new HelixToolkit.Wpf.SharpDX.PerspectiveCamera { FieldOfView = 45 };
-        readonly MeshGeometryModel3D mAco, mConcreto, mSel, mChao, mParafusos, mSoldas, mProp, mPropDet, mCargas;
+        readonly MeshGeometryModel3D mAco, mConcreto, mSel, mChao, mParafusos, mSoldas, mProp, mPropDet, mCargas, mNos;
         readonly LineGeometryModel3D lArestas;
         readonly ShadowMap3D sombra;
         readonly List<(MeshGeometryModel3D M, int[] Ini, object[] Obj)> faixas = new List<(MeshGeometryModel3D, int[], object[])>();
@@ -144,8 +144,9 @@ namespace NovoFtool
             // encostada na chapa, a solda na peça e a chapa no pilar não disputam o mesmo plano (z-fighting) e nada parece oco.
             foreach (var m in new[] { mConcreto, mAco, mSel, mParafusos, mSoldas, mProp, mPropDet }) m.CullMode = SharpDX.Direct3D11.CullMode.Back;
             mCargas = new MeshGeometryModel3D { Material = new PhongMaterial { DiffuseColor = new Color4(0, 0, 0, 1), EmissiveColor = MalhaDx.Cor(TemaPlant.CorCarga) }, IsThrowingShadow = false, IsHitTestVisible = false, CullMode = SharpDX.Direct3D11.CullMode.None };
+            mNos = new MeshGeometryModel3D { Material = new PhongMaterial { DiffuseColor = new Color4(0, 0, 0, 1), EmissiveColor = MalhaDx.Cor(TemaPlant.CorBarraSel) }, IsThrowingShadow = false, IsHitTestVisible = false, CullMode = SharpDX.Direct3D11.CullMode.None };
             lArestas = new LineGeometryModel3D { Color = TemaPlant.CorArestaDx3D, Thickness = 0.9, Smoothness = 0.6, DepthBias = -4, IsThrowingShadow = false };
-            foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, mProp, mPropDet, mCargas, lArestas }) Vista.Items.Add(m);
+            foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, mProp, mPropDet, mCargas, mNos, lArestas }) Vista.Items.Add(m);
             mChao.IsHitTestVisible = lArestas.IsHitTestVisible = false;   // picking (Acertar) mais barato: o chão e as arestas não contam
         }
 
@@ -396,6 +397,13 @@ namespace NovoFtool
                 for (int i = 0; i + 2 < ti.Count; i += 3) mallCargas.Tri(ps[ti[i]], ps[ti[i + 1]], ps[ti[i + 2]], cc);
             }
             Aplicar(mCargas, mallCargas);
+            var mallNos = new MalhaDx();
+            if (c.NosSel != null)
+            {
+                var ps = c.NosSel.Positions; var ti = c.NosSel.TriangleIndices; Color4 cc = MalhaDx.Cor(TemaPlant.CorBarraSel);
+                for (int i = 0; i + 2 < ti.Count; i += 3) mallNos.Tri(ps[ti[i]], ps[ti[i + 1]], ps[ti[i + 2]], cc);
+            }
+            Aplicar(mNos, mallNos);
             if (arestas.L.Count > 0 && !(Environment.GetEnvironmentVariable("ESTRUCTTO_3D_SEM") ?? "").Contains("arestas"))
             {
                 lArestas.Geometry = new HxLine { Positions = new Vector3Collection(arestas.L), Indices = new IntCollection(Enumerable.Range(0, arestas.L.Count)) };

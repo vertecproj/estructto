@@ -41,7 +41,8 @@ namespace NovoFtool
             bool mudou = e != Config.Estilo3D;
             Config.Estilo3D = e;
             AtualizarEstiloUi(mudou);
-            if (vista3D != null) { vista3D.Realista = e != EstiloVisual.Analitico; vista3D.SemDx = e == EstiloVisual.Sombreado; vista3D.Reconstruir(); if (Esp != null && vista3D.Realista && vista3D.ModeloAtual.Ligacoes.Count == 0) LigacoesEspacial3D(Esp); }   // vindo do Analítico: busca as ligações
+            if (vista3D != null) { if (mudou) vista3D.CargasSempre = null; vista3D.Realista = e != EstiloVisual.Analitico; vista3D.SemDx = e == EstiloVisual.Sombreado; vista3D.Reconstruir(); if (Esp != null && vista3D.Realista && vista3D.ModeloAtual.Ligacoes.Count == 0) LigacoesEspacial3D(Esp); }   // vindo do Analítico: busca as ligações
+            if (tgCargasTopo != null && mudou) tgCargasTopo.IsChecked = e == EstiloVisual.Analitico;   // estado efetivo do estilo
             if (e != EstiloVisual.Analitico && !Em3D) MostrarVista3D(true);
         }
 

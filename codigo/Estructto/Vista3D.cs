@@ -220,7 +220,21 @@ namespace NovoFtool
         // Setas por cima de tudo (sem teste de profundidade). Padrão: só no Analítico; no Realista elas respeitam as peças na frente.
         public bool? CargasSempre;
         public bool CargasSempreVisiveis => CargasSempre ?? !Realista;
-        MeshGeometry3D malhaCargasDx;
+        MeshGeometry3D malhaCargasDx, malhaNosDx;
+        // octaedro em cada nó escolhido (a sobreposição 2D não tem profundidade)
+        MeshGeometry3D NosEscolhidos()
+        {
+            var m = new MeshGeometry3D(); double r = raio * 0.01;
+            foreach (No3D n in mod.Nos)
+            {
+                if (!EhSel(n, n.Origem)) continue;
+                Point3D p = P(n);
+                Point3D[] a = { p + new Vector3D(r, 0, 0), p + new Vector3D(0, r, 0), p + new Vector3D(-r, 0, 0), p + new Vector3D(0, -r, 0) };
+                for (int i = 0; i < 4; i++) { Tri(m, a[i], a[(i + 1) % 4], p + new Vector3D(0, 0, r)); Tri(m, a[(i + 1) % 4], a[i], p - new Vector3D(0, 0, r)); }
+            }
+
+            return m.Positions.Count > 0 ? m : null;
+        }
         public double EscalaDeformada = 1, EscalaDiagrama = 1;
         public object Selecionado;
         public bool Realista;                    // perfis reais, materiais, sombra e arestas (Config.Realista3D)
@@ -468,7 +482,12 @@ namespace NovoFtool
                     }
             }
 
-            malhaCargasDx = null;
+            malhaCargasDx = malhaNosDx = null;
+            if (Realista && !CargasSempreVisiveis)   // nós escolhidos como sólido: com profundidade (DX: no Viewport3DX; nativo: na cena)
+            {
+                MeshGeometry3D mn = NosEscolhidos();
+                if (mn != null) { if (dx) malhaNosDx = mn; else g.Children.Add(Geo(mn, Mat(TemaPlant.CorBarraSel, true), true)); }
+            }
             if (MostrarCargas && mod.Cargas.Count > 0)
             {
                 MeshGeometry3D mc = DesenharCargas();
@@ -827,7 +846,7 @@ namespace NovoFtool
             foreach (No3D n in mod.Nos) if (n.Apoios.Any(x => x)) z0 = Math.Min(z0, n.Z - ApoioReal(n) * 1.4);
             var cena = new Cena3D
             {
-                Mod = mod, Raio = raio, Z0 = z0, Caixa = cx, Cargas = malhaCargasDx, Amostras = LigacoesAmostra,
+                Mod = mod, Raio = raio, Z0 = z0, Caixa = cx, Cargas = malhaCargasDx, NosSel = malhaNosDx, Amostras = LigacoesAmostra,
                 Forma = s => FormaDe(s, h * 2).Contorno,
                 Pontos = b => { No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); return a == null || c == null ? (new Point3D(), new Point3D()) : (fDef > 0 ? Deformado(a, fDef) : P(a), fDef > 0 ? Deformado(c, fDef) : P(c)); },
                 Selecionada = b => EhSel(b, b.Origem),

@@ -394,6 +394,7 @@ namespace NovoFtool
             tgCargas = Alternar("cargano", "Cargas", v => { if (vista3D != null) { vista3D.MostrarCargas = v; vista3D.Reconstruir(); } }, "Mostra as setas das cargas do caso ativo.", true);
             tgCargas.IsChecked = true;
             tgCargasTopo = Alternar("cargano", "Cargas sempre visíveis", v => { if (vista3D != null) { vista3D.CargasSempre = v; vista3D.Reconstruir(); } }, "Setas das cargas por cima das peças. Desligado, uma viga na frente esconde a seta (Realista). Padrão: ligado só no Analítico.", false);
+            tgCargasTopo.IsChecked = Config.Estilo3D == EstiloVisual.Analitico;
             cGrade = Campo("Passo da grade (m)", "1", "Espaçamento da grade do plano de trabalho (atração F9).", 50);
             cGrade.LostFocus += (s, e) => MudarPasso3D(cGrade.Text);
             cGrade.KeyDown += (s, e) => { if (e.Key == Key.Enter) MudarPasso3D(cGrade.Text); };
