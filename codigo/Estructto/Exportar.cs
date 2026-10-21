@@ -55,7 +55,7 @@ namespace NovoFtool
                 r.Add(new Peca
                 {
                     Id = IdBarra(b), Secao = sec, A = new Point3D(a.X * Mm, a.Y * Mm, a.Z * Mm), B = new Point3D(c.X * Mm, c.Y * Mm, c.Z * Mm),
-                    Solido = GeometriaPerfis.Extrudar(f, a, c, b.Rot + b.RotPerfil, Mm),
+                    Solido = GeometriaPerfis.Extrudar(f, a, c, b.Rot + b.RotPerfil, Mm, b.Cardinal),
                 });
             }
             return r;
@@ -239,6 +239,14 @@ namespace NovoFtool
             Directory.CreateDirectory(pasta);
             Render3DGeometria.Testar((c, nome) => Ok("render3d: " + nome, c));   // juntas, extrusão com corte, triangulação
             LigacoesAmostra.Testar((c, nome) => Ok("ligacoes3d: " + nome, c));   // contrato ida e volta, chapa de topo, placa de base
+            {   // ponto cardinal 8 (topo) numa viga I de 200 mm: o sólido exportado desce H/2 (topo no eixo, base 200 mm abaixo)
+                var mc = new Modelo3D(); mc.Nos.Add(new No3D { Id = 1 }); mc.Nos.Add(new No3D { Id = 2, X = 5 });
+                mc.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "I200", Cardinal = 8 });
+                var pc = Exportador.Pecas(mc, _ => new Perfil3D { Forma = "I", H = 0.2, B = 0.1, Tw = 0.006, Tf = 0.008 });
+                var zs = pc[0].Solido.Lados.SelectMany(q => q).Select(q => q.Z).ToList();
+                Ok("exportar: cardinal 8 desloca o sólido H/2 (z " + zs.Min().ToString("0.#", CultureInfo.InvariantCulture) + " a " + zs.Max().ToString("0.#", CultureInfo.InvariantCulture) + " mm)",
+                   Math.Abs(zs.Max()) < 1e-6 && Math.Abs(zs.Min() + 200) < 1e-6);
+            }
 
             Modelo m2 = Modelo.DeXml(File.ReadAllText(Path.Combine(raiz, "exemplos", "guincho-coluna-escorada.estructto")));
             var guincho = Modelo3D.De(m2, null);

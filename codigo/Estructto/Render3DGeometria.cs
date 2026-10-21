@@ -36,6 +36,12 @@ namespace NovoFtool
             T.Add(i); T.Add(i + 1); T.Add(i + 2);
         }
 
+        public void TriN(Point3D a, Point3D b, Point3D c, Vector3D n, Color4 cor)   // vira o triângulo para a normal dada
+        {
+            if (Vector3D.DotProduct(Vector3D.CrossProduct(b - a, c - a), n) < 0) (b, c) = (c, b);
+            Tri(a, b, c, cor);
+        }
+
         public void Quad(Point3D a, Point3D b, Point3D c, Point3D d, Color4 cor)
         {
             Vector3D n = Vector3D.CrossProduct(c - a, d - b); if (n.Length < 1e-18) return; n.Normalize();
@@ -244,11 +250,57 @@ namespace NovoFtool
             m.Tubo(fim - eixo * hp, fim, rp, 6, false, cor, true, Math.PI / 6);           // porca
         }
 
-        // Cordão de solda: tubo fino ao longo da polilinha (raio ~ perna/2). ponytail: sem o perfil triangular do filete.
-        public static void Cordao(MalhaDx m, IList<Point3D> pts, double perna, Color4 cor)
+        // Cordão de filete: prisma triangular (pernas iguais) ao longo da polilinha. ax = direção da peça que chega (x local do
+        // contrato: a solda fica na face da chapa/apoio e sobe pela peça). Polilinha fechada (contorno do perfil): uma perna
+        // em ax e a outra para fora do contorno (pela orientação do laço, vale nos cantos côncavos do I). Aberta: dos dois lados.
+        // ponytail: sem esquadria nos cantos do laço (as pontas dos prismas se cruzam).
+        public static void Cordao(MalhaDx m, IList<Point3D> pts, double perna, Color4 cor, Vector3D ax)
         {
-            double r = Math.Max(0.002, perna * 0.55);
-            for (int k = 0; k + 1 < pts.Count; k++) m.Tubo(pts[k], pts[k + 1], r, 6, true, cor, true);
+            double p = Math.Max(0.003, perna);
+            if (pts.Count < 2 || ax.Length < 1e-12) return;
+            ax.Normalize();
+            bool laco = pts.Count > 3 && (pts[0] - pts[pts.Count - 1]).Length < 1e-6;
+            double sinal = 0;   // laço anti-horário em torno de ax: s × ax aponta para fora
+            if (laco) { Vector3D area = new Vector3D(); for (int k = 0; k + 1 < pts.Count; k++) area += Vector3D.CrossProduct((Vector3D)pts[k], (Vector3D)pts[k + 1]); sinal = Vector3D.DotProduct(area, ax) >= 0 ? 1 : -1; }
+            for (int k = 0; k + 1 < pts.Count; k++)
+            {
+                Vector3D sg = pts[k + 1] - pts[k]; if (sg.Length < 1e-9) continue; sg.Normalize();
+                Vector3D o = Vector3D.CrossProduct(sg, ax); if (o.Length < 1e-6) continue; o.Normalize();
+                foreach (Vector3D w in laco ? new[] { o * sinal } : new[] { o, -o })
+                {
+                    Point3D a = pts[k], b = pts[k + 1];
+                    Vector3D h = ax + w; h.Normalize();   // face exposta (hipotenusa)
+                    Point3D a1 = a + ax * p, a2 = a + w * p, b1 = b + ax * p, b2 = b + w * p;
+                    if (Vector3D.DotProduct(Vector3D.CrossProduct(a2 - a1, b2 - a1), h) >= 0) m.Quad(a1, a2, b2, b1, h, h, h, h, cor);
+                    else m.Quad(a1, b1, b2, a2, h, h, h, h, cor);
+                    m.TriN(a, a1, a2, -sg, cor); m.TriN(b, b1, b2, sg, cor);
+                }
+            }
+        }
+
+        // Contorno com cope: corta o laço único (I, U, L; tubos e maciços não) fora da faixa vMin ≤ v ≤ vMax (Sutherland-Hodgman,
+        // basta para um semiplano horizontal), tampa refeita por orelhas. null = nada sobra ou seção sem cope.
+        public static Contorno Recortar(Contorno f, double vMin, double vMax)
+        {
+            if (f.Concreto || f.Lacos.Count != 1 || vMax - vMin < 1e-4) return null;
+            List<Point> Corta(List<Point> q, double lim, bool abaixo)
+            {
+                var r = new List<Point>();
+                bool Dentro(Point x) => abaixo ? x.Y <= lim : x.Y >= lim;
+                for (int i = 0; i < q.Count; i++)
+                {
+                    Point a = q[i], b = q[(i + 1) % q.Count];
+                    if (Dentro(a)) r.Add(a);
+                    if (Dentro(a) != Dentro(b)) r.Add(new Point(a.X + (b.X - a.X) * (lim - a.Y) / (b.Y - a.Y), lim));
+                }
+                return r;
+            }
+            var l = Corta(Corta(f.Lacos[0].ToList(), vMax, true), vMin, false);
+            if (l.Count < 3) return null;
+            var c = new Contorno { H = vMax - vMin, B = f.B, Tw = f.Tw, Tf = f.Tf };
+            Point[] arr = l.ToArray(); c.Laco(arr);
+            foreach (int[] t in Triangular(arr)) { c.Tampa.Add(arr[t[0]]); c.Tampa.Add(arr[t[1]]); c.Tampa.Add(arr[t[2]]); }
+            return c;
         }
 
         // Triangulação por orelhas (polígono simples, qualquer sentido). Devolve índices.
@@ -287,6 +339,13 @@ namespace NovoFtool
         // Autoverificação (Estructto.exe --testes-exportar também chama): triangulação e recortes.
         public static void Testar(Action<bool, string> afirmar)
         {
+            {   // cope de 40 mm no topo de um I 300×150 (mesa 10): some a mesa de cima, a tampa fecha com a área do resto
+                Contorno fi = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "I", H = 0.3, B = 0.15, Tw = 0.006, Tf = 0.01 }, 0.1);
+                Contorno fc = Recortar(fi, -0.15, 0.15 - 0.04);
+                double At = 0; for (int t = 0; fc != null && t + 2 < fc.Tampa.Count; t += 3) { Point p = fc.Tampa[t], q = fc.Tampa[t + 1], r = fc.Tampa[t + 2]; At += Math.Abs((q.X - p.X) * (r.Y - p.Y) - (r.X - p.X) * (q.Y - p.Y)) / 2; }
+                double Aesp = 0.15 * 0.01 + (0.3 - 0.04 - 0.01) * 0.006;   // mesa de baixo + alma até o corte
+                afirmar(fc != null && fc.Lacos[0].Max(p => p.Y) <= 0.11 + 1e-9 && Math.Abs(At - Aesp) < 1e-7, "cope: contorno cortado em v = H/2 − 40 mm, área " + (At * 1e4).ToString("0.00") + " cm²");
+            }
             var quad = new[] { new Point(0, 0), new Point(1, 0), new Point(1, 1), new Point(0, 1) };
             afirmar(Triangular(quad).Count == 2, "triangular quadrado = 2 triângulos");
             var l = new[] { new Point(0, 0), new Point(2, 0), new Point(2, 1), new Point(1, 1), new Point(1, 2), new Point(0, 2) };   // L côncavo

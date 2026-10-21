@@ -842,7 +842,8 @@ namespace NovoFtool
             if (render == null)
             {
                 render = new Render3D();
-                render.Falhou += () => Dispatcher.BeginInvoke(new Action(Reconstruir));
+                Render3D r = render;
+                r.Falhou += () => Dispatcher.BeginInvoke(new Action(() => { r.Descartar(); if (render == r) render = null; Reconstruir(); }));
                 Children.Insert(Children.IndexOf(vp), render.Vista);
             }
             render.Vista.Visibility = Visibility.Visible;

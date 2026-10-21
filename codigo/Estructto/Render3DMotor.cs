@@ -14,7 +14,19 @@ namespace NovoFtool
 {
     public partial class DocumentoEspacial
     {
-        public async Task<List<Ligacao3D>> LigacoesParaVista(Modelo3D vista)
+        // Chamar na thread da UI: o Json é lido aqui (cópia) e as chamadas ao motor vão na fila de Motor.Exclusivo,
+        // com este modelo recolocado no servidor (Garantir) — senão os grupos lidos podem ser os de outra aba.
+        public Task<List<Ligacao3D>> LigacoesParaVista(Modelo3D vista)
+        {
+            var json = (JsonObject)Json.DeepClone();
+            return Motor.Exclusivo(async () =>
+            {
+                try { await Garantir(); return await LigacoesDe(json, vista); }
+                catch { return new List<Ligacao3D>(); }
+            });
+        }
+
+        static async Task<List<Ligacao3D>> LigacoesDe(JsonObject Json, Modelo3D vista)
         {
             var r = new List<Ligacao3D>();
             JsonNode grupos;
@@ -48,7 +60,7 @@ namespace NovoFtool
                     string no = (string)mb["no"], bid = (string)mb["barra"];
                     if (no == null || !idNo.TryGetValue(no, out int idN) || !barras.TryGetValue(bid, out Barra3D b)) continue;
                     string sec = (string)bj[bid]?["secao"];
-                    if ((string)g["tipo"] == "base" || tl == "placa_base")
+                    if (tl == "placa_base")   // só com projeto, como as outras: ligações aparecem no Realista quando projetadas
                     {
                         if (secoes?[sec] is not JsonObject sj) continue;
                         var d = proj?["dados"] as JsonObject;
@@ -95,7 +107,7 @@ namespace NovoFtool
         {
             if (vista3D == null || !vista3D.Realista) return;
             var m = vista3D.ModeloAtual;
-            TarefaLigacoes3D = Task.Run(async () => await d.LigacoesParaVista(m)).ContinueWith(t =>
+            TarefaLigacoes3D = d.LigacoesParaVista(m).ContinueWith(t =>
             {
                 if (t.Status != TaskStatus.RanToCompletion || Esp != d || vista3D.ModeloAtual != m) return;
                 vista3D.DefinirLigacoes(t.Result);
