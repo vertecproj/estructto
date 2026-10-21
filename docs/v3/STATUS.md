@@ -78,3 +78,7 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - 20:57: USUÁRIO pediu: refazer tela inicial, fluxo de novo arquivo e menu Arquivo (feios) → wt-inicio (Fable). E no fim: redesign geral (Q2).
 - 01:01: limite liberado; retomados so3d, render, lig-ui, inicio. Usuário reforçou: no FINAL, redesign refinado incluindo ÍCONES.
 - 01:20: merges A1 so3d + L3 lig-ui (+fix 8fc65ed). Placa 3D ainda no legado → wt-placa-ui ligando à v2 do motor. Rodando: render (Fable), inicio (Fable), placa-ui.
+- 01:27: R1 render DX11 (HelixToolkit.SharpDX) merge 188c571. Fica para Q2: mapa de ambiente/aço mais metálico, enquadramento das vistas gerais, cope, solda triangular, exportação passar cardinal.
+- 01:37: revisão v3 REPROVADA (1 bloq + 11 imp + 8 menores). Distribuição: #4,#9 → wt-placa-ui; #3,#5,#6,#12,#13,#14,#20 → wt-fix-render; PENDENTE disparar após merge do wt-inicio: #1(bloq recuperação),#2,#7,#8,#10,#11,#15,#16,#17,#18,#19 → wt-fix-doc.
+- 01:40: wt-inicio merge (e4f0183) — tela inicial, novo projeto 3 passos, backstage, opções. Disparado wt-fix-doc (revisão #1,#2,#7,#8,#10,#11,#15-19 + desenho da grade). Restam: placa-ui, fix-render, fix-doc → depois Q1 testes de fluxo, Q2 design/ícones (Fable), Q3 publicar.
+- 01:59: merges placa-ui (81796af) e fix-render (c576d9b). Disparados Q2 design+ícones (wt-design, Fable) e Q1 testes de fluxo (wt-e2e). Rodando fix-doc. Depois: corrigir BUGS-E2E, merge design, Q3 publicar.

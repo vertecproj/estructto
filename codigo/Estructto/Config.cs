@@ -82,29 +82,57 @@ namespace NovoFtool
             set { try { Directory.CreateDirectory(Pasta); File.WriteAllText(ArqVista3D, value ? "realista" : "analitico"); } catch { } }
         }
 
-        public static void SalvarRecuperacao(string xml, string original)
+        // Grava num temporário ao lado e troca no fim (File.Replace/Move): queda no meio não corrompe o arquivo que já existia.
+        public static void GravarAtomico(string caminho, string texto)
         {
-            try { Directory.CreateDirectory(Pasta); File.WriteAllText(ArqRecup, xml); File.WriteAllText(ArqRecupOrig, original ?? ""); }
+            string tmp = caminho + ".tmp";
+            File.WriteAllText(tmp, texto);
+            try
+            {
+                if (File.Exists(caminho)) File.Replace(tmp, caminho, null);
+                else File.Move(tmp, caminho);
+            }
+            catch { try { File.Delete(tmp); } catch { } throw; }
+        }
+
+        // Recuperação automática: uma cópia por documento (chave = DocumentoEspacial.Chave) em %AppData%\NovoFtool\recuperacao\
+        // (<chave>.estructto + <chave>.txt com o arquivo original). A cópia antiga de slot único (recuperacao.portico) ainda é lida,
+        // com a chave "" .
+        static readonly string PastaRecup =Path.Combine(Pasta, "recuperacao");
+        public static string PastaRecuperacao => PastaRecup;
+        static string ArqRecupDe(string chave) => chave == "" ? ArqRecup : Path.Combine(PastaRecup, chave + ".estructto");
+        static string ArqOrigDe(string chave) => chave == "" ? ArqRecupOrig : Path.Combine(PastaRecup, chave + ".txt");
+
+        public static void SalvarRecuperacao(string chave, string conteudo, string original)
+        {
+            try { Directory.CreateDirectory(PastaRecup); GravarAtomico(ArqRecupDe(chave), conteudo); File.WriteAllText(ArqOrigDe(chave), original ?? ""); }
             catch { }
         }
 
-        public static bool LerRecuperacao(out string xml, out string original)
+        public static List<(string Chave, string Conteudo, string Original)> LerRecuperacoes()
         {
-            xml = null; original = null;
-            try
-            {
-                if (!File.Exists(ArqRecup)) return false;
-                xml = File.ReadAllText(ArqRecup);
-                original = File.Exists(ArqRecupOrig) ? File.ReadAllText(ArqRecupOrig).Trim() : "";
-                if (original == "") original = null;
-                return xml.Length > 0;
-            }
-            catch { return false; }
+            var r = new List<(string, string, string)>();
+            var chaves = new List<string> { "" };
+            try { if (Directory.Exists(PastaRecup)) chaves.AddRange(Directory.GetFiles(PastaRecup, "*.estructto").Select(Path.GetFileNameWithoutExtension)); } catch { }
+            foreach (string k in chaves)
+                try
+                {
+                    if (!File.Exists(ArqRecupDe(k))) continue;
+                    string txt = File.ReadAllText(ArqRecupDe(k));
+                    string orig = File.Exists(ArqOrigDe(k)) ? File.ReadAllText(ArqOrigDe(k)).Trim() : "";
+                    if (txt.Length > 0) r.Add((k, txt, orig == "" ? null : orig));
+                }
+                catch { }
+            return r;
         }
 
-        public static void ApagarRecuperacao()
+        public static bool TemRecuperacao(string chave) => File.Exists(ArqRecupDe(chave ?? ""));
+
+        // Apaga só a cópia deste documento.
+        public static void ApagarRecuperacao(string chave)
         {
-            try { if (File.Exists(ArqRecup)) File.Delete(ArqRecup); if (File.Exists(ArqRecupOrig)) File.Delete(ArqRecupOrig); }
+            if (chave == null) return;
+            try { if (File.Exists(ArqRecupDe(chave))) File.Delete(ArqRecupDe(chave)); if (File.Exists(ArqOrigDe(chave))) File.Delete(ArqOrigDe(chave)); }
             catch { }
         }
 

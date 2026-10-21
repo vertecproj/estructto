@@ -317,15 +317,14 @@ def editar(modelo, dados):
             del grupos[gid]
         return dict(grupo=destino)
     if acao == "unir":
-        ids = list(d.get("grupos") or [])
+        ids = list(dict.fromkeys(d.get("grupos") or []))  # repetido sairia duas vezes do pop (KeyError no meio da mudança)
         if len(ids) < 2:
-            raise ValueError("grupos: informe 2 ou mais")
+            raise ValueError("grupos: informe 2 ou mais (distintos)")
         alvo = _grupo(modelo, ids[0])
-        for gid in ids:
+        for gid in ids:  # tudo conferido antes de mudar qualquer grupo
             _livre(_grupo(modelo, gid), gid)
         for gid in ids[1:]:
-            if gid != ids[0]:
-                alvo["membros"] += grupos.pop(gid)["membros"]
+            alvo["membros"] += grupos.pop(gid)["membros"]
         alvo["manual"] = True
         return dict(grupo=ids[0])
     raise ValueError(f"acao '{acao}' desconhecida; use renomear, travar, projeto, mover, dividir ou unir")
@@ -375,23 +374,8 @@ _ESFORCOS_LIG = {
 }
 
 
-def _esf_contrato(e):
-    """Esforços da ponta (eixos locais do solver: z = eixo forte) na convenção do contrato das ligações
-    (docs/v3/LIGACOES-CONTRATO.md): V = cortante no plano da alma (Vz local), M = momento no plano forte (My)."""
-    return dict(N=e["N"], V=e["Vz"], Vz=e["Vy"], M=e["My"], Mz=e["Mz"], T=e["T"])
-
-
-def _registrar_contrato():
-    """Tipos das famílias do contrato (flexíveis, rígidas, contraventamento) entram em VERIFICADORES com os esforços
-    que cada um declara em `esforcos`."""
-    from . import ligacoes_flexiveis, ligacoes_rigidas, ligacoes_contraventamento
-    for mod in (ligacoes_flexiveis, ligacoes_rigidas, ligacoes_contraventamento):
-        for tipo, t in mod.TIPOS.items():
-            if tipo not in _ESFORCOS_LIG:
-                _ESFORCOS_LIG[tipo] = (lambda ks: lambda e: {k: v for k, v in _esf_contrato(e).items() if k in ks})(tuple(t.get("esforcos") or ("N", "V", "M")))
-
-
-_registrar_contrato()
+# Tipos do contrato (flexíveis, rígidas, contraventamento): verificador() monta um genérico com esforcos_contrato();
+# não entram em VERIFICADORES (um caminho só).
 
 
 def _verif_lig(tipo):

@@ -185,7 +185,8 @@ _PARAMS_BARRA = {"kx", "ky", "kz", "Lb", "Cb", "rotula_i", "rotula_j", "trelica"
                  "An", "Ct", "fyk_MPa", "fywk_MPa", "le_x", "le_y", "alfa_b", "cobrimento_m", "caa", "d_m",
                  "t0_meses", "ligacao_uma_aba", "fator_EI", "emenda", "Lv", "tubo_com_costura", "Ndist", "Mdist",
                  "trecho_rigido_i", "trecho_rigido_j", "cortante", "l0_x", "l0_y", "t_alvenaria_meses",
-                 "fracao_qp_pos_alvenaria", "ponto_aplicacao", "C2"}
+                 "fracao_qp_pos_alvenaria", "ponto_aplicacao", "C2",
+                 "cardinal"}  # cardinal: justificação do desenho (1..9 da caixa, 10 = centroide); a análise usa o eixo
 _AUTO = ("V+X", "V-X", "V+Y", "V-Y", "SX", "SY")
 _RE_AUTO_V = re.compile(r"V[+-][XY]( Cpi=.*)?")  # vento de edifício ("V+X") ou de galpão ("V+X Cpi=-0.3")
 _RE_AUTO_S = re.compile(r"S[XY](" + re.escape(_comb.TORCAO) + ")?")  # sismo e torção acidental
@@ -360,6 +361,9 @@ def _val_params(p, err):
             err(f"params.{k}", "true/false")
     if p.get("papel") not in (None, "viga", "pilar"):
         err("params.papel", "use 'viga' ou 'pilar'")
+    card = p.get("cardinal")
+    if card is not None and (isinstance(card, bool) or not isinstance(card, int) or not 1 <= card <= 10):
+        err("params.cardinal", "inteiro de 1 a 10 (ponto cardinal da seção; 5 = centro, 10 = centroide)")
     if p.get("caa") is not None and str(p["caa"]).upper() not in _nbr6118.CNOM:
         err("params.caa", "use I, II, III ou IV")
 

@@ -27,11 +27,16 @@ rotacionar já é 3D; não tem 2D, é só 3D, igual o Plant".
 | assistentes (viga, pórtico, treliça, galpão) | geram um `Modelo` 2D e passam pela mesma conversão |
 
 **Salvar** (`SalvarEspacial`): `.estructto` = contêiner `{"formato": "estructto", "versao": 3, "modelo": <JSON do motor>,
-"placas": {nó: PlacaBase}, "grade": {x, y, z, nx, ny}, "cardinal": {barra: 1..10}}`; `.json` = só o modelo do motor (avisa
-que placas e grade ficam de fora). Escolha: um arquivo do usuário continua um arquivo só e com a extensão de sempre; o JSON
+"placas": {nó: PlacaBase}}` (placas antigas: só migração, ver PLACA-BASE-V2). A grade fica em `config.grade` e o ponto
+cardinal em `params.cardinal` da barra, dentro do modelo do motor (Ctrl+Z desfaz pelo motor). Contêiner antigo com
+`"grade"`/`"cardinal"` ao lado do modelo é migrado ao abrir (`DocumentoEspacial.Migrar`; cardinal inválido vira aviso, não trava).
+`.json` = só o modelo do motor. Gravação atômica (`Config.GravarAtomico`: temporário + `File.Replace`). Escolha: um arquivo do usuário continua um arquivo só e com a extensão de sempre; o JSON
 do motor fica intacto dentro dele (abre em qualquer ferramenta do motor) e o que o motor não guarda vai ao lado.
 Um documento convertido nunca sobrescreve o antigo sozinho: Salvar pede o nome e sugere "nome (3D).estructto".
-Recuperação automática (2 min): o mesmo contêiner (`Config.SalvarRecuperacao`); uma cópia antiga em XML ainda é convertida.
+Recuperação automática (2 min): uma cópia por documento alterado (`%AppData%\NovoFtool\recuperacao\<Chave>.estructto`);
+salvar ou fechar apaga só a cópia daquele documento. Ao abrir o programa cada cópia é oferecida; ela só sai depois de o documento
+recuperado abrir (antes ele grava a cópia dele); se não abrir, fica. A cópia de slot único antiga (`recuperacao.portico`, inclusive
+XML) ainda é lida.
 
 ## Funções que nasceram no 2D (`Legado3D.cs`)
 
@@ -118,7 +123,10 @@ Regras:
   `PUT /api/modelo` (`DocumentoEspacial.Aplicar`, dentro de `Motor.Exclusivo`). PUT está em `MUTAM`: uma entrada na pilha; Ctrl+Z
   desfaz tudo. Por que não `/api/modelo/lote`: o lote só adiciona; mover, dividir, unir e propriedades precisam mudar/remover.
 - Cópias levam seção, material, rot, `params` e cargas (sem id: o motor numera). Forças seguem a transformação; momento nodal é
-  pseudovetor (no espelho troca o sinal). O giro `rot` da seção não muda no espelho.
+  pseudovetor (no espelho troca o sinal). `rot` e cardinal seguem a transformação (`GeometriaEdicao.GirarSecao`):
+  rotação soma o ângulo no pilar vertical (sinal pelo sentido ni→nj; barra não vertical não muda); espelho (det −1) leva o z local
+  espelhado e inverte o y (seção espelhada em u: exato em I, caixão, tubo, retângulo), U +180°, L +90° (exato em abas iguais).
+  Testes: os pontos da seção desenhada da barra transformada = os pontos originais transformados.
 - Nó novo a 1 mm ou menos de um existente funde com ele; barra que repetiria outra (mesmos nós) não é criada. Ids novos: `N<k>`, `B<k>`.
 - Seleção: `IFonteSelecao` (nós e barras por id + `Mudou`). `FonteSelecaoEsp` lê a seleção múltipla da Vista3D (`Selecao.Nos`/
   `.Barras` + `SelecaoMudou`): clique, janela, cruzamento, Shift/Ctrl e também a escolha pela árvore, tabelas e avisos
@@ -148,7 +156,7 @@ Capturas `43-*` (`Capturas.CapturasPlanos`; só elas: `ESTRUCTTO_CAPTURAS=planos
 | Modelo › Planos › **Nível ▾** | lista os pavimentos do motor + "Térreo z=0" (se nenhum estiver na cota 0). Ativar = plano de trabalho na cota, só as barras do andar (os dois nós entre o nível de baixo e ele, sem as deitadas na cota de baixo), as outras em fantasma (linhas claras com fade), câmera em planta (transição de 300 ms da Vista3D) |
 | **Elevação X ▾ / Y ▾** | cotas distintas dos nós; só as barras do plano vertical, vista Lado (YZ) / Frente (XZ) |
 | **3D completo** | tira o filtro, volta à isométrica |
-| **Níveis** (painel) | nome, cota, altura até o próximo; criar (+3 m), renomear (= DELETE + POST: o motor não muda o nome), mudar z (PATCH), apagar, **Detectar pela geometria** (um nível por cota de nós sem nível). Tudo em `/api/modelo/pavimento` dentro do `Motor.Exclusivo` |
+| **Níveis** (painel) | nome, cota, altura até o próximo; criar (+3 m), renomear (um PUT com o pavimento renomeado: diafragma mantido, um Ctrl+Z; `Niveis.Renomear`), mudar z (PATCH), apagar, **Detectar pela geometria** (um nível por cota de nós sem nível). Tudo em `/api/modelo/pavimento` dentro do `Motor.Exclusivo` |
 | **Copiar pavimento para cima** | barras do andar do nível escolhido, nós novos (reaproveita nó que já está na posição) e cargas (nodais dos nós de cima do andar; distribuídas e pontuais das barras) para N andares de altura h. A cota de cada nó é mapeada em escala: o pé vai para o topo da cópia anterior. Cria pavimento em cada cota nova. **Um** `POST /api/modelo/lote`: um Ctrl+Z desfaz tudo |
 | **Gerar pilares entre níveis** | um pilar sob cada nó do nível escolhido até o nível de baixo (nó novo embaixo se faltar; pula se já houver barra ligando os dois). Seção e material do primeiro pilar do modelo |
 
@@ -163,7 +171,7 @@ Plano de trabalho = interface `IPlanoAlvo { DefinirPlano(eixo, valor); Isolar(zM
   vista isolada mostra); no nível mais baixo, sobe até o próximo; sem níveis, 3 m. A barra sai sempre com ni embaixo.
 - Trocar para um documento 2D (`LimparPlano`) volta o plano de desenho a z = 0.
 
-Limites: em planta os fantasmas ficam embaixo das barras isoladas (aparecem na isométrica); renomear nível = dois passos no desfazer;
+Limites: em planta os fantasmas ficam embaixo das barras isoladas (aparecem na isométrica);
 apoios não são copiados (as cópias ficam sobre o andar de baixo).
 ## Cargas e casos (`CargasEspacial.cs`)
 
@@ -357,20 +365,22 @@ Ctrl+Z (`GeometriaEdicao.Mover/Copiar`).
 ## Grade estrutural — `GR`
 
 Diálogo com eixos em X, filas em Y e níveis em Z na sintaxe do Plant 3D (`0,@6,@6,@7.5`; `GeometriaEdicao.LerCotas`).
-Nomes 1, 2, 3… e A, B, C…; linhas traço-ponto com balões no nível do plano de trabalho; os cruzamentos entram como pontos de
-atração do Snap3D; cada nível acima de 0 sem pavimento vira pavimento (um lote, um Ctrl+Z). Guardada no contêiner.
+Nomes 1, 2, 3… e A, B, C…. Fonte única: `config.grade` do motor (`{x: [vãos], y: [vãos], nomes_x, nomes_y, x0?, y0?}`), a mesma
+que o Novo projeto grava; GR grava a grade e os pavimentos novos num PUT (um Ctrl+Z). `Vista3D.Grade.cs` desenha como o Structure
+Grid do Plant: linhas traço-ponto com balões em **cada nível** (pavimentos + térreo), o do plano de trabalho mais forte; os
+cruzamentos de todos os níveis atraem o cursor (os do plano ganham no empate).
 
 ## Configurações (Member Settings) e Chapas
 
 Aba Modelo › Configurações: **Seção** (modelo + catálogo do motor), **Material**, **Giro (°)** (`rot` da barra) e **Cardinal**
-(1..9 da caixa da seção como o teclado numérico, 10 = centroide; guardado por barra em `DocumentoEspacial.Cardinais` e
+(1..9 da caixa da seção como o teclado numérico, 10 = centroide; guardado em `params.cardinal` da barra no motor, no mesmo lote da barra, e
 entregue ao desenho em `Barra3D.Cardinal` — o Realista desloca o perfil (`GeometriaPerfis.Cardinal`); a análise usa o eixo),
 **Apoio na base**. Chapas: o motor não tem elemento de placa; **Laje** abre a carga em área (painel Propriedades sem escolha).
 
 ## Snap e Medir (worktree wt-snap)
 
 `Vista3D.Snap.cs`, `Snap3D.cs`, `Medir3D.cs`: `AtualizarCursor` chama `AtrairSnap`. O estado OSNAP/ORTO/Polar/Rastreio é do
-`Snap3D` (`AplicarStatus`); F3/F8/F10/F11, os comandos e os botões do rodapé passam por ele. Os cruzamentos da grade
+`Snap3D` (`AplicarStatus`); F3/F8/F10/F11, os comandos e os botões do rodapé (Orto, Polar, Objetos, Rastreio: `StatusSnap3D`) passam por ele. Os cruzamentos da grade
 estrutural entram na geometria de atração. `MostrarGradePlano` (F7) e `EntradaDinamica` (F12) são da Vista3D.
 
 ## Pontos de entrada (tela inicial, novo arquivo, Arquivo)

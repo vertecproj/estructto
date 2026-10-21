@@ -46,6 +46,24 @@ namespace NovoFtool
         public static double? Abaixo(List<NivelPlano> l, double z) => l.Where(n => n.Z < z - Tol).Select(n => (double?)n.Z).LastOrDefault();
         public static double? Acima(List<NivelPlano> l, double z) => l.Where(n => n.Z > z + Tol).Select(n => (double?)n.Z).FirstOrDefault();
 
+        // Renomeia o pavimento (o motor não troca o nome por PATCH): a mesma entrada com o nome novo, no mesmo lugar da lista,
+        // diafragma e o resto mantidos; z novo opcional. Vai inteiro num PUT /api/modelo: atômico, um Ctrl+Z.
+        public static JsonObject Renomear(JsonObject m, string antigo, string novo, double? z = null)
+        {
+            var pav = m["pavimentos"] as JsonObject;
+            if (pav?[antigo] == null) throw new ArgumentException("o nível " + antigo + " não existe");
+            if (string.IsNullOrWhiteSpace(novo)) throw new ArgumentException("nome vazio");
+            if (novo != antigo && pav[novo] != null) throw new ArgumentException("já existe um nível " + novo);
+            var itens = pav.ToList(); pav.Clear();
+            foreach (var (k, v) in itens)
+            {
+                if (k != antigo) { pav[k] = v; continue; }
+                v["nome"] = novo; if (z != null) v["z"] = z.Value;
+                pav[novo] = v;
+            }
+            return m;
+        }
+
         // Cotas distintas dos nós num eixo ('x', 'y', 'z'), em ordem.
         public static List<double> Cotas(JsonObject m, string eixo)
         {
@@ -374,7 +392,7 @@ namespace NovoFtool
                 var g = new Grid { Margin = new Thickness(0, 4, 0, 0) }; Colunas(g);
                 var linha = new Border { Child = g, Padding = new Thickness(4, 2, 4, 2), CornerRadius = new CornerRadius(4), Background = sel ? TemaPlant.BSup3 : Brushes.Transparent };
                 var tn = new TextBox { Text = n.Nome, Height = 26, IsReadOnly = n.Terreo, VerticalContentAlignment = VerticalAlignment.Center, Background = TemaPlant.BSup3, Foreground = n.Terreo ? TemaPlant.BTexto2 : TemaPlant.BTexto1, BorderBrush = TemaPlant.BBorda, CaretBrush = TemaPlant.BTexto1, Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(0, 0, 8, 0),
-                                       ToolTip = n.Terreo ? "Térreo (z = 0): base do modelo, não é pavimento do motor." : "Nome do nível; Enter ou sair do campo grava (renomear = apagar e criar de novo no motor)." };
+                                       ToolTip = n.Terreo ? "Térreo (z = 0): base do modelo, não é pavimento do motor." : "Nome do nível; Enter ou sair do campo grava (diafragma mantido; um Ctrl+Z desfaz)." };
                 Cel(g, tn, 0);
                 var bz = UiAcoes.Num(out var tz, n.Z, "m", 96, "Cota do nível (m). Enter ou sair do campo grava.");
                 tz.IsReadOnly = n.Terreo; Cel(g, bz, 1);
@@ -386,18 +404,17 @@ namespace NovoFtool
                 {
                     var rem = UiPlaca.Link("Apagar", () => _ = Gravar(() => Motor.Chamar("DELETE", "/api/modelo/pavimento/" + Uri.EscapeDataString(nv.Nome)), "Nível apagado: " + nv.Nome + "."), "Apaga o nível (os nós e barras ficam).", 11.5);
                     rem.Foreground = TemaPlant.BTexto2; Cel(g, rem, 4);
+                    bool gravado = false;   // Enter grava e o LostFocus que vem junto (a linha é remontada) não grava de novo
                     void Commit()
                     {
+                        if (gravado) return;
                         string nome = tn.Text.Trim();
                         if (!UiAcoes.Ler(tz, out double z)) return;
                         bool mudouNome = nome != "" && nome != nv.Nome, mudouZ = Math.Abs(z - nv.Z) > 1e-9;
                         if (!mudouNome && !mudouZ) return;
-                        if (mudouNome)
-                            _ = Gravar(async () =>
-                            {
-                                await Motor.Chamar("DELETE", "/api/modelo/pavimento/" + Uri.EscapeDataString(nv.Nome));
-                                await Motor.Post("/api/modelo/pavimento", new JsonObject { ["nome"] = nome, ["z"] = z, ["diafragma"] = true });
-                            }, "Nível renomeado: " + nv.Nome + " → " + nome + ".");
+                        gravado = true;
+                        if (mudouNome)   // um PUT com o pavimento renomeado (diafragma mantido): atômico, um Ctrl+Z
+                            _ = GravarModelo(m => Niveis.Renomear(m, nv.Nome, nome, mudouZ ? z : (double?)null), "Nível renomeado: " + nv.Nome + " → " + nome + ".");
                         else _ = Gravar(() => Motor.Chamar("PATCH", "/api/modelo/pavimento/" + Uri.EscapeDataString(nv.Nome), new JsonObject { ["z"] = z }), "Nível " + nv.Nome + ": z = " + Num.Fmt(z, 2) + " m.");
                     }
                     foreach (var tb in new[] { tn, tz })
@@ -464,6 +481,12 @@ namespace NovoFtool
         async Task Gravar(Func<Task> op, string msg)
         {
             await w.OperarNiveis(op, msg);
+            Montar();
+        }
+
+        async Task GravarModelo(Func<JsonObject, JsonObject> op, string msg)
+        {
+            await w.OperarEspacial(d => d.Aplicar(op), msg);
             Montar();
         }
 

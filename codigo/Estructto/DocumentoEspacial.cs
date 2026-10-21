@@ -80,11 +80,11 @@ namespace NovoFtool
         public string CasoAtivo;             // caso das cargas lançadas no painel
         public bool TemHistorico, HistoricoPerdido;   // desfazer do motor: só do documento ativo (ver Garantir)
         public JsonArray Validacao = new JsonArray();  // GET /api/validar do último Recarregar
-        // Fora do motor (o motor não guarda): placas de base por nó (JanelaPlaca, Legado3D.cs) e a grade estrutural (GR).
+        // Placas de base por nó do contêiner antigo: só migração (as placas vão para os grupos de ligação do motor; não gravar aqui).
+        // O ponto cardinal fica em params.cardinal da barra e a grade estrutural em config.grade: ambos no motor (Ctrl+Z desfaz).
         public Dictionary<string, PlacaBase> Placas = new Dictionary<string, PlacaBase>();
-        public Dictionary<string, int> Cardinais = new Dictionary<string, int>();   // ponto cardinal (1..10) por barra; sem entrada = 5 (centro)
-        public JsonObject Grade;                       // {"x": [..], "y": [..], "nx": [..], "ny": [..]} em m; null = sem grade
         public string Origem;                          // arquivo antigo convertido ao abrir (null = nativo)
+        public string Chave = Guid.NewGuid().ToString("N");   // cópia de recuperação deste documento (Config.SalvarRecuperacao)
         public Dictionary<string, JsonNode> PiorPorBarra = new Dictionary<string, JsonNode>();
         JsonObject esforcos, desl;
         readonly Dictionary<string, RefMotor> refs = new Dictionary<string, RefMotor>();
@@ -181,24 +181,53 @@ namespace NovoFtool
         }
 
         // ---------- formato do arquivo ----------
-        // .estructto (v3) = {"formato": "estructto", "versao": 3, "modelo": <JSON do motor>, "placas": {nó: PlacaBase}, "grade": {...}}.
-        // O .estructto antigo é XML (Modelo do Nucleo.cs): continua legível e é convertido ao abrir (DeModelo2D).
+        // .estructto (v3) = {"formato": "estructto", "versao": 3, "modelo": <JSON do motor>, "placas": {nó: PlacaBase}}. A grade
+        // (config.grade) e o ponto cardinal (params.cardinal) vão dentro do modelo. Contêiner antigo com "grade"/"cardinal" ao
+        // lado do modelo: migrado ao abrir (Migrar). O .estructto antigo em XML (Nucleo.cs) é convertido ao abrir (DeModelo2D).
         public string ParaContainer()
         {
             var placas = new JsonObject();
             foreach (var kv in Placas) placas[kv.Key] = JsonSerializer.SerializeToNode(kv.Value);
             var c = new JsonObject { ["formato"] = "estructto", ["versao"] = 3, ["modelo"] = Json.DeepClone(), ["placas"] = placas };
-            if (Grade != null) c["grade"] = Grade.DeepClone();
-            var card = new JsonObject();
-            foreach (var kv in Cardinais) if (Json["barras"]?[kv.Key] != null) card[kv.Key] = kv.Value;
-            if (card.Count > 0) c["cardinal"] = card;
             return c.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         }
 
+        // Contêiner antigo: "grade" (posições absolutas) vira config.grade e "cardinal" {barra: 1..10} vira params.cardinal.
+        // Valor inválido (texto, fora de 1..10, barra que não existe) é ignorado com aviso, sem travar a abertura.
+        internal static void Migrar(JsonObject c, JsonObject modelo, List<string> avisos)
+        {
+            if (c["grade"] is JsonObject g && modelo["config"]?["grade"] == null)
+            {
+                double[] A(string k) => (g[k] as JsonArray)?.Select(GradeEstrutural.Num).Where(v => v != null).Select(v => v.Value).ToArray() ?? new double[0];
+                var xs = A("x"); var ys = A("y");
+                if (xs.Length > 0 || ys.Length > 0)
+                {
+                    var cfg = modelo["config"] as JsonObject ?? (JsonObject)(modelo["config"] = new JsonObject());
+                    cfg["grade"] = GradeEstrutural.Json(xs, ys);
+                }
+            }
+            foreach (var kv in c["cardinal"] as JsonObject ?? new JsonObject())
+            {
+                var b = modelo["barras"]?[kv.Key] as JsonObject;
+                if (b == null || !(kv.Value is JsonValue v) || !v.TryGetValue(out int n) || n < 1 || n > 10)
+                {
+                    avisos.Add("ponto cardinal da barra " + kv.Key + " inválido (" + (kv.Value?.ToJsonString() ?? "null") + "): ignorado, fica o centro");
+                    continue;
+                }
+                if (n == 5) continue;
+                var p = b["params"] as JsonObject ?? (JsonObject)(b["params"] = new JsonObject());
+                p["cardinal"] = n;
+            }
+        }
+
+        // params.cardinal da barra (1..10; sem ou inválido = 5, centro).
+        public static int CardinalDe(JsonNode barra) =>
+            barra?["params"]?["cardinal"] is JsonValue v && v.TryGetValue(out int n) && n >= 1 && n <= 10 ? n : 5;
+
         static async Task<DocumentoEspacial> DoContainer(JsonObject c, string caminho)
         {
-            var d = new DocumentoEspacial { Arquivo = caminho, Json = (JsonObject)c["modelo"].DeepClone(), Grade = c["grade"]?.DeepClone() as JsonObject };
-            foreach (var kv in c["cardinal"] as JsonObject ?? new JsonObject()) d.Cardinais[kv.Key] = (int)kv.Value;
+            var d = new DocumentoEspacial { Arquivo = caminho, Json = (JsonObject)c["modelo"].DeepClone() };
+            Migrar(c, d.Json, d.Avisos);
             foreach (var kv in c["placas"] as JsonObject ?? new JsonObject())
                 try { var p = kv.Value.Deserialize<PlacaBase>(); if (p != null) d.Placas[kv.Key] = p; } catch (JsonException) { d.Avisos.Add("placa do nó " + kv.Key + " ilegível: ignorada"); }
             await Motor.Exclusivo(async () => { await d.Garantir(); await d.Recarregar(); });
@@ -384,7 +413,7 @@ namespace NovoFtool
                 var b = kv.Value;
                 if (!ids.TryGetValue((string)b["ni"], out int ni) || !ids.TryGetValue((string)b["nj"], out int nj)) continue;
                 var b3 = new Barra3D { Id = ++ib, Ni = ni, Nj = nj, Secao = (string)b["secao"] ?? "", Rot = (double)(b["rot"] ?? 0.0) * 180 / Math.PI, Origem = Ref("barra", kv.Key),
-                                   Cardinal = Cardinais.TryGetValue(kv.Key, out int cd) ? cd : 5 };
+                                   Cardinal = CardinalDe(b) };
                 var e = esforcos?[kv.Key];
                 if (e != null) { b3.N = Vetor(e["N"]); b3.V = Vetor(e["Vz"]); b3.M = Vetor(e["My"]); }
                 if (PiorPorBarra.TryGetValue(kv.Key, out var l) && Taxa(l) >= 0) b3.Aprov = Taxa(l);
@@ -441,7 +470,7 @@ namespace NovoFtool
 
         static bool avisouConversao;   // o aviso da conversão 2D -> 3D aparece uma vez por sessão
 
-        internal async Task AbrirEspacial(Func<Task<DocumentoEspacial>> criar, string oque, string recente = null, bool silencioso = false)
+        internal async Task<DocumentoEspacial> AbrirEspacial(Func<Task<DocumentoEspacial>> criar, string oque, string recente = null, bool silencioso = false)
         {
             Bastidor.IsOpen = false;
             StatusMsg.Text = "Motor Python: " + oque + "…";
@@ -451,7 +480,7 @@ namespace NovoFtool
             catch (Exception ex)
             {
                 if (!silencioso) Caixa.Erro(this, "Não foi possível abrir o modelo", ex.Message);
-                StatusMsg.Text = "⚠ " + ComandosAnalise.MensagemMotor(ex); Log(StatusMsg.Text, false); return;
+                StatusMsg.Text = "⚠ " + ComandosAnalise.MensagemMotor(ex); Log(StatusMsg.Text, false); return null;
             }
             finally { Mouse.OverrideCursor = antes; }
             if (recente != null) Config.AdicionarRecente(recente);
@@ -470,6 +499,7 @@ namespace NovoFtool
                 Log("Convertido para 3D: " + Path.GetFileName(d.Origem) + " (Y do 2D virou Z; fora do plano travado). Salvar grava o formato novo (.estructto 3D).", false);
                 if (!avisouConversao) { avisouConversao = true; MostrarToast("Modelo 2D convertido para 3D: o Y do desenho virou Z e o que sai do plano ficou travado. Ao salvar, o arquivo vai no formato novo (.estructto 3D); o original não é alterado.", true); }
             }
+            return d;
         }
 
         internal Task AbrirEspacialArquivo(string caminho) => AbrirEspacial(() => DocumentoEspacial.AbrirArquivo(caminho), "abrindo " + Path.GetFileName(caminho), caminho);
@@ -690,11 +720,11 @@ namespace NovoFtool
             try
             {
                 bool json = c.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
-                File.WriteAllText(c, json ? d.JsonFormatado() : d.ParaContainer());   // Json = último GET /api/modelo
-                if (json && (d.Placas.Count > 0 || d.Grade != null)) Log("Aviso: o .json do motor não leva placas de base nem a grade estrutural; use .estructto para guardar tudo.");
+                Config.GravarAtomico(c, json ? d.JsonFormatado() : d.ParaContainer());   // Json = último GET /api/modelo; temporário + troca
+                if (json && d.Placas.Count > 0) Log("Aviso: o .json do motor não leva as placas de base do arquivo antigo; use .estructto para guardar tudo.");
                 d.Arquivo = c; d.Origem = null; arquivo = c; alterado = false;
                 Config.AdicionarRecente(c);
-                Config.ApagarRecuperacao();
+                Config.ApagarRecuperacao(d.Chave);   // só a cópia deste documento: as das outras abas não salvas ficam
                 AtualizarTitulo();
                 Log("Salvo: " + c);
                 return true;

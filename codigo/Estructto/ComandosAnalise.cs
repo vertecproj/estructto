@@ -44,28 +44,28 @@ namespace NovoFtool
 
         static void Mostrar(Window dono, Window j) { j.Owner = dono; j.Show(); }
 
-        public static async void AbrirModal(Window dono)
+        public static async Task AbrirModal(Window dono)
         {
             var d = await Buscar(dono, "Análise modal", () => Motor.Get("/api/modal?n=6"));
             if (d != null) Mostrar(dono, new JanelaModal(d));
         }
 
-        public static async void AbrirEstabilidade(Window dono)
+        public static async Task AbrirEstabilidade(Window dono)
         {
             var d = await Buscar(dono, "Estabilidade", () => Motor.Get("/api/estabilidade"));
             if (d != null) Mostrar(dono, new JanelaEstabilidade(d));
         }
 
-        public static async void AbrirVerificacaoBarras(Window dono)
+        public static async Task AbrirVerificacaoBarras(Window dono)
         {
             var d = await Buscar(dono, "Verificação de barras", () => Motor.Get("/api/verificacao"));
             if (d == null) return;
             var j = new JanelaVerificacaoBarras(d);
-            j.AbrirDetalhe = id => AbrirVerificarBarra(j, id);
+            j.AbrirDetalhe = id => _ = AbrirVerificarBarra(j, id);
             Mostrar(dono, j);
         }
 
-        public static async void AbrirVerificarBarra(Window dono, string barra)
+        public static async Task AbrirVerificarBarra(Window dono, string barra)
         {
             var d = await Buscar(dono, "Verificar barra", () => Motor.Get("/api/verificacao/" + Uri.EscapeDataString(barra)));
             if (d != null) Mostrar(dono, new JanelaVerificarBarraMotor(d));

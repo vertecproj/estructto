@@ -201,14 +201,11 @@ namespace NovoFtool
 
         // ---------- plano de trabalho: PgUp/PgDn ----------
 
-        // Níveis do motor + Térreo + níveis da grade (sem pavimento ainda); o plano vai para o de cima/baixo do atual.
+        // Níveis do motor + Térreo (os níveis da grade viram pavimentos no GR); o plano vai para o de cima/baixo do atual.
         void TrocarNivel(int sentido)
         {
             if (Esp == null || vista3D == null) return;
-            var l = Niveis.Lista(Esp.Json).Select(n => (n.Z, n.Nome)).ToList();
-            foreach (double z in (Esp.Grade?["z"] as JsonArray)?.Select(x => (double)x) ?? new double[0])
-                if (!l.Any(n => Math.Abs(n.Z - z) <= Niveis.Tol)) l.Add((z, "z = " + Num.Fmt(z, 2) + " m"));
-            l = l.OrderBy(n => n.Z).ToList();
+            var l = Niveis.Lista(Esp.Json).Select(n => (n.Z, n.Nome)).OrderBy(n => n.Z).ToList();
             var pl = vista3D.PlanoAtual;
             double z0 = pl.Normal == 'Z' ? pl.Valor : 0;
             var alvo = sentido > 0 ? l.Where(n => n.Z > z0 + Niveis.Tol).Select(n => ((double, string)?)n).FirstOrDefault() : l.Where(n => n.Z < z0 - Niveis.Tol).Select(n => ((double, string)?)n).LastOrDefault();
@@ -234,8 +231,8 @@ namespace NovoFtool
             else if (g.Barra != null && vista3D.PontasBarra(g.Barra) is (Point3D a, Point3D b))
             {
                 Point3D outra = (a - g.De).Length < (b - g.De).Length ? b : a;
-                string sec = (string)d.Json["barras"][g.Barra]?["secao"];
-                try { var ids = await d.DesenharBarras(new[] { (outra, g.Para) }, sec); DepoisDeMudarEspacial("Barra " + string.Join(", ", ids) + " copiada da " + g.Barra + " até " + onde + " (grip + Ctrl)."); }
+                var src = d.Json["barras"][g.Barra];   // a cópia leva seção, material, giro e cardinal da barra de origem
+                try { var ids = await d.DesenharBarras(new[] { (outra, g.Para) }, (string)src?["secao"], false, (string)src?["material"], (double)(src?["rot"] ?? 0.0), DocumentoEspacial.CardinalDe(src));DepoisDeMudarEspacial("Barra " + string.Join(", ", ids) + " copiada da " + g.Barra + " até " + onde + " (grip + Ctrl)."); }
                 catch (Exception ex) { ErroMotor(ex); }
             }
             else await Espacial(dd => dd.Adicionar("no", new JsonObject { ["x"] = g.Para.X, ["y"] = g.Para.Y, ["z"] = g.Para.Z }), "Nó novo em " + onde + " (grip + Ctrl).");
@@ -449,47 +446,42 @@ namespace NovoFtool
         void CmdGrade()
         {
             var d = Esp;
-            var g = d.Grade;
-            string Txt(string k, string padrao) => g?[k] is JsonArray a ? string.Join(",", a.Select(x => ((double)x).ToString("0.###", CultureInfo.InvariantCulture))) : padrao;
-            var j = new JanelaGrade(Txt("x", "0,@6,@6"), Txt("y", "0,@5"), Txt("z", "0,@3")) { Owner = this };
+            var (gx, gy, _, _) = GradeEstrutural.Ler(d.Json["config"]?["grade"]);
+            string Txt(IEnumerable<double> a, string padrao) => a.Any() ? string.Join(",", a.Select(x => x.ToString("0.###", CultureInfo.InvariantCulture))) : padrao;
+            var j = new JanelaGrade(Txt(gx, "0,@6,@6"), Txt(gy, "0,@5"), Txt(Niveis.Lista(d.Json).Select(n => n.Z), "0,@3")) { Owner = this };
             if (Capturas.Ativo) { janelaGrade = j; return; }
             if (j.ShowDialog() == true) _ = AplicarGrade(j.X, j.Y, j.Z);
         }
         internal JanelaGrade janelaGrade;   // capturas: a janela fica aberta para renderizar
 
-        // Grava a grade no documento e cria um pavimento em cada nível acima do térreo que ainda não tem (um lote = um Ctrl+Z).
+        // Grava a grade em config.grade do motor (a mesma chave do Novo projeto) e cria um pavimento em cada nível acima do
+        // térreo que ainda não tem: um PUT /api/modelo = um Ctrl+Z desfaz a grade e os pavimentos juntos.
         internal async Task AplicarGrade(double[] xs, double[] ys, double[] zs)
         {
             var d = Esp; if (d == null) return;
-            string Letra(int i) => i < 26 ? ((char)('A' + i)).ToString() : "A" + (i - 25);
-            d.Grade = new JsonObject
-            {
-                ["x"] = new JsonArray(xs.Select(v => (JsonNode)v).ToArray()), ["y"] = new JsonArray(ys.Select(v => (JsonNode)v).ToArray()), ["z"] = new JsonArray(zs.Select(v => (JsonNode)v).ToArray()),
-                ["nx"] = new JsonArray(xs.Select((v, i) => (JsonNode)(i + 1).ToString(CultureInfo.InvariantCulture)).ToArray()), ["ny"] = new JsonArray(ys.Select((v, i) => (JsonNode)Letra(i)).ToArray()),
-            };
             var pav = Niveis.Lista(d.Json);
-            var itens = new JsonArray();
+            var novos = new List<(string Nome, double Z)>();
             int k = 0;
-            foreach (double z in zs.Where(z => z > Niveis.Tol))
-                if (!pav.Any(n => Math.Abs(n.Z - z) <= Niveis.Tol))
+            foreach (double z in zs.Where(z => z > Niveis.Tol).Distinct())
+                if (!pav.Any(n => Math.Abs(n.Z - z) <= Niveis.Tol) && !novos.Any(n => Math.Abs(n.Z - z) <= Niveis.Tol))
                 {
                     string nome; do nome = "N" + (++k); while (d.Json["pavimentos"]?[nome] != null);
-                    itens.Add(new JsonObject { ["tipo"] = "pavimento", ["dados"] = new JsonObject { ["nome"] = nome, ["z"] = z, ["diafragma"] = false } });
+                    novos.Add((nome, z));
                 }
-            if (itens.Count > 0) await Espacial(dd => dd.Executar(() => Motor.Post("/api/modelo/lote", new JsonObject { ["itens"] = itens })), null);
-            else { alterado = true; AtualizarTitulo(); }
+            await Espacial(dd => dd.Aplicar(m => GradeEstrutural.Aplicar(m, xs, ys, novos)), null);
             AplicarGradeNaVista();
             Log("Grade: " + Pl.N(xs.Length, "eixo", "eixos") + " em X, " + Pl.N(ys.Length, "fila", "filas") + " em Y, " + Pl.N(zs.Length, "nível", "níveis") +
-                (itens.Count > 0 ? " (" + Pl.N(itens.Count, "pavimento novo", "pavimentos novos") + ")" : "") + ". Cruzamentos atraem o cursor; PgUp/PgDn sobe e desce o plano.");
+                (novos.Count > 0 ? " (" + Pl.N(novos.Count, "pavimento novo", "pavimentos novos") + ")" : "") + ". Cruzamentos atraem o cursor; PgUp/PgDn sobe e desce o plano; Ctrl+Z desfaz.");
         }
 
+        // Eixos da grade (config.grade do motor, gravada pelo Novo projeto ou pelo GR) e níveis (pavimentos + térreo) na vista.
         internal void AplicarGradeNaVista()
         {
             if (vista3D == null) return;
-            var g = Esp?.Grade;
-            double[] A(string k) => (g?[k] as JsonArray)?.Select(x => (double)x).ToArray() ?? new double[0];
-            string[] S(string k) => (g?[k] as JsonArray)?.Select(x => (string)x).ToArray() ?? new string[0];
-            vista3D.EixosX = A("x"); vista3D.EixosY = A("y"); vista3D.NomesX = S("nx"); vista3D.NomesY = S("ny");
+            var j = Esp?.Json;
+            var (x, y, nx, ny) = GradeEstrutural.Ler(j?["config"]?["grade"]);
+            vista3D.EixosX = x; vista3D.EixosY = y; vista3D.NomesX = nx; vista3D.NomesY = ny;
+            vista3D.NiveisEixos = j == null ? new double[0] : Niveis.Lista(j).Select(n => n.Z).ToArray();
             vista3D.InvalidateVisual();
         }
 

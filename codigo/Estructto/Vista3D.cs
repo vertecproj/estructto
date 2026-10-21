@@ -912,9 +912,7 @@ namespace NovoFtool
         public bool Orto;                                                // F8; Shift força na hora
         // Grade do plano ao desenhar (F7) e caixas da entrada dinâmica (F12). OSNAP/ORTO/Polar/Rastreio ficam no Snap3D (Vista3D.Snap.cs).
         public bool MostrarGradePlano = true, EntradaDinamica = true;
-        // Eixos da grade estrutural (GR / Modelo › Grade): posições em X e Y (m) e nomes. Desenhados em todo nível; cruzamentos atraem.
-        public double[] EixosX = new double[0], EixosY = new double[0];
-        public string[] NomesX = new string[0], NomesY = new string[0];
+        // Eixos da grade estrutural (EixosX/Y, NomesX/Y, NiveisEixos): Vista3D.Grade.cs.
 
         PlanoTrabalho plano = PlanoTrabalho.Horizontal(0);
         public PlanoTrabalho PlanoAtual
