@@ -199,6 +199,8 @@ namespace NovoFtool
                 : pior == null ? "Escolha o projeto de cada grupo (à direita) para ver a taxa da pior ligação."
                 : "Pior grupo: " + S(pior, "nome") + " · " + Pct(Taxa(pior)) + " em " + S(pior["governante"], "barra") + " (" + S(pior["governante"], "combinacao") + ")";
             var nv = erro != null ? Nivel.Erro : pior == null ? Nivel.Neutro : NivelAp(Taxa(pior), grupos.All(g => g["ok"] == null || Bool(g, "ok")));
+            lock (Render3D.Curtas) if (Render3D.Curtas.Count > 0)   // vindas da última cena do Realista (recuos das duas pontas ≥ comprimento)
+                sub += " · Barra curta demais para a ligação: " + string.Join(", ", Render3D.Curtas.Take(8)) + (Render3D.Curtas.Count > 8 ? "…" : "");
             hostCab.Child = Cabecalho(nv, nv == Nivel.Erro ? "✕" : nv == Nivel.Neutro ? "≡" : nv == Nivel.Alerta ? "!" : "✓", titulo, sub, acoes);
         }
 

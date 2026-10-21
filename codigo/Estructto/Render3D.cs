@@ -82,7 +82,13 @@ namespace NovoFtool
         readonly List<(MeshGeometryModel3D M, int[] Ini, object[] Obj)> faixas = new List<(MeshGeometryModel3D, int[], object[])>();
         int quadros, nLig; double largSecao = 0.3;
         // --testes-interferencia: não nulo = Montar guarda aqui cada sólido (barra, chapa, cantoneira; parafusos e soldas não)
-        public static List<(string Nome, MalhaDx M)> Coleta;
+        public static List<Peca3D> Coleta;
+        // Sólido da cena guardado à parte (teste de interferência, exportação). Barra = a barra dona (cada trecho do cope é um
+        // sólido fechado, Trecho = true); Lig = a ligação dona (chapa, cantoneira, parafuso). Excluir: barra curta demais para a
+        // ligação (motor: excluir_interferencia/BarraCurta; WPF: recuos das duas pontas ≥ comprimento) — fora da interferência.
+        public sealed class Peca3D { public string Nome, Tipo; public MalhaDx M; public Barra3D Barra; public Ligacao3D Lig; public bool Trecho, Excluir; }
+        // Barras curtas demais para a ligação na última cena montada (IdBarra): o gerenciador avisa.
+        public static readonly HashSet<string> Curtas = new HashSet<string>();
         public static Dictionary<(Barra3D, bool), Corte> CortesColeta; public static Dictionary<(int, bool), Ligacao3D> LigsColeta;   // diagnóstico do teste
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
         public const int MaxPropostas = 600;         // ponytail: modelos enormes ficam com as 600 primeiras; subir se pedirem
@@ -260,7 +266,6 @@ namespace NovoFtool
             Propostas = g.Propostas; nLig = g.NLig; largSecao = g.LargSecao;
             MalhaDx mallAco = g.Aco, mallConc = g.Conc, mallSel = g.Sel, arestas = g.Arestas, mallParaf = g.Paraf, mallSolda = g.Solda, mallProp = g.Prop, mallPropDet = g.PropDet;
             var mallChao = new MalhaDx(); Chao(c, mallChao);
-            Vista.SSAOSamplingRadius = (float)Math.Max(0.1, Math.Min(1.5, c.Raio * 0.012));   // V2: o raio do SSAO acompanha o tamanho da cena (0,3 m fixo borra plataformas de 30 m)
 
             faixas.Clear();
             Aplicar(mAco, mallAco); Aplicar(mConcreto, mallConc); Aplicar(mSel, mallSel); Aplicar(mParafusos, mallParaf); Aplicar(mSoldas, mallSolda); Aplicar(mChao, mallChao); Aplicar(mProp, mallProp); Aplicar(mPropDet, mallPropDet);
@@ -294,9 +299,10 @@ namespace NovoFtool
 
         // Geometria da cena (barras com as pontas cortadas, pedestais, ligações) sem o Direct3D: o Render3D e o exportador
         // DWG/STEP usam a mesma. coleta != null: cada sólido (barra, chapa, cantoneira, parafuso) também à parte.
-        public static Montagem Construir(Cena3D c, List<(string Nome, MalhaDx M)> coleta)
+        public static Montagem Construir(Cena3D c, List<Peca3D> coleta)
         {
             var g = new Montagem();
+            lock (Curtas) Curtas.Clear();
             Modelo3D mod = c.Mod;
             var nos = new Dictionary<int, No3D>();
             foreach (No3D n in mod.Nos) if (!nos.ContainsKey(n.Id)) nos[n.Id] = n;
@@ -382,8 +388,11 @@ namespace NovoFtool
                 somaLarg += f.Larg; nLarg++;
                 MalhaDx alvo = c.Selecionada(b) ? mallSel : f.Concreto ? mallConc : mallAco;
                 alvo.Marcar(b);
-                MalhaDx so = coleta != null ? new MalhaDx() : null;
                 cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
+                bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6
+                             || new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir);
+                if (curta) lock (Curtas) Curtas.Add(Exportador.IdBarra(b));
+                void Guardar(MalhaDx sm, bool trecho) { if (sm.T.Count > 0) coleta.Add(new Peca3D { Nome = (curta ? "excluir · " : "") + "barra " + Exportador.IdBarra(b) + (trecho ? " (cope)" : ""), Tipo = "barra", M = sm, Barra = b, Trecho = trecho, Excluir = curta }); }
                 // cope (recortes "cope" da ligação na ponta): trechos da ponta com o contorno cortado, a peça cheia começa depois
                 Corte Cope(bool emI, Corte k)
                 {
@@ -408,7 +417,7 @@ namespace NovoFtool
                         {
                             Corte p1 = emI ? ant : k1, p2 = emI ? k1 : ant;
                             Render3DGeometria.Extrudar(alvo, fc, a, d, u, v, p1, p2, Cor(c.Cor(b)), false);
-                            if (so != null) Render3DGeometria.Extrudar(so, fc, a, d, u, v, p1, p2, Cor(c.Cor(b)), false);
+                            if (coleta != null) { var sm = new MalhaDx(); Render3DGeometria.Extrudar(sm, fc, a, d, u, v, p1, p2, Cor(c.Cor(b)), false); Guardar(sm, true); }
                             Render3DGeometria.Extrudar(arestas, fc, a, d, u, v, p1, p2, Cor(c.Cor(b)), true, false);
                         }
                         ant = k1;
@@ -417,7 +426,7 @@ namespace NovoFtool
                 }
                 ci = Cope(true, ci); cj = Cope(false, cj);
                 Render3DGeometria.Extrudar(alvo, f, a, d, u, v, ci, cj, Cor(c.Cor(b)), false);
-                if (so != null) { Render3DGeometria.Extrudar(so, f, a, d, u, v, ci, cj, Cor(c.Cor(b)), false); coleta.Add(((new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir) ? "excluir · " : "") + "barra " + Exportador.IdBarra(b), so)); }
+                if (coleta != null) { var sm = new MalhaDx(); Render3DGeometria.Extrudar(sm, f, a, d, u, v, ci, cj, Cor(c.Cor(b)), false); Guardar(sm, false); }
                 Render3DGeometria.Extrudar(arestas, f, a, d, u, v, ci, cj, Cor(c.Cor(b)), true, false);   // só as arestas
             }
             g.LargSecao = nLarg > 0 ? somaLarg / nLarg : 0.3;
@@ -480,6 +489,12 @@ namespace NovoFtool
                         (o, y, z) = (o + yp * (ymin - gus.Espessura / 2000), yp, zp);
                     }
                 }
+                else if (l.Ponta != null && gus != null && l.ApoioDir == null)   // sem apoio conhecido: só encosta a chapa na face −y da peça
+                {   // (tubo: chapa a R + esp/2 do eixo, sobre a superfície, não rasgando o tubo)
+                    Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
+                    double ymin = forma(b).Lacos[0].Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y));
+                    o += y * (ymin - gus.Espessura / 2000);
+                }
                 Point3D W(Vector3D p) => o + (x * p.X + y * p.Y + z * p.Z) / 1000;
                 Vector3D Wv(Vector3D p) { Vector3D r = x * p.X + y * p.Y + z * p.Z; if (r.Length > 1e-12) r.Normalize(); return r; }
                 foreach (var ch in l.Chapas)
@@ -490,7 +505,7 @@ namespace NovoFtool
                     Point3D org = W(ch.Origem);
                     if (ch.Nome == "gusset" && l.ApoioDir == null) for (int it = 0; it < 3; it++) foreach (Barra3D sup in mod.Barras.Where(q => q != b && (q.Ni == l.No || q.Nj == l.No))) org += FolgaGusset(org, uu, ww, nn, ct, ch.Espessura / 1000, sup, x);   // cada peça do nó (3 voltas: um afastamento pode empurrar para outra)
                     mallChapas.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false);
-                    if (coleta != null) { var sc = new MalhaDx(); sc.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false); coleta.Add((NomeLig(l) + " " + ch.Nome, sc)); }
+                    if (coleta != null) { var sc = new MalhaDx(); sc.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false); coleta.Add(new Peca3D { Nome = NomeLig(l) + " " + ch.Nome, Tipo = "chapa", M = sc, Lig = l, Excluir = l.Excluir }); }
                     arestas.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, true, false);
                 }
                 foreach (var ca in l.Cantoneiras)
@@ -501,13 +516,13 @@ namespace NovoFtool
                     Vector3D vv = Vector3D.CrossProduct(ex, uu);   // ponytail: triedro direito no mundo (a aba pode sair espelhada no referencial canhoto)
                     Point3D pa = W(ca.Origem), pb = pa + ex * (ca.Comprimento / 1000);
                     Render3DGeometria.Extrudar(mallChapas, f, pa, pb, uu, vv, null, null, corChapa, false);
-                    if (coleta != null) { var sc = new MalhaDx(); Render3DGeometria.Extrudar(sc, f, pa, pb, uu, vv, null, null, corChapa, false); coleta.Add((NomeLig(l) + " cantoneira", sc)); }
+                    if (coleta != null) { var sc = new MalhaDx(); Render3DGeometria.Extrudar(sc, f, pa, pb, uu, vv, null, null, corChapa, false); coleta.Add(new Peca3D { Nome = NomeLig(l) + " cantoneira", Tipo = "cantoneira", M = sc, Lig = l, Excluir = l.Excluir }); }
                     Render3DGeometria.Extrudar(arestas, f, pa, pb, uu, vv, null, null, corChapa, true, false);
                 }
                 foreach (var pf in l.Parafusos)
                 {
                     Render3DGeometria.Parafuso(mallP, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000);
-                    if (coleta != null) { var sp = new MalhaDx(); Render3DGeometria.Parafuso(sp, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000); coleta.Add(("parafuso · " + NomeLig(l), sp)); }
+                    if (coleta != null) { var sp = new MalhaDx(); Render3DGeometria.Parafuso(sp, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000); coleta.Add(new Peca3D { Nome = "parafuso · " + NomeLig(l), Tipo = "parafuso", M = sp, Lig = l, Excluir = true }); }
                 }
                 foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallS, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, x);
             }
