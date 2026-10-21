@@ -147,6 +147,26 @@ namespace NovoFtool
 
         // 42) Vista 3D Realista x analítica: guincho (modelo 2D), pórtico espacial 2 x 2 e exemplos do motor (concreto e galpão).
         // Atalho para iterar só nelas: variável ESTRUCTTO_CAPTURAS=3d.
+        // V2: sombra do chão. Pórtico 2x2 em duas vistas, Realista DX e Sombreado nativo (59-sombra-<estilo>-<vista>).
+        static void CapturasSombra(MainWindow w)
+        {
+            Esperar(w.NovoEmBranco(true));
+            var esp = Portico2x2();
+            w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = false;
+            w.vista3D.Carregar(esp, false);
+            foreach (var (est, nome) in new[] { (EstiloVisual.Realista, "dx"), (EstiloVisual.Sombreado, "nativo") })
+            {
+                w.DefinirEstilo(est);
+                foreach (var (az, el, vn) in new[] { (-60.0, 40.0, "alto"), (-30.0, 18.0, "rasante") })
+                {
+                    w.vista3D.Reconstruir();
+                    w.vista3D.Focar(new System.Windows.Media.Media3D.Point3D(6, 5, 0), 26, az, el);
+                    CapturarPrincipal(w, "59-sombra-" + nome + "-" + vn);
+                }
+            }
+            w.FecharEspaciaisSemPerguntar();
+        }
+
         // V1: seta e nó escolhido atrás de uma viga (pórtico 2x2 real). Sem "sempre visíveis" a viga os esconde (Realista DX e
         // Sombreado nativo); com ele a seta e o nó aparecem por cima.
         static void CapturasCargasProfundidade(MainWindow w)
@@ -1090,6 +1110,7 @@ namespace NovoFtool
                 if (w.EspacialAtivo == null) throw new InvalidOperationException("o modelo não abriu como documento 3D: " + caminhoModelo);
                 string so = Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS");
                 Action<Action> so1 = f => { f(); w.alterado = false; w.Close(); Environment.Exit(0); };
+                if (so == "sombra") so1(() => CapturasSombra(w));   // só as 59) de sombra do chão
                 if (so == "cargasprof") so1(() => CapturasCargasProfundidade(w));   // só as 58) de cargas com profundidade
                 if (so == "planos") so1(() => CapturasPlanos(w));                 // só as capturas 43) de níveis e planos
                 if (so == "trelicas") so1(() => CapturasTrelicas(w));             // só as 50) de treliças e contraventamentos

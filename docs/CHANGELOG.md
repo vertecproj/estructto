@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente V, V2: sombra do chão sem artefatos (nativo sem malha projetada, DX com chão menor na cobertura do ShadowMap3D); botão Vista › Mostrar › Sombra; captura 59. [docs/v3/render/SOMBRA.md](v3/render/SOMBRA.md)
 - 21/10/2026 — Frente V, V1: setas de carga no Realista DX respeitam a profundidade (malha no Viewport3DX); opção "Cargas sempre visíveis" (padrão só no Analítico); captura 58. [docs/v3/render/CARGAS-PROFUNDIDADE.md](v3/render/CARGAS-PROFUNDIDADE.md)
 - 21/10/2026 — A pedido do usuário, manual v3 em [manual/](manual/README.md) e seção do produto no README atualizados para o fluxo só 3D, com aliases do código, vento integrado, ligações/grupos, placa NBR, exportação e limites/ART.
 

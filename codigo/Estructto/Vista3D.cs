@@ -1,4 +1,4 @@
-// Vista 3D do pórtico espacial (fase 4 de docs/UNIFICACAO.md), com Viewport3D nativo do WPF.
+﻿// Vista 3D do pórtico espacial (fase 4 de docs/UNIFICACAO.md), com Viewport3D nativo do WPF.
 // HelixToolkit não foi usado: câmera ortográfica, órbita, pan, zoom e picking cabem em poucas linhas com o
 // Viewport3D e evitam uma dependência nova (ver docs/VISTA3D.md).
 // Entrada neutra (Modelo3D): nós {id, x, y, z, apoios[6]}, barras {id, ni, nj, seção, rot}, e opcionalmente
@@ -241,6 +241,7 @@ namespace NovoFtool
         public Func<string, Perfil3D> Perfil;    // nome da seção -> forma real (null/desconhecida = caixa fina)
         // Render3D (DX11) quando há placa de vídeo; senão o Realista nativo deste arquivo. ESTRUCTTO_3D=nativo força o nativo.
         Render3D render;
+        public bool Sombra = true;               // Opções › Sombra: sombra projetada no Realista DX (ShadowMap3D)
         public bool SemDx;                       // estilo "Sombreado" (SeletorEstilo.cs): o Realista nativo mesmo com GPU
         bool Dx => Realista && !SemDx && Render3D.Disponivel;
         public bool LigacoesAmostra = Environment.GetEnvironmentVariable("ESTRUCTTO_3D_AMOSTRAS") == "1";   // sem ligações do motor: exemplos (capturas)
@@ -697,11 +698,6 @@ namespace NovoFtool
 
         static double Suave(double t) { t = Math.Max(0, Math.Min(1, t)); return t * t * (3 - 2 * t); }
 
-        // sombra: u = através (borda borrada nos dois lados), v = altura da peça (mais alta = mais clara)
-        static readonly Lazy<Material> MatSombra = new Lazy<Material>(() =>
-        {
-            var m = new DiffuseMaterial(PincelAlfa(64, 32, (u, v) => 0.62 * Suave(1.15 * (1 - Math.Abs(2 * u - 1))) * (1 - 0.55 * v))); m.Freeze(); return m;
-        });
         // "oclusão ambiente" falsa: mancha radial escura no pé dos pilares
         static readonly Lazy<Material> MatAo = new Lazy<Material>(() =>
         {
@@ -727,26 +723,6 @@ namespace NovoFtool
             m.P.Add(new Point3D(x0, y0, z)); m.P.Add(new Point3D(x1, y0, z)); m.P.Add(new Point3D(x1, y1, z)); m.P.Add(new Point3D(x0, y1, z));
             for (int k = 0; k < 4; k++) m.N.Add(new Vector3D(0, 0, 1));
             m.UV.Add(new Point(0, 0)); m.UV.Add(new Point(1, 0)); m.UV.Add(new Point(1, 1)); m.UV.Add(new Point(0, 1));
-            m.Quad(i0);
-        }
-
-        // Sombra da barra a-b no plano z0 (projeção pela luz chave), larga na medida da peça e mais borrada quanto mais alta.
-        static void Sombra(Malha m, Point3D a, Point3D b, double larg, double z0, double z, double alt)
-        {
-            Point3D Proj(Point3D p) { double t = (p.Z - z0) / -Luz.Z; return new Point3D(p.X + Luz.X * t, p.Y + Luz.Y * t, z); }
-            Point3D pa = Proj(a), pb = Proj(b);
-            var d = new Vector(pb.X - pa.X, pb.Y - pa.Y);
-            if (d.Length < 1e-9) d = new Vector(Luz.X, Luz.Y);
-            d.Normalize();
-            var nr = new Vector(-d.Y, d.X);
-            double ha = larg * 0.7 + 0.03 * (a.Z - z0), hb = larg * 0.7 + 0.03 * (b.Z - z0);
-            double va = Math.Min(1, Math.Max(0, (a.Z - z0) / alt)), vb = Math.Min(1, Math.Max(0, (b.Z - z0) / alt));
-            int i0 = m.P.Count;
-            m.P.Add(new Point3D(pa.X - nr.X * ha, pa.Y - nr.Y * ha, z)); m.UV.Add(new Point(0, va));
-            m.P.Add(new Point3D(pb.X - nr.X * hb, pb.Y - nr.Y * hb, z)); m.UV.Add(new Point(0, vb));
-            m.P.Add(new Point3D(pb.X + nr.X * hb, pb.Y + nr.Y * hb, z)); m.UV.Add(new Point(1, vb));
-            m.P.Add(new Point3D(pa.X + nr.X * ha, pa.Y + nr.Y * ha, z)); m.UV.Add(new Point(1, va));
-            for (int k = 0; k < 4; k++) m.N.Add(new Vector3D(0, 0, 1));
             m.Quad(i0);
         }
 
@@ -789,7 +765,7 @@ namespace NovoFtool
 
             largArestas = LarguraAresta();
             var grupos = new Dictionary<(Color, bool), Malha>();
-            var casca = new Malha(); var sombra = new Malha();
+            var casca = new Malha();
             foreach (Barra3D b in mod.Barras)
             {
                 No3D na = NoPorId(b.Ni), nc = NoPorId(b.Nj); if (na == null || nc == null) continue;
@@ -805,7 +781,6 @@ namespace NovoFtool
                 if (!grupos.TryGetValue(k, out Malha m)) grupos[k] = m = new Malha();
                 m.Marcar(b); Extrudar(m, f, a, c, u, v, 0);
                 casca.Marcar(b); Extrudar(casca, f, a, c, u, v, largArestas);
-                Sombra(sombra, a, c, f.Larg, z0, z0 + eps, alt);
             }
             var ao = new Malha();
             foreach (No3D n in mod.Nos)
@@ -815,7 +790,7 @@ namespace NovoFtool
                     QuadChao(ao, n.X - r, n.Y - r, n.X + r, n.Y + r, z0 + 2 * eps);
                 }
             // ordem: transparentes no chão antes das peças opacas
-            if (sombra.P.Count > 0) g.Children.Add(Modelo(sombra, MatSombra.Value));
+            // V2: sem sombra projetada no nativo (a malha plana por barra gerava manchas soltas); fica só o contato suave (ao)
             if (ao.P.Count > 0) g.Children.Add(Modelo(ao, MatAo.Value));
             foreach (var kv in grupos) g.Children.Add(Modelo(kv.Value, MatReal(kv.Key.Item1, kv.Key.Item2)));
             if (casca.P.Count > 0) g.Children.Add(Modelo(casca, null, MatAresta.Value));
@@ -833,6 +808,7 @@ namespace NovoFtool
                 Children.Insert(Children.IndexOf(vp), render.Vista);
             }
             render.Vista.Visibility = Visibility.Visible;
+            render.Sombra = Sombra;
             string sem = Environment.GetEnvironmentVariable("ESTRUCTTO_3D_SEM") ?? "";   // diagnóstico (Render3D.cs)
             vp.Visibility = sem.Contains("nativo") ? Visibility.Collapsed : Visibility.Visible;
             sobre.Visibility = sem.Contains("sobre") ? Visibility.Collapsed : Visibility.Visible;

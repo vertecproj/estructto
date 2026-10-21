@@ -78,6 +78,7 @@ namespace NovoFtool
         readonly MeshGeometryModel3D mAco, mConcreto, mSel, mChao, mParafusos, mSoldas, mProp, mPropDet, mCargas, mNos;
         readonly LineGeometryModel3D lArestas;
         readonly ShadowMap3D sombra;
+        public bool Sombra { set { Vista.IsShadowMappingEnabled = value && !(Environment.GetEnvironmentVariable("ESTRUCTTO_3D_SEM") ?? "").Contains("sombra"); } }
         readonly List<(MeshGeometryModel3D M, int[] Ini, object[] Obj)> faixas = new List<(MeshGeometryModel3D, int[], object[])>();
         int quadros, nLig; double largSecao = 0.3;
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
@@ -449,7 +450,7 @@ namespace NovoFtool
             Color cc = TemaPlant.CorChao3D, cf = TemaPlant.BgCanvas, cg = TemaPlant.CorGrade3D;   // a borda chega à cor do canvas (Expo) e some
             Color cfA = cf;
             Color4 CorR(double r, Color centro) { double t = Suave((r / R - 0.2) / 0.8); return Cor(Mistura(centro, cfA, t), Expo); }
-            const int seg = 72; double[] aneis = { 0.3, 0.55, 0.75, 0.9, 1.0, 3.0 };   // o último anel já é a cor do canvas: a borda fica fora da tela
+            const int seg = 72; double[] aneis = { 0.3, 0.55, 0.75, 0.9, 1.0, 1.5 };   // o último anel já é a cor do canvas: a borda fica fora da tela
             var ant = Enumerable.Repeat(new Point3D(xm, ym, z), seg + 1).ToArray(); double rAnt = 0;
             foreach (double fr in aneis)
             {
