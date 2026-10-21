@@ -30,3 +30,15 @@
   Exceção: a série **Ue 127x50x17** é designação do fabricante (Marcegaglia); a NBR 6355 anexo A.3 lista a família 125x50x17 (VC-pff-006).
 - **Propriedades:** calculadas por `secoes.secao_Ue` / `secao_U_pf` pela linha média, com as dobras em arco de raio ri + t/2 e **ri = t** (NBR 6355:2012 anexo A; 1,5t para t > 6,3 mm — `secoes.ri_nbr6355`). As áreas conferem com as tabeladas na NBR 6355 a menos de 0,1 % (`testes/regressao/test_reg_pff.py::test_VC_pff_001_areas_NBR6355`). A massa de `lista_catalogo` é A·7850 kg/m³.
 - **Conferência:** `testes/test_secoes.py::test_catalogo_pff` e os testes de regressão citados.
+
+## perfis/*.csv — catálogo ampliado (frente K, K1; acesso 2026-10-21)
+
+- **Colunas:** `fabricante_norma;familia;serie;nome;forma;massa;h;b;tw;tf;r;A;Ix;Iy;fonte` (mm, kg/m, cm², cm⁴; tubos: tw = tf = t; barra chata: h = largura, b = tw = tf = espessura).
+- **W/HP:** cópia de `perfis_gerdau.csv` (folder Gerdau 10/18, ver acima).
+- **IPE, HEA, HEB, UPN:** ArcelorMittal Orange Book, https://orangebook.arcelormittal.com/node/6 (IPE), /node/16 (HE), /node/265 (UPN). HTML baixado e lido por script; nenhuma PDF salva. IPE: só a série padrão (80 a 600); HEA/HEB: 100 a 1000. A fonte dá r = r1. O link /node/265 da tarefa só traz UPN; IPE/HE estão nos nós acima.
+- **UPN 30 e UPN 40:** não constam do Orange Book; valores da DIN 1026-1 (tabela normativa equivalente), para chegar a 20 UPN.
+- **L desiguais:** Orange Book node 225 (EN 10056), h x b x t, 32 bitolas. Ix = eixo y-y (forte).
+- **L iguais, U laminado, tubos quadrado/retangular/redondo:** reaproveitados de `codigo/portico/perfis-outros.csv` (catálogos de fabricantes Gerdau e metalon, já pesquisados). A tabela da Vallourec (EN 10210) não foi usada: o `perfis-outros.csv` já cobre 1100 tubos.
+- **T laminado:** lâmina Gerdau "Perfil T", https://blog.famsteel.com.br/wp-content/uploads/2017/01/barras-e-perfis-lamina-perfil-t.pdf (o catálogo-barras-e-perfis.pdf só tem texto descritivo, sem tabela). Correção: massa do T 7/8 x 1/8" lida 0,99 kg/m na fonte, inconsistente com A = 1,34 cm²; gravado 1,05 (= A·7,85). Omitido "3/4" serr." (sem propriedades).
+- **Barra chata:** o catálogo Gerdau não traz tabela legível; bitolas em polegadas (larguras 1/2" a 8", espessuras 1/8" a 3/4", combinações usuais) com propriedades da seção retangular nominal.
+- **U e Ue formados a frio:** dimensões em `perfis_pff.csv` (fontes acima); A e I calculados por `secoes.secao_U_pf`/`secao_Ue` com ri da NBR 6355; massa = A·7850.
