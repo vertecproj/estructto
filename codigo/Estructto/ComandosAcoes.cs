@@ -87,19 +87,19 @@ namespace NovoFtool
             if (norma != null) { var n = UiPlaca.Chip(norma, UiPlaca.Nivel.Neutro, null, null, 10.5); n.Margin = new Thickness(10, 1, 0, 0); l1.Children.Add(n); }
             sp.Children.Add(l1);
             if (apoio != null) { var a = UiPlaca.Tx(apoio, 11.5, TemaPlant.BTexto3, null, true); a.Margin = new Thickness(0, 3, 0, 0); sp.Children.Add(a); }
-            return new Border { Background = TemaPlant.BSup0, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(16, 10, 16, 10), Child = sp };
+            return new Border { Background = TemaPlant.BSup1, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(16, 10, 16, 10), Child = sp };
         }
 
         // Rodapé: status à esquerda, botões à direita (um só primário)
         public static FrameworkElement Rodape(TextBlock status, params UIElement[] botoes)
         {
-            var dp = new DockPanel { Margin = new Thickness(16, 8, 16, 12) };
+            var dp = new DockPanel { Margin = new Thickness(14, 8, 14, 8) };
             var bts = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            foreach (var b in botoes) bts.Children.Add(b);
+            foreach (var b in botoes) { if (b is Button bb) { bb.Height = 28; bb.MinWidth = 92; } bts.Children.Add(b); }
             DockPanel.SetDock(bts, Dock.Right);
             dp.Children.Add(bts);
             dp.Children.Add(status);
-            return new Border { BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 1, 0, 0), Background = TemaPlant.BSup0, Child = dp };
+            return new Border { BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 1, 0, 0), Background = TemaPlant.BSup1, Child = dp };
         }
 
         // Cartão de passo (Surface.2, borda sutil, raio 6)

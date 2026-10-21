@@ -118,8 +118,9 @@ namespace NovoFtool
                     var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
                     enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
                     using (var fs = System.IO.File.Create(png)) enc.Save(fs);
-                    System.IO.File.WriteAllText(txt, StatusMsg.Text + "\n" + string.Join("\n", ResMotor.Verificacao.Select(v =>
-                        "barra " + v.Barra + ": " + (v.Taxa.HasValue ? Num.Fmt(v.Taxa.Value * 100, 1) + "%" : "-") + " · " + v.Criterio + " · " + v.Item + " · " + v.Combinacao)));
+                    // documento 3D: a verificação vem do motor direto para a janela (ResMotor é do caminho 2D legado)
+                    System.IO.File.WriteAllText(txt, StatusMsg.Text + "\n" + (ResMotor == null ? "janela aberta com o documento 3D" : string.Join("\n", ResMotor.Verificacao.Select(v =>
+                        "barra " + v.Barra + ": " + (v.Taxa.HasValue ? Num.Fmt(v.Taxa.Value * 100, 1) + "%" : "-") + " · " + v.Criterio + " · " + v.Item + " · " + v.Combinacao))));
                     Motor.Desligar();
                     Environment.Exit(0);
                 }

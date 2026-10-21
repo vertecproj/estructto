@@ -298,11 +298,11 @@ namespace NovoFtool
                     Botao("assist", "Assistente", () => AbrirAssistente(null), "Viga contínua, pórtico, treliça ou galpão a partir de poucas medidas, com prévia; o resultado abre em 3D.", null, true),
                     Botao("cype", "Importar CYPE", () => ComandosAnalise.AbrirCype(this), "Importa uma obra do CYPE 3D (.ed3) ou compara os resultados com os do CYPE.", null, true)));
             var planos = GrupoPlanos();   // níveis e planos de trabalho (PlanosTrabalho.cs) + a grade estrutural (GR)
-            planos.Items.Insert(0, Botao("eixo", "Grade", () => ExecutarComando("GRADE"), "Grade estrutural como no Plant 3D: eixos em X (1, 2, 3…), filas em Y (A, B, C…) e níveis (0,@6,@6). Os cruzamentos atraem o cursor; cada nível vira um plano de trabalho (PgUp/PgDn).", "GR", true));
+            planos.Items.Insert(0, Botao("eixos", "Grade", () => ExecutarComando("GRADE"), "Grade estrutural como no Plant 3D: eixos em X (1, 2, 3…), filas em Y (A, B, C…) e níveis (0,@6,@6). Os cruzamentos atraem o cursor; cada nível vira um plano de trabalho (PgUp/PgDn).", "GR", true));
             abaModelo.Groups.Add(planos);
             MontarDesenho3D();                       // Barras (Selecionar, Barra, Pilar, Medir) e Configurações (Desenho3D.cs)
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Chapas",
-                Botao("cargadist", "Laje", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Carga em área: painel Propriedades (sem escolha) › Carga em área. O motor não tem elemento de placa: a laje distribui p (kN/m²) nas vigas.", true); },
+                Botao("laje", "Laje", () => { if (Esp == null) return; SelecionarEsp(null); PainelProp.Show(); PainelProp.IsActive = true; MostrarToast("Carga em área: painel Propriedades (sem escolha) › Carga em área. O motor não tem elemento de placa: a laje distribui p (kN/m²) nas vigas.", true); },
                       "Laje/chapa de piso como carga em área nas vigas de um nível (o motor não tem elemento de placa).", null, true)));
             abaModelo.Groups.Insert(abaModelo.Groups.Count - 1, Grupo("Modificar",
                 Botao("mover", "Mover", () => ExecutarComando("MOVER"), "Ponto base e segundo ponto (atração, ORTO, @dx,dy,dz). Escolha antes ou depois (Enter termina a escolha).", "M", true),
@@ -367,9 +367,9 @@ namespace NovoFtool
                 Grupo("Bases",
                     Botao("placa", "Placa de base", () => ExecutarComando("PLACA"), "Placa de base com chumbadores no pé do pilar escolhido (nó com apoio e uma só barra), com os esforços ELU do motor.", "PLACA")),
                 Grupo("Grupos",
-                    Botao("unir", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
+                    Botao("grupos", "Gerenciar ligações", AbrirGerenciadorLigacoes, "Identifica as ligações iguais e agrupa; dimensiona a pior de cada grupo e aplica o detalhe a todas (JanelaLigacoesGrupos.cs).")),
                 Grupo("Ligações",
-                    Botao("unir", "Projetar ligação", () => AbrirProjetistaLigacao(), "Biblioteca de padrões de ligação metálica (flexíveis, rígidas, emendas, contraventamento): escolha, o motor calcula chapas, parafusos e soldas e você ajusta vendo o desenho e as verificações (JanelaLigacaoProjeto.cs)."),
+                    Botao("ligacao", "Projetar ligação", () => AbrirProjetistaLigacao(), "Biblioteca de padrões de ligação metálica (flexíveis, rígidas, emendas, contraventamento): escolha, o motor calcula chapas, parafusos e soldas e você ajusta vendo o desenho e as verificações (JanelaLigacaoProjeto.cs)."),
                     Botao("parafuso", "Parafusos", () => AbrirLigacaoTipo("parafuso"), "Ligação parafusada: cisalhamento, pressão de contato e tração nos parafusos (NBR 8800, motor Python)."),
                     Botao("solda", "Filete de solda", () => AbrirLigacaoTipo("solda_filete"), "Solda de filete: resistência do metal de solda e do metal-base (NBR 8800, motor Python)."),
                     Botao("chapa", "Chapa simples", () => AbrirLigacaoTipo("chapa_simples"), "Ligação flexível com chapa simples (shear tab): parafusos, chapa e solda (NBR 8800, motor Python)."),
@@ -397,7 +397,7 @@ namespace NovoFtool
                     Botao("topo", "Topo", () => ExecutarComando("TOPO"), "Planta (de cima).", "Ctrl+7 num.", true),
                     Botao("frente", "Frente", () => ExecutarComando("FRENTE"), "Elevação XZ.", "Ctrl+1 num.", true),
                     Botao("lado", "Lado", () => ExecutarComando("LADO"), "Elevação YZ (direita).", "Ctrl+3 num.", true),
-                    Botao("3d", "Isométrica", () => ExecutarComando("ISO"), "Vista isométrica (Home do ViewCube).", "Ctrl+5 num.", true),
+                    Botao("iso", "Isométrica", () => ExecutarComando("ISO"), "Vista isométrica (Home do ViewCube).", "Ctrl+5 num.", true),
                     tgPerspectiva,
                     tgRealista = Alternar("realista", "Realista", DefinirRealista, "Perfis reais, materiais (aço e concreto), luz, sombra no chão e arestas — como o \"Sombreado com arestas\" do Revit. Desligado = vista analítica (barras finas). A escolha fica guardada.")),
                 Grupo("Mostrar", tgCargas),
@@ -540,14 +540,14 @@ namespace NovoFtool
         {
             // estados do desenho na Vista3D (docs/v3/PESQUISA-PLANT.md 3.6); a Vista3D lê os mesmos valores (Comandos3D.LigarComandos3D)
             NovoBloco();
-            stAtrair = StatusBtn("M10,3 V17 M3,10 H17 M3,3 H6 M14,3 H17 M3,17 H6 M14,17 H17 M3,3 V6 M17,3 V6 M3,14 V17 M17,14 V17", "Snap — prender o cursor à grade do plano de trabalho (F9)", v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; })); stAtrair.IsChecked = true;
-            stGrade = StatusBtn("M2,2 H18 V18 H2 Z M2,8 H18 M2,13 H18 M8,2 V18 M13,2 V18", "Grade — mostrar a grade do plano de trabalho ao desenhar (F7)", v => V3(x => x.MostrarGradePlano = v)); stGrade.IsChecked = true;
+            stAtrair = StatusBtn("snap", "Snap — prender o cursor à grade do plano de trabalho (F9)", v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; })); stAtrair.IsChecked = true;
+            stGrade = StatusBtn("grade", "Grade — mostrar a grade do plano de trabalho ao desenhar (F7)", v => V3(x => x.MostrarGradePlano = v)); stGrade.IsChecked = true;
             NovoBloco();
-            stOrto = StatusBtn("M4,3 V16 H17", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => StatusSnap3D());
-            stPolar = StatusBtn("M3,17 H18 M3,17 L15,5 M10,17 A7,7 0 0 0 8.2,12.2", "Polar — prende em 0°/90° quando perto (F10)", v => StatusSnap3D()); stPolar.IsChecked = true;
-            stObj = StatusBtn("M6,6 H14 V14 H6 Z M10,1 V6 M10,14 V19 M1,10 H6 M14,10 H19", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => StatusSnap3D()); stObj.IsChecked = true;
-            stRastro = StatusBtn("M10,2 V18 M2,10 H18 M7,10 A3,3 0 1 0 13,10 A3,3 0 1 0 7,10", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => StatusSnap3D()); stRastro.IsChecked = true;
-            stDin = StatusBtn("M2,6 H18 V14 H2 Z M5,10 H9 M12,8 V12", "Dinâmica — caixas de comprimento e ângulo junto ao cursor (F12)", v => V3(x => x.EntradaDinamica = v)); stDin.IsChecked = true;
+            stOrto = StatusBtn("ortho", "Orto — só nas direções do plano de trabalho (F8, ou segure Shift)", v => StatusSnap3D());
+            stPolar = StatusBtn("polar", "Polar — prende em 0°/90° quando perto (F10)", v => StatusSnap3D()); stPolar.IsChecked = true;
+            stObj = StatusBtn("objsnap", "Atração a objetos (F3): nós, meios de barra e cruzamentos da grade estrutural", v => StatusSnap3D()); stObj.IsChecked = true;
+            stRastro = StatusBtn("rastro", "Rastreamento (F11) — guias a partir dos pontos de atração (Snap3D)", v => StatusSnap3D()); stRastro.IsChecked = true;
+            stDin = StatusBtn("dinamica", "Dinâmica — caixas de comprimento e ângulo junto ao cursor (F12)", v => V3(x => x.EntradaDinamica = v)); stDin.IsChecked = true;
             NovoBloco();
             var tela = new Button { Content = IconeStatus("M2,7 V2 H7 M13,2 H18 V7 M18,13 V18 H13 M7,18 H2 V13"), ToolTip = "Enquadrar o modelo (Z + Enter, duplo clique na roda)", Style = EstiloBotaoStatus() };
             tela.Click += (s, e) => vista3D?.Enquadrar();
@@ -608,8 +608,8 @@ namespace NovoFtool
             hover.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BSup3, "b"));
             t.Triggers.Add(hover);
             var lig = new Trigger { Property = System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, Value = true };
-            lig.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BAcentoSutil, "b"));
-            lig.Setters.Add(new Setter(Border.BorderBrushProperty, TemaPlant.B(TemaPlant.Acento, 0x99), "b"));
+            lig.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BSup2, "b"));
+            lig.Setters.Add(new Setter(Border.BorderBrushProperty, TemaPlant.BBordaSutil, "b"));
             t.Triggers.Add(lig);
             estiloPilula = new Style(typeof(System.Windows.Controls.Primitives.ToggleButton));
             estiloPilula.Setters.Add(new Setter(Control.TemplateProperty, t));
@@ -621,12 +621,12 @@ namespace NovoFtool
         System.Windows.Controls.Primitives.ToggleButton StatusBtn(string icone, string dica, Action<bool> acao)
         {
             string nome = dica.StartsWith("Atração") ? "Objetos" : dica.StartsWith("Rastreamento") ? "Rastreio" : dica.Split(' ')[0];
-            var ic = IconeStatus(icone); ic.Width = 14; ic.Height = 14; ic.StrokeThickness = 1.7;
-            var tx = new TextBlock { Text = nome, FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = TemaPlant.BTexto2 };
+            var ic = new Image { Width = 16, Height = 16, Stretch = Stretch.None, SnapsToDevicePixels = true, UseLayoutRounding = true, VerticalAlignment = VerticalAlignment.Center };
+            var tx = new TextBlock { Text = nome, FontSize = 11, Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = TemaPlant.BTexto3 };
             var sp = new StackPanel { Orientation = Orientation.Horizontal }; sp.Children.Add(ic); sp.Children.Add(tx);
             var b = new System.Windows.Controls.Primitives.ToggleButton { Content = sp, ToolTip = dica, Style = EstiloPilula() };
             System.Windows.Automation.AutomationProperties.SetName(b, nome);
-            void Cor() { var c = b.IsChecked == true ? TemaPlant.BRealce : TemaPlant.BTexto2; ic.Stroke = c; tx.Foreground = c; }
+            void Cor() { bool on = b.IsChecked == true; ic.Source = NovoFtool.Icones.Mono(icone, 16, on ? TemaPlant.Realce : TemaPlant.Texto3); tx.Foreground = on ? TemaPlant.BTexto1 : TemaPlant.BTexto3; }
             b.Checked += (s, e) => Cor(); b.Unchecked += (s, e) => Cor(); Cor();
             b.Click += (s, e) => { acao(b.IsChecked == true); FocarVista(); };
             blocoStatus.Children.Add(b);

@@ -56,9 +56,9 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
       terças e tirantes, escadas/guarda-corpo simples (se der)
 
 ### Fase 6 — qualidade e entrega
-- [ ] Q1 Testes de fluxo ponta a ponta (capturas + asserts), revisão de código, verificador de cálculo das ligações (vs livros e CYPE)
-- [ ] Q2 Polimento de design (skills de design, Fable com cautela), animações
-- [ ] Q3 Publicar: exe + motor, README/manual, merge em main, push, Release no GitHub (conta bruno.nietsche@prossen.com.br pelo navegador se preciso)
+- [~] Q1 (e2e parcial em wt-e2e c76b797) Testes de fluxo ponta a ponta (capturas + asserts), revisão de código, verificador de cálculo das ligações (vs livros e CYPE)
+- [x] Q2 (wt-design) Polimento de design (skills de design, Fable com cautela), animações
+- [x] Q3 (pré-release v0.3-unificado no branch unificacao; main NÃO avançado — ver ENTREGA.md) Publicar: exe + motor, README/manual, merge em main, push, Release no GitHub (conta bruno.nietsche@prossen.com.br pelo navegador se preciso)
 
 ## Diário
 - 20/10 18:10: plano escrito; tarefa agendada `estructto-retomar-noite` (30 min, LOCK > 45 min = retoma).
@@ -82,3 +82,6 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
 - 01:37: revisão v3 REPROVADA (1 bloq + 11 imp + 8 menores). Distribuição: #4,#9 → wt-placa-ui; #3,#5,#6,#12,#13,#14,#20 → wt-fix-render; PENDENTE disparar após merge do wt-inicio: #1(bloq recuperação),#2,#7,#8,#10,#11,#15,#16,#17,#18,#19 → wt-fix-doc.
 - 01:40: wt-inicio merge (e4f0183) — tela inicial, novo projeto 3 passos, backstage, opções. Disparado wt-fix-doc (revisão #1,#2,#7,#8,#10,#11,#15-19 + desenho da grade). Restam: placa-ui, fix-render, fix-doc → depois Q1 testes de fluxo, Q2 design/ícones (Fable), Q3 publicar.
 - 01:59: merges placa-ui (81796af) e fix-render (c576d9b). Disparados Q2 design+ícones (wt-design, Fable) e Q1 testes de fluxo (wt-e2e). Rodando fix-doc. Depois: corrigir BUGS-E2E, merge design, Q3 publicar.
+- 02:12: fix-doc merge (ecfa505). Corrigido registro duplicado de verificadores de ligação (taxa None em grupos) — 1021 testes OK.
+- 07:48: design merge (ad91cea). Publicado C:\devuildstructtoV3\publish (Estructto.exe 78 MB + motor\ PyInstaller, 202 MB total). Smoke sem python/ESTRUCTTO_MOTOR: exit 0 em 6 s, sem órfãos. Agentes parados por limite SEMANAL (volta 25/10). Resta: capturas finais, merge em main, push, release.
+- 07:54: PUBLICADO: push origin/unificacao + pré-release https://github.com/vertecproj/estructto/releases/tag/v0.3-unificado (zip 123 MB). main do Bruno avançou (1f719d3) com vento por barra/NBR 8400/placa legada: integração pendente (portar ao motor). Próximo (após 25/10, limite semanal): terminar --testes-fluxo, portar trabalho do Bruno, juntar main.

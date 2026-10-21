@@ -371,7 +371,7 @@ namespace NovoFtool
 
             var txt = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
             var lin1 = new WrapPanel { Orientation = Orientation.Horizontal };
-            var tTit = Tx(titulo, 15, nv == Nivel.Erro ? TemaPlant.BTexto1 : nv == Nivel.Neutro ? TemaPlant.BTexto1 : cores.fg, FontWeights.SemiBold);
+            var tTit = Tx(titulo, 16, nv == Nivel.Erro ? TemaPlant.BTexto1 : nv == Nivel.Neutro ? TemaPlant.BTexto1 : cores.fg, FontWeights.SemiBold);
             tTit.Margin = new Thickness(0, 0, 10, 0);
             lin1.Children.Add(tTit);
             foreach (var av in AvisosCompactos(r))

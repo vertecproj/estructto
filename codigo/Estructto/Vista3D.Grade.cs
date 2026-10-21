@@ -79,10 +79,10 @@ namespace NovoFtool
         public double[] EixosX = new double[0], EixosY = new double[0], NiveisEixos = new double[0];
         public string[] NomesX = new string[0], NomesY = new string[0];
 
-        static readonly Pen PEixo = Caneta(new SolidColorBrush(Color.FromArgb(0xB0, 0x7C, 0x8B, 0x9E)), 1, new double[] { 10, 3, 2, 3 });
-        static readonly Pen PEixoFraco = Caneta(new SolidColorBrush(Color.FromArgb(0x48, 0x7C, 0x8B, 0x9E)), 1, new double[] { 10, 3, 2, 3 });
-        static readonly Pen PBalao = Caneta(new SolidColorBrush(Color.FromArgb(0xC0, 0x94, 0xA3, 0xB8)), 1);
-        static readonly Pen PBalaoFraco = Caneta(new SolidColorBrush(Color.FromArgb(0x50, 0x94, 0xA3, 0xB8)), 1);
+        static readonly Pen PEixo = Caneta(TemaPlant.B(TemaPlant.Texto3, 0xB0), 1, new double[] { 10, 3, 2, 3 });
+        static readonly Pen PEixoFraco = Caneta(TemaPlant.B(TemaPlant.Texto3, 0x48), 1, new double[] { 10, 3, 2, 3 });
+        static readonly Pen PBalao = Caneta(TemaPlant.B(TemaPlant.Texto2, 0xC0), 1);
+        static readonly Pen PBalaoFraco = Caneta(TemaPlant.B(TemaPlant.Texto2, 0x50), 1);
 
         // Cotas onde a grade aparece: o nível do plano de trabalho (horizontal; senão o térreo) primeiro, depois os outros níveis.
         IEnumerable<double> CotasEixos()

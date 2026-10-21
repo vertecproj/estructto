@@ -414,8 +414,8 @@ namespace NovoFtool
             var ic = (FrameworkElement)Icone(icone, 18); ic.Margin = new Thickness(0, 0, 12, 0); ic.VerticalAlignment = VerticalAlignment.Center; DockPanel.SetDock(ic, Dock.Left); dp.Children.Add(ic);
             if (tecla != null) { var k = Tecla(tecla); DockPanel.SetDock(k, Dock.Right); k.Margin = new Thickness(10, 0, 0, 0); dp.Children.Add(k); }
             var sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            sp.Children.Add(new TextBlock { Text = texto, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = primario ? TemaPlant.BTextoSobreAcento : TemaPlant.BTexto1 });
-            if (sub != null) sp.Children.Add(new TextBlock { Text = sub, FontSize = 11, Foreground = primario ? TemaPlant.B(TemaPlant.TextoSobreAcento, 190) : TemaPlant.BTexto3, TextTrimming = TextTrimming.CharacterEllipsis });
+            sp.Children.Add(new TextBlock { Text = texto, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = TemaPlant.BTexto1 });
+            if (sub != null) sp.Children.Add(new TextBlock { Text = sub, FontSize = 11, Foreground = primario ? TemaPlant.BTexto2 : TemaPlant.BTexto3, TextTrimming = TextTrimming.CharacterEllipsis });
             dp.Children.Add(sp);
             var b = CartaoBotao(dp, acao, dica, new Thickness(12, 8, 10, 8), texto);
             if (primario) b.Style = EstiloHero();
@@ -426,7 +426,7 @@ namespace NovoFtool
         // "Estructto" com o "o" final em acento (lockup da logo, docs/v3/LOGO.md).
         static TextBlock Marca(double tam, Brush cor)
         {
-            var t = new TextBlock { FontSize = tam, FontWeight = FontWeights.SemiBold, Foreground = cor, VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI") };
+            var t = new TextBlock { FontSize = tam, FontWeight = FontWeights.SemiBold, Foreground = cor, VerticalAlignment = VerticalAlignment.Center, FontFamily = TemaPlant.FonteTitulo };
             t.Inlines.Add("Estructt");
             t.Inlines.Add(new System.Windows.Documents.Run("o") { Foreground = TemaPlant.BAcento });
             return t;
@@ -540,7 +540,7 @@ namespace NovoFtool
             if (estiloHero != null) return estiloHero;
             var t = new ControlTemplate(typeof(Button));
             var bd = new FrameworkElementFactory(typeof(Border), "b");
-            bd.SetValue(Border.BackgroundProperty, TemaPlant.BAcento);
+            bd.SetValue(Border.BackgroundProperty, TemaPlant.BAcentoSutil);
             bd.SetValue(Border.BorderBrushProperty, TemaPlant.BAcento);
             bd.SetValue(Border.BorderThicknessProperty, new Thickness(1));
             bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
@@ -548,13 +548,13 @@ namespace NovoFtool
             var cp = new FrameworkElementFactory(typeof(ContentPresenter)); bd.AppendChild(cp);
             t.VisualTree = bd;
             var hov = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-            hov.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BAcentoHover, "b"));
+            hov.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BSelecaoHover, "b"));
             t.Triggers.Add(hov);
             var foc = new Trigger { Property = UIElement.IsKeyboardFocusedProperty, Value = true };
             foc.Setters.Add(new Setter(Border.BorderBrushProperty, TemaPlant.BTexto1, "b"));
             t.Triggers.Add(foc);
             var prs = new Trigger { Property = Button.IsPressedProperty, Value = true };
-            prs.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BAcentoPressed, "b"));
+            prs.Setters.Add(new Setter(Border.BackgroundProperty, TemaPlant.BSelecao, "b"));
             t.Triggers.Add(prs);
             estiloHero = new Style(typeof(Button));
             estiloHero.Setters.Add(new Setter(Control.TemplateProperty, t));

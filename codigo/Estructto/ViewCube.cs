@@ -100,7 +100,7 @@ namespace NovoFtool
                     var cor = TemaPlant.CorCuboFace;
                     dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(cor.A, (byte)(cor.R * luz), (byte)(cor.G * luz), (byte)(cor.B * luz))), aresta, g);
                     // rótulo no plano da face: matriz afim do retângulo do texto para o paralelogramo
-                    var ft = Txt(f.Nome, TemaPlant.BTexto1, 9.5);
+                    var ft = Txt(f.Nome, TemaPlant.BTexto1, 10);
                     double tw = Math.Max(ft.Width + 6, 40), th = 40;
                     Vector ux = (p10 - p00) / tw, wy = (p01 - p00) / th;
                     if (Vector3D.DotProduct(f.N, d) > 0.15)
@@ -121,7 +121,7 @@ namespace NovoFtool
                 }
                 // casinha (Home)
                 Rect h = Casa;
-                var pc = new Pen(hoverCasa ? TemaPlant.BRealce : TemaPlant.BTexto2, 1.4) { LineJoin = PenLineJoin.Round };
+                var pc = new Pen(hoverCasa ? TemaPlant.BRealce : TemaPlant.BTexto2, 1.5) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
                 var casa = Geometry.Parse(FormattableString.Invariant($"M{h.X + 2},{h.Y + 8} L{h.X + 9},{h.Y + 1} L{h.X + 16},{h.Y + 8} M{h.X + 4},{h.Y + 7} V{h.Y + 15} H{h.X + 14} V{h.Y + 7}"));
                 dc.DrawGeometry(null, pc, casa);
                 // nome da vista + projeção

@@ -36,7 +36,7 @@ namespace NovoFtool
 
         public static TextBlock T(string s, double tam = 12, Brush cor = null, FontWeight? peso = null)
         {
-            return new TextBlock { Text = s, FontSize = tam, Foreground = cor ?? BTexto, FontWeight = peso ?? FontWeights.Normal, TextWrapping = TextWrapping.Wrap };
+            return new TextBlock { Text = s, FontSize = tam, Foreground = cor ?? BTexto, FontWeight = peso ?? FontWeights.Normal, TextWrapping = TextWrapping.Wrap, FontFamily = tam >= 15 ? TemaPlant.FonteTitulo : TemaPlant.Fonte };
         }
 
         public static Button B(string s, Action a, bool principal = false, string dica = null)

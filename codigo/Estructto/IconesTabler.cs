@@ -10,6 +10,7 @@ namespace NovoFtool
         static readonly Dictionary<string, string[]> TBD = new Dictionary<string, string[]>
         {
             ["novo"] = new[] { "M14 3v4a1 1 0 0 0 1 1h4", "M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2", "M12 11l0 6", "M9 14l6 0" },   // file-plus
+            ["arquivo"] = new[] { "M14 3v4a1 1 0 0 0 1 1h4", "M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" },   // file
             ["abrir"] = new[] { "M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" },   // folder-open
             ["salvar"] = new[] { "M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2", "M10 14a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", "M14 4l0 4l-6 0l0 -4" },   // device-floppy
             ["desfazer"] = new[] { "M9 14l-4 -4l4 -4", "M5 10h11a4 4 0 1 1 0 8h-1" },   // arrow-back-up
