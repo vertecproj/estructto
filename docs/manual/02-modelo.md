@@ -1,57 +1,60 @@
 # 2. Aba Modelo
 
-Gerar, desenhar, modificar, apoiar e dar seção e material à estrutura.
+Modelar em 3D como no Plant 3D: grade, barras e pilares, chapas, modificar, apoios e configurações das próximas barras.
+O modelo novo abre em planta no térreo; **Shift + arrastar** orbita sem interromper o comando.
 
 ## Gerar
 
 | Botão | Resultado |
 |---|---|
-| **Gerar estrutura** | Assistente 2D: viga contínua, pórtico de vários andares, treliça, galpão (captura 26-assistente-portico) |
-| **Gerar 3D** | Documento espacial no motor: edifício, galpão ou pórtico 3D, com G e Q uniformes (kN/m) nas vigas (captura 41-gerar3d-edificio) |
-| **Importar CYPE** | Importa `.ed3` ou compara com o CYPE. Ver [página 9](09-cype.md) |
+| **Gerar 3D** | Edifício, galpão ou pórtico gerado pelo motor, com G e Q nas vigas (captura 41-gerar3d-edificio) |
+| **Assistente** | Viga contínua, pórtico, treliça ou galpão com prévia (captura 26-assistente-portico); o resultado abre em 3D |
+| **Importar CYPE** | `.ed3`; ver [página 9](09-cype.md) |
+| **Treliças** | Treliças, tesouras, contraventamentos e terças |
 
-## Desenhar e modificar (documento 2D)
+## Grade e planos de trabalho
 
-- **Selecionar**: clique; arrastar da esquerda para a direita seleciona o que está dentro da janela; da direita para a esquerda, o que cruza.
-- **Barra**: clique os pontos em sequência. Digite um número para o comprimento exato, ou `x,y`, `@dx,dy`, `@L<ângulo`. Botão direito ou Esc termina.
-- **Nó**: insere nó; sobre uma barra, divide a barra.
-- **Medir**: distância, ΔX, ΔY e ângulo.
-- **Mover**, **Copiar** (matriz linear, com apoios e cargas), **Espelhar** (reta x = valor ou y = valor), **Dividir barra**, **Apagar**.
-- Comandos por texto também funcionam (por exemplo `MOVER dx dy`).
+- **Grade** (`GR`): eixos em X, filas em Y e níveis em Z como `0,@6,@6,@7.5` (m, ponto decimal, @ = a partir da anterior).
+  Os cruzamentos atraem o cursor; cada nível vira pavimento e plano de trabalho (captura 54-a1-grade).
+- **PgUp / PgDn**: plano de trabalho no nível de cima / de baixo. **Nível**, **Elevação X/Y**, **3D completo**, **Níveis**.
 
-## Barra contínua
+## Barras (desenhar)
 
-Peça única dividida por nós: mesmo perfil, dimensionada junta (o comprimento de flambagem usa a barra inteira).
-**Unir trechos** e **Separar tudo** na faixa; "Tirar trecho" e "Selecionar a barra" no botão direito.
-
-## Apoios e vínculos
-
-| Botão | Efeito |
+| Comando | Uso |
 |---|---|
-| Engaste | Trava X, Y e giro |
-| Fixo | Trava X e Y (2º gênero) |
-| Móvel | Trava só Y (1º gênero) |
-| Móvel horizontal | Trava só X |
-| Sem apoio | Remove apoio e molas |
-| Rótula | Clique perto da ponta da barra para pôr ou tirar a rótula naquela ponta |
+| **Barra** (`L`) | cliques em sequência no plano de trabalho; digite o comprimento (direção do cursor), Tab o ângulo, ou `x,y,z`, `@dx,dy,dz`; Enter, Esc ou botão direito termina |
+| **Pilar** (`PI`) | clique o ponto: desce até o nível de baixo (no térreo, sobe até o de cima) |
+| **Selecionar** (`S`) | clique; arraste esq.→dir. = janela, dir.→esq. = cruzamento; Shift soma, Ctrl tira |
+| **Medir** (`ME`, Ctrl+M) | distância, ângulo, área, raio, cadeia (painel Medir) |
 
-No documento espacial, o painel Propriedades edita os 6 graus de liberdade do apoio do nó.
+Snap a objetos (F3), ORTO (F8), polar (F10), rastreamento (F11) e entrada dinâmica (F12) na barra de status.
 
-## Seções e materiais
+## Configurações (próximas barras)
 
-Escolha **Família** (filtra a lista), **Seção** e **Material**; depois **Aplicar à seleção** ou **Aplicar a todas**.
-Sem seleção, a escolha vale para as próximas barras desenhadas. Seção também aceita digitação:
-`Ret 20x50` (cm), `Circ 30` (cm), `A=45,7 I=3437` (cm², cm⁴), `TC 48.3x3...`. Material aceita `E=25000` (MPa).
+**Seção** (do modelo ou do catálogo), **Material**, **Giro** (Ctrl+R soma 90° durante o desenho), **Cardinal** (1–9 como o
+teclado numérico, 10 = centroide; guardado por barra) e **Apoio na base** (nó novo no nível mais baixo nasce engastado).
 
-## Abas contextuais
+## Modificar
 
-Com barra selecionada aparece a aba **Barra** (Verificar barra, Dimensionar, perfil deitado, rótulas nas pontas, dividir, apagar).
-Com nó selecionado, a aba **Nó** (apoios, aplicar carga, placa de base, apagar).
+Mover (`M`), Copiar (`CO`, várias cópias até Enter), Espelhar (`MI`, dois pontos da linha em planta), Rotacionar (`RO`,
+ponto base e ângulo digitado ou direção), Matriz (`AR`), Dividir barra (`DIV`), Aparar (`TR`) e Estender (`EX`) até uma barra
+limite, Unir nós (`J`), Apagar (`E`, Del), Copiar propriedades (`MA`), Em lote. Escolha antes ou depois do comando (clique
+soma; Enter termina a escolha). Cada operação é um Ctrl+Z.
 
-## Documento espacial: edição no painel Propriedades
+**Grips:** com barras ou nós escolhidos aparecem quadradinhos azuis. Clique num e clique o destino: a ponta (ou o nó) vai até
+lá com as barras ligadas; o do meio move a barra; com **Ctrl** copia (captura 54-a1-grip).
 
-- Sem escolha: **Novo nó** (X, Y, Z).
-- Nó: **Barra até outro nó** (clique no outro nó), **Nó + barra** (deslocamento dX, dY, dZ), **Apagar nó** (leva barras e cargas), cargas nodais Fx, Fy, Fz por caso.
-- Barra: seção (do modelo ou do catálogo do motor), **Apagar barra**, carga distribuída qx, qy, qz (global, kN/m) por caso.
-- Barra nova copia seção e material da última barra do modelo.
-- Ainda sem tela: cargas pontuais em barra e criação de casos novos (o motor aceita; use o MCP).
+## Apoios
+
+**Engaste**, **Articulado**, **Livre** nos nós escolhidos; **Rótulas na barra** liga/desliga as duas pontas. Graus de
+liberdade avulsos no painel Propriedades.
+
+## Chapas
+
+O motor não tem elemento de placa: **Laje** distribui uma carga em área (kN/m²) nas vigas de um nível.
+
+## Painel Propriedades
+
+- Sem escolha: **Novo nó** (X, Y, Z), casos e ações, carga em área.
+- Nó: posição, 6 apoios, **Barra até outro nó**, **Nó + barra**, **Apagar nó**, cargas nodais por caso.
+- Barra: seção (do modelo ou do catálogo), material, giro, verificação, cargas distribuídas e pontuais por caso.

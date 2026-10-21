@@ -1,5 +1,9 @@
 # Revisão de abas e telas — Estructto unificado (fase 7 de UNIFICACAO.md)
 
+> **Atualização 21/10/2026 (A1, documento 3D único).** Não existe mais documento nem vista 2D (ver
+> [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md)). A seção 6 abaixo diz o que saiu e como a aba Modelo ficou (fluxo do Plant 3D).
+> As seções 1 a 5 são o diagnóstico original, do tempo em que havia documento 2D.
+
 Data: 20/10/2026. Base: build Release ok (0 erros), 134 capturas em `C:\dev\build\EstructtoV2\capturas`, código de `codigo/Estructto`,
 `software/ESPEC.md` (operações 1–33 de `projeto.py`) e `aco/ligacoes.py`. Referências: `docs/v2/GUIA-DESIGN.md`,
 `docs/v2/refs/ux-designer-skill/SKILL.md`, `dotnet-wpf-modern/SKILL.md`. Nenhum código foi alterado.
@@ -246,3 +250,37 @@ Implementação: um único helper `Anim.cs` (Fade, Crescer, Interpolar) com `Cub
 2. Remover "n" global junto com a entrada da verificação do motor (fase 5).
 3. Janelas novas na ordem do fluxo: Casos → Combinações → Vento → Sismo → Pavimentos → Verificação → Modal → Estabilidade → Ligação → Comparar com CYPE.
 4. Animações por último (fase 8), com capturas em `Capturas.cs` para cada janela nova.
+
+---
+
+## 6. Revisão para o produto 3D único (A1, 21/10/2026)
+
+### 6.1 Faixa atual
+
+| Aba | Grupos |
+|---|---|
+| **Modelo** (fluxo de estruturas do Plant 3D) | **Gerar** (Gerar 3D, Assistente → 3D, Importar CYPE, Treliças) · **Planos** (Grade GR, Nível, Elevação X/Y, 3D completo, Níveis, Copiar pavimento, Pilares entre níveis) · **Barras** = Member (Selecionar, Barra, Pilar, Medir) · **Chapas** = Plate (Laje = carga em área) · **Modificar** = Edit/Cut/Extend/Trim (Mover, Copiar, Espelhar, Rotacionar, Matriz, Dividir barra, Aparar, Estender, Unir nós, Apagar, Copiar props., Em lote) · **Apoios** (Engaste, Articulado, Livre, Rótulas na barra) · **Configurações** = Member Settings (Seção, Material, Giro, Cardinal, Apoio na base) |
+| **Ações** | Casos de carga · Cargas (no nó ou na barra → painel Propriedades; carga em área) · Ações automáticas (Vento, Sismo, Pavimentos, Combinações) |
+| **Análise** | Resultado (envoltória ELU/combinação) · Modal e estabilidade · Diagramas |
+| **Dimensionamento** | Verificar (Verificação de barras, Mapa de aproveitamento, Verificar barra) · Otimizar (Dimensionar no motor, Catálogo) |
+| **Ligações e bases** | Bases (Placa de base, ponte do pé de pilar) · Grupos · Ligações |
+| **Relatório** | Memorial (relatório do motor + placas) |
+| **Vista** | Navegar (Enquadrar, Zoom na seleção, Topo, Frente, Lado, Isométrica, Perspectiva, Realista, Medir) · Mostrar (Cargas) · Grade (passo do plano) · Painéis · Ajuda |
+
+### 6.2 Removido (só fazia sentido no 2D)
+
+| Item | Motivo / substituto |
+|---|---|
+| Desenhar 2D (Selecionar, Barra, Nó, Medir 2D) | Barras (Vista3D) e Medir 3D |
+| Barra contínua (Unir trechos, Separar) | conceito do `Nucleo.cs`; no motor cada barra é uma peça (Unir nós / Dividir no 3D) |
+| Apoios 2D (Fixo, Móvel, Móvel horizontal, Rótula por clique) | Apoios 3D (6 GL) e `ROTULAR`; graus de liberdade avulsos no painel Propriedades |
+| Seções e materiais 2D (Família, Seção, Material, Aplicar) | Configurações (próximas barras) e Em lote / `MA` (existentes) |
+| Cargas 2D (Fx, Fy, Mz; qx, qy, q⊥), Peso próprio, Limpar cargas | painel Propriedades (nodal, distribuída, pontual por caso) e carga em área |
+| Opções: Deformação por cortante (Timoshenko 2D), Motor Interno/Python | o cálculo é sempre o do motor; o Interno fica só nos testes |
+| Critérios "n" e flecha L/ | γ/ψ da NBR 8681 e limites do motor (REVISAO 3.5 já pedia) |
+| Eletrodo das soldas 2D, Exportar CSV, Reações/Valores/Nomes, botão Vista 3D | sem dados 2D para mostrar; exportar DWG/DXF/STEP fica no Arquivo |
+| Abas contextuais Barra e Nó, menu de contexto 2D, Inspector 2D | painel Propriedades do motor, grips, linha de comando |
+| Seletor Topo/Frente/Lado/Iso no canto da vista | ViewCube |
+
+Tela inicial, fluxo de arquivo novo e Arquivo (backstage) passaram ao worktree `wt-inicio`; aqui só a mudança mínima (Novo =
+documento 3D em branco, abrir = converter) e os pontos de entrada `NovoDocumento`, `AbrirArquivo`, `ArquivosRecentes`.

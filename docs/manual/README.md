@@ -10,14 +10,14 @@ Manual do usuário do Estructto unificado, para engenheiros estruturais. Organiz
 
 | Página | Assunto |
 |---|---|
-| [1. Primeiros passos](01-primeiros-passos.md) | Documento 2D ou espacial; escolha do motor (Interno ou Python); convenções |
-| [2. Modelo](02-modelo.md) | Gerar, desenhar, apoios, seções e materiais |
+| [1. Primeiros passos](01-primeiros-passos.md) | Documento único 3D, arquivos antigos convertidos, convenções e atalhos |
+| [2. Modelo](02-modelo.md) | Grade, barras e pilares, modificar, grips, apoios, configurações |
 | [3. Ações](03-acoes.md) | Casos, cargas, peso próprio, vento, sismo, pavimentos, combinações |
 | [4. Análise](04-analise.md) | Calcular, resultado mostrado, diagramas, modos de vibração, estabilidade |
 | [5. Dimensionamento](05-dimensionamento.md) | Verificação de barras, mapa de aproveitamento, dimensionar, catálogo |
 | [6. Ligações e bases](06-ligacoes-e-bases.md) | Placa de base, parafusos, solda, chapa simples, ligação de tração |
 | [7. Relatório](07-relatorio.md) | Memorial básico e completo, PDF, CSV |
-| [8. Vista](08-vista.md) | 2D, 3D, o que mostrar, painéis |
+| [8. Vista](08-vista.md) | Navegação (Shift + arrastar), ViewCube, perspectiva, Realista, painéis |
 | [9. Importar e comparar CYPE](09-cype.md) | Arquivos `.ed3` |
 | [10. Usar o Estructto por IA (MCP)](10-uso-com-ia.md) | Servidor MCP e lista de ferramentas |
 | [11. Limitações e responsabilidade](11-limitacoes.md) | O que o software não cobre; ART |

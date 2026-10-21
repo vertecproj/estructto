@@ -6,17 +6,13 @@ o Estructto envia o modelo antes de abrir a janela.
 ## Casos de carga
 
 Os casos têm tipo G (permanente), Q (variável), V (vento) ou E (sismo). **Caso ativo** recebe as cargas que você lança.
-Com o motor Python, a janela de casos é a do motor; com o Interno, é a janela antiga de casos e combinações (captura 24-casos-combinacoes).
+A janela de casos é a do motor (captura 32-acoes-casos).
 
-## Cargas (documento 2D)
+## Cargas
 
-| Grupo | Campos | Convenção |
-|---|---|---|
-| Carga no nó | Fx (kN), Fy (kN), Mz (kN·m) | Fx para a direita; Fy para cima (gravidade é negativo); Mz anti-horário. **Aplicar no nó** substitui a carga existente |
-| Carga distribuída | qx, qy (kN/m); q⊥ início e q⊥ fim (kN/m) | qy de gravidade é negativo; q⊥ é perpendicular à barra e varia linearmente do início ao fim |
-| Outras | Peso próprio; Limpar cargas | Peso próprio soma massa do catálogo (ou densidade × área). Limpar atua na seleção, ou no modelo todo sem seleção |
-
-Nada selecionado: clique nos nós ou barras depois de apertar o botão. Com seleção: aplica nos selecionados.
+Escolha o nó ou a barra na vista: o painel **Propriedades** lança cargas do caso ativo: nodal (Fx, Fy, Fz), distribuída
+(global, uniforme ou trapezoidal, kN/m) e pontual na barra. **Carga em área** (Ações › Cargas ou Modelo › Chapas › Laje)
+distribui p (kN/m²) nas vigas de um nível. As setas do caso ativo aparecem na vista (Vista › Mostrar › Cargas).
 
 ## Ações automáticas
 
@@ -34,7 +30,7 @@ por pavimento e momento de torção acidental. Só estruturas regulares; sem an�
 
 ### Combinações (NBR 8681)
 Define o uso da edificação (ψ0, ψ1, ψ2) e o tipo de edificação (γ). O motor gera as combinações ELU (normais e com sismo)
-e ELS (quase permanente, frequente, rara). Combinações digitadas pelo usuário no documento 2D não vão ao motor.
+e ELS (quase permanente, frequente, rara).
 
 ## Dica
 

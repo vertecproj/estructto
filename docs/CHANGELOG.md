@@ -2,6 +2,23 @@
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 
+## 21/10/2026 — Estructto só 3D: documento único, navegação do AutoCAD/Plant, linha de comando e grips (branch wt-so3d, A1)
+
+- Pedido do usuário: "modelar em 3D do zero; Shift + rotacionar já é 3D; não tem 2D, é só 3D, igual o Plant".
+- Todo documento é o modelo do motor. `.estructto` antigo, `.ftl`, `.portico` e assistentes convertidos ao abrir (aviso
+  único); salvar = contêiner `.estructto` v3 (modelo + placas + grade + ponto cardinal) ou `.json`. Novo = em planta no térreo.
+- Navegação: Shift + meio/esquerdo orbita sem cancelar o comando (pivô na seleção ou sob o cursor), meio = pan, roda no
+  cursor, duplo clique do meio = enquadrar, ViewCube (26 regiões, Home, arrastar), perspectiva (`Vista3D.Navegacao.cs`, `ViewCube.cs`).
+- Linha de comando AutoCAD (`Comandos3D.cs`): L, PI, M, CO, MI, RO, AR, TR, EX, DIV, J, E, PR, MA, ME/DI, ID, Z/ZO, GR, U…;
+  Enter/Espaço repete; Esc em cascata; F1–F12; PgUp/PgDn nível; grips com Ctrl copiando (`Vista3D.Grips.cs`).
+- Aba Modelo no fluxo do Plant 3D (Grade, Barras, Chapas, Modificar, Apoios, Configurações); 2D removido da interface
+  (lista em REVISAO-TELAS.md §6). Placa de base, relatório e Dimensionar pelo motor (`Legado3D.cs`).
+- Pontos de entrada para wt-inicio: `NovoDocumento`, `AbrirArquivo`, `ArquivosRecentes`.
+- Prova: build Release sem erros, `compilar.ps1 -Testes` (200), `--testes-edicao` (com 8 asserções novas), `--testes-snap`,
+  capturas completas sem `erros.txt` + fluxo `54-a1-*`.
+- Detalhe: [MODELO-ESPACIAL.md](MODELO-ESPACIAL.md), [VISTA3D.md](VISTA3D.md), [REVISAO-TELAS.md](REVISAO-TELAS.md), manual.
+- Pendente: ponto cardinal no desenho Realista (Render3D), F4/F6 do AutoCAD, RO/MI só em torno do vertical, placa só eixo forte.
+
 ## 20/10/2026 — Snap igual ao AutoCAD e Medir AutoCAD + Inventor na Vista 3D (branch wt-snap)
 
 - Snap 3D novo (`Snap3D.cs`, motor puro): extremidade, meio, centro, nó, interseção real e aparente, perpendicular, extensão,
