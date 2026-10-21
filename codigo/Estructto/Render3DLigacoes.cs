@@ -42,6 +42,25 @@ namespace NovoFtool
         // apoio_dir o Render3D usa o referencial do motor como veio, sem adivinhar.
         public bool Excluir; public Vector3D? ApoioDir; public double Lado = double.NaN;
         public Vector3D? ApoioMundo; public double DeslU;
+        // G6 r2: corta as chapas no plano x = xMax (mm, local: ao longo da barra) e tira os parafusos além dele (Sutherland–Hodgman)
+        public static void AparaEm(Ligacao3D l, double xMax)
+        {
+            foreach (var ch in l.Chapas)
+            {
+                Vector3D w = Vector3D.CrossProduct(ch.Normal, ch.U);
+                double X(Point p) => ch.Origem.X + ch.U.X * p.X + w.X * p.Y;
+                var o = new List<Point>(); int n = ch.Contorno.Length;
+                for (int k = 0; k < n; k++)
+                {
+                    Point p = ch.Contorno[k], q = ch.Contorno[(k + 1) % n]; double xp = X(p), xq = X(q);
+                    if (xp <= xMax) o.Add(p);
+                    if ((xp <= xMax) != (xq <= xMax)) { double t = (xMax - xp) / (xq - xp); o.Add(new Point(p.X + t * (q.X - p.X), p.Y + t * (q.Y - p.Y))); }
+                }
+                ch.Contorno = o.ToArray();
+            }
+            l.Chapas.RemoveAll(ch => ch.Contorno.Length < 3);
+            l.Parafusos.RemoveAll(pf => pf.Origem.X > xMax);
+        }
         // G6: y do contrato do gusset no mundo (normal da chapa), com x = eixo da diagonal saindo do nó: apoio_dir local (ax, 0, az) =
         // eixo do apoio no mundo → z = (S − (S·x)x)/az, y = x × z. null sem apoio_dir/apoio no mundo.
         public Vector3D? YGusset(Vector3D x)

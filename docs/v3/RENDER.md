@@ -187,6 +187,9 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
   na mesa (rígida recusada) viram `chapa_simples_alma` do motor. `x_face` considera também as barras do nó quase ⟂ à viga.
   Barra < 20 mm une os dois nós numa junta. Chapa de qualquer ligação que alcança a outra ponta = barra curta.
   No Realista as setas de carga só aparecem com "Cargas sempre visíveis".
+- Rodada 2: barra curta só pelos recuos (B1110 12,5 mm, B1452 15 mm). Nas outras, as chapas de cada ponta param no meio da
+  barra (`Ligacao3D.AparaEm`; parafusos além saem): B1091 (101 mm) e B1125 (97,5 mm) entram no teste, 0 pares. Close-up do gusset
+  num nó sem viga–pilar (galpão: N2-1-1); caixão/tubo só em pilar vertical (galpão: nenhum).
 - Resultado (21/10/2026, r1): PLATAFORMA 0 pares; fora do teste só barras curtas (nós a < 200 mm): B1091 (101 mm), B1110 (12,5),
   B1125 (97,5), B1452 (15). Galpão 0 pares, nada fora. Lote ≤ 500 itens por POST (`MAX_LOTE_LIGACOES`).
 

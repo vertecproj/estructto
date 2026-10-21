@@ -395,13 +395,11 @@ namespace NovoFtool
                 MalhaDx alvo = c.Selecionada(b) ? mallSel : f.Concreto ? mallConc : mallAco;
                 alvo.Marcar(b);
                 cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
-                // G6: gussets das duas pontas que se alcançam ao longo da barra (diagonal curta) = barra curta demais para a ligação
-                // G6 r1: vale para qualquer chapa da ligação (x local do contrato = ao longo da barra): chapa simples maior que a barra
-                double Alcance(bool ei) => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lg) && lg.Pendente == null
-                    ? lg.Chapas.SelectMany(ch => { Vector3D w = Vector3D.CrossProduct(ch.Normal, ch.U); return ch.Contorno.Select(p => ch.Origem.X + ch.U.X * p.X + w.X * p.Y); }).DefaultIfEmpty(0).Max() / 1000 : 0;
-                bool gussets = Math.Max(Alcance(true), 0) + Math.Max(Alcance(false), 0) >= (d - a).Length - 1e-6;
-                if (gussets) foreach (bool ei in new[] { true, false }) if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lg2)) lg2.Excluir = true;
-                bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6 || gussets
+                // G6 r2: chapas das duas pontas que se alcançariam (barra curta, ex.: B1091 de 101 mm) param no meio da barra
+                double meio = (d - a).Length / 2 * 1000;
+                foreach (bool ei in new[] { true, false })   // no-op em barra comum (a chapa não chega ao meio)
+                    if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lq) && lq.Pendente == null) Ligacao3D.AparaEm(lq, meio);
+                bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6
                              || new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir);
                 if (curta) lock (Curtas) Curtas.Add(Exportador.IdBarra(b));
                 if (curta) foreach (bool ei in new[] { true, false }) if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lc)) lc.Excluir = true;   // G6: a ligação da barra curta também sai

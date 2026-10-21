@@ -1412,9 +1412,14 @@ namespace NovoFtool
                 var idNo = new Dictionary<string, int>(); foreach (var kv in json["nos"].AsObject()) idNo[kv.Key] = idNo.Count + 1;
                 string NoDe(Func<JsonNode, bool> f) => grupos.Where(f).SelectMany(x => x["membros"].AsArray()).Select(m => (string)m["no"]).FirstOrDefault();
                 string Tipo(string sec) => (string)json["secoes"]?[sec ?? ""]?["props"]?["tipo"] ?? "";
-                string caixao = json["barras"].AsObject().Where(kv => Tipo((string)kv.Value["secao"]) is "dupla" or "tubo_circular" or "tubo_retangular").Select(kv => (string)kv.Value["nj"]).FirstOrDefault();
+                // G6 r2: o close-up do gusset fica num nó com gusset longe da base (apoio viga, depois pilar); caixão/tubo = pilar (vertical)
+                var nosVP = grupos.Where(x => ((string)x["tipo"]).StartsWith("viga_pilar")).SelectMany(x => x["membros"].AsArray()).Select(m => (string)m["no"]).ToHashSet();   // nó com chapa de topo na frente: o gusset some atrás
+                string GussetNo(string papel) => grupos.Where(x => (string)x["tipo"] == "gusset_contraventamento" && (papel == null || (((string)x["assinatura"] ?? "").Split('|').ElementAtOrDefault(3) ?? "").StartsWith(papel)))
+                                                       .SelectMany(x => x["membros"].AsArray()).Select(m => (string)m["no"]).OrderBy(n => nosVP.Contains(n)).FirstOrDefault();
+                bool Vert(JsonNode bb) { var a = Pos((JsonObject)json, (string)bb["ni"]); var c = Pos((JsonObject)json, (string)bb["nj"]); return Math.Abs(c.Z - a.Z) > 0.95 * (c - a).Length; }
+                string caixao = json["barras"].AsObject().Where(kv => Tipo((string)kv.Value["secao"]) is "dupla" or "tubo_circular" or "tubo_retangular" && Vert(kv.Value)).Select(kv => (string)kv.Value["nj"]).FirstOrDefault();
                 string noPar = r.Select(p => System.Text.RegularExpressions.Regex.Match(col[p.A].Nome + " " + col[p.B].Nome, " nó (\\S+) ")).Where(m => m.Success).Select(m => m.Groups[1].Value).FirstOrDefault();
-                foreach (var (nome, no) in new[] { ("pior-par", noPar), ("viga-pilar", NoDe(x => ((string)x["tipo"]).StartsWith("viga_pilar"))), ("gusset", NoDe(x => (string)x["tipo"] == "gusset_contraventamento")),
+                foreach (var (nome, no) in new[] { ("pior-par", noPar), ("viga-pilar", NoDe(x => ((string)x["tipo"]).StartsWith("viga_pilar"))), ("gusset", GussetNo("viga") ?? GussetNo("pilar") ?? GussetNo(null)),
                                                    ("placa-base", NoDe(x => (string)x["tipo"] == "base")), ("caixao-tubo", caixao) })
                 {
                     if (no == null || json["nos"]?[no] == null) { sb.AppendLine("captura " + nome + ": nenhum nó"); continue; }
