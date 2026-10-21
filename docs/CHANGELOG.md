@@ -3,6 +3,9 @@
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
 - 21/10/2026 — A pedido do usuário, manual v3 em [manual/](manual/README.md) e seção do produto no README atualizados para o fluxo só 3D, com aliases do código, vento integrado, ligações/grupos, placa NBR, exportação e limites/ART.
 
+## 21/10/2026 — Vista 3D: chapa do joelho rente à mesa do pilar (branch wt-joelho)
+- Viga inclinada (água do telhado) contra pilar: a chapa ficava perpendicular à viga, tocando a mesa só no eixo e flutuando nas bordas. Agora o corte da viga é paralelo à face do pilar, o referencial da ligação gira até x ficar na normal da face (`LigacoesAmostra.Referencial`) e a chapa fica rente à mesa. Pilar de eixo fraco: só chapa simples na alma (`Corte.NaMesa`). Teste: folga chapa–mesa < 1 mm (render3d em `--testes-exportar`).
+
 ## 21/10/2026 — Vista 3D: parafusos sólidos, ligações propostas, linhas do analítico (branch wt-visual)
 
 - A pedido do usuário (parafusos "bugados", ligações que não apareciam, barras do analítico "parecendo cantoneira" e nós em

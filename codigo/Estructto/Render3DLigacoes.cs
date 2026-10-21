@@ -189,11 +189,11 @@ namespace NovoFtool
                 if (c.Esquadria || c.Contra == null) continue;
                 Contorno f = forma(b); if (f.Concreto || forma(c.Contra).Concreto) continue;
                 int no = emI ? b.Ni : b.Nj;
-                double face = c.Recuo - folga(b, emI);
+                double face = c.Face;
                 if (vert.Contains(b)) continue;
                 bool horiz = Math.Abs(nos[b.Nj].Z - nos[b.Ni].Z) < 0.2 * (P(nos[b.Nj]) - P(nos[b.Ni])).Length;
                 if (!horiz) r.Add(Gusset(no, b, emI, f, c.Recuo));
-                else if (vert.Contains(c.Contra)) { Contorno fp = forma(c.Contra); r.Add(ChapaDeTopo(no, b, emI, f, face, fp.Tf, Math.Max(fp.B, fp.H) / 2)); }
+                else if (vert.Contains(c.Contra) && c.NaMesa) { Contorno fp = forma(c.Contra); r.Add(ChapaDeTopo(no, b, emI, f, face, fp.Tf, Math.Max(fp.B, fp.H) / 2)); }
                 else r.Add(ChapaSimples(no, b, emI, f, face, forma(c.Contra)));
             }
             foreach (No3D n in mod.Nos.Where(n => n.Apoios.Any(x => x)))
@@ -251,11 +251,23 @@ namespace NovoFtool
             }
             if (dz > 0.95) return r;   // pilar que para em algo: fica sem proposta
             string tipo = p.Pendente ?? "";
-            double face = c.Recuo - folga(b, emI);
+            double face = c.Face;
             if (tipo.StartsWith("gusset") || tipo.StartsWith("no_trelica") || dz > 0.2) r.Add(Gusset(p.No, b, emI, f, c.Recuo));
-            else if (tipo.StartsWith("viga_pilar_mesa") && tipo.Contains("rigida") && fc.Lacos.Count == 1) r.Add(ChapaDeTopo(p.No, b, emI, f, face, fc.Tf, Math.Max(fc.B, fc.H) / 2));
+            else if (tipo.StartsWith("viga_pilar_mesa") && tipo.Contains("rigida") && fc.Lacos.Count == 1 && c.NaMesa) r.Add(ChapaDeTopo(p.No, b, emI, f, face, fc.Tf, Math.Max(fc.B, fc.H) / 2));
             else r.Add(ChapaSimples(p.No, b, emI, f, face, fc));
             return r;
+        }
+
+        // Referencial local → mundo (origem o no nó, x ao longo da barra, z = v, y = x × z canhoto). Barra inclinada contra pilar
+        // (corte Inclinada): gira em torno de y até x ficar na normal da face e sobe a origem até o eixo da barra cruzar a face, para
+        // a chapa (desenhada como se a viga chegasse perpendicular) ficar rente à mesa e a viga terminar nela.
+        public static (Point3D o, Vector3D x, Vector3D y, Vector3D z) Referencial(Point3D o, Vector3D x, Vector3D z, Corte k)
+        {
+            Vector3D y = Vector3D.CrossProduct(x, z);
+            if (k == null || !k.Inclinada) return (o, x, y, z);
+            Vector3D xn = k.N - y * Vector3D.DotProduct(k.N, y); xn.Normalize();
+            o += x * (k.Face / Vector3D.DotProduct(x, xn)) - xn * k.Face;
+            return (o, xn, y, Vector3D.CrossProduct(y, xn));
         }
 
         static Point3D P(No3D n) => new Point3D(n.X, n.Y, n.Z);
