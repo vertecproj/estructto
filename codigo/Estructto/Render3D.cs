@@ -136,6 +136,7 @@ namespace NovoFtool
             mSoldas = new MeshGeometryModel3D { Material = Pbr(0.2f, 0.85f), IsThrowingShadow = false };
             lArestas = new LineGeometryModel3D { Color = TemaPlant.CorArestaDx3D, Thickness = 0.9, Smoothness = 0.6, DepthBias = -4, IsThrowingShadow = false };
             foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, lArestas }) Vista.Items.Add(m);
+            mChao.IsHitTestVisible = lArestas.IsHitTestVisible = false;   // picking (Acertar) mais barato: o chão e as arestas não contam
         }
 
         // Mapa de ambiente procedural: cubo DDS BGRA8 n×n com mips (o PBR lê o mip pela rugosidade). Mundo com Z para cima:
@@ -377,7 +378,9 @@ namespace NovoFtool
         void Aplicar(MeshGeometryModel3D m, MalhaDx malha)
         {
             if (malha.Vazia) { m.Geometry = null; m.Visibility = Visibility.Collapsed; return; }   // null: o Lod não reacende a malha velha
-            m.Geometry = new HxMesh { Positions = new Vector3Collection(malha.P), Normals = new Vector3Collection(malha.N), Colors = new Color4Collection(malha.C), Indices = new IntCollection(malha.T) };
+            var hx = new HxMesh { Positions = new Vector3Collection(malha.P), Normals = new Vector3Collection(malha.N), Colors = new Color4Collection(malha.C), Indices = new IntCollection(malha.T) };
+            if (malha.Obj.Count > 0) hx.UpdateOctree();   // só as malhas das peças (picking rápido; a das ligações é grande e montaria devagar)
+            m.Geometry = hx;
             m.Visibility = Visibility.Visible;
             if (malha.Obj.Count > 0) faixas.Add((m, malha.Ini.ToArray(), malha.Obj.ToArray()));
         }
@@ -461,12 +464,18 @@ namespace NovoFtool
         }
 
         // Barra sob o pixel (coordenadas da Vista): a mais próxima da câmera; chapas, parafusos e chão não contam.
-        public object Acertar(Point p)
+        // `ponto`: o 1º toque fora do chão (barra, chapa ou parafuso), para o pivô da órbita e o zoom no cursor.
+        public object Acertar(Point p) => Acertar(p, out _);
+
+        public object Acertar(Point p, out Point3D? ponto)
         {
+            ponto = null;
             var hits = Vista.FindHits(p);
             if (hits == null) return null;
             foreach (var h in hits.OrderBy(h => h.Distance))
             {
+                if (h.ModelHit == mChao || h.ModelHit == mChao.SceneNode) continue;
+                ponto ??= new Point3D(h.PointHit.X, h.PointHit.Y, h.PointHit.Z);
                 foreach (var (m, ini, obj) in faixas)
                 {
                     if (h.ModelHit != m && h.ModelHit != m.SceneNode) continue;

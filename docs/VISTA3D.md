@@ -14,7 +14,7 @@ Estructto (`Render3D.cs`):
 | Sombra, SSAO, AA | só no chão; sem SSAO; sem MSAA no RenderTargetBitmap | shadow map 4096², SSAO, MSAA 4× + FXAA, PBR, pós-efeito de contorno |
 | Captura (`RenderTargetBitmap` da janela) | funciona | **funciona**: o D3DImage entra na captura depois de 2 quadros (`Render3D.PrepararCaptura`), com fundo opaco (transparente sai branco) |
 | Sem placa de vídeo | funciona (software) | **não**: `EnableSoftwareRendering` (WARP) estoura a pilha ao criar o D3D9Ex do D3DImage (testado). `Render3D.Disponivel` só aceita adaptador de hardware com nível 10.0+ (DXGI), senão a Vista3D usa o Realista nativo deste arquivo. `ESTRUCTTO_3D=nativo` força. |
-| 2.430 barras | montar 150–166 ms | montar 25–34 ms, quadro 9–10 ms (RTX 4060), picking 5 ms |
+| 2.430 barras | montar 150–166 ms | montar 25–34 ms, quadro 9–10 ms (RTX 4060), picking 5 ms (com octree, 21/10: montar 50 ms, picking 0,8 ms) |
 
 Resultado: o modo Realista vai para o Render3D quando há GPU; o analítico, a entrada (snap, desenho, seleção), as cargas e os
 diagramas continuam no Viewport3D nativo, que fica por cima do DX. Integração mínima na `Vista3D.cs` (`RealismoDx`, câmera,
@@ -47,6 +47,37 @@ dados, cena, Realista, entrada e sobreposição (os worktrees de render e snap m
 Transições de câmera: 300 ms, CubicEase EaseOut (GUIA-DESIGN). O diagrama, a deformada (com a escala do HUD) e o mapa de
 aproveitamento (cores `CorCalor1..4` de `TemaPlant.cs`, faixas de `Vista.FaixaCalor`) seguem o que está escolhido no HUD.
 A vista 2D não existe mais: `MostrarVista3D` só liga a Vista3D (host em `Desenho3D.cs`).
+
+## Pivô automático da órbita e zoom no cursor (21/10/2026)
+
+Pedido do usuário: o AutoCAD resolve com `OBJECTAUTOTARGET`, mas sem uma chave para ficar trocando; perto do modelo, orbitar em
+torno do centro do modelo jogava a peça para fora da tela. Agora é automático, como Fusion 360, Revit e Inventor
+(`Vista3D.Navegacao.cs`):
+
+- **Pivô (`PivoSob`)**, escolhido ao começar a órbita (Shift + meio/esquerdo arrastando; arrastar o ViewCube usa o centro da
+  vista) e fixo até soltar: (a) o ponto onde o raio do cursor toca a peça (`Acertar`: barras e nós da cena nativa; no
+  Render3D também chapas e parafusos, `Render3D.Acertar(p, out ponto)`, o chão não conta); (b) o ponto do nó ou da barra mais
+  perto do raio, até 30 px na tela; (c) o plano de trabalho sob o cursor, se cair a até 2 raios do centro do modelo;
+  (d) o centro (caixa) dos nós que aparecem na tela, não o do modelo inteiro. A seleção não manda mais no pivô.
+- **Órbita sem pulo.** Ao começar, `AncorarAlvo` leva o plano do alvo à profundidade do pivô sem mudar a imagem (perspectiva:
+  mesmo olho, `larg` da distância nova). Cada passo gira olho e direção em torno do pivô, que fica no mesmo pixel; o pivô não
+  é levado ao centro da tela. Vale na ortográfica e na perspectiva.
+- **Roda (`Zoom`)**, no mesmo ponto: ortográfica muda a largura em torno dele (o ponto fica no pixel). Perspectiva: o olho
+  anda pelo raio do cursor 1/6 da distância até o ponto e o alvo vai junto, na profundidade dele, então o ponto fica no pixel e
+  dá para mergulhar numa junta. Colado no ponto (< 2% do raio do modelo) ou sem nada à frente, anda um passo fixo (17% de
+  `max(distância do alvo, 2% do raio)`) e atravessa, sem empacar.
+- **Marca.** Ponto ciano com anel (`TemaPlant.CorPivo`, `CorPivoAnel`, borda `CorSnapContorno`) durante o arrasto; some em
+  `Anim.Medio` ao soltar (`TerminarOrbita`).
+- **Desempenho** (12 × 10 vãos, 6 pavimentos, 2.430 barras): pivô em 1,4–1,7 ms (Render3D, RTX 4060) e 2,0–2,5 ms (analítico).
+  O Render3D monta octree nas malhas das peças (`UpdateOctree`) e tira chão e arestas do picking: sem isso o pivô levava
+  8,6 ms no Render3D. Custo: montar a cena de 24 para 50 ms (2.430 barras); o picking do clique cai de 2,1 para 0,8 ms
+  (com as ligações de exemplo, 4,4 para 0,9 ms). A malha das ligações fica sem octree (montaria em 1,7 s em vez de 0,45 s).
+- `Acertar` corrigido: o nó só ganha da barra quando está no mesmo lugar do raio (antes um nó lá atrás, alinhado com a viga
+  clicada, ganhava dela).
+- Testes: `Estructto.exe --testes-navegacao <saida.txt>` (`TestesNavegacao`, Vista3D fora da janela): pivô na junta e na
+  viga sob o cursor, órbita de 30° com o pivô parado (< 1 px) e a junta na tela, começar a órbita sem pulo, plano de trabalho,
+  centro do que aparece, zoom no cursor parado (< 1 px), perspectiva que chega na junta e anda no vazio, tempo < 5 ms.
+  Capturas `56-orbita-pivo-realista|analitico` e `56-tempos.txt` (`CapturasSnap.cs`; só elas: `ESTRUCTTO_CAPTURAS=navegacao`).
 
 ## Modo Realista
 

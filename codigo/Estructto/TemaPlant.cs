@@ -141,7 +141,8 @@ namespace NovoFtool
             CorCuboFace        = C("#E6242B38"),   // face do cubo (Surface1 a 90%)
             CorCuboHover       = C("#CC0EA5E9"),   // região sob o mouse (acento)
             CorCuboAresta      = C("#7C8B9E"),
-            CorPivo            = C("#1B202B"),     // esfera do pivô da órbita (contorno branco)
+            CorPivo            = C("#22D3EE"),     // ponto do pivô da órbita (ciano; borda CorSnapContorno)
+            CorPivoAnel        = C("#9922D3EE"),   // anel em volta do ponto do pivô
             CorGripFrio        = C("#2F7DF6"),
             CorGripHover       = C("#FF6E6E"),
             CorGripQuente      = C("#E0201B");

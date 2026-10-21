@@ -138,8 +138,9 @@ namespace NovoFtool
                 {
                     Vector dv = m - arrIni.Value;
                     if (!arrastou && dv.Length < 3) return;
+                    if (!arrastou) v.IniciarOrbita(new Point(v.ActualWidth / 2, v.ActualHeight / 2));   // pivô: o que está no centro da vista
                     arrastou = true; arrIni = m;
-                    v.pivoP = null; v.Orbitar(dv.X * 1.6, dv.Y * 1.6);   // arrastar o cubo orbita em torno do alvo
+                    v.Orbitar(dv.X * 1.6, dv.Y * 1.6);
                     e.Handled = true; return;
                 }
                 var r = Regiao(m); bool hc = Casa.Contains(m), hp = Proj.Contains(m);
@@ -169,7 +170,7 @@ namespace NovoFtool
                 if (e.ChangedButton != MouseButton.Left || arrIni == null) return;
                 Point m = e.GetPosition(this);
                 ReleaseMouseCapture(); arrIni = null;
-                if (arrastou) { Encaixar(); return; }
+                if (arrastou) { v.TerminarOrbita(); Encaixar(); return; }
                 if (Casa.Contains(m)) { v.MostrarVista(VistaPadrao.Iso); return; }
                 if (Proj.Contains(m)) { v.Perspectiva = !v.Perspectiva; InvalidateVisual(); return; }
                 if (Regiao(m) is (int, int, int) r) v.IrParaDirecao(Direcao(r), NomeDe(r));

@@ -2,6 +2,7 @@
 // Pórtico espacial desenhado pelo motor; para cada modo, o cursor é posto perto do ponto e a captura sai inteira e
 // ampliada 2× em volta do marcador (-zoom). Confere o tipo de snap e o valor medido. Só elas: ESTRUCTTO_CAPTURAS=snap.
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -216,6 +217,58 @@ namespace NovoFtool
             File.WriteAllText(Path.Combine(pastaSaida, "50-snap.txt"), log.ToString(), new UTF8Encoding(false));
             w.FecharEspaciaisSemPerguntar();
             EsperarIdle();
+        }
+
+        // 56) Pivô automático da órbita e zoom no cursor (Vista3D.Navegacao.cs): perto de uma junta do pórtico 2 × 2, Shift +
+        // arrastar a partir da junta, com a marca do pivô na tela; Realista (Render3D quando há GPU) e analítico. Tempo do
+        // pivô no pórtico de 2.430 barras em 56-tempos.txt. Só elas: ESTRUCTTO_CAPTURAS=navegacao.
+        static void CapturasNavegacao(MainWindow w)
+        {
+            var v = w.vista3D;
+            var log = new StringBuilder();
+            void Falha(string s) => throw new InvalidOperationException("Navegação 3D: " + s);
+            foreach (bool real in new[] { true, false })
+            {
+                string suf = real ? "realista" : "analitico";
+                w.DefinirRealista(real);
+                w.MostrarVista3D(true);
+                EsperarIdle();
+                v.Perspectiva = false;
+                v.Carregar(Portico2x2(), false);
+                Point3D J = new Point3D(6, 0, 3.5);   // junta viga-pilar da fachada da frente
+                v.Focar(J + new Vector3D(0.5, 0, 0.25), 3, -40, 22);
+                EsperarIdle(); v.UpdateLayout(); v.PrepararCaptura();
+                Point c = v.Tela(J);
+                var (pv, fonte) = v.PivoSob(c);
+                log.AppendLine(suf + (v.UsandoDx ? " (Render3D)" : "") + ": pivô fonte " + fonte + " a " + (pv - J).Length.ToString("0.000", CultureInfo.InvariantCulture) + " m da junta");
+                if (fonte != 'a' || (pv - J).Length > 0.4) Falha(suf + ": o pivô não caiu na junta sob o cursor (fonte " + fonte + ")");
+                Point s0 = v.Tela(pv);
+                v.SimularOrbita(c, c + new Vector(70, 25), 10, false);
+                if (!(v.PivoAtual is Point3D pa) || (v.Tela(pa) - s0).Length > 1) Falha(suf + ": o pivô andou na tela durante a órbita");
+                CapturarPrincipal(w, "56-orbita-pivo-" + suf);
+                v.TerminarOrbita();
+
+                // desempenho do pivô no pórtico grande (o mesmo das capturas 42)
+                var g = new Modelo3D(); int nx = 12, ny = 10, nz = 6;
+                int Id(int i, int j, int k) => 1 + i + (nx + 1) * (j + (ny + 1) * k);
+                for (int k = 0; k <= nz; k++) for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++)
+                    g.Nos.Add(new No3D { Id = Id(i, j, k), X = i * 6, Y = j * 5, Z = k * 3.2, Apoios = k == 0 ? new[] { true, true, true, true, true, true } : new bool[6] });
+                for (int k = 0; k < nz; k++) for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++)
+                {
+                    g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = Id(i, j, k), Nj = Id(i, j, k + 1), Secao = "W 250 x 32,7" });
+                    if (i < nx) g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = Id(i, j, k + 1), Nj = Id(i + 1, j, k + 1), Secao = "W 310 x 38,7" });
+                    if (j < ny) g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = Id(i, j, k + 1), Nj = Id(i, j + 1, k + 1), Secao = "W 310 x 38,7" });
+                }
+                v.Carregar(g, false);
+                v.MostrarVista(VistaPadrao.Iso, false);
+                EsperarIdle(); v.UpdateLayout(); v.PrepararCaptura();
+                v.PivoSob(new Point(v.ActualWidth / 2, v.ActualHeight / 2));   // aquece
+                var sw = System.Diagnostics.Stopwatch.StartNew(); var fontes = new StringBuilder();
+                for (int i = 0; i < 20; i++) fontes.Append(v.PivoSob(new Point(v.ActualWidth * (0.25 + 0.025 * i), v.ActualHeight * (0.35 + 0.015 * i))).Fonte);
+                log.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0}: pivô em {1:0.00} ms por pedido ({2} barras; fontes {3})", suf, sw.Elapsed.TotalMilliseconds / 20, g.Barras.Count, fontes));
+            }
+            File.WriteAllText(Path.Combine(pastaSaida, "56-tempos.txt"), log.ToString());
+            w.DefinirRealista(false);
         }
     }
 }

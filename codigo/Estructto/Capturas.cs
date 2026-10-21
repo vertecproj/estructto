@@ -1068,6 +1068,7 @@ namespace NovoFtool
                 if (so == "ligacoes") so1(() => CapturasLigacoes(w));             // só as 49) do gerenciador de ligações
                 if (so == "desenho3d") so1(() => CapturasDesenho3D(w));           // só as 43) do desenho no 3D
                 if (so == "snap") so1(() => CapturasSnap(w));                     // só as 50-53) de snap e medir 3D
+                if (so == "navegacao") so1(() => CapturasNavegacao(w));           // só as 56) do pivô automático da órbita
                 if (so == "fluxo3d") so1(() => CapturasFluxo3D(w));               // só as 49) do fluxo de modelagem 3D
                 if (so == "a1") so1(() => CapturasA1(w, caminhoModelo));          // só as 54) do produto 3D único (A1)
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
@@ -1284,6 +1285,8 @@ namespace NovoFtool
                 CapturasProjetista(w);
                 // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
                 CapturasSnap(w);
+                // 56) Pivô automático da órbita e zoom no cursor
+                CapturasNavegacao(w);
                 CapturasA1(w, caminhoModelo);
 
                 // 27) Caixa de mensagem
