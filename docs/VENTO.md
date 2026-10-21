@@ -55,3 +55,53 @@ efeitos dinâmicos (seções 9 a 11).
 `codigo/portico/src/Testes.cs`, bloco "vento NBR 6123:2023": S2 contra a Tabela 3 (6 pontos), q, K (Tabela 28), Ca (Tabela 27),
 classe, pilar em balanço de tubo (S2, Ca, K, w, reação e momento na base), tubo de 203 mm com o subcrítico governando,
 barra horizontal sem força e barra a 45° com sen²α = 0,5.
+
+---
+
+# Vento — ABNT NBR 8400:1984 (equipamentos de levantamento)
+
+Segunda opção da mesma janela (botão **Vento**, aba Cargas): o seletor "Norma do vento" no topo escolhe NBR 6123:2023 ou NBR 8400.
+Pedido do Bruno em 20/10/2026. Norma usada: PDF da NBR 8400:1984 (seção 5.5.4.1, Tabelas 5, 7, 8 e 10, seção 5.6). A escolha fica
+em `Modelo.Vento.Norma` ("6123" ou "8400"). Trocar de norma apaga os casos de vento da outra (as duas nunca convivem no modelo).
+
+## Contas (motor: `Vento8400` em `codigo/portico/src/Nucleo.cs`)
+
+| Grandeza | Fórmula / origem na norma |
+|---|---|
+| Pressão aerodinâmica | Pa = vw²/1,6 (N/m²) |
+| Vento limite de serviço | vw digitado (padrão 20 m/s, Tabela 7) → 250 N/m² em qualquer altura |
+| Vento máximo (fora de serviço) | Tabela 7 pela altura z da barra: 800 N/m² (0–20 m), 1100 (20–100 m), 1300 (> 100 m) |
+| Força | Fw = C·A·Pa → por metro de barra w = C·Pa·c·sen²α (kN/m) |
+| C, tubo redondo | Tabela 8, elemento tubular: d·√Pa/10 ≤ 1 → 1,2; > 1 → 0,7 (d em m, Pa em N/m²) |
+| C, demais perfis | Tabela 8, viga de alma cheia: l/h = 2 → 1,2; 5 → 1,3; 10 → 1,4; 20 → 1,6 (interpolado; fora da faixa, o valor da ponta) |
+| Mx | Tabela 10 pelo grupo: 1, 1, 1, 1,06, 1,12, 1,20 (grupos 1 a 6) |
+| ψ | Tabela 5, digitado (padrão 1,15 = ponte rolante com vL ≤ 0,25 m/s) |
+
+## Casos e combinações (seção 5.6, tensões admissíveis, sem γ)
+
+Quatro casos tipo V: `Vento serviço → (0°)`, `Vento serviço ← (180°)`, `Vento máximo → (0°)`, `Vento máximo ← (180°)`.
+`Analise.GerarNbr8400` gera:
+- **Caso I**: Mx·(G + ψ·Q)
+- **Caso II**: Caso I + um vento de serviço (um sentido por vez)
+- **Caso III**: G + um vento máximo (sem carga, 5.6.3)
+- ELS (flecha): G + Q e G + Q + vento de serviço.
+
+"Gerar combinações" na janela de casos e o comando GERARCOMB usam a norma do vento do modelo (`Analise.Gerar`).
+
+## Hipóteses do programa (não estão escritas assim na norma)
+
+1. z = ponto mais alto da barra acima do terreno (menor cota com apoio), como no vento da 6123.
+2. A Tabela 8 é para vigas inteiras; aplicada barra a barra: perfis abertos e retangulares entram como "alma cheia" com l/h = comprimento da barra / dimensão c vista pelo vento (mesmo c da 6123); tubo redondo como "elemento tubular".
+3. Barra inclinada: só a componente normal, × sen²α; barra horizontal sem vento no plano.
+4. Sem coeficiente de redução por proteção entre vigas (Tabela 9), sem efeito de comprimento finito.
+
+## Não incluído (avisado na janela e no memorial)
+
+Vento sobre a carga suspensa (C = 1, maior superfície) e sobre cabines/equipamentos (lançar como carga no caso de vento), efeitos horizontais
+dos movimentos (5.5.3), choques, temperatura (5.5.4.2), estabilidade ao tombamento e ao arrastamento (5.12 e 5.13). A 8400 usa tensões admissíveis
+diferentes por caso (σe/1,5, /1,33 e /1,1); o programa verifica todas as combinações com o mesmo coeficiente de segurança do modelo.
+
+## Testes
+
+`codigo/portico/src/Testes.cs`, bloco "vento NBR 8400:1984": Pa de serviço e do vento máximo nas três faixas, C de alma cheia (pontas e
+interpolado), C tubular (os dois lados do limite), Mx, pilar tubular (serviço e máximo), barra horizontal e barra a 45°.

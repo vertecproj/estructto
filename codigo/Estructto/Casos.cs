@@ -160,7 +160,7 @@ namespace NovoFtool
             var g = new F.RibbonGroupBox { Header = "Casos de carga" };
             g.Items.Add(cbCaso);
             g.Items.Add(Botao("tabela", "Casos e combinações", AbrirCasos, "Cria casos (permanente, sobrecarga, vento...) e combinações ELU/ELS, ou gera as combinações da NBR 8681/8800.", "CASOS"));
-            g.Items.Add(Botao("vento", "Vento NBR 6123", AbrirVento, "Calcula a carga de vento da NBR 6123:2023 nas barras (V0, S1, S2, S3, Cf de cada seção) e cria os casos de vento nos dois sentidos.", "VENTO"));
+            g.Items.Add(Botao("vento", "Vento", AbrirVento, "Calcula a carga de vento nas barras pela NBR 6123:2023 (V0, S1, S2, S3, Cf de cada seção) ou pela NBR 8400 (equipamentos de elevação: vento de serviço e vento máximo) e cria os casos de vento nos dois sentidos. Você escolhe a norma na janela.", "VENTO"));
             abaCargas.Groups.Insert(0, g);
 
             cbResultado = new F.ComboBox { Header = "Mostrar", IsEditable = false, Width = 290, ToolTip = new F.ScreenTip { Title = "Resultado mostrado", Text = "Um caso isolado, uma combinação, ou a envoltória (mínimos e máximos) de todas as combinações ELU ou ELS. Diagramas, tabelas, verificação e relatório usam esta escolha.", Width = 300 } };
@@ -328,7 +328,7 @@ namespace NovoFtool
             {
                 Ler();
                 if (m.Combinacoes.Count > 0 && Caixa.Mostrar(this, "Gerar combinações", "Substituir as " + m.Combinacoes.Count + " combinações atuais pelas geradas?", null, new[] { ("Substituir", MessageBoxResult.Yes, true), ("Cancelar", MessageBoxResult.Cancel, false) }, "?", JanelaEscura.BAzul) != MessageBoxResult.Yes) return;
-                m.Combinacoes = Analise.GerarNbr(m.Casos); Montar();
+                m.Combinacoes = Analise.Gerar(m); Montar();
             });
             bg.ToolTip = "Gera automaticamente as combinações normais ELU e ELS da NBR 8681/8800 a partir dos tipos (G, Q, V, E) dos casos cadastrados.";
             bt.Children.Add(bg);

@@ -1126,7 +1126,7 @@ namespace NovoFtool
                     else Log("Uso: CASO número (1 a " + M.Casos.Count + ").");
                     break;
                 }
-                case "GERARCOMB": M.Combinacoes = Analise.GerarNbr(M.Casos); Confirmar(M.Combinacoes.Count + " combinações NBR 8681/8800 geradas."); break;
+                case "GERARCOMB": M.Combinacoes = Analise.Gerar(M); Confirmar(M.Combinacoes.Count + (M.Vento != null && M.Vento.Norma == "8400" ? " combinações NBR 8400 geradas." : " combinações NBR 8681/8800 geradas.")); break;
                 case "RESULTADO":
                     if (w.Length > 1) EscolherResultado(w[1].ToLowerInvariant().Replace("elu", "ELU").Replace("els", "ELS"));
                     else Log("Uso: RESULTADO ativo | caso:N | comb:N | env:ELU | env:ELS  (N a partir de 0)");

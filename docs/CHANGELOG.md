@@ -31,6 +31,12 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   entram juntas. Memorial ganhou o bloco do vento. Critérios e hipóteses: [VENTO.md](VENTO.md). 225 testes (25 novos). Norma em
   `referencias/` (fora do git). Ferramentas instaladas neste PC: Poppler (ler o PDF escaneado).
 
+- **Vento NBR 8400:1984** (pedido do Bruno): a janela do vento ganhou o seletor de norma (6123 ou 8400); o botão passou a se chamar
+  "Vento". Na 8400: vento limite de serviço (vw, padrão 20 m/s = 250 N/m²) e vento máximo (800/1100/1300 N/m² por altura), C da Tabela 8,
+  grupo (Mx) e ψ; quatro casos (serviço e máximo, dois sentidos) e combinações dos casos I, II e III da seção 5.6 (`Analise.GerarNbr8400`).
+  Memorial e capturas (`24-vento-8400.png`) atualizados. Motor `Vento8400` com 16 testes novos (241 passam). Critérios e hipóteses em
+  [VENTO.md](VENTO.md). Pendente: tensões admissíveis por caso (σe/1,5, /1,33, /1,1) não são distinguidas pelo programa.
+
 ## 19/10/2026 — Bruno
 
 - **Função "Comparar fixações" ([TAREFA-COMPARAR-FIXACOES.md](TAREFA-COMPARAR-FIXACOES.md)):**

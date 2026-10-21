@@ -722,6 +722,16 @@ namespace NovoFtool
                 jVento.Close();
                 EsperarIdle();
 
+                // 24b2) Carga de vento NBR 8400 (mesma janela, outra norma)
+                var m8400 = Modelo.DeXml(w.M.ParaXml()); m8400.Vento = new ParamVento { Norma = "8400", Grupo = 4 };
+                var jVento84 = new JanelaVento(m8400);
+                PrepararDialogoForaDaTela(jVento84);
+                jVento84.Show();
+                EsperarIdle();
+                CapturarDialogo(jVento84, "24-vento-8400.png");
+                jVento84.Close();
+                EsperarIdle();
+
                 // casos e combinações depois de aplicar o vento (as duas direções nunca entram juntas)
                 var mV = Modelo.DeXml(w.M.ParaXml());
                 var lvC = VentoNbr.Calcular(mV, new ParamVento());

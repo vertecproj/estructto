@@ -125,6 +125,7 @@ namespace NovoFtool
         void MemorialVento(FlowDocument doc)
         {
             ParamVento p = M.Vento;
+            if (p.Norma == "8400") { MemorialVento8400(doc, p); return; }
             int classe = VentoNbr.Classe(M, p);
             var lista = VentoNbr.Calcular(M, p);
             var b1 = new Bloco("Vento — ABNT NBR 6123:2023 (barras prismáticas expostas, seção 8.1)");
@@ -145,6 +146,30 @@ namespace NovoFtool
                 lista.Select(v => new[] { v.B.Id.ToString(), Fm(v.Z, 2), Fm(v.S2, 3), Fm(v.Vk, 1), Fm(v.Q * 1000, 0), Fm(v.Cf, 2), Fm(v.C * 1000, 0), Fm(v.K, 2), Fm(v.Sen2, 2), Math.Abs(v.W) < 1e-9 ? "—" : Fm(v.W, 3) })));
             foreach (var v in lista.Where(x => Math.Abs(x.W) > 1e-9)) b1.Nota("Barra " + v.B.Id + " (" + v.B.Secao + "): " + v.Fonte + ".");
             b1.Nota("Não incluído: vento sobre equipamentos, telhas e fechamentos presos à estrutura, vento fora do plano do pórtico e efeitos dinâmicos (seção 9).");
+            doc.Blocks.Add(b1.S);
+        }
+
+        void MemorialVento8400(FlowDocument doc, ParamVento p)
+        {
+            var serv = Vento8400.Calcular(M, p, false); var maxi = Vento8400.Calcular(M, p, true);
+            var b1 = new Bloco("Vento — ABNT NBR 8400:1984 (equipamentos de levantamento, seção 5.5.4.1)");
+            b1.Tab(Dados(new[]
+            {
+                new[] { "Vento limite de serviço", "vw", Fm(p.VServ, 1), "m/s", "Tabela 7 (20 m/s), informado pelo usuário" },
+                new[] { "Pressão de serviço", "Pa", Fm(Vento8400.PaServ(p.VServ), 0), "N/m²", "Pa = vw²/1,6" },
+                new[] { "Pressão do vento máximo", "Pa", "800 / 1100 / 1300", "N/m²", "Tabela 7: 0 a 20 m / 20 a 100 m / acima de 100 m" },
+                new[] { "Grupo da estrutura", "—", p.Grupo.ToString(), "—", "informado pelo usuário (Tabela 4)" },
+                new[] { "Coeficiente de majoração", "Mx", Fm(Vento8400.MxGrupo(p.Grupo), 2), "—", "Tabela 10" },
+                new[] { "Coeficiente dinâmico", "ψ", Fm(p.Psi, 2), "—", "Tabela 5, informado pelo usuário" },
+            }));
+            b1.Eq("P_a = \\frac{v_w^2}{1{,}6} \\qquad F_w = C \\, A \\, P_a \\qquad w = C \\, P_a \\, c \\, \\mathrm{sen}^2\\alpha \\quad (\\mathrm{kN/m,\\;normal\\;à\\;barra})");
+            b1.Nota("z = cota do ponto mais alto da barra acima do terreno; c = dimensão da seção vista pelo vento; α = ângulo entre o vento (horizontal, no plano do pórtico) e o eixo da barra. " +
+                    "Casos de carga: \"" + MainWindow.CasoVentoServDir + "\" e \"" + MainWindow.CasoVentoServEsq + "\" (serviço), \"" + MainWindow.CasoVentoMaxDir + "\" e \"" + MainWindow.CasoVentoMaxEsq + "\" (máximo); os sentidos nunca entram juntos numa combinação.");
+            b1.Tab(Tabela(new[] { "Barra", "z (m)", "C", "c (mm)", "sen²α", "Pa serv. (N/m²)", "w serv. (kN/m)", "Pa máx. (N/m²)", "w máx. (kN/m)" },
+                serv.Select((v, i) => new[] { v.B.Id.ToString(), Fm(v.Z, 2), Fm(v.Cf, 2), Fm(v.C * 1000, 0), Fm(v.Sen2, 2), Fm(v.Q * 1000, 0), Math.Abs(v.W) < 1e-9 ? "—" : Fm(v.W, 3), Fm(maxi[i].Q * 1000, 0), Math.Abs(maxi[i].W) < 1e-9 ? "—" : Fm(maxi[i].W, 3) })));
+            foreach (var v in serv.Where(x => Math.Abs(x.W) > 1e-9)) b1.Nota("Barra " + v.B.Id + " (" + v.B.Secao + "): " + v.Fonte + ".");
+            b1.Nota("Combinações (seção 5.6): Caso I = Mx·(G + ψ·Q); Caso II = Caso I + vento de serviço; Caso III = G + vento máximo. Não incluído: vento sobre a carga suspensa e sobre cabines e equipamentos, " +
+                    "redução por proteção entre vigas (Tabela 9), efeitos horizontais dos movimentos, choques e temperatura (5.5.3 e 5.5.4.2), estabilidade ao tombamento e ao arrastamento (5.12 e 5.13).");
             doc.Blocks.Add(b1.S);
         }
 

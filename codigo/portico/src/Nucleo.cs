@@ -1337,7 +1337,11 @@ namespace Portico
         public string Classe { get; set; }      // 5.3.2: A, B, C ou "" = automatica pela maior dimensao
         public double S3 { get; set; }          // Tabela 4
         public bool UsarK { get; set; }         // Tabela 28
-        public ParamVento() { V0 = 35; S1 = 1; Categoria = 3; Classe = ""; S3 = 1; UsarK = true; }
+        public string Norma { get; set; }       // "6123" (NBR 6123:2023) ou "8400" (NBR 8400:1984, equipamentos de elevacao)
+        public double VServ { get; set; }       // NBR 8400: velocidade do vento limite de servico (m/s); Tabela 7 = 20 m/s (250 N/m2)
+        public int Grupo { get; set; }          // NBR 8400: grupo da estrutura (1 a 6), define Mx (Tabela 10)
+        public double Psi { get; set; }         // NBR 8400: coeficiente dinamico da carga de servico (Tabela 5)
+        public ParamVento() { V0 = 35; S1 = 1; Categoria = 3; Classe = ""; S3 = 1; UsarK = true; Norma = "6123"; VServ = 20; Grupo = 3; Psi = 1.15; }
         public ParamVento Copiar() { return (ParamVento)MemberwiseClone(); }
     }
 
@@ -1527,6 +1531,69 @@ namespace Portico
                 v.B.QLocalIni = w; v.B.QLocalFim = w;
             }
             m.AtivarCaso(ativo);
+        }
+    }
+
+    // ---------- vento: ABNT NBR 8400:1984, equipamentos de levantamento (secao 5.5.4.1) ----------
+    // Pressao aerodinamica Pa = vw2/1,6 (N/m2). Vento limite de servico: vw = 20 m/s -> 250 N/m2 em qualquer altura (Tabela 7).
+    // Vento maximo (fora de servico): 800 N/m2 (0 a 20 m), 1100 (20 a 100 m), 1300 (acima de 100 m).
+    // Forca no plano do portico, por barra: w = C . Pa . c . sen2(alfa) (Fw = C.A.Pa com A = c.L). C pela Tabela 8.
+    // Hipoteses do programa (docs/VENTO.md): z = ponto mais alto da barra acima do terreno; perfis abertos e retangulares
+    // como "viga de alma cheia" com l/h = comprimento da barra / dimensao c vista pelo vento; tubo redondo como "elemento tubular";
+    // sem coeficiente de reducao por protecao (Tabela 9) e sem efeito de comprimento finito.
+    public static class Vento8400
+    {
+        public static readonly double[] Mx = { 1, 1, 1, 1.06, 1.12, 1.20 };   // Tabela 10, grupos 1 a 6
+        public static double PaServ(double vw) { return vw * vw / 1.6; }
+        public static double PaMax(double z) { return z <= 20 ? 800 : z <= 100 ? 1100 : 1300; }
+        public static double MxGrupo(int g) { return Mx[Math.Max(1, Math.Min(6, g)) - 1]; }
+
+        // Tabela 8: viga de alma cheia, C em funcao de l/h (interpolado; fora da faixa, o valor da ponta)
+        public static double CAlmaCheia(double lh)
+        {
+            double[] xs = { 2, 5, 10, 20 }, ys = { 1.2, 1.3, 1.4, 1.6 };
+            if (lh <= xs[0]) return ys[0];
+            for (int i = 1; i < xs.Length; i++) if (lh <= xs[i]) return ys[i - 1] + (lh - xs[i - 1]) / (xs[i] - xs[i - 1]) * (ys[i] - ys[i - 1]);
+            return ys[ys.Length - 1];
+        }
+        // Tabela 8: elemento tubular, d em m e Pa em N/m2
+        public static double CTubular(double d, double pa) { return d * Math.Sqrt(pa) / 10 <= 1 ? 1.2 : 0.7; }
+
+        // maximo = false: vento limite de servico; true: vento maximo fora de servico.
+        public static List<VentoBarra> Calcular(Modelo m, ParamVento p, bool maximo)
+        {
+            var lista = new List<VentoBarra>();
+            double z0 = VentoNbr.Terreno(m);
+            foreach (Barra b in m.Barras)
+            {
+                Secao s = Biblioteca.AcharSecao(b.Secao);
+                No a = m.NoPorId(b.N1), e = m.NoPorId(b.N2);
+                if (s == null || a == null || e == null) continue;
+                double dx = e.X - a.X, dy = e.Y - a.Y, L = Math.Sqrt(dx * dx + dy * dy);
+                if (L < 1e-9) continue;
+                var v = new VentoBarra { B = b };
+                v.Z = Math.Max(a.Y, e.Y) - z0;
+                double pa = maximo ? PaMax(v.Z) : PaServ(p.VServ);
+                v.Q = pa / 1000; v.Vk = Math.Sqrt(1.6 * pa); v.S2 = 0; v.K = 1; v.Re = 0;
+                v.Sen2 = dy * dy / (L * L);
+                double cf0, re0; string fonte0, forma;
+                VentoNbr.Coeficiente(s, b.EixoFraco, 0, out cf0, out v.C, out re0, out forma, out fonte0);
+                v.Forma = forma;
+                if (s.Forma == "TC" || s.Forma == "CIRC")
+                {
+                    v.Cf = CTubular(v.C, pa);
+                    v.Fonte = "Tabela 8, elemento tubular: d·√Pa/10 = " + Num.Fmt(v.C * Math.Sqrt(pa) / 10, 2) + (v.Cf > 1 ? " > 1" : " ≤ 1") + " → C = " + Num.Fmt(v.Cf, 1);
+                }
+                else
+                {
+                    v.LC = v.C > 0 ? L / v.C : 1e9;
+                    v.Cf = CAlmaCheia(v.LC);
+                    v.Fonte = "Tabela 8, viga de alma cheia, l/h = " + Num.Fmt(Math.Min(v.LC, 999), 1) + " (comprimento da barra / dimensão vista pelo vento) → C = " + Num.Fmt(v.Cf, 2);
+                }
+                v.W = v.Cf * v.Q * v.C * v.Sen2;
+                lista.Add(v);
+            }
+            return lista;
         }
     }
 

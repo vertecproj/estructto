@@ -249,6 +249,30 @@ namespace Portico
             Conf("barra a 45 graus: sen2(alfa) = 0,5", lv[1].Sen2, 0.5);
             Conf("perfil W com vento normal as mesas: c = d", lv[1].C, 0.207);
 
+            Console.WriteLine("-- vento NBR 8400:1984: pressao, coeficientes (Tabelas 7, 8 e 10) e forca");
+            Conf("Pa de servico, vw = 20 m/s: 250 N/m2 (Tabela 7)", Vento8400.PaServ(20), 250);
+            Conf("Pa do vento maximo 0 a 20 m = 800", Vento8400.PaMax(10), 800);
+            Conf("Pa do vento maximo 20 a 100 m = 1100", Vento8400.PaMax(50), 1100);
+            Conf("Pa do vento maximo acima de 100 m = 1300", Vento8400.PaMax(150), 1300);
+            Conf("C viga de alma cheia, l/h = 2 -> 1,2 (Tabela 8)", Vento8400.CAlmaCheia(2), 1.2);
+            Conf("C viga de alma cheia, l/h = 7,5 -> 1,35 (interpolado)", Vento8400.CAlmaCheia(7.5), 1.35);
+            Conf("C viga de alma cheia, l/h = 30 -> 1,6", Vento8400.CAlmaCheia(30), 1.6);
+            Conf("C tubular d.raiz(Pa)/10 <= 1 -> 1,2", Vento8400.CTubular(0.1143, 250), 1.2);
+            Conf("C tubular d.raiz(Pa)/10 > 1 -> 0,7", Vento8400.CTubular(1.0, 800), 0.7);
+            Conf("Mx do grupo 5 = 1,12 (Tabela 10)", Vento8400.MxGrupo(5), 1.12);
+            Conf("Mx do grupo 2 = 1,00 (Tabela 10)", Vento8400.MxGrupo(2), 1.00);
+            m = Novo(0, 0, 0, 6); b = B(m, 0, 1); b.Secao = "Tubo " + (char)0xD8 + "114,3x7,30"; b.Material = "Aço ASTM A36"; Engaste(m.Nos[0]);
+            var p84 = new ParamVento { Norma = "8400", VServ = 20 };
+            var l84s = Vento8400.Calcular(m, p84, false); var l84m = Vento8400.Calcular(m, p84, true);
+            Conf("8400 pilar tubular: w servico = C.Pa.d (kN/m)", l84s[0].W, 1.2 * 0.250 * 0.1143);
+            Conf("8400 pilar tubular: w vento maximo (z <= 20 m) = C.800.d (kN/m)", l84m[0].W, 1.2 * 0.800 * 0.1143);
+            Conf("8400 pilar tubular: sen2 = 1 (barra vertical)", l84s[0].Sen2, 1);
+            Modelo m84 = Novo(0, 3, 4, 3, 0, 0, 3, 3); Barra b84 = B(m84, 0, 1); b84.Secao = "W 200 x 26,6"; Barra b85 = B(m84, 2, 3); b85.Secao = "W 200 x 26,6";
+            m84.Nos[2].ApoioX = m84.Nos[2].ApoioY = true;
+            var l84 = Vento8400.Calcular(m84, p84, false);
+            Conf("8400 barra horizontal: forca do vento no plano = 0", l84[0].W, 0);
+            Conf("8400 barra a 45 graus: w = C.Pa.c.sen2 (alma cheia, l/h = L/c)", l84[1].W, Vento8400.CAlmaCheia(Math.Sqrt(18) / 0.207) * 0.250 * 0.207 * 0.5);
+
             Console.WriteLine("-- biblioteca Gerdau: " + Biblioteca.Perfis.Count + " perfis " + Biblioteca.AvisoPerfis);
             Conf("perfis W e HP carregados", Biblioteca.DaFamilia("W e HP (Gerdau)", null).Count, 88);
             int ruins = 0;
