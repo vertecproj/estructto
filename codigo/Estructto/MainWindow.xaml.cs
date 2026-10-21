@@ -71,7 +71,9 @@ namespace NovoFtool
             Vista.SizeChanged += (s, e) => Hud.Compacto = Vista.ActualHeight < 340;
             HistBtn.Click += (s, e) => { bool abrir = HistoricoCaixa.Visibility != Visibility.Visible; HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed; HistBtn.Content = abrir ? "▾" : "▴"; Comando.Focus(); };
             NovoModelo(new Modelo(), null);
-            Loaded += (s, e) => { Vista.ZoomTudo(); FocarVista(); if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-motor="))) OferecerRecuperacao(); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
+            Loaded += (s, e) => { Vista.ZoomTudo(); FocarVista(); };
+            // recuperação só depois da janela aparecer: diálogo antes do primeiro quadro deixava a janela principal invisível
+            ContentRendered += (s, e) => { if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-"))) Dispatcher.BeginInvoke(new Action(OferecerRecuperacao), System.Windows.Threading.DispatcherPriority.ApplicationIdle); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
             Log("Bem-vindo. Escolha uma ferramenta na faixa, use Modelo › Gerar estrutura ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
