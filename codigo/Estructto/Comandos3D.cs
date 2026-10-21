@@ -1,8 +1,9 @@
 // Linha de comando e teclado do Estructto 3D, como no AutoCAD/Plant 3D (docs/v3/PESQUISA-PLANT.md §5, docs/MODELO-ESPACIAL.md
 // "Comandos e teclado"). Aliases + Enter/Espaço; Enter/Espaço com a linha vazia repete o último comando; Esc em cascata
 // (Vista3D.Tecla); F1–F12; PgUp/PgDn troca o nível do plano de trabalho; Del apaga; Ctrl+A/Z/Y/1/M.
-// Os comandos de edição trabalham sobre a seleção (escolha antes) ou pedem os objetos (escolha depois, Enter termina):
-// M, CO, MI, RO, TR, EX, MA, E. Pontos com atração, ORTO, entrada dinâmica ou x,y,z / @dx,dy,dz digitados.
+// Todo comando que age sobre objetos funciona nas duas ordens (docs/v3/FLUXO-COMANDOS.md): com seleção, age nela; sem, pede
+// na vista (ComEscolha: clique soma, Shift tira, janela/cruzamento, Enter aplica, Esc cancela) e depois o resto (ponto base,
+// destino, valor na linha de comando — PedirValor). Pontos com atração, ORTO, entrada dinâmica ou x,y,z / @dx,dy,dz digitados.
 // Grips (Vista3D.Grips.cs) chegam aqui em AplicarGrip. Geometria pura em GeometriaEdicao (EdicaoEspacial.cs, testada).
 using System;
 using System.Collections.Generic;
@@ -41,27 +42,40 @@ namespace NovoFtool
             C("COPIAR", "Copiar a seleção: ponto base e destinos (vários; Enter termina)", w => CmdMoverCopiar(true), "CO", "CP", "COPY"),
             C("ESPELHAR", "Cópia espelhada: dois pontos da linha do espelho (em planta)", w => CmdEspelhar(), "MI", "MIRROR"),
             C("ROTACIONAR", "Girar a seleção em torno do eixo vertical: ponto base e ângulo (digite) ou direção (clique)", w => CmdRotacionar(), "RO", "ROTATE"),
-            C("MATRIZ", "Matriz retangular da seleção (painel)", w => AbrirEdicaoEsp("matriz"), "AR", "ARRAY"),
-            C("APARAR", "Aparar barras na barra limite (o lado clicado sai)", w => CmdApararEstender(true), "TR", "TRIM"),
-            C("ESTENDER", "Estender barras até a barra limite (a ponta mais perto do clique)", w => CmdApararEstender(false), "EX", "EXTEND"),
-            C("DIVIDIR", "Dividir barra (painel)", w => AbrirEdicaoEsp("dividir"), "DIV"),
-            C("UNIR", "Unir nós coincidentes (painel)", w => AbrirEdicaoEsp("unir"), "J", "JOIN"),
-            C("APAGAR", "Apagar a seleção", w => CmdApagar(), "E", "ERASE", "DEL"),
+            C("MATRIZ", "Matriz retangular: escolha os objetos, depois o painel", w => ComEscolha("MATRIZ", null, (n, b) => AbrirEdicaoEsp("matriz")), "AR", "ARRAY"),
+            C("APARAR", "Aparar: barras limite, Enter, e as barras (o lado clicado sai)", w => CmdApararEstender(true), "TR", "TRIM"),
+            C("ESTENDER", "Estender: barras limite, Enter, e as barras (a ponta perto do clique)", w => CmdApararEstender(false), "EX", "EXTEND"),
+            C("DIVIDIR", "Dividir barras: escolha as barras, depois o painel", w => ComEscolha("DIVIDIR", "barra", (n, b) => AbrirEdicaoEsp("dividir")), "DIV"),
+            C("UNIR", "Unir nós coincidentes: escolha os nós (Enter sem nada = todos), depois o painel", w => ComEscolha("UNIR", "no", (n, b) => AbrirEdicaoEsp("unir"), null, true), "J", "JOIN"),
+            C("APAGAR", "Apagar (escolha antes ou depois)", w => CmdApagar(), "E", "ERASE", "DEL"),
             C("PROPRIEDADES", "Propriedades da escolha (com várias: em lote)", w => CmdPropriedades(), "PR", "PROPS"),
-            C("COPIARPROPRIEDADES", "Copiar perfil, material e giro de uma barra para outras", w => CmdMatch(), "MA", "MATCHPROP"),
+            C("LOTE", "Propriedades em lote: escolha, depois o painel (seção, material, giro, apoio)", w => ComEscolha("EM LOTE", null, (n, b) => AbrirEdicaoEsp("propriedades")), "EMLOTE"),
+            C("COPIARPROPRIEDADES", "Copiar seção, material, giro e cardinal de uma barra para outras", w => CmdMatch(), "MA", "MATCHPROP"),
+            C("SECAO", "Seção nas barras: perfil do modelo ou do catálogo (Enter = a das Configurações)", w => CmdSecao(Arg(w)), "SEC", "PERFIL"),
+            C("MATERIAL", "Material nas barras (Enter = o das Configurações)", w => CmdMaterial(Arg(w)), "MAT"),
+            C("GIRO", "Giro da seção (°) nas barras (Enter = o das Configurações)", w => CmdGiro(Arg(w))),
+            C("CARDINAL", "Ponto cardinal (1..9, 10 centroide) nas barras", w => CmdCardinal(Arg(w)), "CARD"),
+            C("APLICARCONFIG", "Seção, material, giro e cardinal das Configurações nas barras", w => CmdAplicarConfig(), "APLICAR"),
+            C("CARGANO", "Carga nodal no caso ativo: Fx,Fy,Fz[,Mx,My,Mz] nos nós", w => CmdCargaNodal(Arg(w)), "CN", "CARGA", "CARGANODAL"),
+            C("CARGADIST", "Carga distribuída (kN/m, global) nas barras; trapezoidal: q1/q2", w => CmdCargaDist(Arg(w)), "CD", "CARGADISTRIBUIDA"),
+            C("CARGAPONTUAL", "Carga pontual nas barras: a (m desde ni ou M) e Fx,Fy,Fz", w => CmdCargaPontual(), "CPT"),
+            C("CARGAAREA", "Carga em área (kN/m²) nas vigas escolhidas ou de um nível", w => CmdCargaArea(), "CAREA", "LAJE"),
+            C("VERIFICAR", "Verificação detalhada de uma barra (escolha antes ou depois)", w => CmdVerificar(), "VB", "COMPARAR"),
             C("MEDIR", "Medir distância entre dois pontos (ΔX, ΔY, ΔZ)", w => CmdMedir(), "DI", "DIST", "ME", "MED", "MEA"),
             C("ID", "Coordenadas de um ponto", w => CmdId()),
             C("ZOOM", "Z = enquadrar tudo; Z O = a seleção", w => { if (w.Length > 1 && w[1].ToUpperInvariant().StartsWith("O")) vista3D?.EnquadrarSelecao(); else vista3D?.Enquadrar(); }, "Z", "ZE"),
             C("ZO", "Zoom na seleção", w => vista3D?.EnquadrarSelecao()),
             C("GRADE", "Grade estrutural: eixos, filas e níveis (0,@6,@6)", w => CmdGrade(), "GR", "GRID"),
-            C("PLACA", "Placa de base no nó do pé do pilar", w => _ = AbrirPlacaEsp(null)),
-            C("ENGASTE", "Engastar os nós escolhidos", w => CmdApoio(Enumerable.Repeat(true, 6).ToArray(), "engaste")),
-            C("ROTULA", "Apoio articulado nos nós escolhidos", w => CmdApoio(new[] { true, true, true, false, false, false }, "articulado"), "FIXO"),
-            C("LIVRE", "Tirar o apoio dos nós escolhidos", w => CmdApoio(new bool[6], "livre")),
-            C("ROTULAR", "Rótula nas duas pontas das barras escolhidas (liga/desliga)", w => CmdRotular(), "RB"),
+            C("PLACA", "Placa de base no nó do pé do pilar (escolha antes ou depois)", w => CmdPlaca()),
+            C("ENGASTE", "Engaste (6 GL travados) nos nós", w => CmdApoio(Engaste6, "ENGASTE", "engaste")),
+            C("ROTULA", "Apoio articulado (translações travadas, giros livres) nos nós", w => CmdApoio(Articulado6, "ARTICULADO", "articulado"), "FIXO", "ARTICULADO"),
+            C("MOVEL", "Apoio móvel (rolete: só uz travado) nos nós", w => CmdApoio(Movel6, "MÓVEL", "móvel"), "ROLETE"),
+            C("LIVRE", "Tira apoio e molas dos nós", w => CmdApoio(new bool[6], "LIVRE", "livre (sem apoio nem molas)")),
+            C("MOLAS", "Molas nos nós: kx,ky,kz[,krx,kry,krz] (kN/m, kN·m/rad)", w => CmdMolas(Arg(w)), "MOLA"),
+            C("ROTULAR", "Rótula nas duas pontas das barras (liga/desliga)", w => CmdRotular(), "RB"),
             C("CALCULAR", "Calcular (F5)", w => Calcular(), "CALC"),
             C("DIMENSIONAR", "Perfil mais leve da família que passa (motor)", w => _ = DimensionarEspacial(false)),
-            C("DIMSEL", "Dimensionar só as barras escolhidas", w => _ = DimensionarEspacial(true)),
+            C("DIMSEL", "Dimensionar só as barras escolhidas (escolha antes ou depois)", w => ComEscolha("DIMSEL", "barra", (n, b) => _ = DimensionarEspacial(true))),
             C("RELATORIO", "Relatório NBR do motor + placas", w => AbrirRelatorio(), "RELATÓRIO"),
             C("TABELAS", "Tabelas de nós, barras e verificação", w => PainelTabelas.Show()),
             C("CASOS", "Casos de carga", w => AbrirCasosConforme()),
@@ -108,7 +122,10 @@ namespace NovoFtool
         {
             t = (t ?? "").Trim();
             if (t == "") return;
+            if (valorPendente != null && vista3D?.Pedindo == true) { _ = valorPendente(t); return; }   // resposta da pergunta em curso (PedirValor)
+            valorPendente = null;   // o pedido acabou (Esc, outra ferramenta): nada fica pendente
             if (Comando3D(t)) return;   // ME/MEDIR e snap único END/MID/INT... (Vista3D.Snap.cs)
+            if (numeroPendente != null && vista3D?.Pedindo != true) numeroPendente = null;   // RO cancelado: o número não gira mais nada
             if (numeroPendente != null && Num.Ler(t, out double num)) { var f = numeroPendente; numeroPendente = null; _ = f(num); return; }
             if (vista3D != null && vista3D.Desenhando && PareceCoordenada(t)) { vista3D.EntrarTexto(t); return; }   // x,y,z  @dx,dy,dz  comprimento
             string[] w = t.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -121,7 +138,7 @@ namespace NovoFtool
                 return;
             }
             if (Esp == null && !cmd.SemModelo) { Log("Nenhum modelo aberto: Ctrl+N cria um em branco, Ctrl+O abre."); return; }
-            numeroPendente = null;
+            numeroPendente = null; valorPendente = null;
             ultimoCmd = w[0];
             cmd.Fazer(w);
         }
@@ -179,7 +196,8 @@ namespace NovoFtool
                 case Key.Delete when !editando && Comando.Text == "": CmdApagar(); return true;
                 case Key.Escape:
                     if (Comando.Text != "") Comando.Text = "";
-                    numeroPendente = null;
+                    else if (vista3D?.Pedindo == true) vista3D.LimparPedido();   // Esc com o foco na linha de comando cancela o comando também
+                    numeroPendente = null; valorPendente = null;
                     FocarVista();
                     return true;
                 case Key.Enter when !editando && Comando.Text == "":
@@ -239,19 +257,32 @@ namespace NovoFtool
             else await Espacial(dd => dd.Adicionar("no", new JsonObject { ["x"] = g.Para.X, ["y"] = g.Para.Y, ["z"] = g.Para.Z }), "Nó novo em " + onde + " (grip + Ctrl).");
         }
 
-        // ---------- seleção: escolha antes ou depois ----------
+        // ---------- seleção: escolha antes ou depois (docs/v3/FLUXO-COMANDOS.md) ----------
 
-        // Com seleção, segue; sem, pede os objetos (clique soma; Enter termina; Esc cancela).
-        void ComSelecao(string nome, Action seguir)
+        static readonly List<string> Nada = new List<string>();
+        static readonly bool[] Engaste6 = { true, true, true, true, true, true }, Articulado6 = { true, true, true, false, false, false }, Movel6 = { false, false, true, false, false, false };
+        static string Arg(string[] w) => w.Length > 1 ? string.Join(" ", w.Skip(1)) : null;
+        static string Ids(List<string> l) => string.Join(", ", l.Take(6)) + (l.Count > 6 ? "…" : "");
+
+        // Substantivo→verbo: a seleção (só o tipo que o comando aceita) vale e o comando segue na hora. Verbo→substantivo: sem
+        // seleção válida, pede na vista ("Selecione objetos": clique soma, Shift tira, janela/cruzamento, pré-realce do tipo;
+        // Enter, Espaço ou botão direito aplica; Esc cancela). tipo: "no", "barra" ou null (os dois). vazioTudo: Enter sem nada
+        // escolhido segue com as listas vazias (= modelo inteiro, UNIR).
+        void ComEscolha(string nome, string tipo, Action<List<string>, List<string>> seguir, string oque = null, bool vazioTudo = false)
         {
-            if (vista3D == null) return;
-            if (vista3D.Selecao.Count > 0) { seguir(); return; }
-            vista3D.PedirObjeto(nome + " — escolha os objetos (clique soma) e Enter", (o, p, mods) =>
+            if (vista3D == null || Esp == null) return;
+            List<string> N() => tipo == "barra" ? new List<string>() : SelNos;
+            List<string> B() => tipo == "no" ? new List<string>() : SelBarras;
+            var n0 = N(); var b0 = B();
+            if (n0.Count + b0.Count > 0) { seguir(n0, b0); return; }
+            vista3D.LimparSelecao();   // a escolha de outro tipo não vale para este comando
+            oque ??= tipo == "no" ? "os nós" : tipo == "barra" ? "as barras" : "os objetos";
+            vista3D.PedirSelecao(nome + " — selecione " + oque + " (Enter termina" + (vazioTudo ? "; Enter sem nada = todos" : "") + ", Esc cancela)", tipo, () =>
             {
-                var ids = ParaIds(o);
-                if (ids.no != null || ids.barra != null) vista3D.Selecionar(ids.no != null ? new[] { ids.no } : null, ids.barra != null ? new[] { ids.barra } : null, ModifierKeys.Shift);
-                return Task.FromResult(true);
-            }, () => Log(nome + " cancelado."), () => { if (vista3D.Selecao.Count > 0) seguir(); else Log(nome + ": nada escolhido."); });
+                var n = N(); var b = B();
+                if (n.Count + b.Count == 0 && !vazioTudo) Log(nome + ": nada selecionado.");
+                else seguir(n, b);
+            }, () => { valorPendente = null; vista3D.LimparSelecao(); Log(nome + " cancelado."); });
         }
 
         static (string no, string barra) ParaIds(object o) =>
@@ -259,14 +290,59 @@ namespace NovoFtool
 
         static string P3(Point3D p) => "(" + Num.Fmt(p.X, 3) + "; " + Num.Fmt(p.Y, 3) + "; " + Num.Fmt(p.Z, 3) + ")";
 
+        // ---------- perguntas na linha de comando (valor, nome, lista) ----------
+
+        Func<string, Task> valorPendente;   // resposta digitada do pedido em curso (ExecutarComando entrega)
+        readonly Dictionary<string, string> ultimoValor = new Dictionary<string, string>();   // a última resposta vira o padrão
+
+        // AutoCAD: "Pergunta <padrão>:". Enter/Espaço com a linha vazia ou botão direito = padrão; Esc cancela. aceitar devolve
+        // false para resposta inválida (e já explicou no histórico): pergunta de novo.
+        void PedirValor(string chave, string prompt, string padrao, Func<string, Task<bool>> aceitar)
+        {
+            if (ultimoValor.TryGetValue(chave, out var u)) padrao = u;
+            async Task Responder(string t)
+            {
+                valorPendente = null; vista3D.LimparPedido(false);
+                if (await aceitar(t.Trim())) ultimoValor[chave] = t.Trim();
+                else PedirValor(chave, prompt, padrao, aceitar);
+            }
+            vista3D.PedirValor(prompt + (padrao != null ? " <" + padrao + ">" : "") + " (Enter " + (padrao != null ? "aceita" : "termina") + ", Esc cancela)",
+                () => { if (padrao != null) _ = Responder(padrao); else { valorPendente = null; Log(prompt.Split(' ')[0] + ": nada digitado, cancelado."); } },
+                () => { valorPendente = null; Log(prompt.Split(' ')[0] + " cancelado."); });
+            valorPendente = Responder;
+            FocarVista();
+        }
+
+        // Com o valor já na linha de comando (SECAO W310x38.7), usa; senão pergunta.
+        void Perguntar(string chave, string arg, string prompt, string padrao, Func<string, Task<bool>> aceitar)
+        {
+            if (arg != null) _ = aceitar(arg.Trim());
+            else PedirValor(chave, prompt, padrao, aceitar);
+        }
+
+        // "0,0,-10" / "1;2;3": de min a max números (ponto decimal); null = inválido.
+        internal static double[] LerLista(string t, int min, int max)
+        {
+            var p = (t ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length < min || p.Length > max) return null;
+            var r = new double[p.Length];
+            for (int i = 0; i < p.Length; i++)
+                if (!double.TryParse(p[i].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out r[i]) || !double.IsFinite(r[i])) return null;
+            return r;
+        }
+
+        static JsonArray Vetor(IEnumerable<double> v) => new JsonArray(v.Select(x => (JsonNode)x).ToArray());
+        static string Nome(JsonNode col, string t) => (col as JsonObject)?.Select(kv => kv.Key).FirstOrDefault(k => string.Equals(k, t, StringComparison.OrdinalIgnoreCase));
+
+        // ---------- edição ----------
+
         // M / CO: ponto base e segundo ponto (CO repete até Enter). Um PUT por operação = um Ctrl+Z.
         void CmdMoverCopiar(bool copiar)
         {
             string nome = copiar ? "COPIAR" : "MOVER";
-            ComSelecao(nome, () =>
+            ComEscolha(nome, null, (nos, bs) =>
             {
-                var nos = SelNos; var bs = SelBarras;
-                vista3D.PedirPonto(nome + " — ponto base", null, async b =>
+                vista3D.PedirPonto(nome + " — ponto base · digite x,y,z", null, async b =>
                 {
                     vista3D.PedirPonto(nome + " — segundo ponto" + (copiar ? " (Enter termina)" : "") + " · digite @dx,dy,dz", b, async q =>
                     {
@@ -274,37 +350,35 @@ namespace NovoFtool
                         await Espacial(d => d.Aplicar(m => copiar ? GeometriaEdicao.Copiar(m, nos, bs, new[] { t }) : GeometriaEdicao.Mover(m, nos, bs, t)),
                                        (copiar ? "Copiado" : "Movido") + " de " + P3(b) + " até " + P3(q) + ".");
                         return copiar;   // COPIAR continua (base fixa)
-                    }, null, true);
+                    }, () => Log(nome + " terminado."), true);
                     return true;
-                });
+                }, () => Log(nome + " cancelado."));
             });
         }
 
         // MI: dois pontos da linha do espelho (em planta); a cópia fica, o original também (como "Apagar origem? Não").
         void CmdEspelhar()
         {
-            ComSelecao("ESPELHAR", () =>
+            ComEscolha("ESPELHAR", null, (nos, bs) =>
             {
-                var nos = SelNos; var bs = SelBarras;
                 vista3D.PedirPonto("ESPELHAR — 1º ponto da linha do espelho", null, async a =>
                 {
                     vista3D.PedirPonto("ESPELHAR — 2º ponto da linha do espelho", a, async b =>
                     {
-                        if (Math.Abs(b.X - a.X) + Math.Abs(b.Y - a.Y) < 1e-9) { Log("Espelho: a linha precisa ter direção em planta."); return true; }
+                        if (Math.Abs(b.X - a.X) + Math.Abs(b.Y - a.Y) < 1e-9) { Log("ESPELHAR: a linha precisa ter direção em planta; clique outro ponto."); return true; }
                         await Espacial(d => d.Aplicar(m => GeometriaEdicao.Copiar(m, nos, bs, new[] { GeometriaEdicao.EspelhoReta(a.X, a.Y, b.X, b.Y) })), "Espelhado na linha " + P3(a) + " → " + P3(b) + ".");
                         return false;
-                    });
+                    }, () => Log("ESPELHAR cancelado."));
                     return true;
-                });
+                }, () => Log("ESPELHAR cancelado."));
             });
         }
 
         // RO: ponto base; ângulo digitado (graus, anti-horário visto de cima) ou clique na direção (ângulo a partir de +X).
         void CmdRotacionar()
         {
-            ComSelecao("ROTACIONAR", () =>
+            ComEscolha("ROTACIONAR", null, (nos, bs) =>
             {
-                var nos = SelNos; var bs = SelBarras;
                 vista3D.PedirPonto("ROTACIONAR — ponto base (eixo vertical)", null, async b =>
                 {
                     async Task Girar(double ang)
@@ -313,55 +387,59 @@ namespace NovoFtool
                         await Espacial(d => d.Aplicar(m => GeometriaEdicao.Mover(m, nos, bs, GeometriaEdicao.Rotacao(b.X, b.Y, ang))), "Girado " + Num.Fmt(ang, 2) + "° em torno de " + P3(b) + ".");
                     }
                     numeroPendente = Girar;
-                    vista3D.PedirPonto("ROTACIONAR — digite o ângulo (°) e Enter, ou clique a direção", b, async q => { await Girar(Math.Atan2(q.Y - b.Y, q.X - b.X) * 180 / Math.PI); return false; });
+                    vista3D.PedirPonto("ROTACIONAR — digite o ângulo (°) e Enter, ou clique a direção", b, async q => { numeroPendente = null; await Girar(Math.Atan2(q.Y - b.Y, q.X - b.X) * 180 / Math.PI); return false; },
+                                       () => { numeroPendente = null; Log("ROTACIONAR cancelado."); });
                     return true;
-                });
+                }, () => Log("ROTACIONAR cancelado."));
             });
         }
 
-        // TR / EX: barra limite, depois as barras (repete até Enter). Cruzamento das retas a até 1 cm.
+        // TR / EX: barras limite (escolhidas antes, ou escolha + Enter), depois as barras a aparar/estender (repete até Enter).
+        // Cruzamento das retas a até 1 cm; com vários limites vale o cruzamento mais perto do clique (aparar) ou da ponta clicada (estender).
         void CmdApararEstender(bool aparar)
         {
             string nome = aparar ? "APARAR" : "ESTENDER";
-            vista3D.PedirObjeto(nome + " — escolha a barra limite", (o, p0, m0) =>
+            ComEscolha(nome, "barra", (nn, lims) =>
             {
-                string lim = ParaIds(o).barra;
-                if (lim == null) { Log(nome + ": clique numa barra."); return Task.FromResult(true); }
-                vista3D.PedirObjeto(nome + " — escolha a barra a " + (aparar ? "aparar (o lado clicado sai)" : "estender (a ponta perto do clique)") + " · Enter termina", async (o2, clique, m2) =>
+                string fim = nome + " terminado.";
+                vista3D.PedirObjeto(nome + " (" + Pl.N(lims.Count, "limite", "limites") + ") — clique a barra a " + (aparar ? "aparar (o lado clicado sai)" : "estender (a ponta perto do clique)") + " (Enter termina, Esc cancela)", async (o2, clique, m2) =>
                 {
                     string alvo = ParaIds(o2).barra;
-                    if (alvo == null || alvo == lim) return true;
+                    if (alvo == null || lims.Contains(alvo)) return true;
                     var j = Esp.Json; var B = j["barras"]; var N = j["nos"];
                     double[] X(string id) => GeometriaEdicao.Xyz(N[id]);
                     string ni = (string)B[alvo]["ni"], nj = (string)B[alvo]["nj"];
-                    var x = GeometriaEdicao.Cruzamento(X(ni), X(nj), X((string)B[lim]["ni"]), X((string)B[lim]["nj"]));
-                    if (x == null) { Log(nome + ": a barra " + alvo + " não cruza a reta da barra " + lim + " (nem prolongada)."); return true; }
-                    double t = x.Value.T, tc = 0.5;
+                    double tc = 0.5;
                     if (clique is Point3D c) { var a = X(ni); var b = X(nj); double[] ab = { b[0] - a[0], b[1] - a[1], b[2] - a[2] }; double l2 = ab.Sum(v => v * v); tc = ((c.X - a[0]) * ab[0] + (c.Y - a[1]) * ab[1] + (c.Z - a[2]) * ab[2]) / l2; }
-                    string ponta;
+                    var xs = lims.Where(l => B[l] != null).Select(l => (l, x: GeometriaEdicao.Cruzamento(X(ni), X(nj), X((string)B[l]["ni"]), X((string)B[l]["nj"])))).Where(c => c.x != null).Select(c => (c.l, P: c.x.Value.P, T: c.x.Value.T)).ToList();
+                    if (xs.Count == 0) { Log(nome + ": a barra " + alvo + " não cruza a reta de " + (lims.Count == 1 ? "a barra " + lims[0] : "nenhum limite") + " (nem prolongada)."); return true; }
+                    string ponta; (string l, double[] P, double T) esc;
                     if (aparar)
                     {
-                        if (t <= 1e-6 || t >= 1 - 1e-6) { Log("APARAR: o limite não corta a barra " + alvo + " por dentro (use ESTENDER)."); return true; }
-                        ponta = tc > t ? nj : ni;
+                        var dentro = xs.Where(c => c.T > 1e-6 && c.T < 1 - 1e-6).ToList();
+                        if (dentro.Count == 0) { Log("APARAR: o limite não corta a barra " + alvo + " por dentro (use ESTENDER)."); return true; }
+                        esc = dentro.OrderBy(c => Math.Abs(c.T - tc)).First();
+                        ponta = tc > esc.T ? nj : ni;
                     }
                     else
                     {
-                        if (t > 1e-6 && t < 1 - 1e-6) { Log("ESTENDER: o limite já corta a barra " + alvo + " (use APARAR)."); return true; }
-                        ponta = t >= 1 ? nj : ni;
+                        var fora = xs.Where(c => c.T <= 1e-6 || c.T >= 1 - 1e-6).ToList();
+                        if (fora.Count == 0) { Log("ESTENDER: o limite já corta a barra " + alvo + " (use APARAR)."); return true; }
+                        var lado = fora.Where(c => tc > 0.5 ? c.T >= 1 - 1e-6 : c.T <= 1e-6).ToList();   // a ponta perto do clique, se der
+                        esc = (lado.Count > 0 ? lado : fora).OrderBy(c => c.T >= 1 - 1e-6 ? c.T - 1 : -c.T).First();
+                        ponta = esc.T >= 1 - 1e-6 ? nj : ni;
                     }
-                    await Espacial(d => d.Aplicar(m => GeometriaEdicao.MoverPonta(m, alvo, ponta, x.Value.P)), "Barra " + alvo + (aparar ? " aparada" : " estendida") + " na barra " + lim + ".");
+                    await Espacial(d => d.Aplicar(m => GeometriaEdicao.MoverPonta(m, alvo, ponta, esc.P)), "Barra " + alvo + (aparar ? " aparada" : " estendida") + " na barra " + esc.l + ".");
                     return true;
-                });
-                return Task.FromResult(true);
-            });
+                }, () => { vista3D.LimparSelecao(); Log(fim); }, () => { vista3D.LimparSelecao(); Log(fim); }, "barra");
+            }, "as barras limite");
         }
 
         void CmdApagar()
         {
             if (Esp == null) return;
-            ComSelecao("APAGAR", () =>
+            ComEscolha("APAGAR", null, (nos, bs) =>
             {
-                var nos = SelNos; var bs = SelBarras;
                 vista3D.LimparSelecao();
                 _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Apagar(m, nos, bs)), "Apagado: " + Pl.N(bs.Count, "barra", "barras") + " e " + Pl.N(nos.Count, "nó", "nós") + " escolhidos.");
             });
@@ -373,23 +451,31 @@ namespace NovoFtool
             if (vista3D != null && vista3D.Selecao.Count > 1) AbrirEdicaoEsp("propriedades");
         }
 
-        // MA: barra de origem, depois as barras que recebem seção, material e giro (Enter termina).
+        // MA: barra de origem (uma escolhida antes, ou clique) e as barras que recebem seção, material, giro e cardinal
+        // (escolhidas antes junto com a origem clicada, ou escolha + Enter). Uma operação = um Ctrl+Z.
         void CmdMatch()
         {
-            vista3D.PedirObjeto("COPIAR PROPRIEDADES — escolha a barra de origem", (o, p, m) =>
+            if (vista3D == null || Esp == null) return;
+            void Destinos(string src)
+            {
+                var b = Esp.Json["barras"][src]; if (b == null) return;
+                string sec = (string)b["secao"], mat = (string)b["material"]; double rot = (double)(b["rot"] ?? 0.0) * 180 / Math.PI; int card = DocumentoEspacial.CardinalDe(b);
+                ComEscolha("COPIAR PROPRIEDADES de " + src, "barra", (nn, dst) =>
+                {
+                    dst = dst.Where(x => x != src).ToList();
+                    if (dst.Count == 0) { Log("COPIAR PROPRIEDADES: escolha barras diferentes da origem " + src + "."); return; }
+                    _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, dst, sec, mat, rot, null), dst, card)),
+                                 Pl.N(dst.Count, "barra", "barras") + " (" + Ids(dst) + ") com " + sec + ", " + mat + ", giro " + Num.Fmt(rot, 1) + "°, cardinal " + card + " (de " + src + ").");
+                }, "as barras que recebem " + sec + " / " + mat);
+            }
+            var sel = SelBarras;
+            if (sel.Count == 1) { vista3D.LimparSelecao(); Destinos(sel[0]); return; }
+            vista3D.PedirObjeto("COPIAR PROPRIEDADES — clique a barra de origem" + (sel.Count > 1 ? " (as " + sel.Count + " escolhidas recebem)" : "") + " (Esc cancela)", (o, p, m) =>
             {
                 string src = ParaIds(o).barra;
-                if (src == null) return Task.FromResult(true);
-                var b = Esp.Json["barras"][src];
-                string sec = (string)b["secao"], mat = (string)b["material"]; double rot = (double)(b["rot"] ?? 0.0) * 180 / Math.PI;
-                vista3D.PedirObjeto("COPIAR PROPRIEDADES de " + src + " (" + sec + ") — escolha as barras · Enter termina", async (o2, p2, m2) =>
-                {
-                    string dst = ParaIds(o2).barra;
-                    if (dst != null && dst != src) await Espacial(d => d.Aplicar(mm => GeometriaEdicao.Propriedades(mm, new string[0], new[] { dst }, sec, mat, rot, null)), "Barra " + dst + ": " + sec + ", " + mat + " (de " + src + ").");
-                    return true;
-                });
-                return Task.FromResult(true);
-            });
+                if (src != null) Destinos(src);
+                return Task.FromResult(src == null);
+            }, () => Log("COPIAR PROPRIEDADES cancelado."), null, "barra");
         }
 
         // Medida simples (o Medir3D do wt-snap assume quando ligado em IniciarMedir3D).
@@ -411,27 +497,226 @@ namespace NovoFtool
 
         void CmdId() => vista3D.PedirPonto("ID — clique o ponto", null, async p => { Log("Ponto " + P3(p) + " m."); return false; });
 
-        void CmdApoio(bool[] ap, string nome)
+        // ---------- apoios e rótulas ----------
+
+        // Apoio nos nós; tira as molas (o apoio novo é o que vale).
+        void CmdApoio(bool[] ap, string nome, string rot) => ComEscolha(nome, "no", (nos, bb) =>
+            _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Apoio(m, nos, ap, new double[6])), "Apoio " + rot + " em " + Pl.N(nos.Count, "nó", "nós") + " (" + Ids(nos) + ")."));
+
+        void CmdMolas(string arg) => ComEscolha("MOLAS", "no", (nos, bb) =>
+            Perguntar("molas", arg, "MOLAS em " + Pl.N(nos.Count, "nó", "nós") + " — kx,ky,kz[,krx,kry,krz] (kN/m, kN·m/rad; 0 = sem mola)", "0,0,10000", async t =>
+            {
+                var k = LerLista(t, 3, 6);
+                if (k == null || k.Any(x => x < 0)) { Log("MOLAS: digite 3 ou 6 rigidezes ≥ 0 separadas por vírgula, ponto decimal (ex.: 0,0,10000)."); return false; }
+                var k6 = k.Concat(new double[6 - k.Length]).ToArray();
+                await Espacial(d => d.Aplicar(m => GeometriaEdicao.Apoio(m, nos, null, k6)), "Molas (" + t + ") em " + Pl.N(nos.Count, "nó", "nós") + " (" + Ids(nos) + "); GL com mola ficou livre.");
+                return true;
+            }));
+
+        void CmdRotular() => ComEscolha("ROTULAR", "barra", (nn, bs) =>
         {
-            var nos = SelNos;
-            if (nos.Count == 0) { Log("Escolha os nós (clique ou janela) e repita."); return; }
-            _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Propriedades(m, nos, new string[0], null, null, null, ap)), "Apoio " + nome + " em " + Pl.N(nos.Count, "nó", "nós") + ".");
+            bool ligar = Esp.Json["barras"][bs[0]]?["params"]?["rotula_i"] == null;   // liga/desliga pelo estado da primeira
+            _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Rotulas(m, bs, ligar)), (ligar ? "Rótulas nas pontas de " : "Rótulas tiradas de ") + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
+        });
+
+        // ---------- seção, material, giro e cardinal das barras existentes ----------
+
+        void CmdSecao(string arg) => ComEscolha("SEÇÃO", "barra", (nn, bs) =>
+            Perguntar("secao", arg, "SEÇÃO de " + Pl.N(bs.Count, "barra", "barras") + " — perfil do modelo ou do catálogo", Esp == null ? null : SecaoDesenho3D(Esp), async t =>
+            {
+                string nome = Nome(Esp?.Json["secoes"], t) ?? t;
+                bool ok = false;
+                await Espacial(async d => { await d.GarantirSecao(nome); await d.Aplicar(m => GeometriaEdicao.Propriedades(m, Nada, bs, nome, null, null, null)); ok = true; },
+                               "Seção " + nome + " em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
+                if (!ok) Log("SEÇÃO: " + t + " não está no modelo nem no catálogo do motor.");
+                return ok;
+            }));
+
+        void CmdMaterial(string arg) => ComEscolha("MATERIAL", "barra", (nn, bs) =>
+            Perguntar("material", arg, "MATERIAL de " + Pl.N(bs.Count, "barra", "barras") + " — " + string.Join(" / ", (Esp.Json["materiais"] as JsonObject)?.Select(kv => kv.Key) ?? new string[0]),
+                      Esp == null ? null : MaterialDesenho3D(Esp) ?? (string)Esp.Json["barras"][bs[0]]?["material"], async t =>
+            {
+                string nome = Nome(Esp?.Json["materiais"], t);
+                if (nome == null) { Log("MATERIAL: " + t + " não está no modelo (Ações › materiais do motor)."); return false; }
+                await Espacial(d => d.Aplicar(m => GeometriaEdicao.Propriedades(m, Nada, bs, null, nome, null, null)), "Material " + nome + " em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
+                return true;
+            }));
+
+        void CmdGiro(string arg) => ComEscolha("GIRO", "barra", (nn, bs) =>
+            Perguntar("giro", arg, "GIRO da seção de " + Pl.N(bs.Count, "barra", "barras") + " (°)", giro3D.ToString("0.###", CultureInfo.InvariantCulture), async t =>
+            {
+                if (!Num.Ler(t, out double g) || !double.IsFinite(g)) { Log("GIRO: digite o ângulo em graus (ex.: 90)."); return false; }
+                await Espacial(d => d.Aplicar(m => GeometriaEdicao.Propriedades(m, Nada, bs, null, null, g, null)), "Giro " + Num.Fmt(g, 1) + "° em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
+                return true;
+            }));
+
+        void CmdCardinal(string arg) => ComEscolha("CARDINAL", "barra", (nn, bs) =>
+            Perguntar("cardinal", arg, "CARDINAL de " + Pl.N(bs.Count, "barra", "barras") + " — 1 a 9 como o teclado numérico (5 centro), 10 centroide", cardinal3D.ToString(CultureInfo.InvariantCulture), async t =>
+            {
+                if (!int.TryParse(t, out int c) || c < 1 || c > 10) { Log("CARDINAL: digite 1 a 9 (7 8 9 em cima, 1 2 3 embaixo) ou 10 (centroide)."); return false; }
+                await Espacial(d => d.Aplicar(m => GeometriaEdicao.Cardinal(m, bs, c)), "Cardinal " + c + " em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
+                return true;
+            }));
+
+        // Modelo › Configurações nas barras escolhidas: seção, material, giro e cardinal de uma vez (um Ctrl+Z).
+        void CmdAplicarConfig() => ComEscolha("APLICAR CONFIGURAÇÕES", "barra", (nn, bs) =>
+        {
+            var d0 = Esp; string sec = SecaoDesenho3D(d0), mat = MaterialDesenho3D(d0); double g = giro3D; int c = cardinal3D;
+            _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, bs, sec, mat, g, null), bs, c)),
+                         "Configurações em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + "): " + (sec ?? "seção mantida") + ", " + (mat ?? "material mantido") + ", giro " + Num.Fmt(g, 1) + "°, cardinal " + c + ".");
+        });
+
+        // ---------- cargas no caso ativo ----------
+
+        string CasoOuAviso(string nome)
+        {
+            string c = Esp?.CasoAtivo;
+            if (c == null) Log(nome + ": o modelo não tem caso de carga ativo (Ações › Casos de carga).");
+            return c;
         }
 
-        void CmdRotular()
+        void CmdCargaNodal(string arg)
         {
-            var bs = SelBarras;
-            if (bs.Count == 0) { Log("Escolha as barras e repita ROTULAR."); return; }
-            bool ligar = Esp.Json["barras"][bs[0]]?["params"]?["rotula_i"] == null;
-            _ = Espacial(d => d.Aplicar(m =>
-            {
-                foreach (string b in bs)
+            string caso = CasoOuAviso("CARGA NODAL"); if (caso == null) return;
+            ComEscolha("CARGA NODAL", "no", (nos, bb) =>
+                Perguntar("cargano", arg, "CARGA NODAL (" + caso + ") em " + Pl.N(nos.Count, "nó", "nós") + " — Fx,Fy,Fz[,Mx,My,Mz] (kN, kN·m; global, Z para cima)", "0,0,-10", async t =>
                 {
-                    var p = m["barras"][b]["params"] as JsonObject ?? (JsonObject)(m["barras"][b]["params"] = new JsonObject());
-                    if (ligar) { p["rotula_i"] = true; p["rotula_j"] = true; } else { p.Remove("rotula_i"); p.Remove("rotula_j"); }
-                }
-                return m;
-            }), (ligar ? "Rótulas nas pontas de " : "Rótulas tiradas de ") + Pl.N(bs.Count, "barra", "barras") + ".");
+                    var f = LerLista(t, 3, 6);
+                    if (f == null) { Log("CARGA NODAL: digite Fx,Fy,Fz ou Fx,Fy,Fz,Mx,My,Mz (ponto decimal; ex.: 0,0,-10)."); return false; }
+                    var f6 = f.Concat(new double[6 - f.Length]).ToArray();
+                    var itens = new JsonArray(nos.Select(n => (JsonNode)new JsonObject { ["tipo"] = "carga_nodal", ["dados"] = new JsonObject { ["caso"] = caso, ["no"] = n, ["F"] = Vetor(f6) } }).ToArray());
+                    await Espacial(d => d.Lote(itens), "Carga nodal (" + t + ") no caso " + caso + " em " + Pl.N(nos.Count, "nó", "nós") + " (" + Ids(nos) + ").");
+                    return true;
+                }));
+        }
+
+        void CmdCargaDist(string arg)
+        {
+            string caso = CasoOuAviso("CARGA DISTRIBUÍDA"); if (caso == null) return;
+            ComEscolha("CARGA DISTRIBUÍDA", "barra", (nn, bs) =>
+                Perguntar("cargadist", arg, "CARGA DISTRIBUÍDA (" + caso + ") em " + Pl.N(bs.Count, "barra", "barras") + " — qx,qy,qz (kN/m, global); trapezoidal: q em ni / q em nj", "0,0,-5", async t =>
+                {
+                    var partes = t.Split('/');
+                    var q1 = LerLista(partes[0], 3, 3); var q2 = partes.Length == 2 ? LerLista(partes[1], 3, 3) : null;
+                    if (q1 == null || partes.Length > 2 || (partes.Length == 2 && q2 == null)) { Log("CARGA DISTRIBUÍDA: digite qx,qy,qz (ex.: 0,0,-5) ou qx,qy,qz/qx2,qy2,qz2 (trapezoidal)."); return false; }
+                    var itens = new JsonArray(bs.Select(b =>
+                    {
+                        var dados = new JsonObject { ["caso"] = caso, ["barra"] = b, ["q"] = Vetor(q1) };
+                        if (q2 != null) dados["q2"] = Vetor(q2);
+                        return (JsonNode)new JsonObject { ["tipo"] = "carga_distribuida", ["dados"] = dados };
+                    }).ToArray());
+                    await Espacial(d => d.Lote(itens), "Carga distribuída (" + t + ") kN/m no caso " + caso + " em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
+                    return true;
+                }));
+        }
+
+        double Comprimento(string barra)
+        {
+            var j = Esp.Json; var b = j["barras"][barra];
+            var a = GeometriaEdicao.Xyz(j["nos"][(string)b["ni"]]); var c = GeometriaEdicao.Xyz(j["nos"][(string)b["nj"]]);
+            return Math.Sqrt(Enumerable.Range(0, 3).Sum(i => (c[i] - a[i]) * (c[i] - a[i])));
+        }
+
+        // CPT: escolha as barras, a distância a (desde ni; M = meio de cada barra) e a força.
+        void CmdCargaPontual()
+        {
+            string caso = CasoOuAviso("CARGA PONTUAL"); if (caso == null) return;
+            ComEscolha("CARGA PONTUAL", "barra", (nn, bs) =>
+                PedirValor("cpt_a", "CARGA PONTUAL (" + caso + ") em " + Pl.N(bs.Count, "barra", "barras") + " — distância a desde ni (m) ou M (meio)", "M", async ta =>
+                {
+                    bool meio = ta.Equals("M", StringComparison.OrdinalIgnoreCase) || ta.Equals("MEIO", StringComparison.OrdinalIgnoreCase);
+                    double a = 0;
+                    if (!meio && (!Num.Ler(ta, out a) || a < 0)) { Log("CARGA PONTUAL: digite a distância em m (≥ 0) ou M para o meio."); return false; }
+                    var longe = meio ? null : bs.FirstOrDefault(b => a > Comprimento(b) + 1e-9);
+                    if (longe != null) { Log("CARGA PONTUAL: a = " + Num.Fmt(a, 3) + " m passa do fim da barra " + longe + " (L = " + Num.Fmt(Comprimento(longe), 3) + " m)."); return false; }
+                    PedirValor("cpt_f", "CARGA PONTUAL (" + caso + ") a = " + (meio ? "meio" : Num.Fmt(a, 3) + " m") + " — Fx,Fy,Fz (kN, global)", "0,0,-10", async tf =>
+                    {
+                        var f = LerLista(tf, 3, 3);
+                        if (f == null) { Log("CARGA PONTUAL: digite Fx,Fy,Fz (ponto decimal; ex.: 0,0,-10)."); return false; }
+                        var itens = new JsonArray(bs.Select(b => (JsonNode)new JsonObject { ["tipo"] = "carga_pontual", ["dados"] = new JsonObject { ["caso"] = caso, ["barra"] = b, ["a"] = meio ? Comprimento(b) / 2 : a, ["F"] = Vetor(f) } }).ToArray());
+                        await Espacial(d => d.Lote(itens), "Carga pontual (" + tf + ") kN a " + (meio ? "meio vão" : Num.Fmt(a, 3) + " m de ni") + " no caso " + caso + " em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
+                        return true;
+                    });
+                    return true;
+                }));
+        }
+
+        // Carga em área (laje): vigas escolhidas (antes ou na hora; um nível e uma direção) ou a cota do nível digitada durante
+        // a escolha (pergunta a direção). Depois p (kN/m²). Larguras de influência: CargaArea (todas as paralelas do nível).
+        void CmdCargaArea()
+        {
+            var d0 = Esp; if (d0 == null || vista3D == null) return;
+            string caso = CasoOuAviso("CARGA EM ÁREA"); if (caso == null) return;
+            void PedirP(double z, bool emX, List<string> so) =>
+                PedirValor("area_p", "CARGA EM ÁREA (" + caso + ") no nível z = " + Num.Fmt(z, 2) + " m, vigas em " + (emX ? "X" : "Y") + (so != null ? " (" + so.Count + " escolhidas)" : "") + " — p (kN/m², para baixo)", "3", async t =>
+                {
+                    if (!Num.Ler(t, out double p) || p <= 0) { Log("CARGA EM ÁREA: digite p > 0 em kN/m² (ex.: 3)."); return false; }
+                    await DistribuirArea(z, p, emX, so);
+                    return true;
+                });
+            void DeVigas(List<string> bs)
+            {
+                var j = Esp.Json; var N = j["nos"];
+                var info = bs.Select(b => { var a = GeometriaEdicao.Xyz(N[(string)j["barras"][b]["ni"]]); var c = GeometriaEdicao.Xyz(N[(string)j["barras"][b]["nj"]]); return (b, a, c); }).ToList();
+                if (info.Any(x => Math.Abs(x.a[2] - x.c[2]) > 0.001) || info.Any(x => Math.Abs(x.a[2] - info[0].a[2]) > 0.001)) { Log("CARGA EM ÁREA: escolha vigas horizontais de um nível só."); return; }
+                bool emX = info.All(x => Math.Abs(x.c[1] - x.a[1]) <= 1e-3 * Math.Max(1e-9, Math.Abs(x.c[0] - x.a[0])));
+                bool emY = info.All(x => Math.Abs(x.c[0] - x.a[0]) <= 1e-3 * Math.Max(1e-9, Math.Abs(x.c[1] - x.a[1])));
+                if (!emX && !emY) { Log("CARGA EM ÁREA: escolha vigas de uma direção só (paralelas a X ou a Y): a laje vai numa direção."); return; }
+                PedirP(info[0].a[2], emX, bs);
+            }
+            var sel = SelBarras;
+            if (sel.Count > 0) { DeVigas(sel); return; }
+            vista3D.LimparSelecao();
+            vista3D.PedirSelecao("CARGA EM ÁREA — selecione as vigas ou digite a cota z do nível (Enter termina, Esc cancela)", "barra", () =>
+            {
+                valorPendente = null;
+                if (SelBarras.Count == 0) Log("CARGA EM ÁREA: nada selecionado.");
+                else DeVigas(SelBarras);
+            }, () => { valorPendente = null; vista3D.LimparSelecao(); Log("CARGA EM ÁREA cancelada."); });
+            valorPendente = async t =>
+            {
+                if (!Num.Ler(t, out double z)) { Log("CARGA EM ÁREA: digite a cota z do nível em m (ex.: 3) ou escolha as vigas."); return; }
+                var nivel = Esp.NiveisComVigas().Where(x => Math.Abs(x - z) <= 0.001).Select(x => (double?)x).FirstOrDefault();
+                if (nivel == null) { Log("CARGA EM ÁREA: não há vigas no nível z = " + Num.Fmt(z, 2) + " m (há: " + string.Join(", ", Esp.NiveisComVigas().Select(x => Num.Fmt(x, 2))) + ")."); return; }
+                valorPendente = null; vista3D.LimparPedido(false); vista3D.LimparSelecao();
+                PedirValor("area_dir", "CARGA EM ÁREA no nível z = " + Num.Fmt(nivel.Value, 2) + " m — vigas que recebem [X/Y]", "X", async dir =>
+                {
+                    string u = dir.ToUpperInvariant();
+                    if (u != "X" && u != "Y") { Log("CARGA EM ÁREA: responda X (vigas paralelas a X) ou Y."); return false; }
+                    PedirP(nivel.Value, u == "X", null);
+                    return true;
+                });
+                await Task.CompletedTask;
+            };
+        }
+
+        // ---------- outros que dependiam da seleção ----------
+
+        // Verificação detalhada de uma barra: a escolhida ou um clique.
+        void CmdVerificar()
+        {
+            if (vista3D == null || Esp == null) return;
+            if (SelBarras.Count > 0) { VerificarBarraConforme(null); return; }
+            vista3D.PedirObjeto("VERIFICAR — clique a barra (Esc cancela)", (o, p, m) =>
+            {
+                string b = ParaIds(o).barra; if (b == null) return Task.FromResult(true);
+                vista3D.Selecionar(null, new[] { b });
+                VerificarBarraConforme(null);
+                return Task.FromResult(false);
+            }, () => Log("VERIFICAR cancelado."), null, "barra");
+        }
+
+        // Placa de base: o nó escolhido ou um clique; Enter sem clicar = o primeiro pé de pilar (o de antes).
+        void CmdPlaca()
+        {
+            if (vista3D == null || Esp == null) return;
+            if (SelNos.Count > 0) { _ = AbrirPlacaEsp(null); return; }
+            vista3D.PedirObjeto("PLACA — clique o nó do pé do pilar (Enter = o primeiro pé, Esc cancela)", (o, p, m) =>
+            {
+                string n = ParaIds(o).no; if (n == null) return Task.FromResult(true);
+                _ = AbrirPlacaEsp(n);
+                return Task.FromResult(false);
+            }, () => Log("PLACA cancelada."), () => _ = AbrirPlacaEsp(null), "no");
         }
 
         void CmdSelBase()

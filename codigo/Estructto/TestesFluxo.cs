@@ -896,6 +896,7 @@ namespace NovoFtool
             r.Exigir(viga != null && corte != null && curta != null, "barras para aparar/estender");
             Comando(w, "TR");
             Esperar(v.EscolherPorCodigo(v.ObjetoPorId("barra", viga), Q(1, 0, 3)));
+            v.Tecla(Key.Enter);   // limites escolhidos: Enter (docs/v3/FLUXO-COMANDOS.md)
             Esperar(v.EscolherPorCodigo(v.ObjetoPorId("barra", corte), Q(3, 1.2, 3)));
             AteCond(() => NoEm(J(w), 3, 1.5, 3) == null, 20, w);
             v.Tecla(Key.Enter);
@@ -905,6 +906,7 @@ namespace NovoFtool
             Desfaz("APARAR", () => NoEm(J(w), 3, 1.5, 3) != null, () => NoEm(J(w), 3, 1.5, 3) == null);
             Comando(w, "EX");
             Esperar(v.EscolherPorCodigo(v.ObjetoPorId("barra", viga), Q(1, 0, 3)));
+            v.Tecla(Key.Enter);   // limites escolhidos: Enter (docs/v3/FLUXO-COMANDOS.md)
             Esperar(v.EscolherPorCodigo(v.ObjetoPorId("barra", curta), Q(4, -1.2, 3)));
             AteCond(() => NoEm(J(w), 4, 0, 3) != null, 20, w);
             v.Tecla(Key.Enter);

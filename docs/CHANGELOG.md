@@ -11,6 +11,10 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
   desenhados como **propostas** (sugerir + verificar do motor, ou o tipo de nó) com chip na vista; analítico com linhas de
   1,5 px e nós de 6 px na tela, apoios em símbolo. Detalhes: [docs/VISTA3D.md](VISTA3D.md) ("Parafusos, ligações propostas
   e linhas do analítico"). Capturas `58-*` (`ESTRUCTTO_CAPTURAS=visual`).
+## 21/10/2026 — Comandos nas duas ordens (branch wt-comandos)
+
+- A pedido do usuário ("o engaste só funciona se eu selecionar primeiro"): todo comando age na seleção ou pede na vista (clique, janela, Shift tira, pré-realce, Enter/Esc) e pergunta o resto na linha de comando. Novos: MOVEL, MOLAS, SECAO, MATERIAL, GIRO, CARDINAL, APLICAR, CN, CD, CPT, LAJE, VERIFICAR.
+- 10 funções que não funcionavam direito corrigidas (Móvel inexistente, dica do 2D na linha de comando, ângulo pendente do RO, painéis agindo no modelo inteiro, Ctrl+Z no meio do comando…). Tabela e lista: [docs/v3/FLUXO-COMANDOS.md](v3/FLUXO-COMANDOS.md). Testes: `--testes-comandos` (216 ok).
 
 ## 21/10/2026 — Testes de fluxo ponta a ponta (branch wt-e2e)
 

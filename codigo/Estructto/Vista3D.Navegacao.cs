@@ -441,8 +441,8 @@ namespace NovoFtool
                     if (dv.Length < 3) { if (Desenhando) AtualizarCursor(); return; }
                     moveu = true;
                     bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-                    if (botaoIni == MouseButton.Left && shift) IniciarOrbita(pressIni);   // Shift + esquerdo = órbita (touchpad)
-                    else if (botaoIni == MouseButton.Left && !Desenhando && pedeObjeto == null) { modo = Modo.Caixa; caixaIni = pressIni; }
+                    if (botaoIni == MouseButton.Left && shift && !pedeSelecao) IniciarOrbita(pressIni);   // Shift + esquerdo = órbita (touchpad); no "Selecione objetos" é a janela que tira
+                    else if (botaoIni == MouseButton.Left && !Desenhando && (pedeObjeto == null || pedeSelecao)) { modo = Modo.Caixa; caixaIni = pressIni; }
                     else { modo = Modo.Arrasto; if (Desenhando) AtualizarCursor(); return; }   // desenhando: arrastar e soltar = clicar onde soltou
                     break;
                 case Modo.Arrasto:
@@ -472,6 +472,7 @@ namespace NovoFtool
             if (Desenhando) AtualizarCursor();
             else
             {
+                if (pedeObjeto != null) AtualizarRealce(p);   // pré-realce do que o clique pegaria (Vista3D.Grips.cs)
                 var g = gripQuente == null ? GripSob(p) : null;
                 if (!Equals(g, gripHover)) { gripHover = g; Cursor = g != null ? Cursors.Hand : CursorFerramenta; sobre.InvalidateVisual(); }
             }
@@ -515,6 +516,7 @@ namespace NovoFtool
         {
             if (Desenhando) { _ = ClicarTela(p, mods); return; }
             if (pedeObjeto != null) { _ = EscolherPedido(p, mods); return; }
+            if (pedeValor) return;   // esperando a resposta digitada
             if (GripSob(p) is Grip g) { Esquentar(g); return; }
             SelecionarClique(p, mods);   // Navegar também escolhe: a seleção (Selecao) é uma só para a edição
         }

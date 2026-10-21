@@ -325,6 +325,8 @@ repete o último comando.** Com uma ferramenta ou pedido de ponto em curso, núm
 digitados na linha de comando, valem como ponto (`x,y,z`, `@dx,dy,dz`, `#x,y,z`, `L<ângulo` — `Snap3D.LerCoordenada`) ou
 comprimento na direção do cursor. `END`, `MID`, `INT`… = snap único (Vista3D.Snap.cs).
 
+**Todos os comandos que agem sobre objetos funcionam nas duas ordens** (escolha antes ou depois, com janela, Shift tira, pré-realce do tipo): [v3/FLUXO-COMANDOS.md](v3/FLUXO-COMANDOS.md).
+
 | Alias | Comando |
 |---|---|
 | `L`, `B`, `LINE`, `VG` | Barra (cadeia de cliques; Enter/Esc/direito termina) |
@@ -342,7 +344,9 @@ comprimento na direção do cursor. `END`, `MID`, `INT`… = snap único (Vista3
 | `GR` | Grade estrutural |
 | `U`, `REFAZER` | Desfazer / refazer (Ctrl+Z / Ctrl+Y) |
 | `CALC` (F5, Ctrl+F9), `DIMENSIONAR`, `PLACA`, `RELATORIO`, `CASOS`, `TABELAS` | |
-| `ENGASTE`, `ROTULA`, `LIVRE`, `ROTULAR`/`RB` | Apoio nos nós escolhidos; rótulas nas duas pontas das barras |
+| `ENGASTE`, `ROTULA`, `MOVEL`, `LIVRE`, `MOLAS`, `ROTULAR`/`RB` | Apoios e molas nos nós; rótulas nas duas pontas das barras |
+| `SECAO`, `MATERIAL`, `GIRO`, `CARDINAL`, `APLICAR`, `LOTE` | Propriedades das barras existentes |
+| `CN`, `CD`, `CPT`, `LAJE`, `VB` | Cargas nodal / distribuída / pontual / em área no caso ativo; verificar barra |
 | `N`, `Q`, `MOMENTO`, `DEF`, `CALOR` | Diagramas |
 | `ORTO`, `POLAR`, `OSNAP`, `NIVEL +`/`NIVEL -`, `PERSP`, `REALISTA`, `SELTODAS`, `SELNOS`, `SELBASE`, `ABA`, `AJUDA`/`?` | |
 
