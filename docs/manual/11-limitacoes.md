@@ -1,85 +1,71 @@
-# 11. Limitações e responsabilidade
+# 11. Limitações e responsabilidade técnica
 
-> **AVISO.** O Estructto é ferramenta de apoio. Todo resultado exige verificação por engenheiro responsável, com ART.
-> O software não substitui as normas, o julgamento profissional nem a conferência independente.
+**O Estructto é uma ferramenta de apoio ao projeto.** O engenheiro responsável deve revisar hipóteses, modelo, ações, combinações e resultados, realizar conferências independentes e providenciar a ART pertinente. O software e a IA não assumem a responsabilidade técnica.
 
-Este manual cita itens de norma por número, sem reproduzir o texto da ABNT. A lista oficial, por item, vem do código:
-ferramenta MCP `normas_implementadas` (`projeto.normas_implementadas()`). Esta página resume o que ela e a documentação declaram.
+Este manual descreve a implementação da v3. A referência por item e edição está nos resultados e na ferramenta MCP `normas_implementadas`. Consulte os textos oficiais e confirme sua aplicabilidade ao projeto; a presença do nome de uma norma na interface não indica cobertura integral nem atualização automática de edição.
 
-## Normas e edições usadas
+## Normas declaradas na implementação
 
-| Norma | Edição no código | Cobertura |
-|---|---|---|
-| NBR 8681 | 2003 | Combinações ELU normais e excepcionais (sismo), ELS quase permanente, frequente e rara; tabela 6 (ψ) |
-| NBR 8800 | 2008 | Barras de aço (tração, compressão, flexão FLT/FLM/FLA, cortante, interação, torção), ligações parafusadas e soldadas, estabilidade (4.9.4, anexo D), deslocamentos (anexo C), ações 4.7.6.1 |
-| NBR 14762 | 2010 | Perfis formados a frio: largura efetiva, distorcional, compressão, flexão, cortante |
-| NBR 6118 | 2023 (alguns itens 2014) | Concreto armado: flexão, cisalhamento, torção, fissuração, flechas, pilares |
-| NBR 6123 | 2023 (Ca e tabelas de coeficientes: 1988) | Vento estático equivalente por pavimento |
-| NBR 15421 | 2006 | Sismo: forças horizontais equivalentes |
-| NBR 6120 | 2019 | Cargas de uso e pesos de materiais |
+| Referência | Escopo implementado / cuidado |
+|---|---|
+| NBR 8681:2003 | conjuntos ELU e ELS; confira tipos de ação e coeficientes |
+| NBR 8800:2008 | conjuntos de verificações de barras de aço e ligações; há itens fora do domínio |
+| NBR 14762:2010 | perfis formados a frio pelo método de largura efetiva |
+| NBR 6118:2023, com alguns itens de 2014 | verificações de concreto limitadas aos domínios declarados |
+| NBR 6123:2023, com coeficientes/tabelas de 1988 | vento estático de edificação e por barra |
+| NBR 8400:1984 | vento e combinações I/II/III para equipamentos; conversão ao motor de estados limites |
+| NBR 15421:2006 | forças sísmicas horizontais equivalentes em estruturas regulares |
+| NBR 6120:2019 | usos e pesos listados; não cobre toda ação necessária |
+| ACI 318-19 cap. 17 | modos de concreto de chumbadores previstos no método de placa de base |
 
-Edições mais novas (NBR 8800:2024, NBR 8681:2025, NBR 15421:2023) não foram confirmadas em fonte pública; o código mantém a edição anterior
-e diz isso em cada item.
+## Modelo, edição e análise
 
-## O que não está coberto, por assunto
+- O modelo é de barras: Laje/carga em área não cria elemento de casca nem distribui em duas direções. A distribuição não reconhece aberturas ou ausência de laje.
+- Não há barra só de tração. Tirantes e diagonais de contraventamento também trabalham à compressão.
+- O cardinal desloca representação e exportação do perfil; não cria automaticamente excentricidade na análise.
+- A deformada visual usa segmentos entre nós. A envoltória exibe um extremo de maior módulo por estação, sem duas curvas simultâneas. Use combinação específica para simultaneidade e equilíbrio.
+- Rotacionar gira em torno do eixo vertical; Espelhar por linha usa plano vertical. Aparar/Estender considera os eixos das barras, não suas faces físicas.
+- Um motor da interface mantém um modelo ativo; ao alternar abas, o histórico de desfazer pode reiniciar. Painéis de edição sem seleção podem atuar no modelo inteiro.
+- Existem molas e recalques no motor; confira unidades, direções, caso REC e coeficientes. O coeficiente γε de recalque da tabela 3 da NBR 8681 consta entre os pontos a conferir no texto oficial.
+- Indicadores de estabilidade não substituem análise completa de segunda ordem. Avalie o domínio dos critérios, incluindo o de γz para edifícios com quatro pavimentos ou mais.
+- A suíte de fluxo ponta a ponta está documentada como parcial na entrega da v3; os testes existentes não significam validação integral de todos os fluxos.
 
-### Análise
-- Arquivos 2D antigos abrem convertidos com o que sai do plano travado (pórtico plano no espaço).
-- Vista 3D: deformada em cordas, sem envoltória nos diagramas; o ponto cardinal ainda não desloca o perfil desenhado.
-- Equipamento giratório: só posições 0° e 180°; ψ declarado pelo usuário.
-- Motor Python ainda não calcula molas (apoios elásticos) nem recalques; carga giratória; carga linear em barra com trecho rígido.
-- Placa de base: só flexão no eixo forte do pilar; Dimensionar escolhe por palpite de massa, não pelo ótimo global.
-- Um modelo por servidor: pilha de desfazer vale só para o documento ativo.
+## Ações
 
-### Ações
-- NBR 8681: sem ações indiretas (tab. 3), sem combinações especiais ou de construção; G favorável e desfavorável não separados dentro do mesmo carregamento.
-- NBR 8800 tab. 1 e 2: ações truncadas e cargas móveis/pontes rolantes não tabeladas.
-- NBR 6123: sem platibanda, torção de vento, efeitos de vizinhança, vento dinâmico (só aviso), alta turbulência; tabelas de paredes e telhados só para h/b ≤ 3/2, θ ≤ 60°, a ≥ b.
-- NBR 15421: só estruturas regulares; sem análise modal espectral; classe F de terreno não coberta; sem fator de amplificação torcional Ax; sem alvenaria estrutural.
-- NBR 6120: só os usos listados; sem redução de carga, cargas concentradas, divisórias e forças em guarda-corpos.
+- Vento: sem avaliação completa de efeitos dinâmicos, vizinhança, alta turbulência ou torção por excentricidade. Tabelas de paredes/telhados têm limites geométricos (h/b ≤ 3/2, θ ≤ 60°, a ≥ b).
+- Vento por barra não acrescenta proteção de reticulados, equipamentos ou fechamentos. Revise coeficientes, área exposta e cargas complementares.
+- Na NBR 8400, a conversão ν/γa1 é exata para escoamento e aproximada para flambagem; não cobre automaticamente fadiga, dinâmica e todas as situações de operação. Grupo e ψ precisam de justificativa.
+- Sismo: sem análise modal espectral, classe F, amplificação torcional Ax ou cobertura geral de irregularidades.
+- Combinações não cobrem automaticamente todas as fases especiais/de construção. Permanentes favoráveis e desfavoráveis não são separados dentro de um mesmo carregamento.
+- Cargas de uso: redução, divisórias, cargas concentradas e guarda-corpos podem exigir lançamento e conferência próprios.
 
-### Aço (NBR 8800)
-- Verificação do motor Interno é simplificada: sem FLT, sem flambagem local calculada; parede esbelta só avisada.
-- Motor Python: alma esbelta (anexo H), cantoneira simples (flexão), T e I monossimétrico → "não verificado", que reprova.
-- An e Ct informados pelo usuário em tração; esbeltez de tração (5.2.8) usa K·L no motor (mais conservador que a norma); plano instável com k = 1.
-- Tubos: espessura de cálculo 0,93t só quando informada; tubo circular com D/t > 0,45E/fy fora do escopo.
-- Terças com sucção, travessas e vigas de rolamento: deslocamentos não cobertos.
-- Barras compostas: presilhas maiores que chapa espaçadora e ligação genérica não verificadas.
+## Barras
 
-### Perfis formados a frio (NBR 14762)
-- Método da seção efetiva (MSE) não implementado; um só método (largura efetiva) para compressão e flexão.
-- FLT em y não calculada; Vx não verificada; alma sem enrijecedores transversais; limite de esbeltez 300 em tração não verificado.
-- Torção: critério do CYPE (a norma não traz verificação).
+- Aço: há seções e modos fora do escopo, como certas almas esbeltas, cantoneiras em flexão e seções monossimétricas. Confira os itens não verificados. An, Ct e travamentos dependem dos dados fornecidos.
+- A distorcional de Ue usa fórmula simplificada com casos conhecidos fora do domínio. Reprovações ou aprovações exigem conferência específica; não contorne um aviso apenas trocando parâmetros.
+- Perfis formados a frio: sem método da seção efetiva, com limitações de FLT, cisalhamento e enrijecedores descritas pelo motor.
+- Concreto: há limitações em detalhamento, fluência, pilares com λ > 90, pilares-parede, armaduras e flechas. A geração não fornece detalhamento executivo completo.
+- Dimensionar usa busca por família e estimativa de massa; não garante ótimo global. Verifique novamente o conjunto após mudar rigidez.
 
-### Concreto (NBR 6118)
-- Seção T só com mesa comprimida; armadura simétrica nas faces; 2 camadas de armadura na fissuração (só a inferior).
-- Detalhamento não calculado: decalagem al, bitola e espaçamento efetivos do estribo, emendas defasadas.
-- Torção tratada como de equilíbrio; banzo comprimido não verificado.
-- Pilar: λ > 90 fora do escopo; fluência (15.8.4) não considerada; pilar-parede fora do escopo.
-- Estabilidade global válida para 4 pavimentos ou mais.
-- Flechas: Ieq na seção de momento máximo; subconjunto da tabela 13.3.
-- Lajes: apenas bordos apoiados no item 19.3.3.2.
+## Ligações e placa de base
 
-### Ligações
-- Parafusos: efeito de alavanca (6.3.5) e deslizamento por atrito (6.3.4.3) não implementados; furos alargados e alongados não tratados.
-- Solda: aumento de resistência com o ângulo θ não usado (a favor da segurança).
-- Chapa simples: sem interação V+M, sem ruptura por flexão na seção líquida, sem rasgamento, apoio não verificado.
-- Placa de base: no plano do apoio; **não verifica pressão no concreto, punção nem distância do chumbador à borda do concreto**.
-- Chumbadores: valores são cargas últimas médias de ensaio; o coeficiente de segurança é do projetista.
+- A cobertura varia por tipo. Confira avisos de efeito alavanca, deslizamento, furos, apoio, recortes e chapas. Os itens NBR 8800 5.7.x, mínimo de 45 kN de 6.1 e folgas de furos permanecem pontos documentados para conferência oficial.
+- Grupos precisam de revisão de equivalência construtiva. A pior ligação depende da taxa do projeto aplicado e de todas as combinações; a indicação sem projeto é uma estimativa de demanda.
+- Ações diretamente no nó do apoio não entram como esforço da ponta da barra. A rotina genérica de ligação de tração não verifica flambagem de chapa em compressão.
+- Placa NBR: verifica pressão e bloco de compressão no concreto. My e Mz são verificados separadamente, adotando o pior, sem interação biaxial simultânea.
+- Não há cobertura completa de enrijecedores, efeito alavanca, armadura de ancoragem, cone ACI 349 e solda da barra de cisalhamento. Há limites na interação dos modos de aço do ACI e na verificação sísmica de ancoragem; leia os avisos específicos.
+- A espessura de chapa é verificada pelo CBCA; Pfeil é conferência. Catálogos de fixação e coeficientes do fabricante exigem validação para substrato, instalação, bordas, hef e condição de carregamento reais.
+- O método legado pode subestimar tração de chumbadores em cerca de 3,3 vezes no caso documentado. Revise bases calculadas por ele, inclusive a do guincho; sua comparação não é critério de aprovação da v3.
 
-### Importação CYPE
-- Presilhas e ligações genéricas sem item na norma → não verificado.
-- Comparação depende de hipóteses; diferenças de critério são esperadas.
+## Visualização, exportação e importação
 
-## Diferenças entre os motores
+- Snap tem limitações em perspectiva e pode atrair arestas ocultas. Interseção aparente não comprova nó comum. Os modos de snap escolhidos voltam ao padrão na próxima abertura.
+- Medir não cria cotas permanentes. Peso supõe aço; áreas de seção usam contornos sem raios de concordância.
+- Realista pode simplificar perfis e ocultar detalhes à distância; setas/diagramas passam à frente das peças. Uma ligação visível pode usar dados sem aprovação.
+- DWG/DXF usa malha, sem 3DSOLID. STEP é facetado. As exportações não incluem ligações, recortes do Realista, cargas ou resultados; confirme compatibilidade no programa receptor.
+- Importação e comparação CYPE dependem do conteúdo gravado e das hipóteses. Diferenças de norma, vínculos e parâmetros exigem investigação.
+- O relatório principal ainda não incorpora automaticamente o memorial das ligações em geral; gere e entregue os memoriais separados. As placas têm anexo próprio.
 
-Interno e Python podem dar taxas diferentes para a mesma barra por critérios distintos (tensão admissível × ELU, flecha dentro ou
-fora do aproveitamento). Ver [página 1](01-primeiros-passos.md). Use o motor Python para verificação por norma.
+## Responsabilidade na entrega
 
-## Responsabilidade
-
-1. O engenheiro responsável revisa modelo, ações, combinações, hipóteses e resultados.
-2. A ART cobre o projeto; o Estructto não assume essa responsabilidade.
-3. Confira à mão ao menos uma conta de cada tipo antes de entregar.
-4. Registre, no memorial, o que o software não verifica (seção 9.5 do memorial completo).
-5. Resultado de IA (MCP) segue a mesma regra: é rascunho até a verificação.
+Registre no memorial hipóteses, edições normativas, verificações não cobertas e complementações efetuadas. Confira ações, equilíbrio, esforços, flechas, estabilidade, barras e ligações por meios independentes adequados. O engenheiro responsável aprova resultados e detalhamento e emite a ART pertinente. Resultados obtidos via MCP/IA seguem a mesma exigência de revisão.
