@@ -181,8 +181,14 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
 - Teste de interferência: ponto dentro da malha por 3 raios com maioria (um raio numa aresta comum contava duas vezes: era a
   "DC3 entrando 18 mm no gusset" do galpão, a 730 mm do nó); par diagonal tubular × o próprio gusset até meia espessura =
   rasgo (fora da contagem, listado); pares com proposta local ou entre vizinhas de barra curta saem com o motivo escrito.
-- Resultado (21/10/2026): PLATAFORMA 0 pares (5 com motivo: 4 proposta local, 1 vizinhas da B1110 de 12,5 mm); galpão 0 pares
-  (16 pelo rasgo). Contraventamento do telhado no beiral: o motor apoia o gusset na tesoura (diagonal a mais de 60° do pilar).
+- Rodada 1 (revisão): sem exclusões no teste além de barra curta. Rasgo: o motor manda `{tipo: "rasgo", largura, comprimento}` (m)
+  na ponta do tubo (largura = t_gusset + 2 mm; comprimento cobre a chapa dentro do tubo + 2 mm); o Realista corta o trecho em
+  duas peças em C (`Render3DGeometria.Rasgada`), também no DWG/STEP (sólidos estanques). Canto de UPN (emenda > 5°) e viga U
+  na mesa (rígida recusada) viram `chapa_simples_alma` do motor. `x_face` considera também as barras do nó quase ⟂ à viga.
+  Barra < 20 mm une os dois nós numa junta. Chapa de qualquer ligação que alcança a outra ponta = barra curta.
+  No Realista as setas de carga só aparecem com "Cargas sempre visíveis".
+- Resultado (21/10/2026, r1): PLATAFORMA 0 pares; fora do teste só barras curtas (nós a < 200 mm): B1091 (101 mm), B1110 (12,5),
+  B1125 (97,5), B1452 (15). Galpão 0 pares, nada fora. Lote ≤ 500 itens por POST (`MAX_LOTE_LIGACOES`).
 
 ## Limites e próximos passos
 

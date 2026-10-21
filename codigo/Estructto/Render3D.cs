@@ -396,9 +396,11 @@ namespace NovoFtool
                 alvo.Marcar(b);
                 cortes.TryGetValue((b, true), out Corte ci); cortes.TryGetValue((b, false), out Corte cj);
                 // G6: gussets das duas pontas que se alcançam ao longo da barra (diagonal curta) = barra curta demais para a ligação
-                double Alcance(bool ei) => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lg) && lg.Chapas.FirstOrDefault(ch => ch.Nome == "gusset") is Ligacao3D.Chapa gu && gu.Contorno.Length > 0 ? gu.Contorno.Max(p => p.X) / 1000 : 0;
-                bool gussets = Alcance(true) > 0 && Alcance(false) > 0 && Alcance(true) + Alcance(false) >= (d - a).Length - 1e-6;
-                if (gussets) foreach (bool ei in new[] { true, false }) porPonta[(b.Id, ei)].Excluir = true;
+                // G6 r1: vale para qualquer chapa da ligação (x local do contrato = ao longo da barra): chapa simples maior que a barra
+                double Alcance(bool ei) => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lg) && lg.Pendente == null
+                    ? lg.Chapas.SelectMany(ch => { Vector3D w = Vector3D.CrossProduct(ch.Normal, ch.U); return ch.Contorno.Select(p => ch.Origem.X + ch.U.X * p.X + w.X * p.Y); }).DefaultIfEmpty(0).Max() / 1000 : 0;
+                bool gussets = Math.Max(Alcance(true), 0) + Math.Max(Alcance(false), 0) >= (d - a).Length - 1e-6;
+                if (gussets) foreach (bool ei in new[] { true, false }) if (porPonta.TryGetValue((b.Id, ei), out Ligacao3D lg2)) lg2.Excluir = true;
                 bool curta = (ci?.Recuo ?? 0) + (cj?.Recuo ?? 0) >= (d - a).Length - 1e-6 || gussets
                              || new[] { true, false }.Any(ei => porPonta.TryGetValue((b.Id, ei), out Ligacao3D lx) && lx.Excluir);
                 if (curta) lock (Curtas) Curtas.Add(Exportador.IdBarra(b));
@@ -408,6 +410,19 @@ namespace NovoFtool
                 Corte Cope(bool emI, Corte k)
                 {
                     if (!porPonta.TryGetValue((b.Id, emI), out Ligacao3D l)) return k;
+                    // G6: rasgo do gusset na ponta do tubo: trecho com o contorno em duas peças em C (a chapa passa pelo rasgo)
+                    var rg = l.Ponta?.Recortes.FirstOrDefault(r => r.Tipo == "rasgo" && r.Altura > 0 && r.Comprimento > 0);
+                    if (rg != null && f.Forma == "TC" && l.YGusset(emI ? e : -e) is Vector3D yr
+                        && Render3DGeometria.Rasgada(f, new System.Windows.Vector(Vector3D.DotProduct(yr, u), Vector3D.DotProduct(yr, v)), rg.Altura / 2000) is Contorno fr)
+                    {
+                        Corte r0 = k ?? new Corte { P = emI ? a : d, N = e };
+                        Corte r1 = new Corte { P = r0.P + (emI ? e : -e) * (rg.Comprimento / 1000), N = r0.N };
+                        Corte q1 = emI ? r0 : r1, q2 = emI ? r1 : r0;
+                        Render3DGeometria.Extrudar(alvo, fr, a, d, u, v, q1, q2, Cor(c.Cor(b)), false);
+                        if (coleta != null) { var sm = new MalhaDx(); Render3DGeometria.Extrudar(sm, fr, a, d, u, v, q1, q2, Cor(c.Cor(b)), false); Guardar(sm, true); }
+                        Render3DGeometria.Extrudar(arestas, fr, a, d, u, v, q1, q2, Cor(c.Cor(b)), true, false);
+                        return r1;
+                    }
                     var cs = (l.Ponta?.Recortes ?? l.Recortes).Where(r => r.Tipo == "cope" && (r.Barra ?? "viga") == "viga" && r.Altura > 0 && r.Comprimento > 0).ToList();
                     if (cs.Count == 0) return k;
                     Vector3D dentro = emI ? e : -e;
@@ -501,11 +516,9 @@ namespace NovoFtool
                         (o, y, z) = (o + yp * (ymin - gus.Espessura / 2000), yp, zp);
                     }
                 }
-                else if (gus != null && l.ApoioDir is Vector3D ad && l.ApoioMundo is Vector3D sm && Math.Abs(ad.Z) > 1e-6)
-                {   // G6: apoio_dir local (ax, 0, az) = eixo do apoio no mundo: z = (S − (S·x)x)/az, y = x × z (contrato canhoto)
-                    sm.Normalize(); if (Math.Sign(Vector3D.DotProduct(sm, x)) != Math.Sign(ad.X) && Math.Abs(ad.X) > 1e-9) sm = -sm;
-                    Vector3D zp = sm - Vector3D.DotProduct(sm, x) * x;
-                    if (zp.Length > 1e-6) { zp.Normalize(); if (ad.Z < 0) zp = -zp; (y, z) = (Vector3D.CrossProduct(x, zp), zp); }
+                else if (gus != null && l.YGusset(x) is Vector3D yg)
+                {   // G6: apoio_dir local = eixo do apoio no mundo (Ligacao3D.YGusset; contrato canhoto: z = y × x)
+                    (y, z) = (yg, Vector3D.CrossProduct(yg, x));
                     if (forma(b).Forma != "TC" && forma(b).Forma != "CIRC")   // perfil aberto: o contrato põe a peça do lado +y da chapa (sem rasgo); encosta na face −y
                     {
                         Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);

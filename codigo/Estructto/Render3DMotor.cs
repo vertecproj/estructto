@@ -38,16 +38,17 @@ namespace NovoFtool
 
         // Tipo de ligação proposto para um grupo sem projeto (assinatura: tipo|seção|seção do apoio|papel do apoio|ângulo|condição|
         // material; emenda: emenda|seção|seção|ângulo|condição|material). null = proposta local (Render3D).
-        static string TipoProposto(string tipo, string[] a, bool vertical)
+        static string TipoProposto(string tipo, string[] a, bool vertical, bool vigaU = false)
         {
             bool rigida = a.Contains("rigida");
             switch (tipo)
             {
                 case "base": return "placa_base";
-                case "viga_pilar_mesa": return rigida ? "chapa_topo_estendida" : "chapa_simples_alma";
+                case "viga_pilar_mesa": return rigida && !vigaU ? "chapa_topo_estendida" : "chapa_simples_alma";   // G6: U não tem rígida no motor: flexível
                 case "viga_pilar_alma": case "viga_viga": return "chapa_simples_alma";
                 case "gusset_contraventamento": return "gusset_contraventamento";
-                case "emenda": return a.Length > 3 && int.TryParse(a[3], out int ang) && ang <= 5 ? (vertical ? "emenda_pilar" : "emenda_viga") : null;
+                case "emenda": return a.Length > 3 && int.TryParse(a[3], out int ang) && ang <= 5 ? (vertical ? "emenda_pilar" : "emenda_viga")
+                                      : "chapa_simples_alma";   // G6: canto (> 5°) = viga–viga na outra barra (o membro traz o apoio), não proposta local
             }
             return null;
         }
@@ -82,7 +83,7 @@ namespace NovoFtool
             Vector3D Eixo(Barra3D q) => nosVista.TryGetValue(q.Ni, out No3D a) && nosVista.TryGetValue(q.Nj, out No3D c) ? new Vector3D(c.X - a.X, c.Y - a.Y, c.Z - a.Z) : new Vector3D();
             // G6: face de contato do apoio que não é I (U, Ue, composto, tubo: a alma não fica no eixo) = até onde o perfil do
             // apoio chega na direção da viga (mm do nó). O motor corta a viga e põe a chapa nela (x_face); I fica com o padrão.
-            double? XFace(string apoioId, Barra3D b, bool emI, bool gusset = false)
+            double? XFace(string apoioId, Barra3D b, bool emI, bool gusset = false, string no = null)
             {
                 if (apoioId == null || !barras.TryGetValue(apoioId, out Barra3D q) || !(secoes?[(string)bj[apoioId]?["secao"] ?? ""] is JsonObject sj)) return null;
                 if ((string)sj["props"]?["tipo"] is "I" or null) return null;
@@ -91,9 +92,25 @@ namespace NovoFtool
                 Vector3D es = Eixo(q), xb = Eixo(b); if (es.Length < 1e-9 || xb.Length < 1e-9) return null;
                 es.Normalize(); xb.Normalize(); if (!emI) xb = -xb;   // da ponta da viga para dentro dela
                 if (gusset) { xb -= Vector3D.DotProduct(xb, es) * es; if (xb.Length < 1e-6) return null; xb.Normalize(); }   // gusset: no plano dele, ⟂ ao apoio
-                Vector3D vs = Modelo3D.EixoY(es, q.Rot + q.RotPerfil), us = Vector3D.CrossProduct(vs, es);
-                System.Windows.Point dc = GeometriaPerfis.Cardinal(f, q.Cardinal);
-                double ext = f.Lacos[0].Max(p => Vector3D.DotProduct(us * (p.X + dc.X) + vs * (p.Y + dc.Y), xb));
+                double Ext(Barra3D r, GeometriaPerfis.Contorno fr, Vector3D er)
+                {
+                    Vector3D vr = Modelo3D.EixoY(er, r.Rot + r.RotPerfil), ur = Vector3D.CrossProduct(vr, er);
+                    System.Windows.Point dr = GeometriaPerfis.Cardinal(fr, r.Cardinal);
+                    return fr.Lacos[0].Max(p => Vector3D.DotProduct(ur * (p.X + dr.X) + vr * (p.Y + dr.Y), xb));
+                }
+                double ext = Ext(q, f, es);
+                // G6 r1: as outras barras do nó quase ⟂ a esta (ex.: a viga na mesa de um pilar UPN 50 com a chapa nas costas da alma):
+                // a viga para fora delas também; a folga do motor (12 mm) passa a espessura da chapa encostada nelas
+                if (!gusset && no != null)
+                    foreach (var kv in bj)
+                    {
+                        if (kv.Key == apoioId || !barras.TryGetValue(kv.Key, out Barra3D r) || r == b || ((string)kv.Value["ni"] != no && (string)kv.Value["nj"] != no)) continue;
+                        if (!(secoes?[(string)kv.Value["secao"] ?? ""] is JsonObject sr)) continue;
+                        Vector3D er = Eixo(r); if (er.Length < 1e-9) continue; er.Normalize();
+                        if (Math.Abs(Vector3D.DotProduct(er, xb)) > 0.5) continue;
+                        var fr = GeometriaPerfis.CriarContorno(Perfil3D.DoMotor(sr), 0.1);
+                        if (!fr.Concreto && fr.Lacos.Count > 0) ext = Math.Max(ext, Ext(r, fr, er));
+                    }
                 return ext > 0 ? Math.Round(ext * 1000, 1) : null;
             }
             // G6: eixo do apoio do gusset no mundo (o apoio_dir do motor é este eixo no referencial local): pilar e viga-pilar = o
@@ -135,14 +152,16 @@ namespace NovoFtool
             }
             async Task Lote()
             {
-                if (pedidos.Count == 0) return;
+                const int MaxLote = 500;   // = MAX_LOTE_LIGACOES do motor
+                foreach (var parte in pedidos.Chunk(MaxLote))
+                {
                 var itens = new JsonArray();
-                foreach (var p in pedidos.Values) itens.Add(new JsonObject { ["tipo"] = p.tl, ["dados"] = p.dados.DeepClone(), ["perfis"] = p.perfis?.DeepClone() });
+                foreach (var p in parte) itens.Add(new JsonObject { ["tipo"] = p.Value.tl, ["dados"] = p.Value.dados.DeepClone(), ["perfis"] = p.Value.perfis?.DeepClone() });
                 JsonArray res;
                 try { res = await Motor.Post("/api/ligacoes/geometrias", new JsonObject { ["itens"] = itens }) as JsonArray; } catch { return; }   // não guarda: tenta na próxima carga
-                if (res == null || res.Count != pedidos.Count) return;
+                if (res == null || res.Count != parte.Length) return;
                 int k = 0;
-                foreach (var chave in pedidos.Keys)
+                foreach (var chave in parte.Select(p => p.Key))
                 {
                     var it = res[k++];
                     var geo = it?["geometria"] as JsonObject;
@@ -152,6 +171,7 @@ namespace NovoFtool
                     if (geo != null && !(geo["chapas"] is JsonArray ca && ca.Count > 0) && !(geo["cantoneiras"] is JsonArray cc && cc.Count > 0) && !(geo["soldas"] is JsonArray sc && sc.Count > 0)) geo = null;   // sem peças: proposta local
                     geo?.Parent?.AsObject().Remove("geometria");
                     lock (cacheGeo) cacheGeo[chave] = geo;
+                }
                 }
             }
             pedidos = new Dictionary<string, (string, JsonObject, JsonObject)>();
@@ -175,7 +195,7 @@ namespace NovoFtool
                     if (no == null || !idNo.TryGetValue(no, out int idN) || !barras.TryGetValue(bid, out Barra3D b)) continue;
                     if (proposta && nProp >= Render3D.MaxPropostas) continue;
                     string sec = (string)bj[bid]?["secao"];
-                    string tl = proposta ? TipoProposto(tipoNo, assin, Vertical(b)) : (string)proj["tipo_ligacao"];
+                    string tl = proposta ? TipoProposto(tipoNo, assin, Vertical(b), (string)secoes?[(string)bj[bid]?["secao"] ?? ""]?["props"]?["tipo"] is "U" or "Ue") : (string)proj["tipo_ligacao"];
                     Ligacao3D lig = null;
                     if (tl == "placa_base")
                     {
@@ -217,7 +237,7 @@ namespace NovoFtool
                         else
                         {
                             if (sec != null) dados["perfil_viga"] = PerfilMotor(sec);
-                            if (tl != null && Flexiveis.Contains(tl) && XFace(apoioId, b, emINo) is double xf) dados["x_face"] = xf;
+                            if (tl != null && Flexiveis.Contains(tl) && XFace(apoioId, b, emINo, false, no) is double xf) dados["x_face"] = xf;
                             if (sup != null) { dados["perfil_pilar"] = PerfilMotor(sup); dados["perfil_suporte"] = PerfilMotor(sup); }
                             if (tl == "emenda_pilar" && sec != null) dados["perfil_pilar"] = PerfilMotor(sec);
                             if (ehU) dados["abertura_y"] = emINo ? -1 : 1;

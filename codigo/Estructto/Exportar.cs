@@ -323,6 +323,20 @@ namespace NovoFtool
                 var tubo = cg.First(x => x.Barra == dg); var chg = cg.First(x => x.Tipo == "chapa");
                 var ig = Render3DGeometria.Interferencias(new[] { tubo.M, chg.M });
                 Ok("gusset do motor num tubo: chapa sobre a superfície (R + esp/2 do eixo), sem interferência com o tubo (" + ig.Count + " pares)", ig.Count == 0);
+                // G6: gusset do motor centrado no tubo com o rasgo na ponta (apoio_dir): o tubo é aberto, sem interferência; export estanque
+                var mr = new Modelo3D(); foreach (var n in mg.Nos) mr.Nos.Add(n); foreach (var b in mg.Barras) mr.Barras.Add(b);
+                var lgr = new Ligacao3D { No = 3, Barra = 3, Nome = "gusset rasgo", Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.3, 0, 0), N = new Vector3D(-1, 0, 0) },
+                                          ApoioDir = new Vector3D(0.7071, 0, 0.7071), ApoioMundo = new Vector3D(0, 0, 1) };
+                lgr.Ponta.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "rasgo", Altura = 12, Comprimento = 260 });
+                lgr.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, 5, 0), Normal = new Vector3D(0, -1, 0), U = new Vector3D(1, 0, 0), Espessura = 10,
+                                                     Contorno = new[] { new System.Windows.Point(150, -150), new System.Windows.Point(550, -150), new System.Windows.Point(550, 150), new System.Windows.Point(150, 150) } });
+                mr.Ligacoes.Add(lgr);
+                var cr = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(mr, Pg), cr);
+                var tr = cr.Where(x => x.Barra == dg).ToList(); var chr = cr.First(x => x.Tipo == "chapa");
+                int ir = tr.Sum(x => Render3DGeometria.Interferencias(new[] { x.M, chr.M }).Count);
+                var pr = Exportador.Pecas(mr, Pg).Where(p => p.Barra && p.Id == Exportador.IdBarra(dg)).ToList(); var er = new List<string>(); Exportador.ConferirStep(Exportador.Step(Exportador.Pecas(mr, Pg), "rasgo", "rasgo.stp"), er);
+                Ok("gusset centrado no tubo com rasgo: " + tr.Count + " sólidos do tubo (trecho rasgado + resto), " + ir + " pares com a chapa; export " + pr.Count + " sólidos estanques, STEP sem erro",
+                   tr.Count == 2 && ir == 0 && pr.Count == 2 && pr.All(p => Exportador.Fechado(p.Solido) && Exportador.Volume(p.Solido) > 0) && er.Count == 0);
                 // ids repetidos (duas barras com o mesmo id do motor): cada sólido fica com a sua barra
                 var md = new Modelo3D(); md.Nos.Add(new No3D { Id = 1 }); md.Nos.Add(new No3D { Id = 2, X = 3 }); md.Nos.Add(new No3D { Id = 3, Y = 5 }); md.Nos.Add(new No3D { Id = 4, X = 3, Y = 5 });
                 md.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W", Origem = new RefMotor { Id = "B1" } }); md.Barras.Add(new Barra3D { Id = 2, Ni = 3, Nj = 4, Secao = "W", Origem = new RefMotor { Id = "B1" } });

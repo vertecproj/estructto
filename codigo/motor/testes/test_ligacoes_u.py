@@ -321,3 +321,17 @@ class TestChapaFaceContrato(unittest.TestCase):
         self.assertEqual(pts[0], pts[-1])                          # fechado
         self.assertEqual(len({round(p[1], 3) for p in pts}), 2)    # as duas faces da alma
         self.assertEqual(len({round(p[2], 3) for p in pts}), 2)    # topo e base (retornos)
+
+    def test_rasgo_na_ponta_do_tubo(self):
+        """G6 r1: gusset em tubo leva o rasgo na ponta (pontas[0].recortes): largura = t_gusset + 2 mm, comprimento = o
+        da região soldada (l1 + folga), em m como os outros recortes da ponta."""
+        pf = dict(secao="tubo_circular", dim_a=219.1, t_perfil=6.35, apoio="base", theta=45, perfil_pilar="W360x51")
+        g = P.geometrias_ligacoes([dict(tipo="gusset_contraventamento", dados={}, perfis=pf)])[0]["geometria"]
+        rg = [r for r in g["pontas"][0]["recortes"] if r["tipo"] == "rasgo"]
+        self.assertEqual(len(rg), 1)
+        tg = g["chapas"][0]["espessura"]
+        self.assertAlmostEqual(rg[0]["largura"] * 1000, tg + 2.0, 6)
+        geral = next(r for r in g["recortes"] if r["tipo"] == "rasgo")["parametros"]
+        self.assertAlmostEqual(rg[0]["comprimento"] * 1000, geral["comprimento"], 6)
+        xmax = max(p[0] for p in g["chapas"][0]["contorno"])           # a chapa inteira que entra no tubo cabe no rasgo
+        self.assertGreaterEqual(rg[0]["comprimento"] * 1000, xmax - g["recuo"] + 2.0 - 1e-6)

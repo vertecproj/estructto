@@ -489,7 +489,8 @@ namespace NovoFtool
                 MeshGeometry3D mn = NosEscolhidos();
                 if (mn != null) { if (dx) malhaNosDx = mn; else g.Children.Add(Geo(mn, Mat(TemaPlant.CorBarraSel, true), true)); }
             }
-            if (MostrarCargas && mod.Cargas.Count > 0)
+            // G6 r1: no Realista as setas só aparecem com "Cargas sempre visíveis" (senão cobriam as ligações nos close-ups)
+            if (MostrarCargas && mod.Cargas.Count > 0 && (!Realista || CargasSempreVisiveis))
             {
                 MeshGeometry3D mc = DesenharCargas();
                 // DX sem "sempre visíveis": as setas vão para o Viewport3DX e passam pelo teste de profundidade (Render3D.mCargas)

@@ -723,11 +723,16 @@ def verificar_gusset(dados, esforcos):
             sol.append(dict(tipo="filete", perna=bi / MM, pontos=[[x0 / MM, y, z0 / MM], [x1 / MM, y, z1 / MM]]))
     geo = dict(chapas=[_chapa("gusset", cont, tg)], cantoneiras=[], parafusos=par, soldas=sol,
                recortes=[dict(barra="diagonal", tipo="rasgo", parametros=dict(
-                   comprimento=round((info["lc"] + FOLGA_RASGO * MM) / MM, 1),
+                   # G6: o rasgo cobre a chapa dentro do tubo (l1 e a borda do contorno além dele) + a folga
+                   comprimento=round((max(info["lc"], max(p[0] for p in cont) - recuo) + FOLGA_RASGO * MM) / MM, 1),
                    largura=round(tg / MM + FOLGA_RASGO, 1)))] if info["sec"].startswith("tubo") else [],
                ponto_trabalho=[0.0, 0.0, 0.0], recuo=recuo / MM, Lh=Lh / MM, Lv=Lv / MM,
                largura_whitmore=info["Lw"] / MM, pontas=[_ponta_em(recuo)])
     geo.update(_orientacao(ap, dirv, perp))
+    for r in geo["recortes"]:   # G6: o rasgo também vai na ponta do tubo (m), para o Realista e a exportação abrirem o tubo
+        if r["tipo"] == "rasgo":
+            geo["pontas"][0]["recortes"].append(dict(tipo="rasgo", largura=r["parametros"]["largura"] * MM,
+                                                     comprimento=r["parametros"]["comprimento"] * MM))
     extra = dict(forcas_interface=forcas)
     if "dica" in info:
         extra["dica_barra"] = info["dica"]

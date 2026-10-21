@@ -2547,10 +2547,15 @@ def sugerir_ligacao(tipo, perfis, esforcos):
     return _lig_ui(reg["sugerir"], dict(perfis or {}), dict(esforcos or {}))
 
 
+MAX_LOTE_LIGACOES = 500   # itens por POST /api/ligacoes/geometrias (o WPF divide em lotes)
+
+
 def geometrias_ligacoes(itens):
     """Lote para o Realista do WPF: cada item {tipo, dados, perfis?} -> sugerir (se há perfis, esforços típicos N 50, V 50,
     M 30) + verificar com esforços nulos. Devolve, na mesma ordem, {geometria, motivo, avisos} ou {erro}; um item ruim
     não derruba o lote."""
+    if len(itens or []) > MAX_LOTE_LIGACOES:
+        raise ErroEntrada(f"lote com {len(itens)} itens: máximo {MAX_LOTE_LIGACOES}", "itens")
     nulos = dict(N=0, V=0, Vz=0, M=0, Mz=0, T=0)
     saida = []
     for it in itens or []:

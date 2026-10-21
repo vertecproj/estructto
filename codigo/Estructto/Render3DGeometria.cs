@@ -162,6 +162,11 @@ namespace NovoFtool
                                                                   Func<Barra3D, bool, Corte> motor = null, bool v5 = false)
         {
             var porNo = new Dictionary<int, List<Ponta>>();
+            // G6: barra de menos de 20 mm (nós quase coincidentes, ex.: B1110 de 12,5 mm na PLATAFORMA) une os dois nós numa junta só,
+            // senão as peças de um nó não enxergam as do outro e se cruzam
+            var uniao = new Dictionary<int, int>();
+            int Rep(int n) { while (uniao.TryGetValue(n, out int m) && m != n) n = m; return n; }
+            foreach (Barra3D b in mod.Barras) { var (p0, p1) = pontos(b); if ((p1 - p0).Length < 0.02 && Rep(b.Ni) != Rep(b.Nj)) uniao[Rep(b.Nj)] = Rep(b.Ni); }
             foreach (Barra3D b in mod.Barras)
             {
                 var (a, c) = pontos(b); Vector3D e = c - a; double len = e.Length; if (len < 1e-9) continue; e /= len;
@@ -170,7 +175,7 @@ namespace NovoFtool
                 Point dc = GeometriaPerfis.Cardinal(f, b.Cardinal); a += u * dc.X + v * dc.Y; c += u * dc.X + v * dc.Y;
                 foreach (bool emI in new[] { true, false })
                 {
-                    int id = emI ? b.Ni : b.Nj;
+                    int id = Rep(emI ? b.Ni : b.Nj);
                     if (!porNo.TryGetValue(id, out var l)) porNo[id] = l = new List<Ponta>();
                     l.Add(new Ponta { B = b, EmI = emI, D = emI ? e : -e, L = len, F = f, U = u, V = v, No = emI ? a : c });
                 }
@@ -406,6 +411,29 @@ namespace NovoFtool
         }
 
         // Triangulação por orelhas (polígono simples, qualquer sentido). Devolve índices.
+        // G6: tubo circular com o rasgo do gusset (largura 2·meia, através das duas paredes): duas peças em C, de cada lado da
+        // faixa |p·n| < meia (n = normal da chapa no plano da seção, unitária). null se não é tubo ou o rasgo não cabe.
+        public static Contorno Rasgada(Contorno f, System.Windows.Vector n, double meia)
+        {
+            if (f.Forma != "TC") return null;
+            double R = f.H / 2, r = R - Math.Min(f.Tw, R * 0.9);
+            if (meia >= r || n.Length < 1e-9) return null;
+            n.Normalize();
+            var o = new Contorno { H = f.H, B = f.B, Tw = f.Tw, Tf = f.Tf, Forma = "TC-rasgo" };
+            const int seg = 12;
+            foreach (double fi in new[] { Math.Atan2(n.Y, n.X), Math.Atan2(-n.Y, -n.X) })
+            {
+                double aR = Math.Acos(meia / R), ar = Math.Acos(meia / r);
+                var pts = new List<Point>();
+                for (int k = 0; k <= seg; k++) { double t = fi - aR + 2 * aR * k / seg; pts.Add(new Point(R * Math.Cos(t), R * Math.Sin(t))); }
+                for (int k = 0; k <= seg; k++) { double t = fi + ar - 2 * ar * k / seg; pts.Add(new Point(r * Math.Cos(t), r * Math.Sin(t))); }
+                Point[] l = pts.ToArray();
+                o.Laco(l);
+                foreach (int[] t in Triangular(l)) { o.Tampa.Add(l[t[0]]); o.Tampa.Add(l[t[1]]); o.Tampa.Add(l[t[2]]); }
+            }
+            return o;
+        }
+
         public static List<int[]> Triangular(Point[] c)
         {
             var r = new List<int[]>(); int n = c.Length; if (n < 3) return r;
@@ -761,6 +789,22 @@ namespace NovoFtool
                 double rmin = sr.P.Min(p => Math.Sqrt(p.Y * p.Y + p.Z * p.Z));   // distância ao eixo do banzo (eixo X)
                 afirmar(ct.TryGetValue((br, true), out Corte kb) && kb.Raio > 0 && Interferencias(new[] { Sol(b1), Sol(b2), sr }).Count == 0 && Math.Abs(rmin - 0.084) < 1e-3,
                         "boca de peixe: ramal tubular sem interferência com o banzo e encostado nele (menor distância ao eixo " + (rmin * 1000).ToString("0.0") + " mm, R = 84)");
+            }
+
+            {   // G6: rasgo do gusset no tubo (2 peças em C) fechado; Dentro por 3 raios: parede sim, oco e rasgo não, raio ao longo de aresta
+                var cb = new Color4(1, 1, 1, 1);
+                Contorno ft = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "TC", H = 0.2191, Tw = 0.00635 }, 0.1);
+                Contorno fr = Rasgada(ft, new System.Windows.Vector(0, 1), 0.00415);
+                var mr = new MalhaDx(); Extrudar(mr, fr, new Point3D(0, 0, 0), new Point3D(0.3, 0, 0), new Vector3D(0, 1, 0), new Vector3D(0, 0, 1), null, null, cb, false);
+                var (fe, ve) = Fechada(mr);
+                double R = 0.10955, t = 0.00635, esperado = 0.3 * (Math.PI * (R * R - (R - t) * (R - t)) - 2 * 2 * 0.00415 * t);
+                afirmar(fe && Math.Abs(ve / esperado - 1) < 0.02, "tubo com rasgo: 2 peças em C fechadas, volume ≈ anel − 2 rasgos (" + (ve * 1e6).ToString("0") + " cm³)");
+                var mt = new MalhaDx(); Extrudar(mt, ft, new Point3D(0, 0, 0), new Point3D(0.3, 0, 0), new Vector3D(0, 1, 0), new Vector3D(0, 0, 1), null, null, cb, false);
+                Vector3 Pt(double x, double ang, double rr) => new Vector3((float)x, (float)(rr * Math.Cos(ang)), (float)(rr * Math.Sin(ang)));
+                double rm = R - t / 2, a0 = 2 * Math.PI / GeometriaPerfis.SegmentosTubo;   // a0: ângulo de um vértice (aresta longitudinal)
+                afirmar(Dentro(mt, Pt(0.15, 0.3, rm)) && !Dentro(mt, Pt(0.15, 0.3, 0.05)) && Dentro(mt, Pt(0.15, a0, rm)) && !Dentro(mt, Pt(0.15, a0, 0.0)),
+                        "Dentro (3 raios): parede do tubo dentro, oco fora, também em ponto na direção de uma aresta longitudinal");
+                afirmar(!Dentro(mr, Pt(0.15, 0, rm)) && !Dentro(mr, Pt(0.15, Math.PI, rm)) && Dentro(mr, Pt(0.15, Math.PI / 2, rm)), "Dentro no tubo com rasgo (n = v: rasgo em ±u): rasgo fora, parede dentro");
             }
 
             var m = new MalhaDx();

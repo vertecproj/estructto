@@ -1389,34 +1389,6 @@ namespace NovoFtool
                 sb.AppendLine("fora do teste: " + todos.Count(x => x.Excluir && x.Tipo != "parafuso") + " sólidos (barras curtas demais para a ligação: " + string.Join(", ", Render3D.Curtas) + ")");
                 var sw = Stopwatch.StartNew();
                 var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList()).Where(x => col[x.A].Barra == null || col[x.A].Barra != col[x.B].Barra).ToList();   // trechos do cope da mesma barra encostam
-                // G6: diagonal tubular × o próprio gusset até meia espessura da chapa = a chapa passando pelo rasgo que o motor pede
-                // (recorte "rasgo"; o Realista não abre o rasgo no tubo). Listado à parte, fora da contagem.
-                bool Rasgo((int A, int B, double Prof) x)
-                {
-                    foreach (var (bar, ch) in new[] { (col[x.A], col[x.B]), (col[x.B], col[x.A]) })
-                        if (bar.Barra is Barra3D bx && ch.Lig is Ligacao3D lg && lg.Barra == bx.Id && lg.Recortes.Any(k => k.Tipo == "rasgo")
-                            && lg.Chapas.FirstOrDefault(c => c.Nome == "gusset") is var gu && gu != null && x.Prof <= gu.Espessura / 2000 + 0.0005) return true;
-                    return false;
-                }
-                var rasgos = r.Where(Rasgo).ToList(); r = r.Except(rasgos).ToList();
-                if (rasgos.Count > 0) sb.AppendLine("fora da contagem: " + rasgos.Count + " par(es) diagonal × gusset pelo rasgo do tubo (recorte \"rasgo\" do motor)");
-                // G6: conflitos com motivo (o gerenciador mostra): chapa de proposta local (o motor não desenha a ponta) e barras
-                // vizinhas de uma barra curta demais para a ligação (nós a < 200 mm)
-                var curtas = v.ModeloAtual.Barras.Where(x => Render3D.Curtas.Contains(Exportador.IdBarra(x))).ToList();
-                bool PertoDeCurta(Barra3D q) => curtas.Any(k => k.Ni == q.Ni || k.Ni == q.Nj || k.Nj == q.Ni || k.Nj == q.Nj);
-                string Motivo((int A, int B, double Prof) x)
-                {
-                    var (pa, pb) = (col[x.A], col[x.B]);
-                    if (pa.Lig?.Pendente != null || pb.Lig?.Pendente != null) return "proposta local sem ligação do motor";
-                    if (pa.Barra != null && pb.Barra != null && PertoDeCurta(pa.Barra) && PertoDeCurta(pb.Barra)) return "vizinhas de barra curta demais para a ligação";
-                    return null;
-                }
-                foreach (var gm in r.Where(x => Motivo(x) != null).GroupBy(Motivo).ToList())
-                {
-                    sb.AppendLine("fora da contagem (motivo no gerenciador): " + gm.Count() + " par(es) · " + gm.Key);
-                    foreach (var (a, b, p) in gm) sb.AppendLine("    " + (p * 1000).ToString("0.0", CultureInfo.InvariantCulture) + " mm  " + col[a].Nome + "  ×  " + col[b].Nome);
-                    r = r.Except(gm).ToList();
-                }
                 pares = r.Count;
                 sb.AppendLine(col.Count + " sólidos · " + pares + " pares com interseção > 1 mm · " + sw.ElapsedMilliseconds + " ms");
                 string Ponta(Barra3D b, int no)   // diagnóstico: corte e ligação da ponta de b no nó

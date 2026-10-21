@@ -41,7 +41,18 @@ namespace NovoFtool
         // interferência); gusset com apoio_dir (direção do apoio no referencial local) e lado (+1/−1: lado y da chapa). Com
         // apoio_dir o Render3D usa o referencial do motor como veio, sem adivinhar.
         public bool Excluir; public Vector3D? ApoioDir; public double Lado = double.NaN;
-        public Vector3D? ApoioMundo; public double DeslU;   // DeslU (m): centroide do U − centro do envolvente, em u   // G6: eixo do apoio no mundo (Render3DMotor); com ApoioDir fixa a rotação do gusset em torno da diagonal
+        public Vector3D? ApoioMundo; public double DeslU;
+        // G6: y do contrato do gusset no mundo (normal da chapa), com x = eixo da diagonal saindo do nó: apoio_dir local (ax, 0, az) =
+        // eixo do apoio no mundo → z = (S − (S·x)x)/az, y = x × z. null sem apoio_dir/apoio no mundo.
+        public Vector3D? YGusset(Vector3D x)
+        {
+            if (!(ApoioDir is Vector3D ad) || !(ApoioMundo is Vector3D sm) || Math.Abs(ad.Z) < 1e-6) return null;
+            sm.Normalize(); if (Math.Sign(Vector3D.DotProduct(sm, x)) != Math.Sign(ad.X) && Math.Abs(ad.X) > 1e-9) sm = -sm;
+            Vector3D zp = sm - Vector3D.DotProduct(sm, x) * x;
+            if (zp.Length < 1e-6) return null;
+            zp.Normalize(); if (ad.Z < 0) zp = -zp;
+            return Vector3D.CrossProduct(x, zp);
+        }   // DeslU (m): centroide do U − centro do envolvente, em u   // G6: eixo do apoio no mundo (Render3DMotor); com ApoioDir fixa a rotação do gusset em torno da diagonal
 
         // Recorte "recuo" da barra dada ("viga" = a que chega; "pilar" = a contínua). Folga (m) = vão entre a ponta e a face
         // da peça contínua; XPonta (m) = posição da ponta a partir do nó (o motor manda x_ponta). NaN = sem recorte: vale a regra das juntas.
@@ -87,7 +98,7 @@ namespace NovoFtool
                 foreach (var r in pm["recortes"]?.AsArray() ?? new JsonArray())
                 {
                     string t = (string)r["tipo"], face = (string)r["face"];
-                    l.Ponta.Recortes.Add(new Recorte { Barra = "viga", Tipo = t, Altura = D(r, "altura") * 1000, Comprimento = D(r, "comprimento") * 1000, Folga = D(r, "folga", double.NaN) * 1000,
+                    l.Ponta.Recortes.Add(new Recorte { Barra = "viga", Tipo = t, Altura = (t == "rasgo" ? D(r, "largura") : D(r, "altura")) * 1000, Comprimento = D(r, "comprimento") * 1000, Folga = D(r, "folga", double.NaN) * 1000,   // rasgo: Altura = largura (mm)
                                                        Posicao = face == "sup" ? "topo" : face == "inf" ? "base" : face ?? "topo" });
                 }
             }

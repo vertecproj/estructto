@@ -131,6 +131,13 @@ class TestWebProjetista(BaseWeb):
         self.assertEqual(len(lote), 2)
         self.assertTrue(lote[0]["geometria"]["chapas"])           # sugerir + verificar num item
         self.assertIn("erro", lote[1])                            # item ruim não derruba o lote
+        comp = {"nome": "2UPN 80 duplo", "d": 80, "bf": 190, "tw": 6, "tf": 8}   # G6 r1: seção composta por medidas
+        lc = self.api("POST", "/api/ligacoes/geometrias", {"itens": [
+            {"tipo": "chapa_simples_alma", "dados": {}, "perfis": {"perfil_viga": "UPN 120", "perfil_suporte": comp, "perfil_pilar": comp, "x_face": 95}},
+            {"tipo": "gusset_contraventamento", "dados": {}, "perfis": {"secao": "U", "dim_a": 50, "t_perfil": 5, "dim_b": 38, "tf_perfil": 7,
+                                                                       "apoio": "pilar", "theta": 45, "perfil_pilar": comp}}]})
+        self.assertTrue(all(x.get("geometria") and not x.get("erro") for x in lc), lc)
+        self.api("POST", "/api/ligacoes/geometrias", {"itens": [{"tipo": "inventada"}] * (P.MAX_LOTE_LIGACOES + 1)}, status=422)
         m = self.api("POST", "/api/ligacoes/memorial", {"tipo": "chapa_simples", "dados": dict(CHAPA, t=0.0095), "esforcos": {"V": 100}})
         self.assertIn("memorial-ligacao", m["html"])
 
