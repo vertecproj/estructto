@@ -59,8 +59,9 @@ namespace NovoFtool
             conteudo.ColumnDefinitions.Add(new ColumnDefinition());
             var pv = new DockPanel();
             var pvCab = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
-            DockPanel.SetDock(previaTxt, Dock.Right); previaTxt.VerticalAlignment = VerticalAlignment.Bottom; pvCab.Children.Add(previaTxt);
-            pvCab.Children.Add(previaTit);
+            // título em cima, resumo/aviso embaixo com quebra: aviso longo do motor não espreme o título (texto em pé)
+            DockPanel.SetDock(previaTit, Dock.Top); previaTit.TextTrimming = TextTrimming.CharacterEllipsis; pvCab.Children.Add(previaTit);
+            previaTxt.TextWrapping = TextWrapping.Wrap; previaTxt.Margin = new Thickness(0, 2, 0, 0); pvCab.Children.Add(previaTxt);
             DockPanel.SetDock(pvCab, Dock.Top); pv.Children.Add(pvCab);
             previaCx.Child = previaImg;
             previaCx.SizeChanged += (s, e) => PedirPrevia();
@@ -271,7 +272,7 @@ namespace NovoFtool
             if (dados != null)
             {
                 try { p = await Inicio.Acoes.Previa(dados); (br, ax) = Miniatura3D.DePrevia(p); }
-                catch (MotorErro ex) { aviso = "⚠ " + ex.Message; }
+                catch (MotorErro ex) { string m = ex.Message; try { m = System.Text.Json.Nodes.JsonNode.Parse(m)?["detalhe"]?.ToString() ?? m; } catch { } aviso = "⚠ " + m; }
                 catch (Exception) { aviso = "Motor indisponível: prévia só da grade."; }
             }
             if (v != versaoPrevia) return;
