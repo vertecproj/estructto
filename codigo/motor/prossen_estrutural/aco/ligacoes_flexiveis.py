@@ -1174,3 +1174,6 @@ for _t, _f, _s in (("cantoneira_dupla_alma", _cantoneira_dupla, _sug_cd), ("chap
                    ("viga_viga_recorte", _viga_viga, _sug_vv)):
     TIPOS[_t]["verificar"] = _fn(_t, _f)
     TIPOS[_t]["sugerir"] = _s
+
+
+L.registrar_pontas(TIPOS)   # G2: geometria["pontas"] em todo resultado

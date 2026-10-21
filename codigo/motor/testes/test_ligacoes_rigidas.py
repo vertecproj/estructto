@@ -238,7 +238,7 @@ class TestTiposEGeometria(unittest.TestCase):
                     self.assertTrue(base <= set(v) <= base | {"sentido", "parametro"}, set(v))   # dicas opcionais
                     self.assertTrue(v["item"].startswith(("NBR 8800", "CBCA", "AISC", "Pfeil")), v["item"])
                 g = r["geometria"]
-                self.assertEqual({"chapas", "cantoneiras", "parafusos", "soldas", "recortes"}, set(g))
+                self.assertEqual({"chapas", "cantoneiras", "parafusos", "soldas", "recortes", "pontas"}, set(g))
                 for c in g["chapas"]:
                     self.assertGreaterEqual(len(c["contorno"]), 3)
                     self.assertGreater(c["espessura"], 0)

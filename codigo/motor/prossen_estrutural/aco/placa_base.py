@@ -21,6 +21,7 @@ from pathlib import Path
 from .ligacoes import (cisalhamento_parafuso, interacao_tracao_cisalhamento, pressao_contato,
                        tracao_parafuso)
 from .nbr8800 import GA1, GA2
+from .pontas import pontas_locais
 
 METODO = 'legado simplificado Nucleo.cs / Solda.cs'
 METODO_NBR = ('NBR 8800:2008 6.6.5 + bloco retangular (DG1) + chapa CBCA + ACI 318-19 cap. 17; '
@@ -1085,6 +1086,8 @@ def verificar_placa_base(dados, esforcos, secao):
                                  e=f['e'], e_crit=f['e_crit'], qmax=f['qmax']), coeficientes=co),
              limitacoes=list(LIMITACOES))
     r['ok'] = all(x['taxa'] <= 1 for x in v) and fix['ChOk'] and chapa['ok'] and solda is not None and solda['ok'] and not inclinada
+    # G2: ponta do pilar na face superior da placa (x local subindo ao longo do pilar), sem recorte
+    g['pontas'] = pontas_locais('base', secao, recuo=d['esp'])
     return r
 
 

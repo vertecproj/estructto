@@ -437,6 +437,14 @@ def _taxa(r):
     return math.inf if t is None or not math.isfinite(t) else float(t)
 
 
+def _contexto_pontas(modelo, tipo_no, mb):
+    """Geometria real da ponta para as pontas da ligação (aco/pontas.py): tipo do nó e comprimento da barra (m)."""
+    b = modelo.barras[mb["barra"]]
+    a, c = modelo.nos[b.ni], modelo.nos[b.nj]
+    tipo = "gusset_contraventamento" if tipo_no == "no_trelica" else tipo_no
+    return dict(tipo_no=tipo, comprimento=math.dist((a.x, a.y, a.z), (c.x, c.y, c.z)))
+
+
 def dimensionar_grupo(modelo, calculo, grupo):
     """Verifica o projeto do grupo com os esforços de cada membro em todas as combinações ELU.
     → {grupo, tipo_ligacao, membros: [{no, barra, ponta, taxa, combinacao, demanda, esforcos, erro}],
@@ -451,7 +459,7 @@ def dimensionar_grupo(modelo, calculo, grupo):
     saida, gov, gov_res = [], None, None
     for mb in g["membros"]:
         esf = esforcos_ponta(calculo, mb["barra"], mb["ponta"], nomes)
-        linha = dict(mb, taxa=None, ok=None, combinacao=None, demanda=None, esforcos=None, erro=None)
+        linha = dict(mb, taxa=None, ok=None, combinacao=None, demanda=None, esforcos=None, erro=None, motivo=None)
         if not esf:
             linha["erro"] = "sem esforços no cálculo (barra nova ou modelo editado: calcule de novo)"
             saida.append(linha)
@@ -460,16 +468,17 @@ def dimensionar_grupo(modelo, calculo, grupo):
         linha.update(demanda=demanda(esf[cd]), combinacao=cd, esforcos=esf[cd])
         if tl:
             pior, pior_r, pior_c = -1.0, None, None
+            dados = dict(proj.get("dados") or {}, contexto_pontas=_contexto_pontas(modelo, g["tipo"], mb))
             try:
                 for n, e in esf.items():
-                    r = verificador(tl)(modelo, mb, e, proj.get("dados") or {})
+                    r = verificador(tl)(modelo, mb, e, dados)
                     if _taxa(r) > pior:
                         pior, pior_r, pior_c = _taxa(r), r, n
             except (ValueError, KeyError, TypeError) as ex:
                 linha["erro"] = str(ex.args[0] if ex.args else ex)
             else:
                 linha.update(taxa=pior, combinacao=pior_c, esforcos=esf[pior_c], demanda=demanda(esf[pior_c]),
-                             ok=bool(pior_r.get("ok")) and pior <= 1.0 + 1e-9)
+                             ok=bool(pior_r.get("ok")) and pior <= 1.0 + 1e-9, motivo=pior_r.get("motivo"))
                 if gov is None or pior > gov["taxa"]:
                     gov, gov_res = linha, pior_r
         saida.append(linha)

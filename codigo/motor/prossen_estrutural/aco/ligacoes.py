@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import math
 
-from .. import materiais
+from .. import materiais, secoes
 from ..modelo import MPa
 from .nbr8800 import GA1, GA2
 
@@ -592,6 +592,10 @@ def verificar_ligacao(tipo, dados, esforcos):
     Tipos do contrato (tipos_contrato) devolvem o resultado do contrato (ok, taxa, verificacoes, geometria)."""
     if tipo not in _TIPOS and tipo in (tc := tipos_contrato()):
         return tc[tipo]["verificar"](dados, esforcos)
+    return com_pontas(tipo, lambda dd: _verificar_antigo(tipo, dd, esforcos))(dados)
+
+
+def _verificar_antigo(tipo, dados, esforcos):
     d, e = _validar(tipo, dados, esforcos)
     v, avisos = _FUNCOES[tipo](d, e)
     if not v:
@@ -605,6 +609,89 @@ def verificar_ligacao(tipo, dados, esforcos):
         avisos.append("borda mínima (tabela 14): bordas cortadas com serra/tesoura salvo indicação")
     return dict(taxa_max=pior["taxa"], criterio=pior["nome"], item=f"NBR 8800:2008 {pior['item']}",
                 ok=pior["taxa"] <= 1.0 + 1e-9 and not falhas, verificacoes=v, avisos=avisos)
+
+
+# ---------------------------------------------------------------- pontas (docs/v3/PONTAS-CONTRATO.md, G2)
+# Todo resultado de verificar traz geometria["pontas"] (m, referencial local da ligação). Contexto opcional em
+# dados["contexto_pontas"] = {tipo_no, comprimento (m), desloc, params}: o agrupamento passa o da barra real.
+BARRA_CURTA = "barra curta demais para a ligação"
+_NO_APOIO = {"mesa_pilar": "viga_pilar_mesa", "alma_pilar": "viga_pilar_alma", "alma_viga": "viga_viga"}
+_NO_FAMILIA = {"contraventamento": "gusset_contraventamento", "emenda": "emenda"}
+
+
+def perfil_pontas(v):
+    """Perfil do catálogo ou dict {d, bf, tw, tf} em mm → props (h, b, tw, tf em m); None se não há perfil."""
+    if isinstance(v, dict):
+        try:
+            return dict(h=float(v["d"]) * MM, b=float(v["bf"]) * MM, tw=float(v["tw"]) * MM, tf=float(v["tf"]) * MM)
+        except (KeyError, TypeError, ValueError):
+            return None
+    try:
+        return secoes.catalogo(str(v)).props if v else None
+    except KeyError:
+        return None
+
+
+def pontas_de(tipo, dados, ctx=None):
+    """Pontas do tipo de ligação a partir dos perfis em `dados` (ver pontas.pontas_locais)."""
+    from . import pontas as _p
+    d, ctx = dados or {}, ctx or {}
+    reg = registro(tipo) or META.get(tipo, {})
+    tipo_no = ctx.get("tipo_no") or _NO_APOIO.get(d.get("apoio")) or _NO_FAMILIA.get(reg.get("familia")) or         (reg.get("liga") or ["viga-pilar-mesa"])[0].replace("-", "_")
+    barra = perfil_pontas(d.get("perfil_viga") or d.get("perfil_pilar"))
+    apoio = perfil_pontas(d.get("perfil_suporte") or (d.get("perfil_pilar") if d.get("perfil_viga") else None))
+    theta = None
+    for s in ("", "_1"):   # diagonal: aba ligada/altura (dim_a) × dim_b, em mm; tirante: D
+        a = d.get(f"dim_a{s}") or d.get("D_barra")
+        if barra is None and a:
+            b = d.get(f"dim_b{s}") or a
+            barra = dict(h=float(a) * MM, b=float(b) * MM)
+            theta = math.radians(float(d.get(f"theta{s}", 45.0)))
+    return _p.pontas_locais(tipo_no, barra, apoio, comprimento=ctx.get("comprimento", math.inf), theta=theta,
+                            recuo=0.0 if tipo_no == "emenda" else None, desloc=ctx.get("desloc"),
+                            params=ctx.get("params"))
+
+
+def com_pontas(tipo, verificar):
+    """verificar(dados) → resultado com geometria["pontas"]. Barra curta (BARRA_CURTA) não derruba: o cálculo
+    segue sem o limite de comprimento e o resultado sai com ok = False, `motivo` e aviso (a barra fica no modelo)."""
+    def f(dados):
+        dados = dict(dados or {})
+        ctx = dict(dados.get("contexto_pontas") or {})
+        motivo = None
+        while True:
+            try:
+                pts = pontas_de(tipo, dados, ctx)
+                r = verificar(dados)
+                break
+            except ValueError as ex:
+                if str(ex) != BARRA_CURTA or motivo:
+                    raise
+                motivo, ctx["comprimento"] = BARRA_CURTA, math.inf
+                dados["contexto_pontas"] = ctx
+        geo = r.get("geometria") or (geometria_basica(tipo, dados) if tipo in _TIPOS else None) or {}
+        geo.setdefault("pontas", pts)
+        r["geometria"] = geo
+        if motivo:
+            r["ok"], r["motivo"] = False, motivo
+            r.setdefault("avisos", []).append(f"{motivo}: recuo + recorte alcançam o comprimento da barra "
+                                              "(barra mantida; revise o detalhe ou a modelagem)")
+        return r
+    f.__doc__ = getattr(verificar, "__doc__", None)
+    return f
+
+
+def registrar_pontas(tipos):
+    """Envolve o `verificar` de cada tipo do registro (TIPOS de um módulo de família) com com_pontas."""
+    for t, reg in tipos.items():
+        reg["verificar"] = _envolver(t, reg["verificar"])
+
+
+def _envolver(tipo, v):
+    def verificar(dados, esforcos):
+        return com_pontas(tipo, lambda dd: v(dd, esforcos))(dados)
+    verificar.__doc__ = v.__doc__
+    return verificar
 
 
 # ---------------------------------------------------------------- interface do projetista (docs/v3/LIGACOES-UI.md)

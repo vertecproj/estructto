@@ -162,3 +162,41 @@ def pontas_do_no(no, membros, tipo_ligacao, params=None):
                         plano=dict(ponto=_add(no, u, dist), normal=[-x for x in u]),
                         folga=fol, recortes=recortes))
     return out
+
+
+# ---------------------------------------------------------------- referencial local da ligação (G2)
+# Origem no nó; x ao longo da barra que chega (saindo do nó); z = altura h dela (docs/v3/LIGACOES-CONTRATO.md).
+_APOIO_LOCAL = {   # tipo → (dir, eixo_d) do apoio contínuo
+    "viga_pilar_mesa": ([0.0, 0.0, 1.0], [1.0, 0.0, 0.0]),
+    "viga_pilar_alma": ([0.0, 0.0, 1.0], [0.0, 1.0, 0.0]),
+    "viga_viga": ([0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+}
+
+
+def pontas_locais(tipo_no, barra=None, apoio=None, comprimento=math.inf, theta=None, recuo=None, desloc=None,
+                  params=None):
+    """Pontas da barra que chega, no referencial local da ligação (m).
+
+    barra/apoio: props (h, b, tw, tf). theta (rad): ângulo diagonal–apoio no gusset (padrão 45°).
+    Sem apoio conhecido (emenda, base, componentes): plano a `recuo` do nó (padrão: folga), sem recortes.
+    ValueError("barra curta demais para a ligação") como em pontas_do_no."""
+    m = dict(barra=0, extremo="i", dir=[1.0, 0.0, 0.0], eixo_d=[0.0, 0.0, 1.0], comprimento=comprimento,
+             perfil=barra or {}, desloc=list(desloc or [0.0, 0.0, 0.0]))
+    if barra and apoio and tipo_no in _APOIO_LOCAL:
+        d, e = _APOIO_LOCAL[tipo_no]
+    elif barra and tipo_no == "gusset_contraventamento":
+        t = theta if theta is not None else math.pi / 4
+        d, e = [math.cos(t), 0.0, math.sin(t)], [-math.sin(t), 0.0, math.cos(t)]
+        apoio = apoio or dict(h=0.0, b=0.0)     # ponytail: apoio desconhecido no gusset = linha (só a folga)
+    else:
+        x = recuo if recuo is not None else (params or {}).get("folga", FOLGA)
+        _curta(x, m)
+        return [dict(barra=0, extremo="i", plano=dict(ponto=[x, 0.0, 0.0], normal=[-1.0, 0.0, 0.0]),
+                     folga=0.0 if recuo is not None else x, recortes=[])]
+    ap = dict(barra=1, extremo="i", dir=d, eixo_d=e, perfil=apoio, continuo=True, comprimento=math.inf)
+    return pontas_do_no([0.0, 0.0, 0.0], [m, ap], tipo_no, params)
+
+
+def largura_util(ponta, b):
+    """Largura das mesas na ponta: b menos os copes laterais (esq/dir)."""
+    return b - sum(c["altura"] for c in ponta["recortes"] if c["tipo"] == "cope" and c["face"] in ("esq", "dir"))

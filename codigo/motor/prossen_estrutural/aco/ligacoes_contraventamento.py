@@ -1082,3 +1082,6 @@ TIPOS = {
 
 def verificar(tipo, dados, esforcos):
     return TIPOS[tipo]["verificar"](dados, esforcos)
+
+
+L.registrar_pontas(TIPOS)   # G2: geometria["pontas"] em todo resultado

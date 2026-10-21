@@ -25,6 +25,7 @@ from .. import materiais, secoes
 from ..materiais import E_ACO
 from ..modelo import MPa
 from . import ligacoes as lg
+from . import pontas as _pontas
 from .ligacoes import GA1, GA2, MM
 from .nbr8800 import _cortante
 
@@ -606,12 +607,20 @@ def _chapa_topo(d, e, estendida_padrao):
           min(vg["Zx"], 1.5 * vg["Wx"]) * fyb / GA1, "kN·m")
     Ff = Mef / braco
     fw = lg.ELETRODOS[d["eletrodo"]] * MPa
+    # ponta da viga (pontas.py): chapa encostada no apoio, viga cortada a tp dele; copes laterais encurtam as mesas
+    ctx = d.get("contexto_pontas") or {}
+    ponta = _pontas.pontas_locais(ctx.get("tipo_no", "viga_pilar_mesa"), vg, pil,
+                                  comprimento=ctx.get("comprimento", math.inf), desloc=ctx.get("desloc"),
+                                  params=dict(ctx.get("params") or {}, folga=tp))[0]
+    bf_s = _pontas.largura_util(ponta, bf)
+    if bf_s < bf - 1e-9:
+        av.append(f"mesas da viga recortadas na ponta: solda das mesas em {bf_s / MM:.1f} mm de {bf / MM:.0f} mm")
     if d["solda_mesa"] == "penetracao":
-        R.res("solda das mesas (penetração total): metal base", "6.2.5 / tabela 8", Ff, bf * tf * fyb / GA1)
+        R.res("solda das mesas (penetração total): metal base", "6.2.5 / tabela 8", Ff, bf_s * tf * fyb / GA1)
     else:
         bm = d["b_mesa"] * MM
         r = lg.resistencia_filete(bm, fw, min(fyb, fyp), min(fub_v, fup))
-        R.res("solda das mesas (filetes dos dois lados)", "6.2.5 / tabela 8", Ff, 2 * (bf - 0) * r["FwRd"])
+        R.res("solda das mesas (filetes dos dois lados)", "6.2.5 / tabela 8", Ff, 2 * bf_s * r["FwRd"])
         _filete(R, bm, min(tf, tp), "das mesas", "b_mesa")
     bw = d["b_alma"] * MM
     lw = (H - 2 * tf) / 2                                  # CBCA 6.4: só a metade comprimida da alma
@@ -634,7 +643,7 @@ def _chapa_topo(d, e, estendida_padrao):
     R.minimo("furo → face da mesa (pf) ≥ mínimo de aperto", "CBCA 6.1.1", pf_min, pf)
     # pilar
     geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=[], recortes=[])
-    x0 = pil["h"] / 2 if pil is not None else 0.0
+    x0 = ponta["plano"]["ponto"][0] - tp if pil is not None else 0.0
     if pil is not None:
         Fc = abs(M) / braco + max(-N, 0) / 2
         ln = tf + 2 * tp + (2 * d["b_mesa"] * MM if d["solda_mesa"] == "filete" else 0)
@@ -650,7 +659,7 @@ def _chapa_topo(d, e, estendida_padrao):
     tipo_m = "penetracao" if d["solda_mesa"] == "penetracao" else "filete"
     for zf in (H / 2, H / 2 - tf, -H / 2, -(H / 2 - tf)):
         geo["soldas"].append(_solda(tipo_m, tf if tipo_m == "penetracao" else d["b_mesa"] * MM,
-                                    [[xs, -bf / 2, zf], [xs, bf / 2, zf]]))
+                                    [[xs, -bf_s / 2, zf], [xs, bf_s / 2, zf]]))
     for y in (-tw / 2, tw / 2):
         geo["soldas"].append(_solda("filete", bw, [[xs, y, -(H / 2 - tf)], [xs, y, H / 2 - tf]]))
     if enr:
@@ -660,6 +669,7 @@ def _chapa_topo(d, e, estendida_padrao):
                                         [xs, ts / 2, 0], [0, -1, 0], [1, 0, 0], ts))
     R.avisos.append("modelo: T-stub de Struik–de Back (Kulak cap. 17) por linha, distribuição plástica "
                     "(Σ n·T·h); linhas internas junto à mesa comprimida só ao cortante")
+    geo["pontas"] = [ponta]
     out = R.resultado(geo)
     out["intermediarios"] = dict(
         MRd=MRd, Mef=Mef, FtRd=FtRd, FvRd=FvRd, bp=_mm(bp), g=_mm(g), pf=_mm(pf), altura_chapa=_mm(zt - zb),
@@ -670,12 +680,14 @@ def _chapa_topo(d, e, estendida_padrao):
 
 def verificar_chapa_topo_ajustada(dados, esforcos):
     d = _ler("chapa_topo_ajustada", dados)
+    d["contexto_pontas"] = (dados or {}).get("contexto_pontas")
     d["estendida"] = "nao"
     return _chapa_topo(d, esforcos, "nao")
 
 
 def verificar_chapa_topo_estendida(dados, esforcos):
     d = _ler("chapa_topo_estendida", dados)
+    d["contexto_pontas"] = (dados or {}).get("contexto_pontas")
     return _chapa_topo(d, esforcos, d["estendida"])
 
 
@@ -1194,3 +1206,6 @@ def verificar(tipo, dados, esforcos):
     if tipo not in TIPOS:
         raise ValueError(f"tipo '{tipo}' desconhecido; válidos: {', '.join(TIPOS)}")
     return TIPOS[tipo]["verificar"](dados, esforcos)
+
+
+lg.registrar_pontas(TIPOS)   # G2: geometria["pontas"] em todo resultado

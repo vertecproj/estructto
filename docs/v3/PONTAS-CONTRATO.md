@@ -50,3 +50,16 @@ Se `distância + comprimento do recorte ≥ comprimento da barra`: `ValueError("
 - Cope: `face` vale `sup`/`inf` (a mesa invadida está acima/abaixo da viga) ou `esq`/`dir` (bordas das mesas da viga mais larga que o vão livre entre as mesas do apoio). Parâmetros `cope_folga_alt` e `cope_folga_comp` (padrão 0,012). `raio_cope` tem mínimo 0,010.
 - Erros claros com `ValueError`: nó sem barra contínua; perfil sem `tw`/`tf`/`h`/`b`; esquadria com menos de 2 barras ou com tubos colineares; diagonal paralela ao apoio; ramal maior que o receptor.
 - Tubo circular: `h` = diâmetro externo.
+
+## G2: pontas nas ligações
+
+Todo resultado de `verificar` (19 tipos de `tipos_ligacao()` e `placa_base`) traz `geometria["pontas"]`.
+
+- Referencial local da ligação, em metros: origem no nó, `x` ao longo da barra que chega, `z` = altura dela.
+  `pontas.pontas_locais(tipo_no, barra, apoio, comprimento, theta, recuo, desloc, params)` monta o apoio nesse referencial e chama `pontas_do_no`.
+- Contexto opcional em `dados["contexto_pontas"] = {tipo_no, comprimento, desloc, params}`. O `dimensionar_grupo` passa o tipo do nó do grupo e o comprimento real da barra.
+- Tipo do nó: contexto; senão o campo `apoio` (`mesa_pilar`/`alma_pilar`/`alma_viga`); senão a família (contraventamento = gusset, emenda = plano no nó); senão o 1º item de `liga`.
+- Sem apoio conhecido (emenda, componentes, diagonais sem perfil de apoio): plano a `folga` do nó, sem recortes. Diagonal no gusset sem perfil de apoio: apoio tratado como linha.
+- Placa de base: ponta do pilar na face superior da placa (`x = esp`), sem recortes.
+- O cálculo usa a geometria: na chapa de topo, a chapa encosta no apoio e a viga é cortada a `tp` dele (`folga = tp`). A solda das mesas usa a largura real da ponta, `largura_util = b − Σ altura` dos copes `esq`/`dir`.
+- Barra curta (`recuo + recorte ≥ comprimento`): não lança exceção. O cálculo segue sem o limite, e o resultado sai com `ok = False`, `motivo = "barra curta demais para a ligação"` e aviso. No grupo, o membro traz `motivo`.
