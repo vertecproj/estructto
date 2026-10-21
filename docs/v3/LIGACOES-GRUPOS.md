@@ -80,7 +80,7 @@ Sem projeto: governante pelo proxy de demanda (vigas: |V|, depois |N|, |M|; diag
 Erro de dados de um membro fica em `membros[].erro` e `erros` (os outros continuam).
 
 **Estender** (outros agentes vão criar tipos): tipo de nó novo → `TIPOS` + regra em `_classificar_no`; tipo de ligação novo →
-`VERIFICADORES[tipo] = f(modelo, membro, esforcos_da_ponta, dados) → {taxa_max, ok, ...}` (e, se for de `aco.ligacoes`, só a
+`VERIFICADORES[tipo] = f(modelo, membro, esforcos_da_ponta, dados) → {taxa_max, ok, ...}` (tipo do contrato sem entrada aqui: `verificador()` usa um genérico com `esforcos_contrato`, ver [LIGACOES-UI.md](LIGACOES-UI.md)) (e, se for de `aco.ligacoes`, só a
 linha em `_ESFORCOS_LIG`). A interface lista os tipos de `GET /api/ligacoes/tipos` sozinha.
 
 ## 5. Onde está exposto

@@ -63,7 +63,12 @@ namespace NovoFtool
             ErroFundo      = C("#3F1A24"),
             ErroBorda      = C("#6E2536"),
 
-            InfoFundo      = C("#172B42");
+            InfoFundo      = C("#172B42"),
+
+            // projetista de ligações (LigacaoDesenho.cs): perfis neutros, chapas claras, solda quente
+            LigPerfil3D    = C("#56657A"),
+            LigChapa3D     = C("#C9D4E2"),
+            LigSolda       = C("#F2B84B");
 
         // ---------- 4.2 Tokens Semanticos do Canvas e Diagramas ----------
         public static readonly Color
@@ -243,6 +248,8 @@ namespace NovoFtool
             BPilar3DFace      = B("#960EA5E9"),
             BPilar3DTopo      = B("#C80284C7"),
             BPerfilArea       = B("#5A0EA5E9"),
+            BLigPerfil        = B("#3394A3B8"),
+            BLigSolda         = B(LigSolda),
             BCotaFundo        = B(InfoFundo),
 
             // Modo de impressao / Memorial A4 (fundo claro)

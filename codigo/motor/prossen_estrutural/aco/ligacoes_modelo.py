@@ -274,7 +274,7 @@ def editar(modelo, dados):
     if acao == "projeto":
         g = _grupo(modelo, d.get("grupo"))
         tl = d.get("tipo_ligacao")
-        if tl is not None and tl not in VERIFICADORES:
+        if tl is not None and verificador(tl) is None:
             raise ValueError(f"tipo_ligacao '{tl}' desconhecido; válidos: {', '.join(VERIFICADORES)}")
         g["projeto"] = None if tl is None else dict(tipo_ligacao=tl, dados=dict(d.get("dados") or {}))
         if tl == "chapa_simples" and g["membros"]:  # sugestão: alma da viga do grupo
@@ -399,6 +399,27 @@ def _verif_placa(modelo, membro, e, dados):
 VERIFICADORES = {**{t: _verif_lig(t) for t in _ESFORCOS_LIG}, "placa_base": _verif_placa}
 
 
+def esforcos_contrato(e):
+    """Esforços do modelo na ponta → convenção do contrato (docs/v3/LIGACOES-CONTRATO.md): V no plano da alma = Vz
+    (local z = altura do perfil), Vz = Vy, M = My (eixo forte), Mz, T; N > 0 tração. Igual em JanelaLigacaoProjeto.cs."""
+    return dict(N=e["N"], V=abs(e["Vz"]), Vz=abs(e["Vy"]), M=e["My"], Mz=e["Mz"], T=e["T"])
+
+
+def verificador(tl):
+    """Verificador do tipo de ligação: os de VERIFICADORES ou, para os tipos do contrato (módulos de família), um genérico
+    com os esforços do contrato; None se o tipo não existe."""
+    if tl in VERIFICADORES:
+        return VERIFICADORES[tl]
+    if _lig.registro(tl) is None:
+        return None
+
+    def f(modelo, membro, e, dados):
+        r = _lig.verificar_ligacao(tl, dados, esforcos_contrato(e))
+        r.setdefault("taxa_max", r.get("taxa"))
+        return r
+    return f
+
+
 def _taxa(r):
     t = r.get("taxa_max")
     return math.inf if t is None or not math.isfinite(t) else float(t)
@@ -412,7 +433,7 @@ def dimensionar_grupo(modelo, calculo, grupo):
     g = _grupo(modelo, grupo)
     proj = g.get("projeto")
     tl = proj and proj.get("tipo_ligacao")
-    if tl and tl not in VERIFICADORES:
+    if tl and verificador(tl) is None:
         raise ValueError(f"tipo_ligacao '{tl}' sem verificador; válidos: {', '.join(VERIFICADORES)}")
     nomes = [c["nome"] for c in calculo.combinacoes if c.get("estado") in ("ELU", "ELU_EXC")]
     saida, gov, gov_res = [], None, None
@@ -429,7 +450,7 @@ def dimensionar_grupo(modelo, calculo, grupo):
             pior, pior_r, pior_c = -1.0, None, None
             try:
                 for n, e in esf.items():
-                    r = VERIFICADORES[tl](modelo, mb, e, proj.get("dados") or {})
+                    r = verificador(tl)(modelo, mb, e, proj.get("dados") or {})
                     if _taxa(r) > pior:
                         pior, pior_r, pior_c = _taxa(r), r, n
             except (ValueError, KeyError, TypeError) as ex:

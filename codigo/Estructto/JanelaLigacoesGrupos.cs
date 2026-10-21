@@ -27,6 +27,7 @@ namespace NovoFtool
         public Func<Task> Calcular;                                      // F5 do documento
         public Func<JsonNode, JsonNode, JsonObject> AbrirPlaca;          // (grupo, dimensionamento) → dados novos da placa ou null
         public Action Mudou;                                             // o documento mudou (ligacoes no JSON)
+        public Func<JanelaLigacoesGrupos, JsonNode, Task> Projetar;                          // abre o projetista de ligações com o grupo (JanelaLigacaoProjeto)
 
         static readonly Dictionary<string, string> NomesLig = new Dictionary<string, string>
         { [""] = "Sem projeto", ["placa_base"] = "Placa de base", ["parafuso"] = "Parafuso", ["solda_filete"] = "Filete de solda", ["chapa_simples"] = "Chapa simples", ["ligacao_tracao"] = "Ligação de tração" };
@@ -474,9 +475,10 @@ namespace NovoFtool
             var sp = new StackPanel();
             var opcoes = new List<string> { "" , "placa_base" };
             opcoes.AddRange(Lista(tipos).Select(t => S(t, "tipo")));
-            var cb = Combo(opcoes.Select(o => NomesLig.TryGetValue(o, out var n) ? n : o), NomesLig.TryGetValue(tipoEdit ?? "", out var nn) ? nn : tipoEdit, x =>
+            string NomeL(string o) => NomesLig.TryGetValue(o, out var n) ? n : S(Lista(tipos).FirstOrDefault(t => S(t, "tipo") == o), "nome") is string nm && nm != "" ? nm : o;
+            var cb = Combo(opcoes.Select(NomeL), NomeL(tipoEdit ?? ""), x =>
             {
-                string novo = opcoes.FirstOrDefault(o => (NomesLig.TryGetValue(o, out var n) ? n : o) == x) ?? "";
+                string novo = opcoes.FirstOrDefault(o => NomeL(o) == x) ?? "";
                 if (novo == tipoEdit) return;
                 tipoEdit = novo; dadosEdit = novo == "placa_base" ? new JsonObject { ["pelo_perfil"] = true } : new JsonObject();
                 _ = Editar(new JsonObject { ["acao"] = "projeto", ["grupo"] = gSel, ["tipo_ligacao"] = novo == "" ? null : novo, ["dados"] = dadosEdit.DeepClone() }, false);
@@ -511,6 +513,12 @@ namespace NovoFtool
                          "Verifica o projeto com os esforços de TODAS as ligações do grupo em todas as combinações ELU; a pior governa e o detalhe vale para o grupo.");
             bDim.Height = 32; bDim.Margin = new Thickness(0, 0, 0, 10); bDim.IsEnabled = tipoEdit != "" && !ocupado;
             sp.Children.Add(bDim);
+            if (Projetar != null)
+            {
+                var bProj = Botao("Projetar no projetista…", "unir", async () => await Projetar(this, g), "Abre o projetista de ligações com os esforços da pior ligação do grupo: escolha o padrão, ajuste vendo o desenho e as verificações e aplique ao grupo.", 30);
+                bProj.Margin = new Thickness(0, -2, 0, 10); bProj.HorizontalAlignment = HorizontalAlignment.Stretch;
+                sp.Children.Add(bProj);
+            }
             sp.Children.Add(Resultado(g));
             if (campos != null) sp.Children.Add(Cartao("Dados da ligação (" + (NomesLig.TryGetValue(tipoEdit, out var nl) ? nl : tipoEdit) + ")", campos));
             hostProjeto.Child = sp;
@@ -628,6 +636,7 @@ namespace NovoFtool
             Destacar = (nos, barras) => { if (Esp == d && vista3D != null) vista3D.Selecionar(nos, barras); },
             Calcular = async () => { if (Esp == d) await CalcularEspacial(); },
             Mudou = () => { if (Esp == d) { alterado = true; AtualizarTitulo(); } },
+            Projetar = (ger, g) => AbrirProjetistaGrupo(d, g, ger),
             AbrirPlaca = (g, dim) =>
             {
                 var j = PlacaDoGrupo(d, g, dim, out No nb);

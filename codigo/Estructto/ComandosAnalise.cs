@@ -73,13 +73,15 @@ namespace NovoFtool
 
         public static async void AbrirLigacao(Window dono) { await AbrirLigacao(dono, null); }
 
-        // tipo: parafuso, solda_filete, chapa_simples ou ligacao_tracao (null = o primeiro)
+        // Projetista de ligações (JanelaLigacaoProjeto): tipo = abre direto no tipo (null = biblioteca)
         public static async Task AbrirLigacao(Window dono, string tipo)
         {
-            var d = await Buscar(dono, "Ligação", () => Motor.Get("/api/ligacoes/tipos"));
-            if (d == null) return;
-            Mostrar(dono, new JanelaLigacao(d, tipo, corpo => Motor.Post("/api/ligacoes/verificar", corpo)));
+            if (dono is MainWindow w) { w.AbrirProjetistaLigacao(tipo); return; }
+            var d = await BuscarTipos(dono);
+            if (d != null) Mostrar(dono, new JanelaLigacaoProjeto(d, tipo));
         }
+
+        public static Task<JsonNode> BuscarTipos(Window dono) => Buscar(dono, "Projetar ligação", () => Motor.Get("/api/ligacoes/tipos"));
 
         public static void AbrirCype(Window dono)
         {

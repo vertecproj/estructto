@@ -2349,20 +2349,125 @@ _ROTULOS_LIG = {
 def tipos_ligacao():
     """#25 Tipos de ligação e seus campos (delegado a `aco.ligacoes`); cada campo ganha `rotulo` curto
     (campo sem rótulo conhecido usa o próprio nome)."""
-    tipos = _ligacoes().tipos_ligacao()
+    lig = _ligacoes()
+    tipos = lig.tipos_ligacao()
     for t in tipos:
         for c in t["campos"]:
             c["rotulo"] = c.get("rotulo") or _ROTULOS_LIG.get((t["tipo"], c["nome"])) or _ROTULOS_LIG.get(c["nome"]) or c["nome"]
+        # projetista (docs/v3/LIGACOES-UI.md): nome/família/liga dos tipos antigos, faixa e inteiros do esquema, sugerir
+        for k, v in getattr(lig, "META", {}).get(t["tipo"], {}).items():
+            t.setdefault(k, v)
+        esq = {c["nome"]: c for c in lig.esquema(t["tipo"])}
+        for c in t["campos"]:
+            e = esq.get(c["nome"], {})
+            for k in ("min", "max", "inteiro"):
+                if c.get(k) is None and e.get(k) is not None:
+                    c[k] = e[k]
+        reg = lig.registro(t["tipo"])
+        t["sugerir"] = bool(reg and reg.get("sugerir"))
+        t["exemplo"] = _exemplo_lig(lig, t)
     return _puro(tipos)
 
 
+# Exemplo de cada tipo (miniatura da biblioteca e ponto de partida do projetista): padrões do esquema + estes valores
+# nos campos obrigatórios sem padrão + `sugerir` com estes perfis. Antigos em m, contrato em mm.
+_AMOSTRA_LIG = {
+    "perfil_viga": "W310x38.7", "perfil_suporte": "W250x73", "perfil_pilar": "W250x73",
+    "dim_a": 76.2, "t_perfil": 6.35, "dim_a_1": 63.5, "t_perfil_1": 6.35,
+    ("chapa_simples", "h"): 0.23, ("chapa_simples", "t"): 0.0095, ("chapa_simples", "d_mm"): 19.05,
+    ("chapa_simples", "n"): 3, ("chapa_simples", "s"): 0.075, ("chapa_simples", "e"): 0.06, ("chapa_simples", "tw"): 0.0058,
+    ("ligacao_tracao", "b"): 0.2, ("ligacao_tracao", "t"): 0.0095, ("ligacao_tracao", "d_mm"): 19.05,
+    ("ligacao_tracao", "n_linhas"): 2, ("ligacao_tracao", "n_por_linha"): 3, ("ligacao_tracao", "e1"): 0.04,
+    ("parafuso", "d_mm"): 16, ("parafuso", "t"): 0.0095, ("parafuso", "lf"): 0.03,
+    ("solda_filete", "b"): 0.006, ("solda_filete", "L"): 0.2, ("solda_filete", "t_base"): 0.0095,
+}
+_EXEMPLOS_LIG = {}
+
+
+def _exemplo_lig(lig, t):
+    tipo = t["tipo"]
+    if tipo in _EXEMPLOS_LIG:
+        return _EXEMPLOS_LIG[tipo]
+    nomes = [e["nome"] for e in t["esforcos"]]
+    esf = {n: (100.0 if i == 0 else 0.0) for i, n in enumerate(nomes)}
+    if "M" in esf:   # rígidas e emendas: momento e cortante típicos de viga W 310
+        esf.update(M=60.0, N=0.0, **({"V": 100.0} if "V" in esf else {}))
+    if tipo == "parafuso":
+        esf = dict(Ft=20.0, Fv=35.0)
+    dados = {c["nome"]: c["padrao"] for c in t["campos"] if c.get("padrao") is not None}
+    for c in t["campos"]:
+        v = _AMOSTRA_LIG.get((tipo, c["nome"]), _AMOSTRA_LIG.get(c["nome"]))
+        if v is not None:
+            dados[c["nome"]] = v
+    reg = lig.registro(tipo)
+    if reg and reg.get("sugerir"):
+        try:
+            dados.update({k: v for k, v in reg["sugerir"](dict(dados), dict(esf)).items() if v is not None})
+        except (ValueError, KeyError, TypeError):
+            pass
+    _EXEMPLOS_LIG[tipo] = dict(dados=dados, esforcos=esf)
+    return _EXEMPLOS_LIG[tipo]
+
+
+def _membros_geometria(dados):
+    """Perfis ligados (dados perfil_*) com d, bf, tw, tf em mm, para o desenho da ligação (geometria.membros)."""
+    out = []
+    for k, v in (dados or {}).items():
+        if not (k.startswith("perfil_") and isinstance(v, str) and v):
+            continue
+        try:
+            p = _sec.catalogo(v).props
+        except KeyError:
+            continue
+        if p.get("tipo") == "I":
+            out.append(dict(barra=k[7:], perfil=v, d=p["h"] * 1e3, bf=p["b"] * 1e3, tw=p["tw"] * 1e3, tf=p["tf"] * 1e3,
+                            apoio=str((dados or {}).get("apoio") or "")))
+    return out
+
+
 def verificar_ligacao(tipo, dados, esforcos):
-    """#25 Verifica uma ligação (delegado a `aco.ligacoes`; medidas em m, esforços em kN)."""
+    """#25 Verifica uma ligação (delegado a `aco.ligacoes`; medidas em m nos tipos antigos, mm nos do contrato, esforços
+    em kN). Para o projetista, o resultado sempre traz `taxa`, `taxa_max` e `geometria` (com `membros` = perfis ligados)."""
     lig = _ligacoes()
     try:
-        return _puro(lig.verificar_ligacao(tipo, dados, esforcos))
+        r = lig.verificar_ligacao(tipo, dados, esforcos)
     except (ValueError, KeyError, TypeError) as e:
         raise ErroEntrada(str(e.args[0] if isinstance(e, KeyError) and e.args else e), "ligacao") from e
+    r.setdefault("taxa", r.get("taxa_max", 0.0))
+    r.setdefault("taxa_max", r["taxa"])
+    if r.get("geometria") is None and hasattr(lig, "geometria_basica"):
+        r["geometria"] = lig.geometria_basica(tipo, dados)
+    if isinstance(r.get("geometria"), dict):
+        r["geometria"].setdefault("membros", _membros_geometria(dados))
+    return _puro(r)
+
+
+def _lig_ui(fn, *a):
+    try:
+        return _puro(fn(*a))
+    except (ValueError, KeyError, TypeError) as e:
+        raise ErroEntrada(str(e.args[0] if isinstance(e, KeyError) and e.args else e), "ligacao") from e
+
+
+def sugerir_ligacao(tipo, perfis, esforcos):
+    """Pré-dimensionamento do tipo (contrato: `sugerir(perfis, esforcos) → dados`)."""
+    reg = _ligacoes().registro(tipo)
+    if not (reg and reg.get("sugerir")):
+        raise ErroEntrada(f"tipo '{tipo}' não tem pré-dimensionamento (use otimizar)", "tipo")
+    return _lig_ui(reg["sugerir"], dict(perfis or {}), dict(esforcos or {}))
+
+
+def otimizar_ligacao(tipo, dados, esforcos):
+    """Busca simples do menor detalhe que passa (`aco.ligacoes.otimizar`); o resultado vem como em verificar_ligacao."""
+    r = _lig_ui(_ligacoes().otimizar, tipo, dados, esforcos)
+    r["resultado"] = verificar_ligacao(tipo, r["dados"], esforcos)
+    return r
+
+
+def memorial_ligacao(tipo, dados, esforcos):
+    """Seção HTML do memorial da ligação (`aco.ligacoes.memorial_html`), com os rótulos dos campos."""
+    rot = {c["nome"]: c["rotulo"] for t in tipos_ligacao() if t["tipo"] == tipo for c in t["campos"]}
+    return dict(html=_lig_ui(_ligacoes().memorial_html, tipo, dados, esforcos, None, rot))
 
 
 # ---- grupos de ligações do modelo (aco/ligacoes_modelo.py, docs/v3/LIGACOES-GRUPOS.md)
