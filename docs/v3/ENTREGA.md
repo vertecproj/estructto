@@ -32,3 +32,11 @@ Branch `unificacao`. Detalhes de cada parte nos `.md` citados.
 - Suíte de fluxo ponta a ponta (`--testes-fluxo`) ficou **parcial** (branch `wt-e2e`, commit c76b797): o agente parou no limite semanal. Retomar e
   rodar antes de considerar o produto validado por fluxo completo.
 - Ver "Limites" em cada doc (ex.: RO só em torno do eixo vertical, solda sem esquadria no canto, DWG sem 3DSOLID, sem barra só de tração).
+
+## Integração com o `main` do Bruno (pendente)
+O `origin/main` recebeu 6 commits do Bruno (1f719d3) no programa 2D: vento NBR 6123:2023 nas barras (V0, S1, S2, S3, Cf/Ca, K) com casos,
+vento NBR 8400:1984 (seletor de norma, combinações I/II/III), e melhorias na placa legada (pior combinação por item, n da solda, troca de
+chumbador por família). Eles conflitam com o produto só-3D (Acoes.cs, Capturas.cs, Casos.cs, JanelaPlaca.cs, Paleta.cs) e trazem cálculo
+novo em `Nucleo.cs` que precisa ser **portado para o motor Python** (vento por barra e NBR 8400) para existir no 3D.
+Por isso a v3 foi publicada no branch `unificacao` (pré-release), **sem sobrescrever o `main`**. Próximo passo: portar esses recursos para o
+motor e as janelas 3D de Vento, depois juntar `origin/main` e só então avançar o `main`.
