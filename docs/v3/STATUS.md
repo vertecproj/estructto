@@ -56,7 +56,7 @@ Build de conferência: `dotnet build -c Release -p:OutDir=C:\dev\build\Estructto
       terças e tirantes, escadas/guarda-corpo simples (se der)
 
 ### Fase 6 — qualidade e entrega
-- [~] Q1 (e2e parcial em wt-e2e c76b797) Testes de fluxo ponta a ponta (capturas + asserts), revisão de código, verificador de cálculo das ligações (vs livros e CYPE)
+- [x] Q1 (wt-e2e: `--testes-fluxo` A–F completo, 10 bugs em [BUGS-E2E.md](BUGS-E2E.md), nenhum corrigido) Testes de fluxo ponta a ponta (capturas + asserts), revisão de código, verificador de cálculo das ligações (vs livros e CYPE)
 - [x] Q2 (wt-design) Polimento de design (skills de design, Fable com cautela), animações
 - [x] Q3 (pré-release v0.3-unificado no branch unificacao; main NÃO avançado — ver ENTREGA.md) Publicar: exe + motor, README/manual, merge em main, push, Release no GitHub (conta bruno.nietsche@prossen.com.br pelo navegador se preciso)
 

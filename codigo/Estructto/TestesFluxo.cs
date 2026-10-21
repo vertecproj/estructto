@@ -79,6 +79,7 @@ namespace NovoFtool
             }
             catch { return null; }
         }
+        static string SeguroCaminho(Process p) { try { return p.MainModule.FileName; } catch { return "?"; } }
         static bool MotorEmpacotado() { try { var p = Priv<Process>(typeof(Motor), "proc"); return p != null && !p.HasExited && Path.GetFileName(p.StartInfo.FileName).Equals("estructto-motor.exe", StringComparison.OrdinalIgnoreCase); } catch { return false; } }
 
         // raiz do repositório (exemplos/, codigo/motor/testes/dados_cype): 3º argumento, ESTRUCTTO_MOTOR ou subindo das pastas
@@ -146,30 +147,29 @@ namespace NovoFtool
         }
 
         // ================================================================ configuração do usuário (%AppData%\NovoFtool)
-        static string cfgReal, cfgCopia;
+        // Execuções --teste* usam a pasta própria do Config (%TEMP%\Estructto\config-automacao). Só o empresa.txt do relatório
+        // (RelatorioMotor.ArqEmpresa) ainda vai para o %AppData% do usuário [E2E-11]: a suíte o confere e devolve depois de cada relatório.
+        // ponytail: não copia/restaura a pasta inteira — outras sessões do usuário gravam cópias de recuperação nela enquanto a suíte roda.
+        static string ArqEmpresaUsuario => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool", "empresa.txt");
+        static byte[] empresaBytes; static DateTime empresaData;
         static void GuardarConfigUsuario()
         {
-            cfgReal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool");
-            cfgCopia = Path.Combine(Path.GetTempPath(), "estructto-fluxo-cfg-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(cfgCopia);
-            if (Directory.Exists(cfgReal))
-                foreach (var f in Directory.GetFiles(cfgReal, "*", SearchOption.AllDirectories))
-                {
-                    string dst = Path.Combine(cfgCopia, Path.GetRelativePath(cfgReal, f));
-                    Directory.CreateDirectory(Path.GetDirectoryName(dst)); File.Copy(f, dst);
-                }
+            var f = new FileInfo(ArqEmpresaUsuario);
+            empresaBytes = f.Exists ? File.ReadAllBytes(f.FullName) : null; empresaData = f.Exists ? f.LastWriteTimeUtc : default;
         }
-        static void DevolverConfigUsuario()
+        // true = o arquivo do usuário estava intacto; senão devolve o conteúdo e a data originais
+        static bool DevolverConfigUsuario()
         {
             try
             {
-                if (!Directory.Exists(cfgReal)) return;
-                var orig = new HashSet<string>(Directory.GetFiles(cfgCopia, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(cfgCopia, f)), StringComparer.OrdinalIgnoreCase);
-                foreach (var f in Directory.GetFiles(cfgReal, "*", SearchOption.AllDirectories)) if (!orig.Contains(Path.GetRelativePath(cfgReal, f))) File.Delete(f);
-                foreach (var rel in orig) { string dst = Path.Combine(cfgReal, rel); Directory.CreateDirectory(Path.GetDirectoryName(dst)); File.Copy(Path.Combine(cfgCopia, rel), dst, true); }
-                Directory.Delete(cfgCopia, true);
+                var f = new FileInfo(ArqEmpresaUsuario);
+                bool intacto = empresaBytes == null ? !f.Exists : f.Exists && f.LastWriteTimeUtc == empresaData && File.ReadAllBytes(f.FullName).SequenceEqual(empresaBytes);
+                if (intacto) return true;
+                if (empresaBytes == null) File.Delete(f.FullName);
+                else { File.WriteAllBytes(f.FullName, empresaBytes); File.SetLastWriteTimeUtc(f.FullName, empresaData); }
+                return false;
             }
-            catch { }
+            catch { return false; }
         }
 
         // ================================================================ utilitários
@@ -312,6 +312,7 @@ namespace NovoFtool
             var fi = new FileInfo(pdf);
             bool ehPdf = fi.Exists && fi.Length > 20000 && Encoding.ASCII.GetString(File.ReadAllBytes(pdf), 0, 4) == "%PDF";
             r.Checar(ehPdf, "relatório PDF gravado: " + pdf + " (" + (fi.Exists ? fi.Length / 1024 + " kB" : "não existe") + ")");
+            r.Conhecido("E2E-11", DevolverConfigUsuario(), "abrir o relatório na execução automática não grava %AppData%\\NovoFtool\\empresa.txt do usuário");
             string html = File.ReadAllText(Path.Combine(Motor.Pasta, "relatorio-estructto.html"));
             r.Checar(html.Contains("engenheiro") || html.Contains("ART"), "relatório traz o aviso de responsabilidade (engenheiro/ART)");
             return html;
@@ -715,6 +716,9 @@ namespace NovoFtool
                 FotoDialogo(jan, "B-03-sismo");
             });
             var casosE = J(w)["casos"].AsObject().Where(kv => (string)kv.Value["tipo"] == "S").Select(kv => kv.Key).ToList();
+            string manualAcoes = Path.Combine(Raiz(), "docs", "manual", "03-acoes.md");
+            if (File.Exists(manualAcoes) && casosE.Count > 0)
+                r.Conhecido("E2E-07", !File.ReadAllText(manualAcoes).Contains("E (sismo)"), "manual 03-acoes.md diz o mesmo tipo de caso do sismo que o motor gera (\"S\")");
             r.Checar(mudouS && casosE.Count >= 2, "sismo gerado: " + stSismo + " · casos " + string.Join(", ", casosE));
 
             // --- F5, modal, estabilidade
@@ -971,17 +975,6 @@ namespace NovoFtool
             bool recuperou = w.EspacialAtivo.Calculado && w.EspacialAtivo.PiorPorBarra.Count == taxas.Count && taxas.All(kv => Rel9(kv.Value, DocumentoEspacial.Taxa(w.EspacialAtivo.PiorPorBarra[kv.Key])));
             r.Checar(recuperou, "F5 depois do motor morto: o motor sobe de novo, o modelo volta e as taxas são as mesmas");
             Foto(w, "E-01-motor-reiniciado", () => v.MostrarVista(VistaPadrao.Iso, false));
-            // morre DURANTE o cálculo
-            var t = w.CalcularEspacial();
-            AteCond(() => w.OcupadoEsp, 5);
-            Matar();
-            Esperar(t);
-            string msg = w.StatusMsg.Text;
-            r.L("motor morto durante o F5: status = " + msg + " · calculado = " + w.EspacialAtivo.Calculado);
-            bool msgClara = w.EspacialAtivo.Calculado || (msg.Contains("motor", StringComparison.OrdinalIgnoreCase) && (msg.Contains("encerr") || msg.Contains("reinici") || msg.Contains("parou") || msg.Contains("de novo") || msg.Contains("F5")));
-            r.Checar(msgClara, "motor morto durante o F5: mensagem clara ou cálculo refeito (status: " + msg + ")");
-            Esperar(w.CalcularEspacial());
-            r.Checar(w.EspacialAtivo.Calculado, "F5 seguinte recupera (" + w.StatusMsg.Text + ")");
             // edição com o motor morto: o documento não pode perder a alteração
             Matar();
             string barra = w.EspacialAtivo.Json["barras"].AsObject().First().Key;
@@ -1063,6 +1056,65 @@ namespace NovoFtool
             }
             Config.ApagarRecuperacao(chave);
 
+            // --- programa normal (processo à parte) com cópia de recuperação no %AppData% do usuário: a janela aparece em até 10 s
+            //     (antes o diálogo de recuperação vinha antes do 1º quadro e a janela principal ficava invisível). Depois, --capturas
+            //     não pode tocar na recuperação do usuário (antes gravava e apagava cópias lá).
+            string exe = Process.GetCurrentProcess().MainModule.FileName;
+            string recUsr = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovoFtool", "recuperacao");
+            string chaveSent = "e2e-sentinela-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            string sentinela = Path.Combine(recUsr, chaveSent + ".estructto");
+            Directory.CreateDirectory(recUsr);
+            File.WriteAllText(sentinela, new JsonObject { ["formato"] = "estructto", ["versao"] = 3, ["modelo"] = JsonNode.Parse(jRec) }.ToJsonString(), new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(recUsr, chaveSent + ".txt"), "", new UTF8Encoding(false));
+            var outros = Process.GetProcessesByName("Estructto").Where(x => x.Id != Environment.ProcessId).Select(x => x.Id + " " + Path.GetDirectoryName(SeguroCaminho(x))).ToList();
+            r.L("outras sessões do Estructto abertas (podem gravar na recuperação do usuário): " + (outros.Count == 0 ? "nenhuma" : string.Join("; ", outros)));
+            try
+            {
+                var psiN = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe) };
+                psiN.Environment.Remove("ESTRUCTTO_MOTOR");
+                var pn = Process.Start(psiN);
+                var swN = Stopwatch.StartNew(); string titulo = "";
+                try
+                {
+                    AteCond(() => { pn.Refresh(); titulo = pn.MainWindowTitle; return pn.HasExited || titulo != ""; }, 10);
+                    double tJan = swN.Elapsed.TotalSeconds;
+                    r.Checar(!pn.HasExited && titulo != "", "programa normal com cópia de recuperação: janela principal visível (MainWindowTitle = \"" + titulo + "\") em " + tJan.ToString("0.0", CultureInfo.InvariantCulture) + " s (limite 10 s)");
+                }
+                finally { try { if (!pn.HasExited) { pn.Kill(true); pn.WaitForExit(10000); } } catch { } }
+                r.Checar(File.Exists(sentinela), "matar o programa no diálogo de recuperação não apaga a cópia");
+
+                (string, long, DateTime)[] Foto() => Directory.GetFiles(recUsr).Select(f => new FileInfo(f)).Select(f => (f.Name, f.Length, f.LastWriteTimeUtc)).OrderBy(x => x.Name, StringComparer.Ordinal).ToArray();
+                var antesR = Foto();
+                string pastaCap = Path.Combine(Path.GetTempPath(), "estructto-e2e-capturas-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                var swC = Stopwatch.StartNew();
+                Directory.CreateDirectory(pastaCap);
+                string modeloCap = Path.Combine(Raiz(), "exemplos", "guincho-com-placa.estructto");
+                var psiC = new ProcessStartInfo(exe, "--capturas \"" + pastaCap + "\" \"" + modeloCap + "\"") { UseShellExecute = false, WorkingDirectory = Path.Combine(Raiz(), "codigo", "Estructto"), RedirectStandardError = true };
+                psiC.Environment.Remove("ESTRUCTTO_MOTOR");
+                var errC = new StringBuilder();
+                var pc = Process.Start(psiC);
+                pc.ErrorDataReceived += (s2, e2) => { if (e2.Data != null && !e2.Data.Contains("Chrome_Widget")) lock (errC) errC.AppendLine(e2.Data); };
+                pc.BeginErrorReadLine();
+                bool terminou = AteCond(() => pc.HasExited, 900);
+                if (!terminou) { try { pc.Kill(true); } catch { } }
+                var depoisR = Foto();
+                var mudou = antesR.Select(x => x.Item1).Except(depoisR.Select(x => x.Item1)).Select(x => "−" + x)
+                    .Concat(depoisR.Select(x => x.Item1).Except(antesR.Select(x => x.Item1)).Select(x => "+" + x))
+                    .Concat(antesR.Join(depoisR, x => x.Item1, x => x.Item1, (x, y) => (x, y)).Where(t => t.x.Item2 != t.y.Item2 || t.x.Item3 != t.y.Item3).Select(t => "~" + t.x.Item1)).ToList();
+                int pngs = Directory.Exists(pastaCap) ? Directory.GetFiles(pastaCap, "*.png", SearchOption.AllDirectories).Length : 0;
+                r.L("--capturas: " + (terminou ? "terminou" : "não terminou em 900 s") + " em " + swC.Elapsed.TotalSeconds.ToString("0", CultureInfo.InvariantCulture) + " s, código " + (terminou ? pc.ExitCode.ToString() : "—") + ", " + pngs + " PNG em " + pastaCap);
+                string errosCap = Path.Combine(pastaCap, "erros.txt");
+                if (File.Exists(errosCap)) r.L("        erros.txt: " + File.ReadAllText(errosCap).Substring(0, Math.Min(600, (int)new FileInfo(errosCap).Length)));
+                if (errC.Length > 0) r.L("        stderr: " + errC.ToString().Substring(0, Math.Min(600, errC.Length)));
+                r.Checar(terminou && pngs > 0, "--capturas rodou até o fim (" + pngs + " capturas)");
+                r.Checar(mudou.Count == 0, "--capturas não tocou em %AppData%\\NovoFtool\\recuperacao (" + antesR.Length + " arquivos" + (mudou.Count > 0 ? "; mudou: " + string.Join(", ", mudou.Take(8)) : ", iguais") + ")");
+                if (terminou && pc.ExitCode == 0) try { Directory.Delete(pastaCap, true); } catch { }
+            }
+            finally
+            {
+                try { File.Delete(sentinela); File.Delete(Path.Combine(recUsr, chaveSent + ".txt")); } catch { }
+            }
+
             // --- modelo de ~3.000 barras: abrir, calcular, quadro do Realista
             var big = new JsonObject
             {
@@ -1081,6 +1133,23 @@ namespace NovoFtool
             double tCalc = sw.Elapsed.TotalSeconds;
             r.Checar(w.EspacialAtivo.Calculado, "F5 no modelo grande (" + w.StatusMsg.Text + ")");
             r.Checar(tCalc < 300, "F5 em " + tCalc.ToString("0.0", CultureInfo.InvariantCulture) + " s (limite 300 s)");
+            // morre DURANTE o cálculo: no modelo grande o F5 leva segundos, o kill cai dentro dele (no galpão o F5 às vezes acabava antes)
+            {
+                var t = w.CalcularEspacial();
+                r.Checar(AteCond(() => w.OcupadoEsp, 10), "F5 do modelo grande em andamento");
+                bool emCurso = !t.IsCompleted;
+                Matar();
+                Esperar(t);
+                string msg = w.StatusMsg.Text;
+                r.L("motor morto durante o F5 (em curso: " + emCurso + "): status = " + msg + " · calculado = " + w.EspacialAtivo.Calculado);
+                r.Checar(emCurso, "o kill caiu durante o F5");
+                // o modelo tem barras e casos: a mensagem não pode dizer que não tem (o motor novo sobe vazio e recebe o F5 sem o modelo)
+                bool msgEngana = msg.Contains("não tem barras") || msg.Contains("sem_barras");
+                bool msgClara = !msgEngana && msg.Contains("motor", StringComparison.OrdinalIgnoreCase) && (msg.Contains("encerr") || msg.Contains("reinici") || msg.Contains("parou") || msg.Contains("de novo"));
+                r.Conhecido("E2E-03", msgClara, "motor morto durante o F5: a mensagem diz que o motor parou, sem acusar o modelo (status: " + msg.Substring(0, Math.Min(200, msg.Length)) + ")");
+                Esperar(w.CalcularEspacial());
+                r.Checar(w.EspacialAtivo.Calculado, "F5 seguinte recupera o modelo grande (" + w.StatusMsg.Text + ")");
+            }
             bool real0 = Config.Realista3D;
             sw.Restart();
             w.DefinirRealista(true); EsperarIdle();
