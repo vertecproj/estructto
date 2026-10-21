@@ -291,9 +291,30 @@ def _novo_id(grupos):
     return f"G{n}"
 
 
-def _projeto_padrao(tipo):
+_APOIO_FLEX = {"viga_pilar_mesa": "mesa_pilar", "viga_pilar_alma": "alma_pilar", "viga_viga": "alma_viga"}
+
+
+def _projeto_padrao(tipo, modelo=None, n=None):
     sug = TIPOS[tipo][1]
-    return dict(tipo_ligacao=sug, dados=dict(pelo_perfil=True)) if sug == "placa_base" else None
+    if sug == "placa_base":
+        return dict(tipo_ligacao=sug, dados=dict(pelo_perfil=True))
+    if modelo is not None and n and tipo in _APOIO_FLEX and not n.get("sem_tipo") and n.get("apoio"):
+        return _solda_direta_padrao(modelo, n, tipo)
+    return None
+
+
+def _solda_direta_padrao(modelo, n, tipo):
+    """G5: viga U baixa demais até para 1 parafuso (UPN 50/65) → projeto padrão solda_direta_alma."""
+    from . import ligacoes_flexiveis as F
+    sec = modelo.barras[n["barra"]].secao
+    try:
+        vg = F._perfil(sec, "perfil_viga")
+    except ValueError:
+        return None
+    if vg.get("forma") != "U" or F._furos_viga(vg, F._padrao_gerdau(vg["d"]), 1) is not None:
+        return None
+    return dict(tipo_ligacao="solda_direta_alma", dados=dict(perfil_viga=sec, apoio=_APOIO_FLEX[tipo],
+                                                             perfil_suporte=modelo.barras[n["apoio"]].secao))
 
 
 def _mb(n):
@@ -332,7 +353,7 @@ def identificar(modelo):
         if alvo is None:
             gid = _novo_id(grupos)
             alvo = grupos[gid] = dict(nome=n["nome"], tipo=n["tipo"], assinatura=n["assinatura"], membros=[],
-                                      projeto=_projeto_padrao(n["tipo"]), travado=False, manual=False)
+                                      projeto=_projeto_padrao(n["tipo"], modelo, n), travado=False, manual=False)
             criados.append(gid)
         alvo["membros"].append(_mb(n))
         colocados.add(k)

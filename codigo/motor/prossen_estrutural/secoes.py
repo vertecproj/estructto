@@ -476,6 +476,12 @@ def _carrega_catalogo():
     return _cache
 
 
+# DIN 1026-1: altura reta da alma d (mm) dos UPN (mesa inclinada; h − 2tf − 2r superestima a altura útil)
+_D_ALMA_UPN = {f"UPN {h}": d for h, d in ((50, 21), (65, 34), (80, 47), (100, 64), (120, 82), (140, 98), (160, 115),
+                                           (180, 133), (200, 151), (220, 167), (240, 184), (260, 200), (280, 216),
+                                           (300, 232), (320, 246), (350, 282), (380, 313), (400, 324))}
+
+
 def _secao_linha(lin):
     """Secao (m) de uma linha dos CSV novos. Tubos Vallourec: Ix/Iy tabelados prevalecem (a brochura usa
     raio de canto < 2t); nos demais, valem as propriedades calculadas da geometria."""
@@ -503,6 +509,8 @@ def _secao_linha(lin):
         s = secao_tubo_circular(h, tw, nome=nome)
     else:
         raise ValueError(f"{lin['_arq']}: forma '{forma}' desconhecida em {nome}")
+    if lin["_arq"] == "upn" and nome in _D_ALMA_UPN:   # G5: alma reta tabelada (DIN 1026: mesa inclinada)
+        s.props["d_alma"] = _D_ALMA_UPN[nome] / 1000
     s.props["massa"] = float(lin["massa"])
     s.props["A_catalogo"] = float(lin["A"]) * 1e-4
     if lin["_arq"] in _TABELADOS:

@@ -61,6 +61,34 @@ do nó com mais pontas (empate: o primeiro do modelo). O outro nó perde as chap
 Quando a barra é curta demais para a ligação, o resultado traz `excluir_interferencia: true` além do `motivo`. A linha
 do membro em `dimensionar_grupo` também traz essa chave. O WPF tira essa ponta da contagem de interferência.
 
+## Rodada 1 (revisão de cálculo)
+
+- Altura útil da alma: vale a alma reta tabelada `d` quando o catálogo traz (`secoes._D_ALMA_UPN`, DIN 1026, em `props.d_alma`; UPN
+  120: 82 mm, por causa da mesa inclinada). Sem `d`: `h − 2tf − 2r`. Internamente, `tf + r = (h − d)/2`.
+- `abertura_y` (+1/−1, padrão +1): lado local para onde o U abre. O chamador informa; a `geometria` devolve o lado
+  usado. Com −1, a chapa, os parafusos e as soldas espelham em y.
+- Excentricidade ao centro de cisalhamento medida do plano de corte dos parafusos (costas da alma): `e = |x0| − xg`.
+- Centro instantâneo: o coeficiente `C` nunca fica abaixo do método elástico, `1/√((1/n)² + (e·ymáx/Σy²)²)`.
+  Com 2 parafusos, o ajuste de Δmáx dava 2 % abaixo do elástico.
+- Novo tipo `solda_direta_alma`: alma do U soldada direto no apoio por dois filetes, sem chapa nem parafusos.
+  Verifica o filete (6.2.5), o metal base do apoio, o metal base da alma entre os filetes, o cisalhamento da alma
+  (`Aw = h·tw`), a perna mínima e a máxima (tabela 10, 6.2.6.2.2) e o comprimento mínimo (4b e 40 mm). Comprimento padrão
+  de cada filete `Lw = h`: a face interna continua pelas mesas. A geometria traz só `soldas` (e `pontas`).
+  Conta à mão: E70, perna 5 mm, 2 × 84 mm → 2 · 84 · 0,762 = 128 kN. UPN 50 em UPN 100 com 45 kN: a alma governa,
+  0,6 · 345 · 50 · 5 / 1,10 = 47,0 kN (taxa 0,957).
+- Reserva (fallback):
+  - `sugerir` de `chapa_simples_alma`, `cantoneira_dupla_alma` e `viga_viga_recorte` com viga U: se o perfil é baixo
+    demais, ou se a parafusada não passa e a solda passa, a resposta traz `tipo_ligacao = "solda_direta_alma"` e
+    `motivo`. O chamador passa a verificar esse tipo.
+  - `otimizar` desses tipos sem solução com viga U tenta `solda_direta_alma` e devolve `tipo` e `motivo`.
+  - `identificar`: grupo de viga U que não leva nem 1 parafuso (UPN 50/65) nasce com projeto `solda_direta_alma`.
+- Seções compostas, como 2UPN em caixão, entram como dict `{d, bf, tw, tf}` em mm. O `_perfil` aceita esse formato
+  (teste `test_composto_por_dict`).
+- PLATAFORMA, com os esforços do WPF (N 50, V 50, M 30): 74 nós com proposta, 40 com proposta ok. As 7 recusas
+  restantes são as seções compostas passadas por nome.
+- Viga de piso UPN 120 com 45 kN (mínimo de 6.1.5.2, sem isenção): a chapa simples com 2 parafusos de 1/2" reprova
+  no cisalhamento dos parafusos. O `sugerir` troca para solda direta.
+
 ## Pendências
 
 - O `sugerir` ainda não tenta a cantoneira lateral quando a chapa não cabe. Por enquanto só sai o motivo.

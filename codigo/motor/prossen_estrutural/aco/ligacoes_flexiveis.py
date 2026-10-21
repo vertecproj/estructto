@@ -72,7 +72,10 @@ def coeficiente_ci(ys, e):
             b = m
         else:
             a, fa = m, fm
-    return f((a + b) / 2)[1]
+    # G5: o centro instantâneo nunca fica abaixo do método elástico (limite inferior clássico); com 2 parafusos o
+    # ajuste de Δmáx dava C 2 % menor que o elástico
+    ym = max(map(abs, ys))
+    return max(f((a + b) / 2)[1], 1 / math.hypot(1 / n, e * ym / sum(y * y for y in ys)))
 
 
 def alavanca(T, t, p, b, a, db, dh, fy):
@@ -172,6 +175,7 @@ _BASE = {
     "aco_viga": _e("Aço da viga", "-", "A-572 GR.50", _ACOS),
     "aco_suporte": _e("Aço do apoio", "-", "A-572 GR.50", _ACOS),
     "terca_ou_travessa": _e("Terça/travessa de fechamento", "-", False),   # isenta do mínimo de 6.1.5.2
+    "abertura_y": _e("Abertura do U (lado y)", "-", 1, [1, -1]),   # G5; ignorado em perfil I
 }
 _PARAF = {
     "d": _e("Diâmetro do parafuso", "mm", 19.05, mn=10, mx=40),
@@ -250,6 +254,10 @@ _ENT_AP = {**_BASE,
            "largura_assento": _e("Largura chapa do assento", "mm", 127, mn=30, mx=600),
            "cantoneira_superior": _e("Cantoneira superior", "-", "L76x76x6.35"),
            **_SOLDA}
+
+_ENT_SD = {**_BASE, **_SOLDA,
+           "comprimento_solda": _e("Comprimento do filete", "mm", 0, mn=0, mx=2000),
+           "folga": _e("Folga viga–apoio", "mm", 2, mn=0, mx=10)}
 
 _ENT_VV = {**{k: v for k, v in _ENT_CD.items() if k not in _RECORTE and k != "apoio"},
            "conector": _e("Conector", "-", "cantoneira_dupla", ["cantoneira_dupla", "chapa_simples"]),
@@ -334,6 +342,8 @@ def _perfil(v, campo):
         tf = pr.get("tf") or pr["t"]
         # raio da mesa: UPN/U laminado sem r no catálogo → r ≈ tf (DIN 1026: r1 = tf); dobrado: ri + t
         r = pr.get("r") or (pr["ri"] + pr["t"] if pr.get("ri") is not None and "t" in pr else tf)
+        if pr.get("d_alma"):   # altura reta tabelada (UPN, mesa inclinada): tf + r = (h − d)/2
+            r = (pr["h"] - pr["d_alma"]) / 2 - tf
         xg = pr.get("xg", 0.0)
         return dict(nome=str(v), d=pr["h"], bf=pr["b"], tw=tw, tf=tf, r=r, forma="U", xg=xg,
                     x_cc=abs(pr.get("x0", 0.0)) - xg)   # centro de cisalhamento: x_cc além da face externa da alma
@@ -543,12 +553,12 @@ def _face_apoio(sp, apoio):
     return None
 
 
-def _u_viga(r, vg, p, V, y_chapa, pega):
+def _u_viga(r, vg, p, V, pega):
     """Viga U ligada pelas costas da alma (G5): a ponta do parafuso fica entre as mesas e a reação passa fora do
     centro de cisalhamento (torção V·e na viga, não verificada aqui)."""
     ponta = _comp_parafuso(pega, p["db"]) * MM - pega
     r.maximo("parafusos: ponta dentro da mesa do U", ponta, vg["bf"] - vg["tw"], "geometria (gabarito na mesa do U)")
-    e = abs(y_chapa + vg["xg"] + vg["x_cc"])   # centro de cisalhamento em y = −(xg + x_cc)
+    e = vg["x_cc"]   # do plano de corte dos parafusos (costas da alma) ao centro de cisalhamento
     r.val["e_centro_cisalhamento_mm"] = e / MM
     r.avisos.append(f"viga U: reação a {e / MM:.0f} mm do centro de cisalhamento — torção V·e = "
                     f"{V * e:.2f} kN·m na viga não verificada (trave a viga ou confira a torção)")
@@ -717,7 +727,8 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
 
     # geometria
     xf = _x_face(sp, apoio)
-    yw = tw / 2 - vg["xg"] if vg.get("forma") == "U" else 0.0   # plano médio da alma (U abre para +y)
+    ab = _abertura(d, vg)
+    yw = ab * (tw / 2 - vg["xg"]) if vg.get("forma") == "U" else 0.0   # plano médio da alma (U abre para ab·y)
     zt = vg["d"] / 2
     zb = zt - base
     can = [dict(perfil=d["cantoneira"], origem=_p(xf, yw + sg * tw / 2, zb), eixo=[0, 0, 1], u=[1, 0, 0], w=[0, sg, 0],
@@ -730,8 +741,10 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
                             _p(xf + b1, yw + sg * tw / 2, zb), _p(xf + folga, yw + sg * tw / 2, zb)]) for sg in (1, -1)]
     else:
         par += [_paraf(p, (xf + gv, yw + tw / 2 + ta, zt - z), [0, -1, 0], tw + 2 * ta) for z in zs]
-    return r.resultado(dict(chapas=[], cantoneiras=can, parafusos=par, soldas=sol,
-                            recortes=_geo_recortes(d, xf + folga)))
+    geo = dict(chapas=[], cantoneiras=can, parafusos=par, soldas=sol, recortes=_geo_recortes(d, xf + folga))
+    if vg.get("forma") == "U":
+        geo["abertura_y"] = ab
+    return r.resultado(geo)
 
 
 # ---------------------------------------------------------------- chapa simples (shear tab)
@@ -830,14 +843,18 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
     zb = zt - base
     # I: chapa do lado +y da alma (plano médio da alma em y = 0). U: chapa nas costas da alma (face externa em y =
     # −xg, o U abre para +y local) e parafusos de fora para dentro; a porca fica entre as mesas.
-    y0, sg = (-vg["xg"], -1) if vg.get("forma") == "U" else (tw / 2, 1)
+    ab = _abertura(d, vg)
+    y0, sg = (-ab * vg["xg"], -ab) if vg.get("forma") == "U" else (tw / 2, 1)
     yc = y0 + sg * t / 2
     if vg.get("forma") == "U":
-        _u_viga(r, vg, p, V, yc, t + tw)
+        _u_viga(r, vg, p, V, t + tw)
     ch = [_chapa("chapa simples", (xf, yc, zb), [1, 0, 0], [0, 0, 1], a + eh, Lc, t)]
     par = [_paraf(p, (xf + a, y0 + sg * t, zt - z), [0, -sg, 0], t + tw) for z in zs]
     sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y, zb), _p(xf, y, zb + Lc)]) for y in (y0, y0 + sg * t)]
-    return r.resultado(dict(chapas=ch, cantoneiras=[], parafusos=par, soldas=sol, recortes=_geo_recortes(d, xf + folga)))
+    geo = dict(chapas=ch, cantoneiras=[], parafusos=par, soldas=sol, recortes=_geo_recortes(d, xf + folga))
+    if vg.get("forma") == "U":
+        geo["abertura_y"] = ab
+    return r.resultado(geo)
 
 
 # ---------------------------------------------------------------- chapa de extremidade flexível
@@ -1052,6 +1069,65 @@ def _viga_viga(d, e):
     return res
 
 
+# ---------------------------------------------------------------- solda direta da alma (G5)
+
+def _solda_direta(d, e, tipo="solda_direta_alma"):
+    """Alma da viga (U pequeno, UPN 50/65) soldada direto no apoio, sem chapa nem parafusos: dois filetes de
+    comprimento Lw (um em cada face da alma; padrão Lw = h: a face interna continua pelas mesas).
+
+    Conferência à mão (E70, fw = 485 MPa, perna 5 mm, 2 × 84 mm, aço A-572 GR.50):
+      metal da solda 0,6·0,707·5·485/1,35 = 762 N/mm; metal base 0,6·5·345/1,10 = 941 N/mm → FwRd = 762 N/mm;
+      2 × 84 × 0,762 = 128 kN (≈ 127 kN da revisão).
+    UPN 50 em UPN 100, V = 45 kN (6.1.5.2): Lw = 50 mm → solda 2 × 50 × 0,762 = 76 kN; alma do UPN 50
+      0,6·345·50·5/1,10 = 47,0 kN (taxa 0,96)."""
+    r = _Col()
+    V, N = _esforcos(e, r, d)
+    vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")
+    fyv, fuv = _aco(d["aco_viga"])
+    fys, fus = _aco(d["aco_suporte"])
+    bs, fw = d["b_solda"], L.ELETRODOS[d["eletrodo"]] * MPa
+    tw, t_ap, apoio = vg["tw"], _t_apoio(sp, d["apoio"]), d["apoio"]
+    Lw = d["comprimento_solda"] or vg["d"]
+    q = math.hypot(V, N) / (2 * Lw)
+    r.val.update(Lw_mm=Lw / MM, q_kN_m=q)
+    r.res("solda alma–apoio (V, N; 2 filetes)", q, L.resistencia_filete(bs, fw, fyv, fuv)["FwRd"], "kN/m",
+          "6.2.5 / tabela 8")
+    r.res("apoio: metal base junto à solda", q, L.resistencia_filete(bs, fw, fys, fus)["metal_base"], "kN/m",
+          "6.2.5 / tabela 8")
+    r.res("alma da viga: metal base entre os filetes", 2 * q, min(0.6 * fyv * tw / GA1, 0.6 * fuv * tw / GA2),
+          "kN/m", "6.5.5 / tabela 8")
+    r.res("alma da viga: escoamento por cisalhamento (Aw = h·tw)", V, 0.6 * fyv * vg["d"] * tw / GA1, "kN",
+          "5.4.3.1 / 6.5.5 a)")
+    if N > 0:
+        r.res("alma da viga: tração na seção da solda", N, Lw * tw * fyv / GA1, "kN", "5.2.2 a)")
+    r.minimo("solda: dimensão mínima", L.filete_minimo(min(tw, t_ap)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
+    r.maximo("solda: dimensão máxima (borda da alma)", bs, L.filete_maximo(tw), "6.2.6.2.2", "b_solda")
+    r.minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * bs, 0.040), Lw, "6.2.6.2.3")
+    _cabe_no_apoio(r, sp, apoio, tw + 2 * bs, "solda", topo=vg["tf"] + vg["r"])
+    if vg.get("forma") == "U":
+        e_ = vg["x_cc"]
+        r.val["e_centro_cisalhamento_mm"] = e_ / MM
+        r.avisos.append(f"viga U: reação a {e_ / MM:.0f} mm do centro de cisalhamento — torção na viga não verificada")
+    r.avisos.append("solda direta: ligação de campo soldada (sem montagem parafusada); confira o acesso à face interna")
+    xf = _x_face(sp, apoio)
+    ab = _abertura(d, vg)
+    yw = ab * (tw / 2 - vg.get("xg", tw / 2)) if vg.get("forma") == "U" else 0.0
+    zt = vg["d"] / 2
+    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, yw + sg * tw / 2, zt - (vg["d"] - Lw) / 2),
+                                                      _p(xf, yw + sg * tw / 2, zt - (vg["d"] + Lw) / 2)])
+           for sg in (1, -1)]
+    geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=sol,
+               recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=(xf + d["folga"]) / MM))])
+    if vg.get("forma") == "U":
+        geo["abertura_y"] = ab
+    return r.resultado(geo)
+
+
+def _abertura(d, vg):
+    """Lado local (±1) para onde o U abre (G5): `abertura_y` do chamador; padrão +1."""
+    return -1 if vg.get("forma") == "U" and int(d.get("abertura_y") or 1) < 0 else 1
+
+
 # ---------------------------------------------------------------- pré-dimensionamento (sugerir)
 
 def _perfis_de(perfis):
@@ -1190,6 +1266,39 @@ def _sug_vv(perfis, esforcos):
                    dict(_rs=rec["recorte_sup_h"], _ri=rec["recorte_inf_h"]))
 
 
+def _sug_sd(perfis, esforcos):
+    v, s_, apoio = _perfis_de(perfis)
+    cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, b_solda=b) for b in (3, 4, 5, 6, 8, 10)]
+    return _tentar("solda_direta_alma", cands, esforcos)
+
+
+def _com_solda_direta(tipo, sug):
+    """G5: viga U baixa demais para parafusos, ou parafusada que não passa → sugere solda_direta_alma se ela passa;
+    a resposta traz `tipo_ligacao` e `motivo`, e o chamador passa a verificar esse tipo."""
+    def solda(perfis, esforcos, motivo):
+        c = _sug_sd(perfis, esforcos)
+        if tipo == "viga_viga_recorte":
+            c["apoio"] = "alma_viga"
+        return dict(c, tipo_ligacao="solda_direta_alma", motivo=motivo)
+
+    def f(perfis, esforcos):
+        try:
+            c = sug(perfis, esforcos)
+        except ValueError as ex:
+            if "baixo demais" not in str(ex):
+                raise
+            return solda(perfis, esforcos, str(ex))
+        try:
+            if _perfil(_perfis_de(perfis)[0], "perfil_viga").get("forma") != "U" or                     TIPOS[tipo]["verificar"](c, esforcos)["ok"]:
+                return c
+            alt = solda(perfis, esforcos, f"{tipo} não passa com viga U: solda direta da alma")
+            dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
+            return alt if TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)["ok"] else c
+        except ValueError:
+            return c
+    return f
+
+
 # ---------------------------------------------------------------- registro (contrato §Registro)
 
 def _fn(tipo, f):
@@ -1231,10 +1340,16 @@ TIPOS = {
         nome="Viga–viga com recorte", familia="flexivel", liga=["viga-viga"], entradas=_ENT_VV, esforcos=["V", "N"],
         descricao="Viga secundária na alma da principal, topos alinhados, recortes calculados (Gerdau 3.3), com "
                   "dupla cantoneira ou chapa simples; escoamento, flambagem local e rasgamento da viga recortada."),
+    "solda_direta_alma": dict(
+        nome="Solda direta da alma", familia="flexivel", liga=_LIGA_VP, entradas=_ENT_SD, esforcos=["V", "N"],
+        descricao="Alma da viga (U pequeno) soldada direto no apoio por dois filetes, sem chapa nem parafusos. "
+                  "NBR 8800 6.2.5 / tabela 10."),
 }
-for _t, _f, _s in (("cantoneira_dupla_alma", _cantoneira_dupla, _sug_cd), ("chapa_simples_alma", _chapa_simples, _sug_cs),
+for _t, _f, _s in (("cantoneira_dupla_alma", _cantoneira_dupla, _com_solda_direta("cantoneira_dupla_alma", _sug_cd)),
+                   ("chapa_simples_alma", _chapa_simples, _com_solda_direta("chapa_simples_alma", _sug_cs)),
                    ("chapa_extremidade_flexivel", _chapa_extremidade, _sug_ce), ("apoio_cantoneira", _apoio, _sug_ap),
-                   ("viga_viga_recorte", _viga_viga, _sug_vv)):
+                   ("viga_viga_recorte", _viga_viga, _com_solda_direta("viga_viga_recorte", _sug_vv)),
+                   ("solda_direta_alma", _solda_direta, _sug_sd)):
     TIPOS[_t]["verificar"] = _fn(_t, _f)
     TIPOS[_t]["sugerir"] = _s
 

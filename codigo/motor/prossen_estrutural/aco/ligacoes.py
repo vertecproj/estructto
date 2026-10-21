@@ -944,6 +944,30 @@ def _botoes_limitados(tipo, campos, lim, cur):
 _ENR_PILAR = (dict(t_enr_pilar=12.5), dict(t_enr_pilar=16.0, t_reforco=9.5), dict(t_enr_pilar=19.0, t_reforco=16.0))
 
 
+_PARAFUSADAS_ALMA = ("chapa_simples_alma", "cantoneira_dupla_alma", "viga_viga_recorte")
+
+
+def _solda_direta_reserva(tipo, dados, esforcos):
+    """G5: ligação parafusada na alma sem solução com viga U → tenta solda_direta_alma (U pequeno). O resultado traz
+    `tipo` = "solda_direta_alma" e `motivo` dizendo a troca; None se não se aplica ou também não passa."""
+    from .. import secoes
+    try:
+        u = tipo in _PARAFUSADAS_ALMA and secoes.catalogo(str(dados.get("perfil_viga"))).props.get("tipo") in ("U", "Ue")
+    except KeyError:
+        u = False
+    if not u:
+        return None
+    base = {k: dados[k] for k in ("perfil_viga", "perfil_suporte", "apoio", "aco_viga", "aco_suporte",
+                                  "terca_ou_travessa", "abertura_y") if dados.get(k) is not None}
+    if tipo == "viga_viga_recorte":
+        base["apoio"] = "alma_viga"
+    r2 = otimizar("solda_direta_alma", base, esforcos)
+    if not r2["ok"]:
+        return None
+    r2.update(tipo="solda_direta_alma", motivo=f"{tipo} sem solução com viga U: trocado por solda direta da alma")
+    return r2
+
+
 def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False):
     """Busca LIMITADA (docs/v3/LIGACOES-OTIMIZADOR.md): só valores dentro de ligacoes_limites.limites; degraus na
     ordem de material espessura → diâmetro → nº de parafusos → chapa maior (empate da pior taxa dentro de 2 %).
@@ -1014,7 +1038,7 @@ def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False
         try:
             verificar_ligacao(tipo, cur, esforcos)
         except (ValueError, KeyError, TypeError, ZeroDivisionError) as e:
-            return falha(f"dados iniciais inválidos — {e.args[0] if e.args else e} — nada alterado")
+            return _solda_direta_reserva(tipo, original, esforcos) or                 falha(f"dados iniciais inválidos — {e.args[0] if e.args else e} — nada alterado")
     proibidas = _construtivas(r)
 
     def avaliar(cand):
@@ -1080,6 +1104,9 @@ def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False
                     r2["mudancas"] = {k: [original.get(k), v] for k, v in r2["dados"].items() if original.get(k) != v}
                     r2["params"] = {k: v[1] for k, v in r2["mudancas"].items()}
                     return r2
+        r2 = _solda_direta_reserva(tipo, original, esforcos)
+        if r2:
+            return r2
         r_or = rodar(original) or r   # motivo pela verificação que governa os dados ORIGINAIS (= resultado devolvido)
         ruins = [x for x in r_or.get("verificacoes", []) if x.get("taxa", 0.0) > 1 + 1e-9] or r_or.get("verificacoes", [])
         pior = max(ruins, key=lambda x: x["taxa"] if math.isfinite(x["taxa"]) else 1e9, default=None)
