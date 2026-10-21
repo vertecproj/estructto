@@ -1,4 +1,4 @@
-// Host da Vista3D na janela principal: alternância, Realista e Modelo › Desenhar 3D (docs/MODELO-ESPACIAL.md).
+// Host da Vista3D na janela principal: alternância, estilo visual (SeletorEstilo.cs) e Modelo › Desenhar 3D (docs/MODELO-ESPACIAL.md).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -24,17 +24,7 @@ namespace NovoFtool
     public partial class MainWindow
     {
         internal Vista3D vista3D;
-        Fluent.ToggleButton tgRealista;
         public bool Em3D { get { return vista3D != null && vista3D.Visibility == Visibility.Visible; } }
-
-        // Botão "Realista" (Vista › Navegar): perfis reais com sombra ou vista analítica; a escolha fica em Config.
-        public void DefinirRealista(bool ligar)
-        {
-            Config.Realista3D = ligar;
-            if (tgRealista != null) tgRealista.IsChecked = ligar;
-            if (vista3D != null) { vista3D.Realista = ligar; vista3D.Reconstruir(); }
-            if (ligar && !Em3D) MostrarVista3D(true);
-        }
 
         // Forma real da seção: do modelo do motor (props do JSON) ou do catálogo do Estructto (perfis-*.csv).
         Perfil3D PerfilDaSecao(string nome)
@@ -50,7 +40,7 @@ namespace NovoFtool
             AtualizarFaixa3D();
             if (ligar && vista3D == null)
             {
-                vista3D = new Vista3D { Visibility = Visibility.Collapsed, MostrarLegenda = false, Realista = Config.Realista3D, Perfil = PerfilDaSecao, MostrarCargas = tgCargas?.IsChecked != false };
+                vista3D = new Vista3D { Visibility = Visibility.Collapsed, MostrarLegenda = false, Realista = Config.Realista3D, SemDx = Config.Estilo3D == EstiloVisual.Sombreado, Perfil = PerfilDaSecao, MostrarCargas = tgCargas?.IsChecked != false };
                 GridVista.Children.Insert(GridVista.Children.IndexOf(Vista) + 1, vista3D);   // acima do 2D, abaixo do HUD e avisos
                 vista3D.Escolheu += o =>
                 {

@@ -81,8 +81,15 @@ torno do centro do modelo jogava a peça para fora da tela. Agora é automático
 
 ## Modo Realista
 
-Botão **Realista** em Vista › Navegar, ao lado de "Vista 3D" (`MainWindow.DefinirRealista`). A escolha fica em
-`%AppData%\NovoFtool\vista3d.txt` (`Config.Realista3D`). Desligado = vista analítica de sempre (barras finas, grade).
+**Estilo visual** (`SeletorEstilo.cs`, 21/10/2026), onde os programas 3D põem: seletor "Realista ▾" na vista, abaixo do
+ViewCube e do "Ortográfica ▾" (controles de viewport do AutoCAD/Plant 3D), chip na barra de status (View Control Bar do Revit)
+e lista "Estilo visual" em Vista › Navegar (substitui o antigo botão Realista). Os três abrem o mesmo menu; o comando
+`ESTILO` / `VS` passa para o próximo (`VS sombreado`, `ESTILO 3` escolhem). Ctrl+K: "Realista" (liga/desliga), "Estilo
+visual" e um item por estilo. Estilos: **Analítico** (barras finas, grade), **Sombreado** (o Realista nativo descrito abaixo,
+`Vista3D.SemDx`, mesmo com GPU) e **Realista** (Render3D quando há GPU; sem GPU fica igual ao Sombreado). Sem Raio-X por
+enquanto (pede transparência nos materiais). A escolha fica em `%AppData%\NovoFtool\vista3d.txt` (`Config.Estilo3D`:
+`analitico`, `sombreado` ou `realista`; os arquivos antigos continuam valendo; `Config.Realista3D` = sólidos). Capturas
+`57-estilo-*` (`CapturasEstilo.cs`; só elas: `ESTRUCTTO_CAPTURAS=estilo`).
 Capturas `42-realista-*` lado a lado com `42-analitico-*` (`Capturas.CapturasRealista`; só elas: `ESTRUCTTO_CAPTURAS=3d`).
 
 - **Geometria real.** Cada barra é a extrusão do contorno da seção: I/H, U/C (Ue sem os enrijecedores), L, tubo retangular
