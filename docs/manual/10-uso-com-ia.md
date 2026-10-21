@@ -43,7 +43,7 @@ Editar o modelo descarta o último cálculo: rode `projeto_calcular` de novo. Ta
 | Ações | `caso_adicionar`, `carga_adicionar`, `config_definir`, `acoes_gerar`, `combinacoes_listar` |
 | Análise | `analise_caso`, `analise_combinacao`, `analise_modal`, `projeto_calcular`, `resultados_consultar`, `estabilidade_consultar` |
 | Verificação | `verificacao_listar`, `verificacao_barra` |
-| Ligações | `ligacao_tipos`, `ligacao_verificar` |
+| Ligações | `ligacao_tipos`, `ligacao_verificar`, `ligacoes_identificar`, `ligacoes_grupos`, `ligacoes_grupo_editar`, `ligacoes_grupo_dimensionar` |
 | Catálogos | `perfis_listar`, `perfil_consultar`, `materiais_listar` |
 | CYPE | `modelo_importar_cype`, `cype_comparar` |
 | Normas e limitações | `normas_implementadas` |
@@ -65,4 +65,8 @@ verificado e a limitação declarada.
 ## Relação com a interface
 
 O MCP e a interface usam o mesmo motor, mas o servidor MCP guarda o seu próprio modelo. Para ver o resultado na interface,
-salve o JSON (`modelo_salvar`) e abra-o como documento espacial.
+salve o JSON (`modelo_salvar`) e abra-o como documento espacial. Na configuração de ações, o motor oferece vento de edificação,
+por barra e NBR 8400; confira casos e combinações como descrito em [Cargas e vento](03-acoes.md).
+
+Para ligações, identifique os grupos, revise seus membros e projetos e dimensione todos antes de adotar o detalhe.
+Consulte [Ligações e bases](06-ligacoes-e-bases.md) para interpretar a pior do grupo e as limitações da placa.

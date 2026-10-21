@@ -74,11 +74,13 @@ interpoladas, senão fade.
 - `POST /api/ligacoes/sugerir {tipo, perfis, esforcos}` → dados (o `sugerir` do tipo; 422 se o tipo não tem). Com grupo, escolher
   um tipo já pré-dimensiona. Campos mudados ficam em destaque.
 - `POST /api/ligacoes/otimizar {tipo, dados, esforcos}` → `{dados, resultado, ok, passos, mudancas}` — `ligacoes.otimizar`:
-  enquanto não passa, aplica o aumento de um degrau (um item ou dois juntos, ex.: chapa mais grossa só passa com solda maior)
-  que mais reduz a pior taxa; empate em 2 %: menos material (solda < chapa < diâmetro < quantidade). Tipo antigo com altura `h`
-  e passo `s`: um parafuso a mais cresce a chapa `s`. Depois de passar, desce cada item enquanto continuar passando (mínimo local).
+  enquanto não passa, aplica o degrau (um item ou dois juntos, ex.: chapa mais grossa só passa com solda maior) que mais reduz
+  a pior taxa; empate em 2 %: menos material (solda < chapa < diâmetro < quantidade). Sobe qualquer item; desce o item que um
+  máximo reprovado pede (dica `sentido`/`parametro`, `LIGACOES-CONTRATO.md`; ex.: perna acima do máximo da chapa). Tipo antigo
+  com altura `h` e passo `s`: um parafuso a mais cresce a chapa `s`. Depois de passar, desce cada item enquanto continuar
+  passando (mínimo local); item sem efeito nas verificações não muda.
   Itens: quantidades (`n`, `n_linhas`, `n_por_linha`, `n_colunas`…), diâmetro (`d`, `d_mm`), espessura (`t`, `t_chapa`,
-  `t_gusset`…), perna (`b_solda`, `perna`). `ponytail:` busca gulosa, não global.
+  `t_gusset`, `tp`, `t_mesa`, `t_alma`…), perna (`b_solda`, `perna`, `b_mesa`, `b_alma`, `b_solda_mesa`…). `ponytail:` busca gulosa, não global.
 - `POST /api/ligacoes/memorial {tipo, dados, esforcos}` → `{html}`: `<section class="memorial-ligacao">` com veredito, esforços,
   dados (rótulos), verificações (item, expressão da norma pelo item, solicitante, resistente, taxa) e avisos.
   **Onde entra**: o relatório do motor (`relatorio.py`) não tem gancho de ligações; a tela grava a seção numa página HTML

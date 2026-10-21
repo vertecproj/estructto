@@ -1,9 +1,23 @@
 # Estructto
 
-Programa de cálculo estrutural: interface WPF (.NET 8) em `codigo/Estructto` + motor Python em `codigo/motor`
-(pórtico espacial 3D, NBR 8800, 14762, 6118, 6123, 15421, 6120, ligações, importação `.ed3` do CYPE e servidor MCP).
-Unificação e fases: [docs/UNIFICACAO.md](docs/UNIFICACAO.md). Nasceu no projeto da **coluna para guincho CSM 400 kgf**
-(UNIVALI); a planilha `ELEMENTOS DE MÁQUINA\PLANILHA DE CÁLCULO.xlsx` (OneDrive) tem de dar o mesmo resultado.
+Programa de cálculo estrutural **só 3D**, com interface WPF (.NET 8) em `codigo/Estructto` e motor Python em `codigo/motor`.
+O fluxo da v3 é inspirado no AutoCAD Plant 3D: novo projeto em três passos, grade e níveis, barras e pilares com snap,
+linha de comando e edição em lote. Shift+arrastar orbita com pivô automático sob o cursor; ViewCube, perspectiva e zoom no
+cursor permitem examinar o mesmo modelo em planta, elevação ou isométrica.
+
+A v3 reúne cargas nodais, pontuais, trapezoidais e em área; vento NBR 6123 (edificação e por barra) e NBR 8400:1984;
+treliças e contraventamentos; análise e verificações de barras; biblioteca e projetista de ligações, grupos dimensionados
+pela pior ligação e placa de base pelo método NBR. O Realista mostra perfis e ligações projetadas; DWG/DXF exportam malhas
+e STEP AP214 exporta sólidos facetados por barra. Há relatório PDF/HTML, importação CYPE `.ed3` e servidor MCP.
+
+Comece pelo **[manual do usuário v3](docs/manual/README.md)** e pela [tabela de comandos e atalhos](docs/manual/12-comandos-e-atalhos.md).
+Consulte [limitações e responsabilidade técnica](docs/manual/11-limitacoes.md): resultados exigem revisão por engenheiro
+responsável e ART pertinente. A placa verifica My e Mz separadamente, sem interação biaxial simultânea; exportações não
+incluem ligações nem resultados. Na distribuição, mantenha `Estructto.exe` e a pasta `motor/` juntos.
+
+Histórico da unificação: [docs/UNIFICACAO.md](docs/UNIFICACAO.md). O projeto nasceu na **coluna para guincho CSM 400 kgf**
+(UNIVALI). Bases calculadas pelo método legado, inclusive as do guincho e da planilha de referência, precisam ser revistas
+pelo método NBR; os resultados podem mudar devido às correções do modelo de compressão e tração nos chumbadores.
 
 **Regra do projeto:** toda decisão, critério ou mudança vai para um `.md` aqui (e uma linha no [CHANGELOG](docs/CHANGELOG.md)).
 Gabriel e Bruno trabalham em máquinas diferentes; a memória do Claude não é compartilhada.

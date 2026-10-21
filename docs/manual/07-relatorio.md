@@ -1,29 +1,23 @@
-# 7. Aba Relatório
+# 7. Gerar e revisar o relatório
 
-## Memorial
+Calcule e confira o modelo antes de abrir **Arquivo › Relatório**, o botão Relatório ou `RELATORIO`. A v3 gera o **Relatório NBR do motor**, com resultados e verificações do cálculo do documento ativo.
 
-Botão **Relatório** (captura 25-relatorio). Duas versões, escolhidas na janela:
+Confira identificação, modelo, ações, combinações, resultados, verificações e avisos. Preencha cliente, engenheiro e empresa em **Arquivo › Propriedades do projeto**. Na janela do relatório, **Empresa / autor › Aplicar** atualiza o carimbo; a empresa do projeto tem prioridade sobre o padrão das Opções.
 
-| Versão | Conteúdo |
-|---|---|
-| **Básico** | Modelo, casos de carga, combinações, diagramas, reações, esforços, tabela de verificação, tabela de placas |
-| **Completo** | Básico + seção 9, Memorial de cálculo: método da rigidez, equilíbrio global (fechamento ΣFx, ΣFy, ΣM), cada barra com fórmula → valores → resultado → limite → aproveitamento, placas de base e limitações |
+Use **Salvar PDF…** para gerar o PDF A4 ou **Salvar HTML…** para guardar uma versão autônoma. Após qualquer alteração do projeto, recalcule e gere novamente o relatório. Um arquivo já exportado não acompanha mudanças posteriores.
 
-Imprima ou salve em PDF (impressora "Microsoft Print to PDF"). Cabeçalho, carimbo e logo usam a marca Estructto.
-O relatório não altera o modelo. Unidades das substituições: N, mm, MPa. Esforços de entrada aparecem em kN e kN·m.
+## Ligações e bases
 
-O memorial declara o que **não** verifica (seção 9.5). Mantenha essa seção ao entregar o documento.
-Padrão de redação: [PADRAO-MEMORIAL.md](../PADRAO-MEMORIAL.md).
+As placas de base aplicadas aos grupos entram no anexo, com resumo e verificação pelo motor. Confira grupo, número de membros, combinação e eixo governante. Fixação, chapa e solda podem ser governadas por combinações diferentes.
 
-Com o motor Python, o relatório usa o resultado do motor mostrado em Análise.
+O **Memorial** das demais ligações é gerado no projetista como HTML separado. Salve-o/imprima-o em PDF e inclua-o na documentação da entrega; ele ainda não é anexado automaticamente ao relatório principal.
 
-## Exportar CSV
+## Conferência antes da entrega
 
-**Exportar CSV** (Ctrl+E): nós, barras, reações, esforços e verificação, para abrir no Excel.
+1. Confirme versão do modelo, casos, combinações e hipóteses relatadas. Use combinações específicas para verificar simultaneidade e equilíbrio; uma envoltória reúne extremos distintos.
+2. Confira resultantes das ações e equilíbrio das reações com a mesma combinação.
+3. Faça conferências independentes de esforços, flechas, estabilidade, barras, fixações, chapas e soldas, conforme o projeto.
+4. Registre verificações complementares e limitações; preserve os avisos emitidos pelo motor.
+5. Submeta o conjunto ao engenheiro responsável, com a ART pertinente.
 
-## Antes de entregar
-
-1. Confira que o resultado mostrado é o que você quer relatar (caso, combinação ou envoltória).
-2. Confira à mão ao menos uma conta de cada tipo (tensão, flecha, flambagem, fixação, chapa, solda).
-3. Confirme que o fechamento do equilíbrio global é zero.
-4. Submeta ao engenheiro responsável (ART).
+Para intercâmbio de geometria, use [DWG/DXF e STEP](08-vista.md). Consulte [Responsabilidade técnica](11-limitacoes.md).
