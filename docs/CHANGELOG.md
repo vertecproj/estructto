@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente C (C2, rodada 2): mesa do pilar enrijecida usa m = bc − 0,8r e m2 = bs − 0,8a√2 (EN fig. 6.8) e os modos 1–3 da tab. 6.2; exemplo 137,4 → 92,7 kN (taxa 1,01). Ver [v3/LIGACOES-OTIMIZADOR.md](v3/LIGACOES-OTIMIZADOR.md).
 - 21/10/2026 — Frente C (C2, rodada 1): mesa do pilar enrijecida com bs > bc pela EN 1993-1-8 (α fig. 6.11); otimizador tenta enrijecedores do pilar como último degrau; motivo cita a verificação dos dados originais. Ver [v3/LIGACOES-OTIMIZADOR.md](v3/LIGACOES-OTIMIZADOR.md#mesa-do-pilar-enrijecida-ligacoes_rigidaspy-rodada-1).
 - 21/10/2026 — Frente C (C2): otimizador de ligações só busca dentro de `limites`; disposição construtiva vira restrição (compacta o espaçamento a 3d); sem solução não altera nada e explica (`motivo`, `verificacao_limitante`, `limite_atingido`). Ver [v3/LIGACOES-OTIMIZADOR.md](v3/LIGACOES-OTIMIZADOR.md).
 - 21/10/2026 — Frente G (G3): pilar inclinado no apoio vira base, treliça sobre banzo comum vira nó de treliça, ângulo < 20° recusado com motivo; todo nó tem tipo ou motivo (`sem_tipo`). Ver [v3/LIGACOES-GRUPOS.md](v3/LIGACOES-GRUPOS.md#1-identificar).

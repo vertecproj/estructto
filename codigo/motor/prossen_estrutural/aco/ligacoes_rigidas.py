@@ -96,12 +96,27 @@ def alfa_en(l1, l2):
 
 
 def leff_junto_enrijecedor(m, m2, e):
-    """Comprimento efetivo por parafuso da mesa do pilar com a linha junto a um enrijecedor (EN 1993-1-8 tab. 6.4,
-    "linha adjacente a enrijecedor"): leff = min(2π·m, α·m) (padrões circular e não circular, linha isolada).
-    m: furo → face da alma; m2: furo → face do enrijecedor; e: furo → borda livre da mesa (m). None se α não se aplica.
-    ponytail: m e m2 geométricos, sem descontar 0,8·r / 0,8·a·√2 (a favor de λ menor, α maior; leff limitado a 2πm)."""
+    """Comprimento efetivo da mesa do pilar com a linha junto a um enrijecedor (EN 1993-1-8 tab. 6.4, "linha adjacente
+    a enrijecedor", linha isolada): leff = min(2π·m, α·m). m e m2 como na EN fig. 6.8: m = furo → face da alma − 0,8·r;
+    m2 = furo → face do enrijecedor − 0,8·a·√2 (a = garganta da solda); e = furo → borda livre (m). None sem α."""
     a = alfa_en(m / (m + e), m2 / (m + e))
     return None if a is None else min(2 * math.pi * m, a * m)
+
+
+def tstub_en(T, leff, t, m, e, fy, FtRd):
+    """T-stub da EN 1993-1-8 6.2.4 (tab. 6.2), POR PARAFUSO (a linha tem 2): Mpl = 0,25·leff·t²·fy/γa1;
+    modo 1 = 2·Mpl/m; modo 2 = (Mpl + n·Ft,Rd)/(m + n), n = min(e; 1,25m); modo 3 = Ft,Rd.
+    B (força no parafuso, para a verificação da alavanca) = T·Ft,Rd/min(modo 2; modo 3): a EN cobre a alavanca pelos
+    modos 2 e 3 — B ≤ Ft,Rd equivale a T ≤ min(modo 2, modo 3). Mesmas chaves de tstub."""
+    n = min(e, 1.25 * m)
+    Mpl = 0.25 * leff * t ** 2 * fy / GA1
+    m1, m2_, m3 = 2 * Mpl / m, (Mpl + n * FtRd) / (m + n), FtRd
+    lim_b = min(m2_, m3)
+    return dict(b1=m, a1=n, delta=1.0, Mp=Mpl, alfa=0.0, Q=T * FtRd / lim_b - T, B=T * FtRd / lim_b,
+                T_chapa=m1, T_parafuso=lim_b, Tcap=min(m1, lim_b), en=True)
+
+
+A_SOLDA_ENR = 0.005   # m, garganta da solda do enrijecedor do pilar (ponytail: solda não dimensionada; a ≈ 5 mm)
 
 
 def momento_efetivo(M, N, braco):
@@ -590,11 +605,15 @@ def _chapa_topo(d, e, estendida_padrao):
                 bs_ = abs(abs(L["z"]) - (H / 2 - tf / 2)) - tsc / 2
                 if db / 2 < bs_ < bc:
                     ops.append(((pil["b"] - pil["tw"]) / 2, bs_, 1.25 * bs_))
-                if bs_ > db / 2 and bc > db / 2:   # canto alma + enrijecedor (EN 1993-1-8 tab. 6.4, fig. 6.11)
-                    leff = leff_junto_enrijecedor(bc, bs_, (pil["b"] - g) / 2)
+                m_en = bc - 0.8 * pil.get("r", 0.0)                      # EN fig. 6.8
+                m2_en = bs_ - 0.8 * A_SOLDA_ENR * math.sqrt(2)
+                e_en = (pil["b"] - g) / 2
+                if m_en > 0 and m2_en > 0:   # canto alma + enrijecedor (EN 1993-1-8 tab. 6.4, fig. 6.11)
+                    leff = leff_junto_enrijecedor(m_en, m2_en, e_en)
                     if leff:
-                        ops.append((leff, bc, (pil["b"] - g) / 2))
-            cands = [(tstub(0.0, o[0], pil["tf"], o[1], o[2], db, dh, fyc, FtRd), o) for o in ops]
+                        ops.append(("en", leff, m_en, e_en))
+            cands = [((tstub_en(0.0, o[1], pil["tf"], o[2], o[3], fyc, FtRd) if o[0] == "en"
+                       else tstub(0.0, o[0], pil["tf"], o[1], o[2], db, dh, fyc, FtRd)), o) for o in ops]
             L["pilar"], L["pc"] = max(cands, key=lambda c: c[0]["Tcap"])
             L["Tcap"] = min(L["Tcap"], L["pilar"]["Tcap"])
     Mef = momento_efetivo(M, N, braco)
@@ -619,7 +638,9 @@ def _chapa_topo(d, e, estendida_padrao):
               c["B"], FtRd)
         B = c["B"]
         if pil is not None:
-            cp = tstub(T, *L["pc"][:1], pil["tf"], *L["pc"][1:], db, dh, fyc, FtRd)
+            o = L["pc"]
+            cp = (tstub_en(T, o[1], pil["tf"], o[2], o[3], fyc, FtRd) if o[0] == "en"
+                  else tstub(T, o[0], pil["tf"], o[1], o[2], db, dh, fyc, FtRd))
             R.res(f"{nome}: flexão da mesa do pilar (T-stub)", "6.3.5", T, cp["T_chapa"])
             R.res(f"{nome}: parafuso com alavanca na mesa do pilar", "6.3.3.1 / 6.3.5", cp["B"], FtRd)
             B = max(B, cp["B"])

@@ -311,20 +311,16 @@ class TestTiposEGeometria(unittest.TestCase):
 
 
 class TestMesaPilarEnrijecida(unittest.TestCase):
-    """EN 1993-1-8 tab. 6.4 / fig. 6.11: linha de parafusos junto ao enrijecedor de continuidade, com bs > bc.
+    """EN 1993-1-8 tab. 6.4 / 6.2 / fig. 6.11: linha de parafusos junto ao enrijecedor de continuidade, bs > bc.
 
-    Chapa de topo ajustada W250x25.3 (H = 257, tf = 8,4) em W310x38.7 (bf = 165, tw = 5,8, tf = 9,7), d = 3/4",
-    pf = 30, g = max(50; 2,7·19,05 + 6,1) = 57,4 mm, M = 40 kN·m, V = 30 kN.
-    Linha interna: z = 128,5 − 8,4 − 30 = 90,1 mm; eixo da mesa (enrijecedor) 124,3 mm.
-    m = bc = (57,4 − 5,8)/2 = 25,8 mm; e = (165 − 57,4)/2 = 53,8 mm; m + e = 79,6 mm.
-    t_enr = 9,5: m2 = 124,3 − 90,1 − 4,75 = 29,4 mm > bc (o modelo antigo ignorava o enrijecedor).
-    λ1 = 25,8/79,6 = 0,325; λ2 = 29,4/79,6 = 0,370. Pela aproximação de Jaspart, α = 6,60: o maior α com
-    λ1,lim = 1,25/(α − 2,75) > λ1; λ2,lim = 1,08, então λ2 fica dentro da curva.
-    leff = min(2π·25,8 = 162,4; 6,60·25,8 = 170,4) = 162,4 mm por parafuso. Sem enrijecedor: p = 3,5·bc = 90,5.
-    T_chapa da mesa ∝ p·(1 + δ), com δ = 1 − dh/p e dh = 20,6:
-      sem:  90,5·(1 + 0,772) = 160,4 → 72,46 kN (valor do motor);
-      com: 162,4·(1 + 0,873) = 304,2 → 72,46·304,2/160,4 = 137,4 kN.
-    A taxa da flexão da mesa do pilar sai de 93,3/72,5 = 1,29 para 93,3/137,4 = 0,68."""
+    Chapa de topo ajustada W250x25.3 (H = 257, tf = 8,4) em W310x38.7 (bf = 165, tw = 5,8, tf = 9,7, r = 10,
+    fy = 345 MPa), d = 3/4" A325, pf = 30, g = max(50; 2,7·19,05 + 6,1) = 57,4 mm, M = 40 kN·m, V = 30 kN.
+    Linha interna z = 128,5 − 8,4 − 30 = 90,1 mm; eixo da mesa da viga (enrijecedor) 124,3 mm.
+    EN fig. 6.8: m = (57,4 − 5,8)/2 − 0,8·10 = 25,8 − 8,0 = 17,8 mm;
+      t_enr = 9,5: m2 = 124,3 − 90,1 − 4,75 − 0,8·5·√2 = 29,4 − 5,7 = 23,8 mm (a = 5 mm); e = (165 − 57,4)/2 = 53,8.
+    λ1 = 17,8/71,6 = 0,249; λ2 = 23,8/71,6 = 0,332 → α ≈ 7,7 → α·m = 137 > 2π·m = 111,8 → leff = 111,8 mm.
+    Mpl,1 = 0,25·0,1118·0,0097²·345 000/1,10 = 0,825 kN·m; modo 1 = 2·Mpl/m = 2·0,825/0,0178 = 92,7 kN/parafuso.
+    Solicitação no parafuso T = 93,3 kN → taxa da mesa ≈ 1,01 (sem enrijecedor, AISC b' = bc − d/2: 72,46 kN, 1,29)."""
     D = dict(perfil_viga="W250x25.3", perfil_pilar="W310x38.7")
 
     def mesa(self, **k):
@@ -333,9 +329,12 @@ class TestMesaPilarEnrijecida(unittest.TestCase):
 
     def test_alfa_e_leff(self):
         self.assertLess(rel(lr.alfa_en(0.325, 0.370), 6.60), 0.005)
-        self.assertLess(rel(lr.leff_junto_enrijecedor(0.0258, 0.0294, 0.0538), 2 * math.pi * 0.0258), 1e-9)
+        self.assertLess(rel(lr.leff_junto_enrijecedor(0.0178, 0.0238, 0.0538), 0.1118), 0.002)
         self.assertEqual(lr.alfa_en(0.05, 0.05), 8.0)
         self.assertIsNone(lr.alfa_en(0.9, 0.9))   # enrijecedor longe: não conta
+        t = lr.tstub_en(0.0, 0.1118, 0.0097, 0.0178, 0.0538, 345e3, 130.0)
+        self.assertLess(rel(t["Mp"], 0.825), 0.02)
+        self.assertLess(rel(t["T_chapa"], 92.7), 0.02)
 
     def test_sem_enrijecedor_igual(self):
         v, _ = self.mesa()
@@ -344,9 +343,8 @@ class TestMesaPilarEnrijecida(unittest.TestCase):
 
     def test_com_enrijecedor_bs_maior_que_bc(self):
         v, r = self.mesa(t_enr_pilar=9.5)
-        self.assertLess(rel(v["resistente"], 137.4), 0.005)
-        self.assertLess(v["taxa"], 0.69)
-        self.assertTrue(r["ok"])
+        self.assertLess(rel(v["resistente"], 92.7), 0.02)
+        self.assertLess(rel(v["taxa"], 1.01), 0.02)
 
 
 if __name__ == "__main__":

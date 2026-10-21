@@ -56,21 +56,27 @@ continuam: o C# (`JanelaLigacaoProjeto.Otimizar`) não mudou.
 - Busca gulosa (um ou dois degraus por vez), não global.
 - Na chapa de topo estendida, o enrijecedor da chapa (`t_enrijecedor`, padrão vazio) pode ser criado com 4,75 mm.
 
-## Mesa do pilar enrijecida (ligacoes_rigidas.py, rodada 1)
+## Mesa do pilar enrijecida (ligacoes_rigidas.py, rodadas 1 e 2)
 
 Com a linha de parafusos junto ao enrijecedor de continuidade, o modelo antigo só contava o enrijecedor quando
-bs < bc. Para bs ≥ bc, o enrijecedor não aumentava nada, e o aço não tinha resistência associada. Agora há também o
-padrão de charneiras da EN 1993-1-8:
+bs < bc. Agora há também o T-stub da EN 1993-1-8:
 
-- tab. 6.4, "linha adjacente a enrijecedor", linha isolada: leff = min(2π·m; α·m) por parafuso;
-- m = bc (furo → face da alma), m2 = bs (furo → face do enrijecedor), e = (bf − g)/2;
-- λ1 = m/(m + e), λ2 = m2/(m + e);
-- α da fig. 6.11, pela aproximação analítica de Jaspart: λ1,lim = 1,25/(α − 2,75); λ2,lim = α·λ1,lim/2;
-  λ2 = λ2,lim + (1 − λ2,lim)·((λ1,lim − λ1)/λ1,lim)^(α/√2). Toma-se o maior α em [4,45; 8] cuja curva contém o ponto;
-  sem curva, o enrijecedor não conta.
-- leff entra como largura tributária p do T-stub (Mp = p·t²/4·fy/γa1, mesma convenção por parafuso). Vale o maior
-  entre os padrões sem e com enrijecedor.
-- ponytail: m e m2 são geométricos, sem descontar 0,8r nem 0,8a√2.
+- **m e m2 (fig. 6.8):** m = bc − 0,8·r, com bc = furo → face da alma. m2 = bs − 0,8·a·√2, com bs = furo → face
+  do enrijecedor e a = garganta da solda = 5 mm. A solda não é dimensionada: `A_SOLDA_ENR`. e = (bf − g)/2.
+- **α (fig. 6.11):** pela aproximação de Jaspart, com λ1 = m/(m + e) e λ2 = m2/(m + e).
+  - λ1,lim = 1,25/(α − 2,75); λ2,lim = α·λ1,lim/2.
+  - Para λ1 < λ1,lim: λ2 = λ2,lim + (1 − λ2,lim)·((λ1,lim − λ1)/λ1,lim)^(α/√2).
+  - Vale o maior α em [4,45; 8] cuja curva contém o ponto. Sem curva, o enrijecedor não conta.
+- **leff (tab. 6.4, linha adjacente a enrijecedor, isolada):** leff = min(2π·m; α·m).
+- **Resistência por parafuso (6.2.4, tab. 6.2):** Mpl = 0,25·leff·tf²·fy/γa1.
+  - Modo 1 = 2·Mpl/m.
+  - Modo 2 = (Mpl + n·Ft,Rd)/(m + n), com n = min(e; 1,25m).
+  - Modo 3 = Ft,Rd.
+  - A verificação da alavanca usa B = T·Ft,Rd/min(modo 2; modo 3).
+- Vale o maior entre este padrão e o T-stub AISC sem enrijecedor. O padrão AISC mantém a convenção dele, b' = bc − d/2,
+  e não muda.
 
-Exemplo do teste: W250x25.3 em W310x38.7, M = 40 kN·m, t_enr = 9,5 mm. α = 6,60 e leff = 2πm = 162 mm.
-A mesa do pilar resiste 72,5 kN sem enrijecedor e 137,4 kN com ele: a taxa vai de 1,29 para 0,68.
+Exemplo do teste: W250x25.3 em W310x38.7, M = 40 kN·m, t_enr = 9,5 mm.
+- m = 17,8 mm; leff = 2πm = 111,8 mm; Mpl = 0,825 kN·m.
+- Modo 1 = 92,7 kN por parafuso: a taxa da mesa vai de 1,29 para 1,01. O enrijecedor de 9,5 mm sozinho não basta.
+- O otimizador resolve com enrijecedor de 12,5 mm, tp 12,5 mm, parafusos de 16 mm e 1 linha extra (taxa máxima 1,00).
