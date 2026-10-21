@@ -15,7 +15,31 @@ def _linhas():
                 yield l
 
 
+ARQUIVOS = ("w_hp ipe hea heb upn l_iguais l_desiguais u_laminado t_laminado barra_chata tubo_quadrado "
+            "tubo_retangular tubo_redondo tubos_vallourec u_pff ue_pff").split()
+NUM = "massa h b tw tf A Ix Iy".split()
+
+
 class TestCatalogo(unittest.TestCase):
+    def test_estrutura(self):
+        for a in ARQUIVOS:
+            caminho = os.path.join(PASTA, a + ".csv")
+            self.assertTrue(os.path.exists(caminho), a)
+            with open(caminho, encoding="utf-8", newline="") as fh:
+                linhas = list(csv.reader(fh, delimiter=";"))
+            self.assertGreater(len(linhas), 1, f"{a} vazio")
+            for i, l in enumerate(linhas):
+                self.assertEqual(len(l), 15, f"{a} linha {i + 1}")
+            cab = linhas[0]
+            for l in linhas[1:]:
+                d = dict(zip(cab, l))
+                for c in NUM:
+                    float(d[c])  # ValueError = coluna numérica inválida
+                if d["r"]:
+                    float(d["r"])
+                self.assertTrue("http" in d["fonte"] or "sem fonte primaria" in d["fonte"]
+                                or "pendente" in d["fonte"], f"{a} {d['nome']}: fonte")
+
     def test_massa_vs_area(self):
         for l in _linhas():
             m, A = float(l["massa"]), float(l["A"])

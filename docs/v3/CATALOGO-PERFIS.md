@@ -9,8 +9,11 @@ Pasta: `codigo/motor/prossen_estrutural/dados/perfis/`. Colunas: `fabricante_nor
 | ipe, hea, heb, upn | IPE, HEA, HEB, UPN | 18, 24, 24, 20 | ArcelorMittal Orange Book (node 6, 16, 265) |
 | l_iguais, u_laminado, tubo_* | L, U, tubos | 50, 31, 278/397/427 | `codigo/portico/perfis-outros.csv` |
 | l_desiguais | L desigual (EN 10056) | 32 | Orange Book node 225 |
+| tubos_vallourec | Tubos Vallourec TC/TQ/TR | 616 | brochura Vallourec (extração parcial) |
 | t_laminado | T Gerdau | 10 | lâmina Perfil T Gerdau |
 | barra_chata | Barra chata | 73 | geometria nominal (A = b·t, massa = 7,85·A) |
 | u_pff, ue_pff | U e Ue NBR 6355 | 57, 54 | dimensões de `perfis_pff.csv`; A, I por `secoes.py` |
 
 Teste: `testes/test_catalogo.py` (massa x A·7850 ≤ 4 %, sem duplicados, contagens mínimas). Fontes e desvios: `dados/FONTES.md`.
+
+Regenerar: `python codigo/motor/ferramentas/gerar_catalogo_perfis.py <brochura_vallourec.pdf>`. Pendências: UPN 30/40 sem conferência online; L iguais, U laminado, tubos metalon e barra chata sem fonte primária (ver `fonte` de cada linha); Vallourec com ~78 linhas descartadas por rótulo ambíguo.
