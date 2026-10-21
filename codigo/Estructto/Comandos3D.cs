@@ -145,7 +145,7 @@ namespace NovoFtool
                     case Key.Y when !editando: Refazer(); return true;
                     case Key.S: Salvar(shift); return true;
                     case Key.O: AbrirDialogo(); return true;
-                    case Key.N: Novo(); return true;
+                    case Key.N: NovoProjeto(); return true;
                     case Key.Tab when docs.Count > 1: TrocarDoc((docAtivo + (shift ? docs.Count - 1 : 1)) % docs.Count); return true;
                     case Key.F4: FecharDoc(docAtivo); return true;
                     case Key.P: AbrirRelatorio(); return true;

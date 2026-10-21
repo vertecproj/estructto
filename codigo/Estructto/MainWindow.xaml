@@ -43,6 +43,7 @@
       <TextBlock x:Name="StatusMsg" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11" Foreground="{DynamicResource Text.Secondary}" TextTrimming="CharacterEllipsis" ToolTip="Resumo do estado atual do modelo, da seleção ou do último cálculo."/>
     </DockPanel>
 
+    <Grid>
     <ad:DockingManager x:Name="Docas" AllowMixedOrientation="True">
       <ad:DockingManager.Theme>
         <adt:Vs2013DarkTheme/>
@@ -98,10 +99,6 @@
                       </DockPanel>
                     </Border>
                   </StackPanel>
-                  <!-- tela inicial (modelo vazio) -->
-                  <Border x:Name="TelaInicial" Grid.RowSpan="2" Background="{DynamicResource Bg.Canvas}" Visibility="Collapsed">
-                    <ScrollViewer x:Name="ConteudoInicio" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"/>
-                  </Border>
                 </Grid>
               </ad:LayoutDocument>
             </ad:LayoutDocumentPane>
@@ -128,5 +125,10 @@
         </ad:LayoutPanel>
       </ad:LayoutRoot>
     </ad:DockingManager>
+    <!-- tela inicial (sem documento aberto): cobre painéis e vista, como a Home do Revit/Fusion (Inicio.cs) -->
+    <Border x:Name="TelaInicial" Background="{DynamicResource Bg.Canvas}" Visibility="Collapsed">
+      <ContentControl x:Name="ConteudoInicio"/>
+    </Border>
+    </Grid>
   </DockPanel>
 </fluent:RibbonWindow>

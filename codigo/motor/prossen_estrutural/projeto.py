@@ -50,7 +50,10 @@ N_PONTOS = 13  # quartos de vão exatos para o Cb (ESPEC §6.5, regra 3)
 EXEMPLOS = Path(__file__).resolve().parent.parent / "exemplos"
 CONFIG_PADRAO = {"tipo_uso": "comercial", "variabilidade": "grandes", "pdelta": False,
                  "armadura": "CA-50", "cobrimento_m": None, "caa": "II",  # cobrimento None = pela CAA
-                 "tipo_edificacao": None}  # None | "tipo1" | "tipo2" | "separadas": γ da NBR 8681 tab. 2/5 ou NBR 8800 tab. 1 (None = por `variabilidade`)
+                 "tipo_edificacao": None,  # None | "tipo1" | "tipo2" | "separadas": γ da NBR 8681 tab. 2/5 ou NBR 8800 tab. 1 (None = por `variabilidade`)
+                 # Dados do projeto (tela de novo projeto do Estructto, docs/v3/INICIO.md): só informativos, não entram no cálculo.
+                 "projeto": {},  # {cliente, engenheiro, empresa, normas: ["NBR 8800", ...], pasta}
+                 "grade": None}  # {"x": [espaçamentos m], "y": [...], "nomes_x": ["1", ...], "nomes_y": ["A", ...]} | None
 
 
 # ================================================================ erros (ESPEC §6.1)

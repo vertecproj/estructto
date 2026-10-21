@@ -22,7 +22,7 @@ namespace NovoFtool
         string atual;
         readonly Stack<string> desfazer = new Stack<string>(), refazer = new Stack<string>();
         readonly List<string> historico = new List<string>();
-        readonly DispatcherTimer autoSalvar = new DispatcherTimer { Interval = TimeSpan.FromMinutes(2) };
+        readonly DispatcherTimer autoSalvar = new DispatcherTimer { Interval = TimeSpan.FromMinutes(Config.Opcoes.AutosalvarMin) };
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         internal Modelo M { get { return Vista.M; } }
@@ -233,13 +233,13 @@ namespace NovoFtool
         // Todo documento é 3D (docs/MODELO-ESPACIAL.md): Novo = modelo em branco do motor, em planta no térreo.
         void Novo() { _ = NovoEmBranco(); }
 
-        void AbrirDialogo()
+        internal void AbrirDialogo()
         {
             var d = new OpenFileDialog { Multiselect = true, Filter = "Modelos (*.estructto;*.portico;*.ftl;*.json;*.ed3)|*.estructto;*.portico;*.ftl;*.json;*.ed3|Estructto (*.estructto)|*.estructto|Modelo do motor (*.json)|*.json|Obra do CYPE 3D (*.ed3)|*.ed3|Portico antigo (*.portico)|*.portico|Ftool original (*.ftl)|*.ftl" };
             if (d.ShowDialog(this) == true) foreach (string f in d.FileNames) Abrir(f);
         }
 
-        void ImportarDialogo()
+        internal void ImportarDialogo()
         {
             var d = new OpenFileDialog { Multiselect = true, Filter = "Ftool original (*.ftl)|*.ftl" };
             if (d.ShowDialog(this) == true) foreach (string f in d.FileNames) Abrir(f);
@@ -468,7 +468,7 @@ namespace NovoFtool
             if ((string)DicaComando.Text != d) DicaComando.Text = d;
         }
 
-        void Log(string s, bool toast = true)
+        internal void Log(string s, bool toast = true)
         {
             if (historico.Count > 0 && historico[historico.Count - 1] == s) return;   // nao repete a mesma linha
             historico.Add(s);
