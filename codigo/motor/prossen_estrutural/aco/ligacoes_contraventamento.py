@@ -299,7 +299,7 @@ def _de_legado(x):
     k = 1e3 if x["unidade"] == "m" else 1.0
     return dict(nome=x["nome"], item=_PRE + x["item"], solicitante=x["solicitante"] * k,
                 resistente=x["resistente"] * k, unidade="mm" if k > 1 else x["unidade"], taxa=x["taxa"],
-                ok=x["taxa"] <= 1 + 1e-9)
+                ok=x["taxa"] <= 1 + 1e-9, **{c: x[c] for c in ("sentido", "parametro") if c in x})
 
 
 def _min_mm(nome, minimo, real, item):   # disposição: taxa = mínimo/real
@@ -477,9 +477,9 @@ def _membro(d, s, N, c, v, av, rot=""):
                 v.append(_vf(f"solda{rot}: filete {nm} (l = {li / MM:.0f} mm)", Fi, Fw * li, "kN", "6.2.5 / tabela 8"))
         if sec != "barra_redonda":
             v += [_de_legado(L._minimo(f"solda{rot}: dimensão mínima", L.filete_minimo(min(t, tg)), bs,
-                                       "6.2.6.2.1 / tabela 10")),
+                                       "6.2.6.2.1 / tabela 10", f"b_solda{s}")),
                   _de_legado(L._maximo(f"solda{rot}: dimensão máxima (borda do perfil)", bs, L.filete_maximo(t),
-                                       "6.2.6.2.2"))]
+                                       "6.2.6.2.2", f"b_solda{s}"))]
         v.append(_de_legado(L._minimo(f"solda{rot}: comprimento mínimo (4b e 40 mm)", max(4 * bs, 0.040),
                                       min(l1, l2), "6.2.6.2.3")))
         if tracao:

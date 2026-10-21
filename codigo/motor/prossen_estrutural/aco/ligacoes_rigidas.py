@@ -317,11 +317,13 @@ class _R:
         self.v.append(dict(nome=nome, item=item if item.startswith(("CBCA", "AISC", "Pfeil")) else f"NBR 8800 {item}", solicitante=round(float(abs(sd)), 4),
                            resistente=round(float(rd), 4), unidade=unidade, taxa=round(t, 4), ok=t <= 1 + 1e-9))
 
-    def minimo(self, nome, item, minimo, real):   # detalhamento, em mm
+    def minimo(self, nome, item, minimo, real, parametro=None):   # detalhamento, em mm
         self.res(nome, item, minimo / MM, max(real, 1e-9) / MM, "mm")
+        lg._dica(self.v[-1], "sobe", parametro)
 
-    def maximo(self, nome, item, real, maximo):
+    def maximo(self, nome, item, real, maximo, parametro=None):
         self.res(nome, item, real / MM, maximo / MM, "mm")
+        lg._dica(self.v[-1], "desce", parametro)
 
     def resultado(self, geometria):
         pior = max(self.v, key=lambda x: x["taxa"]) if self.v else None
@@ -340,9 +342,9 @@ def _espacamento(R, s, db, t, nome):
     R.maximo(f"espaçamento máximo 24t ≤ 300 mm ({nome})", "6.3.10", s, min(24 * t, 0.300))
 
 
-def _filete(R, b, tmin, nome):
-    R.minimo(f"solda {nome}: perna mínima", "6.2.6.2.1 / tabela 10", lg.filete_minimo(tmin), b)
-    R.maximo(f"solda {nome}: perna máxima", "6.2.6.2.2", b, lg.filete_maximo(tmin))
+def _filete(R, b, tmin, nome, parametro):
+    R.minimo(f"solda {nome}: perna mínima", "6.2.6.2.1 / tabela 10", lg.filete_minimo(tmin), b, parametro)
+    R.maximo(f"solda {nome}: perna máxima", "6.2.6.2.2", b, lg.filete_maximo(tmin), parametro)
 
 
 def _mm(v):
@@ -601,12 +603,12 @@ def _chapa_topo(d, e, estendida_padrao):
         bm = d["b_mesa"] * MM
         r = lg.resistencia_filete(bm, fw, min(fyb, fyp), min(fub_v, fup))
         R.res("solda das mesas (filetes dos dois lados)", "6.2.5 / tabela 8", Ff, 2 * (bf - 0) * r["FwRd"])
-        _filete(R, bm, min(tf, tp), "das mesas")
+        _filete(R, bm, min(tf, tp), "das mesas", "b_mesa")
     bw = d["b_alma"] * MM
     lw = (H - 2 * tf) / 2                                  # CBCA 6.4: só a metade comprimida da alma
     r = lg.resistencia_filete(bw, fw, min(fyb, fyp), min(fub_v, fup))
     R.res("solda da alma ao cortante (2 filetes, meia altura)", "6.2.5 / tabela 8", abs(V) / (2 * lw), r["FwRd"], "kN/m")
-    _filete(R, bw, min(tw, tp), "da alma")
+    _filete(R, bw, min(tw, tp), "da alma", "b_alma")
     # enrijecedor da chapa estendida (DG4: ts ≥ tw·fyb/fys; b/t ≤ 0,56√(E/fy))
     hs = pf + de
     Ls = hs / math.tan(math.radians(30))
@@ -738,7 +740,7 @@ def verificar_flange_plate(dados, esforcos):
         r = lg.resistencia_filete(bw_, fw, min(fyp, fyb), min(fup, fub_v))
         R.res("solda chapa–mesa da viga (2 filetes longitudinais)", "6.2.5 / tabela 8", max(Ft, Fc) / (2 * Lw),
               r["FwRd"], "kN/m")
-        _filete(R, bw_, min(t, tf), "chapa–mesa")
+        _filete(R, bw_, min(t, tf), "chapa–mesa", "b_solda_mesa")
         R.minimo("filetes longitudinais: L ≥ distância entre eles", "6.2.6.2.3 (Pfeil 4.4)", bpl, Lw)
         R.minimo("filete: L ≥ 4b e ≥ 40 mm", "6.2.6.2.3", max(4 * bw_, 0.040), Lw)
         for zs in (H / 2 + t, -(H / 2 + t)):
@@ -751,7 +753,7 @@ def verificar_flange_plate(dados, esforcos):
         bp_ = d["b_solda_pilar"] * MM
         r = lg.resistencia_filete(bp_, fw, fyp, fup)
         R.res("solda chapa–pilar (2 filetes)", "6.2.5 / tabela 8", max(Ft, Fc) / (2 * bpl), r["FwRd"], "kN/m")
-        _filete(R, bp_, t, "chapa–pilar")
+        _filete(R, bp_, t, "chapa–pilar", "b_solda_pilar")
     # alma: chapa simples (primitiva de aco.ligacoes)
     cs = dict(h=d["h_alma"] * MM, t=d["t_alma"] * MM, aco_chapa=d["aco_chapa"], d_mm=d["d_alma_mm"],
               tipo_parafuso=d["tipo_parafuso"], rosca_no_plano=d["rosca_no_plano"], n=int(d["n_alma"]),

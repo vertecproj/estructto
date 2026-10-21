@@ -33,8 +33,8 @@ sem ele, vem de `ESTRUCTTO_MOTOR` ou de subir a partir do diretório atual.
 | Severidade | Bugs |
 |---|---|
 | Alta | E2E-04 |
-| Média | E2E-03, E2E-05, E2E-06, E2E-08, E2E-10 |
-| Baixa | E2E-02, E2E-07, E2E-09, E2E-11 |
+| Média | E2E-03, E2E-05 (corrigido), E2E-06, E2E-08, E2E-10 |
+| Baixa | E2E-02, E2E-07 (corrigido), E2E-09, E2E-11 |
 
 E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no `unificacao` quando a suíte rodou: a conferência voltou a ser normal.
 
@@ -68,6 +68,11 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Evidência: `fluxo-pkg\fluxo-A-13-joelho-chapa-topo.png`, `fluxo-A.txt` (linhas "joelho:" e "contorno").
 - Suspeito: `codigo/motor/prossen_estrutural/aco/ligacoes.py:725` `otimizar` — enquanto reprova, só tenta subir degraus (`vizinho(..., True)`)
   e para em "nenhum aumento ajuda" (`ligacoes.py:783`); critérios de máximo pedem descer.
+- **Situação: corrigido** (branch `wt-bugs-b`). As disposições construtivas levam a dica `sentido` ("sobe"/"desce") e, quando é um
+  campo só, `parametro` (`docs/v3/LIGACOES-CONTRATO.md`); `otimizar` desce o campo que um máximo reprovado pede (ou desce a perna e
+  engrossa a chapa num degrau duplo) e passou a mexer em `b_mesa`, `b_alma`, `b_solda_*`, `tp`, `t_mesa`, `t_alma`. No caso do joelho
+  (W310x38.7, M = 40, V = 30) passa com `b_alma` = 3 mm. Testes: `test_ligacoes_ui.TestOtimizar` (`test_perna_acima_do_maximo_desce`,
+  `test_chapa_topo_alma_fina_e2e05`). Falta tirar a marca `[CONHECIDO #E2E-05]` da suíte de fluxo.
 
 ### E2E-06 — Média — Erros do motor aparecem só pelo código ("entrada_invalida") nas janelas
 - Passos: Importar CYPE › `novo.ed3` (obra sem resultados gravados pelo CYPE) › Comparar.
@@ -106,6 +111,8 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - Obtido: SX, SY, SX_TOR, SY_TOR com tipo "S" (`projeto.py:180`, `_TIPOS_CASO`; "E" é outro tipo).
 - Evidência: `fluxo-B.txt` (casos de sismo).
 - Suspeito: `docs/manual/03-acoes.md:8` e `:37`.
+- **Situação: corrigido** (branch `wt-bugs-b`): o manual diz S (sismo: SX, SY, SX_TOR, SY_TOR) e E (excepcional), como o motor.
+  Falta tirar a marca `[CONHECIDO #E2E-07]` da suíte de fluxo, se houver.
 
 ### E2E-09 — Baixa — Barra de status mostra o JSON cru do motor
 - Passos: F5 num modelo sem apoios (ex.: `.ftl` convertido), ou entrada inválida na galeria de treliças (vão = 0).

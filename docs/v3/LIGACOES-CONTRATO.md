@@ -37,6 +37,17 @@ TIPOS = {
 }
 ```
 
+### Dicas do otimizador (opcionais, nas disposições construtivas)
+Verificações de detalhamento (mínimos e máximos de perna de solda, borda, espaçamento, b/t…) levam também:
+- `"sentido"`: `"sobe"` (mínimo: o valor verificado precisa crescer) ou `"desce"` (máximo: precisa diminuir). Os helpers
+  `minimo`/`maximo` de cada módulo (`ligacoes._minimo`/`_maximo`, `_R.minimo`/`maximo`) já põem o sentido.
+- `"parametro"`: campo de `entradas` que controla o valor (ex.: `"b_alma"` na perna máxima da solda da alma), quando é um só.
+
+`ligacoes.otimizar` sobe qualquer item, mas só desce um item quando um máximo reprovado pede (o seu `parametro`); máximo
+reprovado sem `parametro` (ou com campo que o otimizador não mexe) libera a descida de todos. Perna acima do máximo: o otimizador
+desce a perna ou, em dois degraus juntos, desce a perna e engrossa a chapa — o que der a menor taxa com menos material.
+Verificações de resistência não levam dica.
+
 ## Geometria (para o 3D e a exportação)
 Em mm, no **referencial local da ligação**: origem no nó; eixo x ao longo da barra que chega (sentido saindo do nó), z = eixo forte/alto do perfil
 (para cima na alma), y = x × z. Listas:

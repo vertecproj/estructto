@@ -5,7 +5,7 @@ o Estructto envia o modelo antes de abrir a janela.
 
 ## Casos de carga
 
-Os casos têm tipo G (permanente), Q (variável), V (vento) ou E (sismo). **Caso ativo** recebe as cargas que você lança.
+Os casos têm tipo G (permanente), Q (variável), V (vento), S (sismo) ou E (excepcional). **Caso ativo** recebe as cargas que você lança.
 A janela de casos é a do motor (captura 32-acoes-casos).
 
 ## Cargas
@@ -34,4 +34,4 @@ e ELS (quase permanente, frequente, rara).
 
 ## Dica
 
-Gerar vento e sismo cria casos V e E. Depois rode **Calcular** (F5): as combinações incluem esses casos automaticamente.
+Gerar vento e sismo cria casos V (vento) e S (sismo: SX, SY e as torções acidentais SX_TOR, SY_TOR). Depois rode **Calcular** (F5): as combinações incluem esses casos automaticamente.
