@@ -3,11 +3,15 @@
 //   Shift + meio arrastando = órbita transparente (não cancela o comando em curso) · Shift + esquerdo arrastando = órbita (touchpad)
 //   esquerdo arrastando sem Shift = janela (esq.→dir.) ou cruzamento (dir.→esq.) · clique = ponto do comando, grip ou escolha
 //   botão direito (sem arrastar) = Enter: termina a corrente / o pedido em curso.
-// Pivô da órbita: centro da seleção; sem seleção, o ponto do modelo sob o cursor; sem nada, o centro do modelo.
+// Pivô automático (Fusion 360/Revit/Inventor), sem chave: a peça sob o cursor > o nó/barra mais perto (30 px) > o plano de
+// trabalho > o centro do que aparece do modelo (PivoSob). A roda usa o mesmo ponto (Zoom).
 // Ortográfica ou perspectiva (Perspectiva); planta, elevações e as 26 vistas do ViewCube são câmeras com transição de 300 ms.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -209,17 +213,21 @@ namespace NovoFtool
             Children.Add(cubo);
         }
 
-        // Esfera escura com contorno branco no pivô enquanto a órbita dura (como o AutoCAD).
+        // Marca do pivô: ponto ciano com anel enquanto a órbita dura; some com Anim.Medio ao soltar (TerminarOrbita).
         sealed class MarcaPivo : FrameworkElement
         {
             readonly Vista3D v;
             public MarcaPivo(Vista3D v) { this.v = v; }
-            static readonly Pen Contorno = Caneta(Brushes.White, 1.5);
+            static readonly Pen Anel = Caneta(TemaPlant.B(TemaPlant.CorPivoAnel), 1.25);
+            static readonly Pen Halo = Caneta(TemaPlant.B(TemaPlant.CorSnapContorno), 3);
+            static readonly Pen Borda = Caneta(TemaPlant.B(TemaPlant.CorSnapContorno), 1);
             protected override void OnRender(DrawingContext dc)
             {
-                if (v.pivoP == null || v.modo != Modo.Orbita) return;
-                Point s = v.Tela(v.pivoP.Value);
-                dc.DrawEllipse(TemaPlant.B(TemaPlant.CorPivo), Contorno, s, 5, 5);
+                if (v.marcaPivo is not Point3D p) return;
+                Point s = v.Tela(p);
+                dc.DrawEllipse(null, Halo, s, 8, 8);
+                dc.DrawEllipse(null, Anel, s, 8, 8);
+                dc.DrawEllipse(TemaPlant.B(TemaPlant.CorPivo), Borda, s, 3, 3);
             }
         }
 
@@ -227,22 +235,50 @@ namespace NovoFtool
 
         enum Modo { Nada, Clique, Orbita, Pan, Caixa, Arrasto }
         Modo modo;
-        Point3D? pivoP;
+        Point3D? pivoP, marcaPivo;   // marcaPivo fica depois de soltar, enquanto a marca some
         Point pressIni;
         MouseButton botaoIni;
 
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
-            Parar();
-            Point p = e.GetPosition(this);
-            Direcoes(out _, out Vector3D cima, out Vector3D dir);
-            double sx = (p.X - ActualWidth / 2) * Escala, sy = (ActualHeight / 2 - p.Y) * Escala;
-            Point3D sob = alvo + dir * sx + cima * sy;   // ponto sob o cursor (no plano do alvo) fica parado
-            larg = Math.Max(raio * 0.002, Math.Min(raio * 200, larg * (e.Delta > 0 ? 1 / 1.2 : 1.2)));
-            sx = (p.X - ActualWidth / 2) * Escala; sy = (ActualHeight / 2 - p.Y) * Escala;
-            alvo = sob - dir * sx - cima * sy;
-            AplicarCamera(); AgendarArestas(); AtualizarCursor();
+            Zoom(e.GetPosition(this), e.Delta > 0);
             e.Handled = true;
+        }
+
+        // Roda: zoom rumo ao ponto sob o cursor (o mesmo do pivô, PivoSob), que fica parado na tela.
+        // Ortográfica: muda a largura em torno dele. Perspectiva: dolly do olho pelo raio do cursor, com o alvo junto na
+        // profundidade do ponto: chega perto sem atravessar; sem ponto à frente (ou colado nele) anda um passo fixo, sem empacar.
+        public void Zoom(Point p, bool aproximar)
+        {
+            Parar();
+            double f = aproximar ? 1 / 1.2 : 1.2;
+            var (pt, fonte) = PivoSob(p);
+            Direcoes(out Vector3D d, out Vector3D cima, out Vector3D dir);
+            if (!perspectiva)
+            {
+                AncorarAlvo(pt);   // alvo na profundidade do ponto: o recorte da câmera fica em volta do que se olha
+                double sx = (p.X - ActualWidth / 2) * Escala, sy = (ActualHeight / 2 - p.Y) * Escala;
+                Point3D sob = alvo + dir * sx + cima * sy;   // ponto sob o cursor (no plano do alvo) fica parado
+                larg = Math.Max(raio * 0.002, Math.Min(raio * 200, larg * f));
+                sx = (p.X - ActualWidth / 2) * Escala; sy = (ActualHeight / 2 - p.Y) * Escala;
+                alvo = sob - dir * sx - cima * sy;
+            }
+            else
+            {
+                if (!aproximar && DistPersp > raio * 100) return;
+                var (o, rd) = Raio(p);
+                double t = Vector3D.DotProduct(pt - o, rd);
+                if (fonte == 'e' || t < raio * 0.02)
+                    alvo += rd * (Math.Max(DistPersp, raio * 0.02) * (aproximar ? 0.17 : -0.2));   // olho e alvo juntos, larg igual
+                else
+                {
+                    Point3D olho = o + rd * (t * (1 - f));
+                    double z = t * f * Vector3D.DotProduct(rd, -d);   // profundidade do ponto vista do olho novo
+                    larg = 2 * z * TanMeioFov;
+                    alvo = olho - d * z;
+                }
+            }
+            AplicarCamera(); AgendarArestas(); AtualizarCursor();
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -265,27 +301,82 @@ namespace NovoFtool
             CaptureMouse();
         }
 
-        // Pivô: seleção > ponto do modelo sob o cursor > centro do modelo.
-        void IniciarOrbita(Point tela)
+        // Começo da órbita (Shift + arrastar, ViewCube): o pivô sai de PivoSob e fica parado até soltar.
+        public void IniciarOrbita(Point tela)
         {
             modo = Modo.Orbita; orbIni = tela;
-            var sel = PontosSelecao().ToList();
-            if (sel.Count > 0) pivoP = new Point3D(sel.Average(q => q.X), sel.Average(q => q.Y), sel.Average(q => q.Z));
-            else if (PontoSob(tela) is Point3D q) pivoP = q;
-            else { Rect3D c = Caixa(); pivoP = new Point3D(c.X + c.SizeX / 2, c.Y + c.SizeY / 2, c.Z + c.SizeZ / 2); }
+            pivoP = PivoSob(tela).P;
+            AncorarAlvo(pivoP.Value);   // perspectiva: o olho fica, o alvo vai para a profundidade do pivô (a imagem não pula)
+            marcaPivo = pivoP;
+            pivoVis.BeginAnimation(OpacityProperty, null); pivoVis.Opacity = 1;
             AtualizarNome("Órbita");
             pivoVis.InvalidateVisual();
         }
 
-        // Ponto 3D da peça sob o pixel (raycast nas malhas da cena; inclui grade, setas e fantasmas).
-        Point3D? PontoSob(Point tela)
+        public void TerminarOrbita()
         {
-            Point3D? achado = null;
-            VisualTreeHelper.HitTest(vp, null, r =>
+            if (modo == Modo.Orbita) modo = Modo.Nada;
+            pivoP = null; orbIni = null;
+            Anim.Valor(pivoVis, OpacityProperty, 1, 0, Anim.Medio);
+            AtualizarCursor();   // o comando continua: elástico e atração na câmera nova
+            AgendarArestas();
+        }
+
+        public Point3D? PivoAtual => pivoP;
+
+        // Leva o plano do alvo à profundidade de p sem mudar a imagem. Perspectiva: mesmo olho, larg da distância nova.
+        void AncorarAlvo(Point3D p)
+        {
+            Direcoes(out Vector3D d, out _, out _);
+            if (!perspectiva) { alvo += d * Vector3D.DotProduct(p - alvo, d); return; }
+            Point3D olho = Olho;
+            double z = Vector3D.DotProduct(olho - p, d);
+            if (z < raio * 1e-4) return;   // atrás do olho ou colado nele: fica como está
+            larg = 2 * z * TanMeioFov;
+            alvo = olho - d * z;
+        }
+
+        internal const double TolPivoPx = 30;
+
+        // Ponto em torno do qual orbitar/aproximar, pelo cursor. Fonte: 'a' peça sob o cursor (barras e nós; no Render3D
+        // também chapas e parafusos), 'b' nó ou barra mais perto do raio (até TolPivoPx), 'c' plano de trabalho (perto do
+        // modelo), 'd' centro dos nós que aparecem, 'e' nada (o alvo).
+        public (Point3D P, char Fonte) PivoSob(Point tela)
+        {
+            Acertar(tela, out Point3D? pa);
+            if (pa is Point3D a) return (a, 'a');
+            if (MaisPerto(tela, TolPivoPx) is Point3D b) return (b, 'b');
+            Rect3D cx = Caixa(); Point3D c0 = new Point3D(cx.X + cx.SizeX / 2, cx.Y + cx.SizeY / 2, cx.Z + cx.SizeZ / 2);
+            if (mod.Nos.Count > 0 && NoPlano(tela) is Point3D c && (c - c0).Length <= raio * 2) return (c, 'c');
+            double x0 = double.MaxValue, y0 = x0, z0 = x0, x1 = double.MinValue, y1 = x1, z1 = x1; int nv = 0;
+            foreach (No3D n in mod.Nos)
             {
-                if (r is RayMeshGeometry3DHitTestResult h) { achado = h.PointHit; return HitTestResultBehavior.Stop; }
-                return HitTestResultBehavior.Continue;
-            }, new PointHitTestParameters(TranslatePoint(tela, vp)));
+                Point s = Tela(P(n));
+                if (s.X < 0 || s.Y < 0 || s.X > ActualWidth || s.Y > ActualHeight) continue;
+                nv++; x0 = Math.Min(x0, n.X); x1 = Math.Max(x1, n.X); y0 = Math.Min(y0, n.Y); y1 = Math.Max(y1, n.Y); z0 = Math.Min(z0, n.Z); z1 = Math.Max(z1, n.Z);
+            }
+            if (nv > 0) return (new Point3D((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), 'd');
+            return (alvo, 'e');
+        }
+
+        // Nó ou ponto de barra mais perto do raio do cursor, até `tol` px na tela (o nó ganha 4 px de vantagem).
+        Point3D? MaisPerto(Point tela, double tol)
+        {
+            var (o, rd) = Raio(tela);
+            Point3D fim = o + rd * (raio * 400 + larg * 10);
+            Point3D? achado = null; double dm = tol;
+            foreach (No3D n in mod.Nos)
+            {
+                double dd = (Tela(P(n)) - tela).Length - 4;
+                if (dd < dm) { dm = dd; achado = P(n); }
+            }
+            foreach (Barra3D b in mod.Barras)
+            {
+                No3D a = NoPorId(b.Ni), c = NoPorId(b.Nj); if (a == null || c == null) continue;
+                Snap3D.Segmentos(o, fim, P(a), P(c), out _, out _, out _, out Point3D q);
+                double dd = (Tela(q) - tela).Length;
+                if (dd < dm) { dm = dd; achado = q; }
+            }
             return achado;
         }
 
@@ -385,9 +476,7 @@ namespace NovoFtool
                     return;
                 }
                 case Modo.Orbita:
-                    pivoP = null; orbIni = null; pivoVis.InvalidateVisual();
-                    AtualizarCursor();   // o comando continua: elástico e atração na câmera nova
-                    AgendarArestas();
+                    TerminarOrbita();
                     return;
                 case Modo.Pan:
                     panIni = null; AtualizarCursor(); return;
@@ -411,9 +500,12 @@ namespace NovoFtool
             SelecionarClique(p, mods);   // Navegar também escolhe: a seleção (Selecao) é uma só para a edição
         }
 
-        public object Acertar(Point p)
+        public object Acertar(Point p) => Acertar(p, out _);
+
+        // `ponto`: onde o raio tocou a peça (nó/barra da cena nativa ou peça do Render3D); null se achou só pela tolerância.
+        object Acertar(Point p, out Point3D? ponto)
         {
-            object achado = null;
+            object achado = null; Point3D? pt = null;
             VisualTreeHelper.HitTest(vp, null, r =>
             {
                 if (r is RayMeshGeometry3DHitTestResult h)
@@ -426,12 +518,20 @@ namespace NovoFtool
                         o = fx.Obj[k >= 0 ? k : Math.Max(0, ~k - 1)];
                     }
                     if (o == null) return HitTestResultBehavior.Continue;
-                    if (o is No3D || achado == null) achado = o;   // nó tem prioridade sobre a barra que passa por ele
+                    // nó tem prioridade sobre a barra que passa por ele; um nó lá atrás, em outro ponto do raio, não
+                    if (achado == null) { achado = o; pt = h.PointHit; }
+                    else if ((h.PointHit - pt.Value).Length > raio * 0.03) return HitTestResultBehavior.Stop;
+                    else if (o is No3D) { achado = o; pt = h.PointHit; }
                     return o is No3D ? HitTestResultBehavior.Stop : HitTestResultBehavior.Continue;
                 }
                 return HitTestResultBehavior.Continue;
             }, new PointHitTestParameters(TranslatePoint(p, vp)));
-            if (achado == null && Dx && render != null) achado = render.Acertar(TranslatePoint(p, render.Vista));   // peças no Render3D
+            if (achado == null && Dx && render != null)   // peças no Render3D
+            {
+                achado = render.Acertar(TranslatePoint(p, render.Vista), out Point3D? pr);
+                pt ??= pr;
+            }
+            ponto = pt;
             // Realista não desenha os nós: vale o nó a até 8 px do clique (os da barra acertada, ou qualquer um no vazio)
             if (Realista && !(achado is No3D))
             {
@@ -489,7 +589,8 @@ namespace NovoFtool
         // ---------- simulação (capturas e testes: o mesmo caminho do mouse, sem mouse de verdade) ----------
 
         // Shift + arrastar de `de` até `ate` (pixels): órbita transparente; o comando em curso continua.
-        public void SimularOrbita(Point de, Point ate, int passos = 12)
+        // soltar = false: continua orbitando (a marca do pivô fica na tela, para a captura); TerminarOrbita solta.
+        public void SimularOrbita(Point de, Point ate, int passos = 12, bool soltar = true)
         {
             IniciarOrbita(de);
             Point ant = de;
@@ -498,8 +599,112 @@ namespace NovoFtool
                 Point q = de + (ate - de) * i / (double)passos;
                 Orbitar(q.X - ant.X, q.Y - ant.Y); ant = q;
             }
-            modo = Modo.Nada; pivoP = null; orbIni = null;
-            AtualizarCursor();
+            if (soltar) TerminarOrbita();
+        }
+    }
+
+    // Estructto.exe --testes-navegacao <saida.txt>: pivô automático, órbita em torno dele e zoom no cursor numa Vista3D
+    // fora da janela (1200 × 800 px, analítica), no pórtico de 12 × 10 vãos e 6 pavimentos das capturas (2.430 barras).
+    public static class TestesNavegacao
+    {
+        public static string Rodar()
+        {
+            var sb = new StringBuilder(); int falhas = 0;
+            void Ok(string nome, bool c) { sb.AppendLine((c ? "ok    " : "FALHA ") + nome); if (!c) falhas++; }
+            string F(double x) => x.ToString("0.###", CultureInfo.InvariantCulture);
+
+            var g = new Modelo3D(); int nx = 12, ny = 10, nz = 6;
+            int Id(int i, int j, int k) => 1 + i + (nx + 1) * (j + (ny + 1) * k);
+            for (int k = 0; k <= nz; k++) for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++)
+                g.Nos.Add(new No3D { Id = Id(i, j, k), X = i * 6, Y = j * 5, Z = k * 3.2 });
+            for (int k = 0; k < nz; k++) for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++)
+            {
+                g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = Id(i, j, k), Nj = Id(i, j, k + 1) });
+                if (i < nx) g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = Id(i, j, k + 1), Nj = Id(i + 1, j, k + 1) });
+                if (j < ny) g.Barras.Add(new Barra3D { Id = g.Barras.Count + 1, Ni = Id(i, j, k + 1), Nj = Id(i, j + 1, k + 1) });
+            }
+            var v = new Vista3D();
+            v.Carregar(g, false);
+            v.Measure(new Size(1200, 800)); v.Arrange(new Rect(0, 0, 1200, 800)); v.UpdateLayout();
+            v.MostrarVista(VistaPadrao.Iso, false);
+            double W = v.ActualWidth, H = v.ActualHeight;
+            bool NaTela(Point s) => s.X >= 0 && s.Y >= 0 && s.X <= W && s.Y <= H;
+            Point3D J = new Point3D(6, 0, 16);                        // junta viga-pilar do 5º pavimento, na fachada da frente (nada na frente dela)
+            Point3D M = new Point3D(21, 0, 19.2);                     // meio da viga da cobertura (18; 0; 19,2)-(24; 0; 19,2)
+
+            // desempenho: pivô em 20 pixels da vista inteira
+            var sw = Stopwatch.StartNew();
+            for (int i = 0; i < 20; i++) v.PivoSob(new Point(W * (0.2 + 0.03 * i), H * (0.3 + 0.02 * i)));
+            double ms = sw.Elapsed.TotalMilliseconds / 20;
+            Ok("pivô em " + F(ms) + " ms por pedido (" + g.Barras.Count + " barras; meta < 5 ms)", ms < 5);
+
+            foreach (bool persp in new[] { false, true })
+            {
+                string nome = persp ? "perspectiva" : "ortográfica";
+                v.Perspectiva = persp;
+                // 1) perto de uma junta (6 m de largura visível), junta fora do centro: órbita de 30°
+                v.Focar(J + new Vector3D(1.2, 0, 0.6), 6, -55, 28);
+                Point c = v.Tela(J);
+                var (pv, fonte) = v.PivoSob(c);
+                Ok(nome + ": pivô na junta sob o cursor (fonte " + fonte + ", a " + F((pv - J).Length) + " m)", (fonte == 'a' || fonte == 'b') && (pv - J).Length < 1);
+                Point canto = v.Tela(new Point3D(72, 50, 0));
+                v.SimularOrbita(c, c, 1, false);   // só começar: o alvo vai para a profundidade do pivô sem mexer na imagem
+                double pulo = (v.Tela(new Point3D(72, 50, 0)) - canto).Length;
+                v.TerminarOrbita();
+                Ok(nome + ": começar a órbita não pula a vista (" + F(pulo) + " px)", pulo < 1e-6);
+                Point s0 = v.Tela(pv), j0 = v.Tela(J);
+                v.SimularOrbita(c, c + new Vector(75, 0), 12, false);   // 75 px × 0,4°/px = 30° de azimute
+                Point3D? piv = v.PivoAtual;
+                double dpx = piv is Point3D pp ? (v.Tela(pp) - s0).Length : 1e9;
+                Point j1 = v.Tela(J);
+                v.TerminarOrbita();
+                Ok(nome + ": órbita de 30° com o pivô parado na tela (desvio " + F(dpx) + " px)", piv is Point3D pq0 && (pq0 - pv).Length < 1e-6 && dpx < 1);
+                Ok(nome + ": a junta continua na tela, perto de onde estava (" + F((j1 - j0).Length) + " px)", NaTela(j1) && (j1 - j0).Length < 150);
+
+                // 2) pivô na barra sob o cursor (meio da viga, longe dos nós)
+                v.Focar(M, 10, -55, 28);
+                var (pb, fb) = v.PivoSob(v.Tela(M) + new Vector(2, 1));
+                Snap3D.Segmentos(pb, pb, new Point3D(18, 0, 19.2), new Point3D(24, 0, 19.2), out _, out _, out _, out Point3D eixo);
+                Ok(nome + ": pivô na viga sob o cursor (fonte " + fb + ", a " + F((pb - eixo).Length) + " m do eixo)", fb == 'a' && (pb - eixo).Length < 0.5 && (pb - M).Length < 1);
+
+                // 4) roda: o ponto do mundo sob o cursor fica no mesmo pixel
+                v.Focar(M, 20, -55, 28);
+                Point cur = v.Tela(M) + new Vector(2, 1);
+                var (pz, _) = v.PivoSob(cur);
+                double pior = 0;
+                for (int i = 0; i < 4; i++) { v.Zoom(cur, true); pior = Math.Max(pior, (v.Tela(pz) - cur).Length); }
+                for (int i = 0; i < 2; i++) { v.Zoom(cur, false); pior = Math.Max(pior, (v.Tela(pz) - cur).Length); }
+                Ok(nome + ": zoom no cursor: o ponto acertado fica no pixel (desvio " + F(pior) + " px)", pior < 1);
+            }
+
+            // 3) sem peça perto: plano de trabalho (vista de topo, no meio de um vão, no térreo)
+            v.Perspectiva = false;
+            v.PlanoAtual = PlanoTrabalho.Horizontal(0);
+            Point3D Q = new Point3D(33, 22.5, 0);
+            v.Focar(Q, 8, -90, 90);
+            var (pq, fq) = v.PivoSob(v.Tela(Q));
+            Ok("plano de trabalho: fonte " + fq + " em (" + F(pq.X) + "; " + F(pq.Y) + "; " + F(pq.Z) + ")", fq == 'c' && (pq - Q).Length < 1e-6);
+            v.MostrarVista(VistaPadrao.Frente, false);   // plano horizontal de perfil, cursor no céu: centro do que aparece
+            var (pd, fd) = v.PivoSob(new Point(W / 2, 40));
+            Ok("céu na vista de frente: centro dos nós visíveis (fonte " + fd + ")", fd == 'd' && Math.Abs(pd.X - 36) < 1e-6 && Math.Abs(pd.Z - 9.6) < 1e-6);
+
+            // 5) perspectiva: a roda chega perto da junta (sem empacar no alvo) e, no vazio, anda sempre
+            v.Perspectiva = true;
+            v.Focar(new Point3D(36, 25, 9.6), 40, -55, 28);   // alvo no centro do modelo, junta J lá na frente
+            Point cj = v.Tela(J);
+            double d0 = (v.Raio(cj).O - J).Length;
+            for (int i = 0; i < 20; i++) v.Zoom(cj, true);
+            double d1 = (v.Raio(cj).O - J).Length;
+            Ok("perspectiva: 20 cliques da roda levam o olho de " + F(d0) + " m a " + F(d1) + " m da junta", d1 < d0 * 0.1 && (v.Tela(J) - cj).Length < 1);
+            v.MostrarVista(VistaPadrao.Frente, false);
+            Point ceu = new Point(W / 2, 40);
+            Point3D o0 = v.Raio(ceu).O, oa = o0; double passoMin = double.MaxValue, dist0 = (v.Raio(new Point(W / 2, H / 2)).O - new Point3D(36, 25, 9.6)).Length;
+            for (int i = 0; i < 60; i++) { v.Zoom(ceu, true); Point3D ob = v.Raio(ceu).O; passoMin = Math.Min(passoMin, (ob - oa).Length); oa = ob; }
+            Ok("perspectiva no vazio: 60 cliques andam " + F((oa - o0).Length) + " m (alvo estava a " + F(dist0) + " m), passo mínimo " + F(passoMin) + " m",
+               (oa - o0).Length > dist0 && passoMin > 0.1);
+
+            sb.AppendLine(falhas == 0 ? "TODOS PASSARAM" : falhas + " FALHA(S)");
+            return sb.ToString();
         }
     }
 }

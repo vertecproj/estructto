@@ -32,6 +32,14 @@ namespace NovoFtool
                 System.IO.File.WriteAllText(e.Args[1], r);
                 System.Environment.Exit(r.Contains("TODOS PASSARAM") ? 0 : 1);
             }
+            // Estructto.exe --testes-navegacao <saida.txt> : pivô automático, órbita e zoom no cursor da Vista3D (Vista3D.Navegacao.cs)
+            if (e.Args.Length >= 2 && e.Args[0] == "--testes-navegacao")
+            {
+                string r;
+                try { r = TestesNavegacao.Rodar(); } catch (System.Exception ex) { r = "ERRO: " + ex; }
+                System.IO.File.WriteAllText(e.Args[1], r);
+                System.Environment.Exit(r.Contains("TODOS PASSARAM") ? 0 : 1);
+            }
             // Estructto.exe --testes-exportar <pasta> [raiz do repo] : DWG/DXF/STEP do guincho e do edifício (Exportar.cs)
             if (e.Args.Length >= 2 && e.Args[0] == "--testes-exportar")
             {

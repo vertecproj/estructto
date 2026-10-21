@@ -309,12 +309,12 @@ do usuário e confere as contagens em cada passo:
 
 | Ação | Mouse / teclado |
 |---|---|
-| Órbita | **Shift + botão do meio** ou **Shift + botão esquerdo** (touchpad) arrastando. Transparente: não cancela o comando em curso (elástico e atração continuam). Restrita: horizontal = azimute em torno do Z, vertical = elevação (±90°). Pivô: centro da seleção; sem seleção, o ponto do modelo sob o cursor; sem nada, o centro do modelo (esfera escura enquanto orbita) |
+| Órbita | **Shift + botão do meio** ou **Shift + botão esquerdo** (touchpad) arrastando. Transparente: não cancela o comando em curso (elástico e atração continuam). Restrita: horizontal = azimute em torno do Z, vertical = elevação (±90°). Pivô automático, sem chave para trocar: o ponto da peça sob o cursor (fixo durante o arrasto; ponto ciano com anel que some ao soltar). Ver [VISTA3D.md](VISTA3D.md) "Pivô automático" |
 | Pan | botão do meio arrastando |
-| Zoom | roda, no cursor; **duplo clique do meio** = enquadrar (também `Z`, F4) |
+| Zoom | roda, rumo ao ponto do modelo sob o cursor (o mesmo do pivô); na perspectiva o olho anda até ele sem empacar; **duplo clique do meio** = enquadrar (também `Z`, F4) |
 | Escolher | clique; esquerdo arrastando = janela (esq.→dir.) ou cruzamento (dir.→esq.); Shift soma, Ctrl tira |
 | Botão direito (sem arrastar) | Enter: termina a corrente da barra ou o comando que pede objetos. Shift/Ctrl + direito = menu de snap único (Snap3D) |
-| ViewCube | canto superior direito: 26 regiões (faces = vistas ortogonais, arestas, cantos), casinha = isométrica, arrastar o cubo orbita e encaixa a 10° de uma das 26 vistas; embaixo o nome da vista e **Ortográfica/Perspectiva** |
+| ViewCube | canto superior direito: 26 regiões (faces = vistas ortogonais, arestas, cantos), casinha = isométrica, arrastar o cubo orbita (pivô: o que está no centro da vista) e encaixa a 10° de uma das 26 vistas; embaixo o nome da vista e **Ortográfica/Perspectiva** |
 | Vistas | `TOPO`/`PLANTA`, `FRENTE`, `LADO`, `ISO`; Ctrl + teclado numérico 7/1/3/5; aba Vista. Transição de 300 ms (CubicEase, desligada com `Anim.Ligado`) |
 | Projeção | `PERSP` ou Vista › Perspectiva ou o ViewCube. `Tela`, `Raio` e `NoPlano` valem nas duas; o Snap3D projeta com `Tela` na perspectiva |
 
