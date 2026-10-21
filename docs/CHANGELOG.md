@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G1): contrato de pontas e recortes no motor (`aco/pontas.py`), ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md).
 - 21/10/2026 — A pedido do usuário, manual v3 em [manual/](manual/README.md) e seção do produto no README atualizados para o fluxo só 3D, com aliases do código, vento integrado, ligações/grupos, placa NBR, exportação e limites/ART.
 
 ## 21/10/2026 — Vista 3D: chapa do joelho rente à mesa do pilar (branch wt-joelho)
