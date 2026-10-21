@@ -15,6 +15,9 @@ using Contorno = NovoFtool.GeometriaPerfis.Contorno;
 
 namespace NovoFtool
 {
+    // Peça de chapa/cantoneira escolhível na cena (Render3D.Marcar): o clique leva ao campo da ligação (TagLig, JanelaLigacaoProjeto)
+    public sealed class PecaLig { public Ligacao3D Lig; public string Tag; }
+
     public sealed class Ligacao3D
     {
         public int No, Barra;   // nó e barra que chega (dá o referencial local)

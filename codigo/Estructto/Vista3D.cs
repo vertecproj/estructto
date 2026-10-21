@@ -1085,6 +1085,7 @@ namespace NovoFtool
         void SelecionarClique(Point tela, ModifierKeys mods)
         {
             object o = Acertar(tela);
+            if (pecaSob != null && mods == ModifierKeys.None && CliquePecaLig != null) { CliquePecaLig(pecaSob.Lig, pecaSob.Tag); return; }
             var nos = o is No3D n ? new[] { Chave(n) } : new string[0];
             var bs = o is Barra3D b ? new[] { Chave(b) } : new string[0];
             if (o == null && mods != ModifierKeys.None) return;   // Ctrl/Shift no vazio não limpa

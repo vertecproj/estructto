@@ -53,7 +53,11 @@ namespace NovoFtool
         };
         readonly DispatcherTimer espera = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         readonly HashSet<string> realces = new HashSet<string>();
-        readonly HashSet<string> abertos = new HashSet<string> { "Parafusos", "Chapa e geometria", "Solda", "Barra 1" };
+        readonly HashSet<string> abertos = new HashSet<string> { "Chapa", "Parafusos", "Soldas", "Barra 1" };
+        readonly Dictionary<string, FrameworkElement> celulas = new Dictionary<string, FrameworkElement>();   // campo -> célula (clique na peça rola até ela)
+        readonly DispatcherTimer tDestaque = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        Panel celDestaque; ScrollViewer rolagemPassos;
+        JsonNode semSolucao; string campoLimitante;   // otimizador sem solução: faixa vermelha com o motivo e o botão para o campo
         string tipo, busca = "", familiaFiltro = "", filtroComp, status = "", erro;
         bool soDoGrupo = true, calculando, ocupado;
         int seq, vistaAtiva, abaRes;   // vista: 0 = quatro vistas, 1..4 = uma; abaRes: 0 verificações, 1 grupo
@@ -75,6 +79,8 @@ namespace NovoFtool
             MinWidth = 1180; MinHeight = 700;
             Content = Raiz(hostCab, hostCorpo, hostRodape);
             espera.Tick += async (s, e) => { espera.Stop(); await CalcularAgora(); };
+            tDestaque.Tick += (s, e) => { tDestaque.Stop(); if (celDestaque != null) celDestaque.Background = null; celDestaque = null; };
+            foreach (var v in vistas) v.ClicouPeca += IrParaTag;
             tipo = tipos.Any(x => S(x, "tipo") == tipoInicial) ? tipoInicial : null;
             Montar();
             Loaded += async (s, e) =>
@@ -238,7 +244,7 @@ namespace NovoFtool
         public async Task Escolher(string id, bool sugerir = true)
         {
             if (Tipo(id) == null) return;
-            tipo = id; resultado = null; erro = null; filtroComp = null; aplicado = null; abaRes = 0; realces.Clear(); status = "";
+            tipo = id; resultado = null; erro = null; filtroComp = null; aplicado = null; abaRes = 0; realces.Clear(); status = ""; semSolucao = null;
             Montar();
             if (sugerir && grupo != null && Bool(Tipo(), "sugerir")) await Sugerir(); else await CalcularAgora();
         }
@@ -248,6 +254,18 @@ namespace NovoFtool
         public void MostrarBiblioteca() { tipo = null; Montar(); }
         public void Buscar(string s) { busca = s ?? ""; Montar(); }
         public JsonNode Resultado => resultado;
+        // capturas/testes: clica (hit-test real) no centro da 1a chapa da vista 3D; devolve o tag achado
+        public string ClicarChapa3D()
+        {
+            var c = vistas[3].CentroChapa(); if (c == null) return null;
+            string tag = vistas[3].PecaEm(c.Value);
+            if (tag != null) IrParaTag(tag);
+            return tag;
+        }
+        public void AbrirTodasSecoes() { foreach (var c in Campos(Tipo())) { string sc = Secao(c); if (sc != "barras") abertos.Add(sc); } Montar(); }
+        public bool TemTipo => tipo != null;
+        public bool SemSolucao => semSolucao != null;
+        public string CampoDoDestaque => celDestaque == null ? null : celulas.FirstOrDefault(kv => kv.Value == celDestaque).Key;
 
         public async Task Sugerir()
         {
@@ -279,6 +297,14 @@ namespace NovoFtool
             await Rodar(async () =>
             {
                 var r = await Api("POST", "/api/ligacoes/otimizar", Corpo());
+                semSolucao = null; campoLimitante = null;
+                if (r != null && r["ok"] != null && !Bool(r, "ok"))   // sem solução: o motor devolve os dados originais; para e explica
+                {
+                    semSolucao = r; campoLimitante = CampoLimitante(r);
+                    resultado = r["resultado"] ?? resultado; erro = null; seq++; realces.Clear();
+                    status = "Sem solução — nada foi alterado.";
+                    return;
+                }
                 if (r?["dados"] is JsonObject d) foreach (var kv in d) Dados[kv.Key] = kv.Value?.DeepClone();
                 realces.Clear();
                 var partes = new List<string>();
@@ -494,6 +520,7 @@ namespace NovoFtool
             corpo.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(392) });
             var esq = new Border { Background = TemaPlant.BSup0, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 1, 0),
                                    Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Padding = new Thickness(10, 10, 10, 6), Content = Soltar(hostPassos) } };
+            rolagemPassos = (ScrollViewer)esq.Child;
             corpo.Children.Add(esq);
             Grid.SetColumn(Soltar(hostDesenho), 1); corpo.Children.Add(hostDesenho);
             var dir = new Border { Background = TemaPlant.BSup0, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(1, 0, 0, 0), Padding = new Thickness(10, 10, 10, 10), Child = Soltar(hostRes) };
@@ -505,7 +532,7 @@ namespace NovoFtool
         void Mudou(string campo = null)
         {
             if (campo != null) realces.Remove(campo);
-            status = ""; aplicado = null; if (abaRes == 1 && grupo == null) abaRes = 0;
+            status = ""; aplicado = null; semSolucao = null; if (abaRes == 1 && grupo == null) abaRes = 0;
             MontarPassos();
             Agendar();
         }
@@ -546,6 +573,8 @@ namespace NovoFtool
         {
             var t = Tipo();
             var sp = new StackPanel();
+            celulas.Clear();
+            if (semSolucao != null) sp.Children.Add(FaixaSemSolucao());
             // tipo escolhido
             var topo = new DockPanel { Margin = new Thickness(2, 0, 0, 10) };
             var trocar = Link("Trocar padrão", () => { tipo = null; Montar(); _ = CarregarMiniaturas(); }, "Volta à biblioteca de ligações.");
@@ -576,7 +605,7 @@ namespace NovoFtool
                 p1.Children.Add(Celula("Esforços de (" + Pl.N(ms.Count, "ligação", "ligações") + " do grupo)", cb, true));
             }
             var gp = GradeCampos();
-            foreach (var c in campos.Where(c => Secao(c) == "barras")) AddCelula(gp, Rotulo(c, S(c, "nome")), Controle(c), Largo(c));
+            foreach (var c in campos.Where(c => Secao(c) == "barras")) AddCelula(gp, Rotulo(c, S(c, "nome")), Controle(c), Largo(c), false, S(c, "nome"));
             foreach (var n in NomesEsforcos(t))
             {
                 string un = n.StartsWith("M") || n == "T" ? "kN·m" : "kN";
@@ -589,7 +618,7 @@ namespace NovoFtool
 
             // ② parâmetros
             var p2 = new StackPanel();
-            var ordem = new List<string> { "Parafusos", "Chapa e geometria", "Solda", "Recortes" };
+            var ordem = new List<string> { "Chapa", "Parafusos", "Soldas", "Enrijecedores", "Recortes", "Folgas" };
             var secoes = campos.Where(c => Secao(c) != "barras").GroupBy(Secao).OrderBy(g => g.Key.StartsWith("Barra") ? 10 + g.Key[g.Key.Length - 1] : ordem.IndexOf(g.Key) < 0 ? 99 : ordem.IndexOf(g.Key)).ToList();
             foreach (var s in secoes)
             {
@@ -603,7 +632,7 @@ namespace NovoFtool
                 p2.Children.Add(cab);
                 if (!aberto) continue;
                 var g = GradeCampos();
-                foreach (var c in s) AddCelula(g, Rotulo(c, S(c, "nome")), Controle(c), Largo(c), realces.Contains(S(c, "nome")));
+                foreach (var c in s) AddCelula(g, Rotulo(c, S(c, "nome")), Controle(c), Largo(c), realces.Contains(S(c, "nome")), S(c, "nome"));
                 p2.Children.Add(g);
             }
             var acoes = new StackPanel { Orientation = Orientation.Horizontal };
@@ -614,6 +643,75 @@ namespace NovoFtool
             acoes.Children.Add(bs); acoes.Children.Add(bo);
             sp.Children.Add(Cartao("Passo 2 · Parâmetros", p2, acoes));
             hostPassos.Child = sp;
+        }
+
+        // ---- editor por componente: clique na peça -> seção aberta, campo rolado à vista e destacado 1,5 s
+        // tag "<secao>.<campo>|<alternativa>..." (TagLig); vale o 1º campo que o padrão tem
+        string CampoDoTag(string tag)
+        {
+            int i = (tag ?? "").IndexOf('.');
+            if (i < 0 || tipo == null) return null;
+            var nomes = Campos(Tipo()).Select(c => S(c, "nome")).ToHashSet();
+            return tag.Substring(i + 1).Split('|').FirstOrDefault(nomes.Contains);
+        }
+
+        public void IrParaTag(string tag)
+        {
+            string campo = CampoDoTag(tag);
+            if (campo != null) { IrParaCampo(campo); return; }
+            status = "Esta peça não tem campo para editar neste padrão."; MontarStatus();
+        }
+
+        public void IrParaCampo(string campo)
+        {
+            var c = Campos(Tipo()).FirstOrDefault(x => S(x, "nome") == campo);
+            if (c == null) return;
+            string sec = Secao(c);
+            if (sec != "barras" && abertos.Add(sec)) MontarPassos();
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                if (!celulas.TryGetValue(campo, out var el)) return;
+                el.BringIntoView();
+                if (celDestaque != null) celDestaque.Background = null;
+                celDestaque = el as Panel;
+                if (celDestaque != null) celDestaque.Background = TemaPlant.B(TemaPlant.Acento, 70);
+                tDestaque.Stop(); tDestaque.Start();
+            }));
+        }
+
+        string CampoLimitante(JsonNode r)
+        {
+            var nomes = Campos(Tipo()).Select(c => S(c, "nome")).ToHashSet();
+            foreach (var x in Lista(r["limite_atingido"]))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(x?.ToString() ?? "", @"^\s*([A-Za-z_][A-Za-z0-9_]*)");
+                if (m.Success && nomes.Contains(m.Groups[1].Value)) return m.Groups[1].Value;
+            }
+            string lim = S(r, "verificacao_limitante");
+            if (lim == "") return null;
+            switch (GrupoDe(lim))
+            {
+                case "parafusos": return CampoDoTag(TagLig.Parafuso);
+                case "soldas": return CampoDoTag(TagLig.Solda);
+                case "cantoneiras": return CampoDoTag(TagLig.Cantoneira);
+                case "chapas": return CampoDoTag(TagLig.Chapa(lim));
+                default: return null;
+            }
+        }
+
+        FrameworkElement FaixaSemSolucao()
+        {
+            var f = new StackPanel();
+            f.Children.Add(Tx("✕ Sem solução — nada foi alterado", 12.5, TemaPlant.BErro, FontWeights.SemiBold));
+            var m = Tx(S(semSolucao, "motivo") != "" ? S(semSolucao, "motivo") : "O otimizador não achou uma combinação que passe dentro dos limites.", 11.5, TemaPlant.BTexto1, null, true);
+            m.Margin = new Thickness(0, 4, 0, 0); f.Children.Add(m);
+            if (campoLimitante != null)
+            {
+                var c = Campos(Tipo()).FirstOrDefault(x => S(x, "nome") == campoLimitante);
+                var l = Link("Ir ao campo limitante: " + Rotulo(c, campoLimitante), () => IrParaCampo(campoLimitante), "Abre a seção e destaca o campo que travou a busca.", 11.5);
+                l.Margin = new Thickness(0, 6, 0, 0); f.Children.Add(l);
+            }
+            return new Border { Background = TemaPlant.BErroFundo, BorderBrush = TemaPlant.BErro, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5), Padding = new Thickness(10, 8, 10, 9), Margin = new Thickness(0, 0, 0, 10), Child = f };
         }
 
         static Grid GradeCampos()
@@ -638,13 +736,14 @@ namespace NovoFtool
             return sp;
         }
 
-        static void AddCelula(Grid g, string rotulo, FrameworkElement ctl, bool largo, bool realce = false)
+        void AddCelula(Grid g, string rotulo, FrameworkElement ctl, bool largo, bool realce = false, string nome = null)
         {
             int n = g.Children.Count == 0 ? 0 : g.Children.Cast<UIElement>().Max(c => Grid.GetRow(c) * 2 + (Grid.GetColumnSpan(c) > 1 ? 2 : Grid.GetColumn(c) == 2 ? 2 : 1));
             int lin = (n + (largo && n % 2 == 1 ? 1 : 0)) / 2, col = largo ? 0 : n % 2 == 0 ? 0 : 2;
             if (largo && n % 2 == 1) lin = (n + 1) / 2;
             while (g.RowDefinitions.Count <= lin) g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var c = Celula(rotulo, ctl, realce);
+            if (nome != null) celulas[nome] = c;
             Grid.SetRow(c, lin); Grid.SetColumn(c, col);
             if (largo) Grid.SetColumnSpan(c, 3);
             g.Children.Add(c);
@@ -681,11 +780,13 @@ namespace NovoFtool
             if (n.StartsWith("perfil_") || n == "apoio") return "barras";
             if (n.StartsWith("recorte") || n == "desnivel") return "Recortes";
             if (n.StartsWith("aco_")) return "Materiais e opções";
-            if (n == "eletrodo" || n.StartsWith("b_solda") || n == "perna" || r.Contains("solda") || r.Contains("filete") || tipo == "solda_filete") return "Solda";
+            if (n.Contains("enrij") || n == "t_enr_pilar" || n == "t_reforco") return "Enrijecedores";
+            if (n.StartsWith("folga") || new[] { "x_face", "x_max", "abertura_y", "sobra", "excentricidade_apoio", "recuo" }.Contains(n)) return "Folgas";
+            if (n == "eletrodo" || n.StartsWith("b_solda") || n == "perna" || n.Contains("solda") || n.Contains("soldada") || r.Contains("solda") || r.Contains("filete") || tipo == "solda_filete") return "Soldas";
             if (c["opcoes"] is JsonArray || c["padrao"] is JsonValue pv && pv.TryGetValue(out bool _)) return "Materiais e opções";
             if (new[] { "d", "d_mm", "n", "s", "g", "e_v", "e_h", "eh", "e1", "n_linhas", "n_por_linha", "n_colunas", "g_colunas", "planos_corte", "pega", "t_enchimento", "lf", "gabarito", "dist_topo_furo", "g_viga", "g_apoio" }.Contains(n)
                 || r.Contains("parafus") || r.Contains("furo") || r.Contains("diametro") || r.Contains("espacamento") || r.Contains("gabarito")) return "Parafusos";
-            return "Chapa e geometria";
+            return "Chapa";
         }
 
         static bool Largo(JsonNode c)
@@ -1055,6 +1156,26 @@ namespace NovoFtool
             j.Show();
         }
 
+        // clique numa chapa da Vista3D: abre o projetista do grupo daquela ligação, na seção e no campo da peça
+        internal async void AbrirLigacaoDaPeca(Ligacao3D l, string tag)
+        {
+            var d = Esp; if (d == null || l == null) return;
+            try
+            {
+                var gs = await d.Ligacoes("GET", "/api/ligacoes/grupos");
+                bool Dono(JsonNode m) => S(m, "no") == l.No.ToString();
+                var g = Lista(gs).FirstOrDefault(x => Lista(x["membros"]).Any(m => Dono(m) && S(m, "barra") == l.Barra.ToString()))
+                        ?? Lista(gs).FirstOrDefault(x => Lista(x["membros"]).Any(Dono));
+                if (g == null) { MostrarToast("Esta chapa não pertence a nenhum grupo de ligações do modelo.", true); return; }
+                var j = await CriarProjetistaGrupo(d, g, null);
+                if (j == null) return;
+                j.Show();
+                if (j.TemTipo) j.IrParaTag(tag);
+                else MostrarToast("O grupo " + S(g, "nome") + " ainda não tem projeto: escolha o padrão na biblioteca.", false);
+            }
+            catch (Exception ex) { MostrarToast("Ligação: " + ComandosAnalise.MensagemMotor(ex), true); }
+        }
+
         // gerenciador › Projetar: esforços do pior membro do grupo (dimensionar), projeto gravado no grupo ao aplicar
         internal async Task AbrirProjetistaGrupo(DocumentoEspacial d, JsonNode g, JanelaLigacoesGrupos ger)
         {
@@ -1108,6 +1229,19 @@ namespace NovoFtool
             CapturarDialogo(j, "51-projetista-falha.png");
             Esperar(j.Otimizar()); EsperarIdle();
             CapturarDialogo(j, "51-projetista-otimizado.png");
+            // C3: editor por seções, clique na chapa -> campo destacado, otimizador sem solução -> faixa vermelha
+            Esperar(j.Escolher("chapa_topo_estendida", false)); EsperarIdle();
+            j.AbrirTodasSecoes(); EsperarIdle();
+            CapturarDialogo(j, "51-projetista-editor-secoes.png");
+            string tg = j.ClicarChapa3D(); EsperarIdle(); EsperarIdle();
+            if (tg == null || !tg.StartsWith("Chapa.")) throw new InvalidOperationException("projetista: clique na chapa não achou a peça (" + tg + ")");
+            if (j.CampoDoDestaque == null) throw new InvalidOperationException("projetista: clique na chapa não destacou o campo");
+            CapturarDialogo(j, "51-projetista-clique-chapa.png");
+            Esperar(j.Escolher("chapa_simples_alma", false));
+            j.DefinirEsforcos(new JsonObject { ["V"] = 5000, ["N"] = 0 }); Esperar(j.CalcularAgora()); EsperarIdle();
+            Esperar(j.Otimizar()); EsperarIdle();
+            if (!j.SemSolucao) throw new InvalidOperationException("projetista: V = 5000 kN deveria dar sem solução");
+            CapturarDialogo(j, "51-projetista-sem-solucao.png");
             foreach (var t in new[] { "chapa_topo_estendida", "emenda_viga", "gusset_contraventamento", "cantoneira_dupla_alma" })
             {
                 if (Lista(tipos).All(x => S(x, "tipo") != t)) continue;

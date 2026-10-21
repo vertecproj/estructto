@@ -523,12 +523,16 @@ namespace NovoFtool
 
         public object Acertar(Point p) => Acertar(p, out _);
 
+        // chapa/cantoneira de ligação sob o cursor no último Acertar (o Acertar devolve só barra/nó): o clique abre o campo da ligação
+        PecaLig pecaSob;
+        public event Action<Ligacao3D, string> CliquePecaLig;
+
         // `ponto`: onde o raio tocou a peça (peça sólida do Sombreado/Render3D) ou o ponto do eixo da barra/nó achado na tela.
         // Analítico: barras e nós são linhas e pontos da sobreposição (Vista3D.Linhas.cs), escolhidos pela tela: nó a até
         // 8 px, senão a barra a até 6 px do eixo (empate: a mais perto do olho); `ponto` = ponto do eixo mais perto do raio.
         object Acertar(Point p, out Point3D? ponto)
         {
-            object achado = null; Point3D? pt = null;
+            object achado = null; Point3D? pt = null; pecaSob = null;
             if (Realista && !Dx)
                 VisualTreeHelper.HitTest(vp, null, r =>
                 {
@@ -546,6 +550,7 @@ namespace NovoFtool
             {
                 achado = render.Acertar(TranslatePoint(p, render.Vista), out Point3D? pr);
                 pt ??= pr;
+                if (achado is PecaLig pl) { pecaSob = pl; achado = null; }
             }
             if (achado is Barra3D bb)   // sólido acertado: vale um nó dele a até 8 px
             {

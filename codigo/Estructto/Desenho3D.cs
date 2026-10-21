@@ -50,6 +50,7 @@ namespace NovoFtool
                     if (alvo != null) Vista.Sel.Add(alvo);
                     SelecaoMudou();
                 };
+                vista3D.CliquePecaLig += AbrirLigacaoDaPeca;
                 LigarDesenho3D();
             }
             if (vista3D == null || !ligar) return;   // não existe mais vista 2D: sempre 3D
