@@ -315,6 +315,7 @@ namespace NovoFtool
     public class PlanoPlaca : Canvas
     {
         public ResPlaca R;
+        public ResNbr Nbr;     // motor: bloco de compressão e chumbadores tracionados (eixos da janela)
         public PlacaBase P;
         public bool ModoForcas;
         public Action AoEditar;
@@ -421,6 +422,22 @@ namespace NovoFtool
             dc.Pop();
             dc.DrawRectangle(null, new Pen(TemaPlant.BBarra, 2), rectPlaca);
 
+            // bloco de compressão do motor (retangular, a σc,Rd ou fp): faixa de comprimento Y no lado comprimido
+            bool bloco = Nbr != null && Nbr.Valido && Nbr.TemBloco && R.TemEsforcos;
+            Color corBloco = ((SolidColorBrush)JanelaEscura.BAmarelo).Color;
+            if (bloco)
+            {
+                double a = Math.Min(Nbr.BlocoDe, Nbr.BlocoAte), b = Math.Max(Nbr.BlocoDe, Nbr.BlocoAte);
+                Rect rb = Nbr.Fraco ? new Rect(T(-R.H / 2, b), T(R.H / 2, a)) : new Rect(T(a, R.B / 2), T(b, -R.B / 2));
+                rb.Intersect(rectPlaca);
+                dc.DrawRectangle(TemaPlant.B(corBloco, 70), new Pen(TemaPlant.B(corBloco, 230), 1.4) { DashStyle = DashStyles.Dash }, rb);
+                var tb = Txt("compressão Y = " + Num.Fmt(Nbr.Y, 0) + " mm · " + Num.Fmt(Nbr.Fp, 2) + " MPa", 10.5, JanelaEscura.BAmarelo, FontWeights.SemiBold);
+                Point pb = Nbr.Fraco ? new Point(rb.Left + 6, rb.Top - tb.Height - 4) : new Point(rb.Left + rb.Width / 2 - tb.Width / 2, rectPlaca.Top + 6);
+                pb.X = Math.Max(rectPlaca.Left + 4, Math.Min(pb.X, rectPlaca.Right - tb.Width - 4));
+                dc.DrawRoundedRectangle(TemaPlant.BFundoTextoCanvas, null, new Rect(pb.X - 4, pb.Y - 1, tb.Width + 8, tb.Height + 2), 3, 3);
+                dc.DrawText(tb, pb);
+            }
+
             // eixos de simetria tracejados
             var penEixo = new Pen(TemaPlant.BBorda, 1) { DashStyle = new DashStyle(new double[] { 10, 4, 2, 4 }, 0) };
             dc.DrawLine(penEixo, new Point(rectPlaca.Left - 14, c.Y), new Point(rectPlaca.Right + 14, c.Y));
@@ -509,8 +526,17 @@ namespace NovoFtool
                 Point q = T(p[0], p[1]);
                 if (!ModoForcas)
                 {
+                    bool trac = Nbr != null && Nbr.Valido && p[2] > 1e-9;   // chumbador tracionado (motor): anel vermelho por fora e "T"
+                    if (trac) dc.DrawEllipse(null, new Pen(TemaPlant.B(TemaPlant.Erro, 230), 2.2), q, rAnel + 4, rAnel + 4);
                     dc.DrawEllipse(TemaPlant.BBgCanvas, penAnel, q, rAnel, rAnel);
                     dc.DrawEllipse(corAnel, null, q, Math.Max(2.5, rAnel * 0.3), Math.Max(2.5, rAnel * 0.3));
+                    if (trac)
+                    {
+                        var tt = Txt("T " + Num.Fmt(p[2], 1), 10.5, TemaPlant.BErroClaro, FontWeights.SemiBold);
+                        double tx = q.X >= c.X ? q.X - rAnel - tt.Width - 9 : q.X + rAnel + 9;
+                        dc.DrawRoundedRectangle(TemaPlant.BFundoTextoCanvas, null, new Rect(tx - 3, q.Y - tt.Height / 2 - 1, tt.Width + 6, tt.Height + 2), 3, 3);
+                        dc.DrawText(tt, new Point(tx, q.Y - tt.Height / 2));
+                    }
                 }
                 else
                 {
@@ -633,12 +659,17 @@ namespace NovoFtool
                 dc.DrawText(tl, new Point(xLeg + 16, yLeg - tl.Height / 2));
                 xLeg += 16 + tl.Width + 18;
             }
-            if (!ModoForcas) Leg(p => dc.DrawEllipse(null, new Pen(corAnel, 2), p, 5.5, 5.5), (R.Ch != null ? "chumbador " : "parafuso ") + (R.ChOk ? "passa" : "não passa"));
+            if (!ModoForcas)
+            {
+                Leg(p => dc.DrawEllipse(null, new Pen(corAnel, 2), p, 5.5, 5.5), "fixação " + (R.ChOk ? "passa" : "não passa"));
+                if (Nbr != null && Nbr.Paraf.Any(x => x[2] > 1e-9)) Leg(p => dc.DrawEllipse(null, new Pen(TemaPlant.B(TemaPlant.Erro, 230), 2), p, 5.5, 5.5), "tracionado (kN)");
+            }
             else
             {
                 Leg(p => dc.DrawEllipse(TemaPlant.B(TemaPlant.Erro, 220), null, p, 5.5, 5.5), "tracionado (mais escuro = mais carga)");
                 Leg(p => dc.DrawEllipse(TemaPlant.B(TemaPlant.Realce, 60), null, p, 5.5, 5.5), "sem tração");
             }
+            if (bloco) Leg(p => dc.DrawRectangle(TemaPlant.B(corBloco, 90), new Pen(TemaPlant.B(corBloco, 230), 1), new Rect(p.X - 6, p.Y - 4, 12, 8)), "bloco de compressão");
             Leg(p => dc.DrawRectangle(TemaPlant.BPerfilArea, new Pen(TemaPlant.BRealce, 1), new Rect(p.X - 6, p.Y - 4, 12, 8)), "pilar");
             Leg(p => dc.DrawRoundedRectangle(TemaPlant.BInfoFundo, new Pen(TemaPlant.BRealce, 1), new Rect(p.X - 7, p.Y - 5, 14, 10), 2, 2), "cota editável (mm)");
             if (!double.IsNaN(R.PivoY)) Leg(p => dc.DrawLine(new Pen(JanelaEscura.BAmarelo, 1) { DashStyle = DashStyles.Dash }, new Point(p.X - 6, p.Y), new Point(p.X + 6, p.Y)), "linha de giro");
@@ -982,7 +1013,7 @@ namespace NovoFtool
             }
             Leg(p => dc.DrawRectangle(corConcTopo, penConc, new Rect(p.X - 7, p.Y - 5, 14, 10)), ch != null ? "concreto" : "base");
             if (ch != null) Leg(p => dc.DrawLine(penCone, new Point(p.X - 7, p.Y + 4), new Point(p.X + 7, p.Y - 4)), "cone de arrancamento (raio 1,5·hef)");
-            Leg(p => dc.DrawLine(new Pen(corF, 2.5), new Point(p.X, p.Y - 6), new Point(p.X, p.Y + 6)), (ch != null ? "chumbador " : "parafuso ") + (R.ChOk ? "passa" : "não passa"));
+            Leg(p => dc.DrawLine(new Pen(corF, 2.5), new Point(p.X, p.Y - 6), new Point(p.X, p.Y + 6)), "fixação " + (R.ChOk ? "passa" : "não passa"));
             Leg(p => dc.DrawLine(new Pen(corSolda, 3), new Point(p.X - 7, p.Y), new Point(p.X + 7, p.Y)), "solda");
             if (R.Inclinada)
             {

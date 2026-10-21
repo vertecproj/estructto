@@ -4,8 +4,9 @@
 // recebem um "pé de pilar" montado a partir do modelo 3D: o nó com apoio, a única barra que chega nele e os esforços da
 // barra nesse nó vindos do MOTOR (N, Vz, My em cada combinação ELU). O pé vira um Modelo 2D mínimo (2 nós, 1 barra) no plano
 // formado pelo eixo da barra e o eixo forte da seção; ResBarra é montada para reproduzir N, V e M exatos nas duas pontas.
-// ponytail: só flexão no eixo forte (Mz/Vy ignorados, como a placa sempre foi); pilar inclinado com o eixo forte fora do
-// plano vertical não é aceito. Quando o motor expuser a placa (placa_base.py por rota HTTP), trocar PlacaCalc por ela aqui.
+// O pé 2D (só eixo forte) agora alimenta só o desenho e o "Comparar com método legado": a verificação da janela é a do motor
+// (/api/placa_base/verificar com o membro {barra, ponta}: todas as combinações ELU, nos dois eixos; PlacaMotor.cs). Pilar
+// inclinado com o eixo forte fora do plano vertical não é aceito.
 //
 // Relatório: o do motor (RelatorioMotor) + anexo das placas pela mesma ponte. Dimensionar: iterações no motor (abaixo).
 using System;
@@ -18,6 +19,7 @@ using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media.Media3D;
 using Portico;
+using static NovoFtool.UiAnalise;
 
 namespace NovoFtool
 {
@@ -105,13 +107,42 @@ namespace NovoFtool
 
     public partial class MainWindow
     {
-        // Nós candidatos a pé de pilar: com apoio e uma só barra (ou que já têm placa).
+        // Nós candidatos a pé de pilar: com apoio e uma só barra (ou com placa nos grupos de ligações).
         static IEnumerable<string> NosDePe(DocumentoEspacial d)
         {
             var cont = new Dictionary<string, int>();
             foreach (var kv in d.Json["barras"].AsObject()) foreach (string k in new[] { "ni", "nj" }) { string n = (string)kv.Value[k]; cont[n] = cont.TryGetValue(n, out int c) ? c + 1 : 1; }
+            var comPlaca = new HashSet<string>(NosComPlaca(d));
             foreach (var kv in d.Json["nos"].AsObject())
-                if (d.Placas.ContainsKey(kv.Key) || (cont.TryGetValue(kv.Key, out int c) && c == 1 && kv.Value["apoio"]?.AsArray().Any(x => x != null && (bool)x) == true)) yield return kv.Key;
+                if (comPlaca.Contains(kv.Key) || d.Placas.ContainsKey(kv.Key) || (cont.TryGetValue(kv.Key, out int c) && c == 1 && kv.Value["apoio"]?.AsArray().Any(x => x != null && (bool)x) == true)) yield return kv.Key;
+        }
+
+        // Fonte única da placa de base: o projeto "placa_base" dos grupos de ligações (modelo.ligacoes, aco/placa_base.py).
+        // Grupos das bases com placa e seus nós.
+        internal static IEnumerable<(string Id, JsonNode G)> GruposComPlaca(DocumentoEspacial d)
+        {
+            foreach (var kv in d.Json["ligacoes"]?["grupos"] as JsonObject ?? new JsonObject())
+                if ((string)kv.Value?["tipo"] == "base" && (string)kv.Value["projeto"]?["tipo_ligacao"] == "placa_base") yield return (kv.Key, kv.Value);
+        }
+        internal static IEnumerable<string> NosComPlaca(DocumentoEspacial d) => GruposComPlaca(d).SelectMany(g => Lista(g.G["membros"]).Select(x => (string)x["no"]));
+
+        // Migração: as placas antigas (d.Placas, de arquivos .estructto e da conversão do 2D) viram projetos dos grupos de
+        // ligações (uma gravação por placa distinta, com os nós que a usam). Depois d.Placas fica vazio.
+        internal async Task<bool> MigrarPlacasEsp(DocumentoEspacial d)
+        {
+            if (d.Placas.Count == 0) return false;
+            int n = 0;
+            foreach (var g in d.Placas.GroupBy(kv => PlacaMotor.Dados(kv.Value).ToJsonString()))
+            {
+                var membros = new JsonArray(g.Select(kv => (JsonNode)MembroDePe(d, kv.Key)).Where(x => x != null).ToArray());
+                if (membros.Count == 0) continue;
+                try { await d.Ligacoes("POST", "/api/placa_base/gravar", new JsonObject { ["membros"] = membros, ["dados"] = PlacaMotor.Dados(g.First().Value) }); n += membros.Count; }
+                catch (Exception ex) { Log("Placa de base: não migrou a placa dos nós " + string.Join(", ", g.Select(kv => kv.Key)) + ": " + PlacaMotor.Mensagem(ex)); return false; }
+            }
+            d.Placas.Clear();
+            alterado = true; AtualizarTitulo();
+            Log("Placas de base: " + Pl.N(n, "placa antiga passou", "placas antigas passaram") + " para os grupos de ligações (projeto do motor, método NBR).");
+            return true;
         }
 
         // Garante o cálculo do documento ativo no motor (F5 se preciso). false = sem cálculo.
@@ -122,7 +153,8 @@ namespace NovoFtool
             return Esp == d && d.Calculado;
         }
 
-        // Pés montados com os esforços de todas as combinações ELU (uma consulta por combinação).
+        // Pés montados com os esforços de todas as combinações ELU (uma consulta por combinação). Só para o desenho e o
+        // "Comparar com método legado"; a verificação é a do motor. Dentro do Exclusivo o modelo do servidor é o deste documento.
         async Task<List<PePilar>> MontarPes(DocumentoEspacial d, IEnumerable<string> nos)
         {
             int k = 1;
@@ -133,6 +165,7 @@ namespace NovoFtool
             string ids = string.Join(",", ok.Select(p => p.BarraId).Distinct());
             await Motor.Exclusivo(async () =>
             {
+                await d.GarantirCalculado();   // outro documento pode ter deixado o modelo dele no servidor
                 foreach (string c in combs)
                 {
                     var r = await Motor.Get("/api/resultados?alvo=esforcos&combinacao=" + Uri.EscapeDataString(c) + "&ids=" + Uri.EscapeDataString(ids));
@@ -143,7 +176,7 @@ namespace NovoFtool
             return pes;
         }
 
-        // Pior combinação da placa do pé (maior aproveitamento de fixação ou chapa); deixa a barra com esse resultado.
+        // Pior combinação da placa do pé pelo método LEGADO (comparação); deixa a barra com esse resultado.
         (ResPlaca R, string Comb) PiorPlaca(PePilar pe)
         {
             ResPlaca pior = null; string qual = null; double nota = double.MinValue;
@@ -158,52 +191,145 @@ namespace NovoFtool
             return (pior, qual);
         }
 
-        // Placa de base do nó (Ligações e bases › Placa de base, comando PLACA, duplo clique no nó com placa).
+        // Placa de base do nó (Ligações e bases › Placa de base, comando PLACA, duplo clique no nó com placa). A placa é o
+        // projeto do grupo de ligações das bases do nó; Aplicar grava pelo motor (/api/placa_base/gravar).
         internal async Task AbrirPlacaEsp(string noId)
         {
             var d = Esp; if (d == null) return;
-            noId ??= vista3D.Selecao.Nos.FirstOrDefault() ?? d.Placas.Keys.FirstOrDefault() ?? NosDePe(d).FirstOrDefault();
+            await MigrarPlacasEsp(d);
+            noId ??= vista3D.Selecao.Nos.FirstOrDefault() ?? NosComPlaca(d).FirstOrDefault() ?? NosDePe(d).FirstOrDefault();
             if (noId == null) { Log("Selecione o nó do pé do pilar (com apoio, uma só barra) e repita PLACA."); return; }
             if (!await GarantirCalculoEsp()) return;
             var pe = (await MontarPes(d, new[] { noId }))[0];
             if (pe.Erro != null) { Log("Placa de base no nó " + noId + ": " + pe.Erro); MostrarToast(pe.Erro, true); return; }
-            d.Placas.TryGetValue(noId, out var orig);
-            pe.No.Placa = orig?.Copiar();
+            var mb = MembroDePe(d, noId);
+            if (GrupoDaBase(d, noId) == null)   // grupos ainda não identificados: o motor identifica (não muda a estrutura)
+                try { await d.Ligacoes("POST", "/api/ligacoes/identificar"); } catch (Exception ex) { Log("Ligações: " + PlacaMotor.Mensagem(ex)); }
+            var grupo = GrupoDaBase(d, noId);
+            var dadosG = grupo?.Value["projeto"] is JsonNode pj && (string)pj["tipo_ligacao"] == "placa_base" ? pj["dados"] : null;
+            pe.No.Placa = dadosG != null ? PlacaMotor.Placa(dadosG) : null;
             var (_, crit) = PiorPlaca(pe);
             JanelaPlaca j;
             try { j = new JanelaPlaca(pe.M, pe.No) { Owner = this }; }
             catch (Exception ex) { Log("Erro ao abrir a placa: " + ex.Message); return; }
-            j.Title = "Placa de base — nó " + noId + (crit != null ? " — combinação crítica: " + crit : "");
-            j.Candidatos = new List<No>();   // ponytail: "Aplicar também em" só no próprio nó; copiar a placa para outros nós pelo comando PLACA em cada um
-            j.AvaliarEm = (no, pl) => { var p0 = no.Placa; no.Placa = pl; try { return PiorPlaca(pe).R; } finally { no.Placa = p0; } };
+            j.Title = "Placa de base — nó " + noId;
+            j.Api = d.Placa;
+            j.CombLegado = crit;
+            j.Membros.Add(mb);
+            // "Aplicar também em": os outros pés de pilar selecionados na vista e o grupo de ligações das bases deste nó
+            var nosComPlaca = new HashSet<string>(NosComPlaca(d));
+            foreach (string o in vista3D.Selecao.Nos.Where(x => x != noId).Distinct())
+                if (MembroDePe(d, o) is JsonObject mo) j.Outros.Add((o, mo, nosComPlaca.Contains(o)));
+            List<JsonObject> membrosG = null;
+            if (grupo != null)
+            {
+                membrosG = Lista(grupo.Value.Value["membros"]).Select(x => new JsonObject { ["barra"] = (string)x["barra"], ["ponta"] = (string)x["ponta"], ["no"] = (string)x["no"] }).ToList();
+                j.Grupo = ((string)grupo.Value.Key, (string)grupo.Value.Value["nome"] ?? grupo.Value.Key, membrosG.Select(x => (string)x["no"]).ToList());
+                j.GrupoMembros = membrosG;
+                j.AplicarNoGrupo = dadosG != null && membrosG.Count > 1;   // a placa já é do grupo: editar vale para todo o grupo
+            }
             if (Capturas.Ativo) { placaAberta = j; placaComparar = (pe.M, pe.No); return; }
             j.ShowDialog();
             if (!j.Mudou || Esp != d) return;
-            if (pe.No.Placa == null) d.Placas.Remove(noId); else d.Placas[noId] = pe.No.Placa.Copiar();
-            alterado = true; AtualizarTitulo();
-            Log(pe.No.Placa == null ? "Placa de base removida do nó " + noId + "." : "Placa de base do nó " + noId + " atualizada.");
+            await GravarPlacaEsp(d, mb, j, membrosG);
+        }
+
+        // Grava o resultado da janela no projeto do grupo de ligações (fonte única). Remover = sem projeto (o nó sai do grupo
+        // se o grupo tem outras bases).
+        internal async Task GravarPlacaEsp(DocumentoEspacial d, JsonObject mb, JanelaPlaca j, List<JsonObject> membrosG)
+        {
+            string noId = (string)mb["no"];
+            try
+            {
+                if (j.Placa == null)
+                {
+                    var g = GrupoDaBase(d, noId);
+                    if (g == null) return;
+                    string gid = g.Value.Key;
+                    if (Lista(g.Value.Value["membros"]).Count() > 1)
+                        gid = (string)(await d.Ligacoes("POST", "/api/ligacoes/grupos/editar", new JsonObject { ["acao"] = "dividir", ["grupo"] = gid, ["membros"] = new JsonArray(mb.DeepClone()) }))["grupo"];
+                    await d.Ligacoes("POST", "/api/ligacoes/grupos/editar", new JsonObject { ["acao"] = "projeto", ["grupo"] = gid, ["tipo_ligacao"] = null });
+                    alterado = true; AtualizarTitulo(); Log("Placa de base removida do nó " + noId + ".");
+                    return;
+                }
+                var membros = new JsonArray(mb.DeepClone());
+                foreach (var o in j.Outros.Where(o => j.AplicarEm.Contains(o.No))) membros.Add(o.Membro.DeepClone());
+                if (j.AplicarNoGrupo && membrosG != null) foreach (var x in membrosG) membros.Add(x.DeepClone());
+                var r = await d.Ligacoes("POST", "/api/placa_base/gravar", new JsonObject { ["membros"] = membros, ["dados"] = PlacaMotor.Dados(j.Placa), ["grupo_inteiro"] = j.AplicarNoGrupo });
+                alterado = true; AtualizarTitulo();
+                var nos = membros.Select(x => (string)x["no"]).Distinct().ToList();
+                Log("Placa de base gravada no grupo de ligações " + (string)r?["grupo"] + " (" + string.Join(", ", nos) + ").");
+            }
+            catch (Exception ex) { Log("Placa de base: não gravou: " + PlacaMotor.Mensagem(ex)); MostrarToast("Placa de base não gravada: " + PlacaMotor.Mensagem(ex), true); }
+        }
+
+        // Membro {barra, ponta, no} do pé de pilar (uma só barra no nó) para /api/placa_base/*; null se não é pé.
+        internal static JsonObject MembroDePe(DocumentoEspacial d, string no)
+        {
+            var bs = d.Json["barras"].AsObject().Where(kv => (string)kv.Value["ni"] == no || (string)kv.Value["nj"] == no).ToList();
+            if (bs.Count != 1) return null;
+            return new JsonObject { ["barra"] = bs[0].Key, ["ponta"] = (string)bs[0].Value["ni"] == no ? "i" : "j", ["no"] = no };
+        }
+
+        // Grupo de ligações (tipo base) que contém o nó, se o modelo já tem grupos identificados.
+        static KeyValuePair<string, JsonNode>? GrupoDaBase(DocumentoEspacial d, string no)
+        {
+            foreach (var kv in d.Json["ligacoes"]?["grupos"] as JsonObject ?? new JsonObject())
+                if ((string)kv.Value?["tipo"] == "base" && Lista(kv.Value["membros"]).Any(x => (string)x["no"] == no)) return new KeyValuePair<string, JsonNode>(kv.Key, kv.Value);
+            return null;
         }
         internal JanelaPlaca placaAberta;   // capturas: a janela fica aberta para renderizar
         internal (Modelo, No) placaComparar;   // capturas: pé de pilar da última placa (JanelaComparar)
 
-        // Anexo do relatório do motor: tabela e memorial das placas (PlacaPior desviado para a ponte, nós com o número do motor).
+        // Anexo do relatório do motor: as placas de base dos grupos de ligações verificadas pelo motor (método NBR, pior
+        // combinação ELU de todas as bases do grupo, dois eixos), uma tabela-resumo e as verificações do governante.
         internal async Task<Func<FlowDocument>> AnexoPlacasEsp()
         {
             var d = Esp;
-            if (d == null || d.Placas.Count == 0) return () => null;
-            var pes = (await MontarPes(d, d.Placas.Keys.ToList())).Where(p => p.Erro == null).ToList();
-            foreach (var p in pes) { p.No.Placa = d.Placas[p.NoId].Copiar(); p.No.Id = NumeroDe(p.NoId, p.No.Id); }
-            return () =>
+            if (d == null) return () => null;
+            await MigrarPlacasEsp(d);
+            var linhas = new List<(string Grupo, PlacaBase P, ResNbr R, int N)>();
+            foreach (var (gid, g) in GruposComPlaca(d).ToList())
             {
-                if (pes.Count == 0) return null;
-                placaPiorDesvio = n => { var p = pes.First(x => x.No == n); return PiorPlaca(p).R ?? PlacaCalc.Calcular(p.M, n); };
-                try { return AnexoDe(pes.Select(p => p.No).ToList()); }
-                finally { placaPiorDesvio = null; }
-            };
+                var membros = new JsonArray(Lista(g["membros"]).Select(x => (JsonNode)new JsonObject { ["barra"] = (string)x["barra"], ["ponta"] = (string)x["ponta"] }).ToArray());
+                if (membros.Count == 0) continue;
+                ResNbr r;
+                try { r = ResNbr.De(await Task.Run(() => d.Placa("/api/placa_base/verificar", new JsonObject { ["dados"] = g["projeto"]["dados"].DeepClone(), ["membros"] = membros }))); }
+                catch (Exception ex) { r = ResNbr.ComErro(PlacaMotor.Mensagem(ex)); }
+                linhas.Add(((string)g["nome"] ?? gid, PlacaMotor.Placa(g["projeto"]["dados"]), r, membros.Count));
+            }
+            return () => linhas.Count == 0 ? null : AnexoPlacasMotor(linhas);
         }
-        internal Func<No, ResPlaca> placaPiorDesvio;   // PlacaPior (Acoes.cs) usa este quando não é null
 
-        static int NumeroDe(string id, int padrao) => id.Length > 1 && int.TryParse(id.Substring(1), NumberStyles.Integer, CultureInfo.InvariantCulture, out int k) ? k : padrao;
+        FlowDocument AnexoPlacasMotor(List<(string Grupo, PlacaBase P, ResNbr R, int N)> linhas)
+        {
+            string F(double v, int c) => double.IsNaN(v) || double.IsInfinity(v) ? "—" : Num.Fmt(v, c);
+            string Pc(double t) => double.IsNaN(t) || double.IsInfinity(t) ? "—" : Num.Fmt(t * 100, 0) + "%";
+            var doc = new FlowDocument { FontFamily = new System.Windows.Media.FontFamily("Segoe UI"), FontSize = 10.5, Foreground = TemaPlant.BImpTinta, Background = System.Windows.Media.Brushes.White };
+            doc.Blocks.Add(Titulo("Anexo — Placas de base (motor, método NBR)"));
+            doc.Blocks.Add(P("NBR 8800:2008 6.6.5 (pressão no concreto) com bloco retangular de compressão (AISC DG1), chapa pelo CBCA (conferência Pfeil/DG1), " +
+                             "chumbador pré-concretado pela NBR 8800 6.3.3 + ACI 318-19 cap. 17 ou de catálogo; esforços de cálculo de todas as combinações ELU de todas as " +
+                             "bases do grupo. Flexão biaxial: My no eixo forte e Mz no eixo fraco verificados separadamente (vale o pior; os momentos não são somados)."));
+            doc.Blocks.Add(Tabela(new[] { "Grupo", "Bases", "Placa (mm)", "Fixação", "Governa", "Fixação", "Chapa", "Solda", "Situação" },
+                linhas.Select(l => new[]
+                {
+                    l.Grupo, l.N.ToString(), F(l.P.H, 0) + " × " + F(l.P.B, 0) + (l.P.PeloPerfil ? " (perfil + sobra)" : "") + " × " + F(l.P.Esp, 1),
+                    l.P.Fileiras * l.P.PorFileira + " × " + (string.IsNullOrEmpty(l.P.Chumbador) ? "Ø" + F(l.P.Diametro, 0) + " cl. " + l.P.Classe + " pré-concretado" : l.P.Chumbador),
+                    l.R.Valido ? l.R.Comb + " · " + l.R.Barra + " · " + l.R.Eixo : l.R.Erro,
+                    Pc(l.R.Fix.Taxa), Pc(l.R.Chapa.Taxa) + " (t ≥ " + F(l.R.TNec, 1) + ")", Pc(l.R.Solda.Taxa),
+                    l.R.Valido && l.R.Ok ? "passa" : "NÃO PASSA"
+                })));
+            foreach (var l in linhas.Where(x => x.R.Valido))
+            {
+                doc.Blocks.Add(Titulo("Grupo " + l.Grupo + " — governante " + l.R.Comb + " (" + l.R.Barra + ", " + l.R.Eixo + ")"));
+                doc.Blocks.Add(P("N = " + F(l.R.N, 2) + " kN · V = " + F(l.R.V, 2) + " kN · M = " + F(l.R.M, 2) + " kN·m · " + l.R.Modelo + " · Y = " + F(l.R.Y, 1) + " mm · " +
+                                 "Tmáx = " + F(l.R.Tmax, 2) + " kN · Fv = " + F(l.R.Fv, 2) + " kN (" + l.R.Mecanismo + ") · chapa CBCA " + F(l.R.TNec, 1) + " mm, Pfeil " + F(l.R.TPfeil, 1) + " mm"));
+                doc.Blocks.Add(Tabela(new[] { "Verificação", "Solicitante", "Resistente", "Unidade", "Taxa", "Item" },
+                    Lista(l.R.R?["verificacoes"]).Select(v => new[] { S(v, "nome"), F(D(v, "solicitante"), 3), F(D(v, "resistente"), 3), S(v, "unidade"), Pc(D(v, "taxa")), S(v, "item") })));
+                if (l.R.Avisos.Count > 0) doc.Blocks.Add(P("Avisos: " + string.Join(" · ", l.R.Avisos)));
+            }
+            return doc;
+        }
 
         // ---------- Dimensionar no motor ----------
         // Para cada barra (ou só as escolhidas) com perfil do catálogo do motor: taxa > 1 sobe na família; taxa < 0,75 tenta

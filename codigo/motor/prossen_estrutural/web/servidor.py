@@ -120,6 +120,11 @@ def _calculo(srv):
     return srv.estado["calculo"]
 
 
+def _calc_membros(srv, corpo):
+    """Placa de base: com `membros` os esforços vêm do cálculo (409 sem cálculo); com `esforcos` não precisa."""
+    return _calculo(srv) if (corpo or {}).get("membros") else srv.estado["calculo"]
+
+
 def _caminho(srv, corpo):
     return projeto.caminho_seguro(srv.pasta, str((corpo or {}).get("caminho", "")))
 
@@ -228,6 +233,10 @@ ROTAS = {
     ("POST", r"/api/ligacoes/identificar"): lambda s, a, q, c: _ligacoes(s, projeto.ligacoes_identificar),
     ("POST", r"/api/ligacoes/grupos/editar"): lambda s, a, q, c: _ligacoes(s, lambda m: projeto.ligacoes_editar(m, c or {})),
     ("POST", r"/api/ligacoes/grupos/(?P<id>[^/]+)/dimensionar"): lambda s, a, q, c: projeto.ligacoes_dimensionar(_modelo(s), _calculo(s), a["id"]),
+    ("GET", r"/api/placa_base/esquema"): lambda s, a, q, c: projeto.placa_base_esquema(),
+    ("POST", r"/api/placa_base/verificar"): lambda s, a, q, c: projeto.placa_base_verificar(_modelo(s), _calc_membros(s, c), c or {}),
+    ("POST", r"/api/placa_base/dimensionar"): lambda s, a, q, c: projeto.placa_base_dimensionar(_modelo(s), _calc_membros(s, c), c or {}),
+    ("POST", r"/api/placa_base/gravar"): lambda s, a, q, c: _ligacoes(s, lambda m: projeto.placa_base_gravar(m, c or {})),
     ("GET", r"/api/catalogo"): lambda s, a, q, c: projeto.catalogo_perfis(q.get("filtro", ""), q.get("familia")),
     ("GET", r"/api/catalogo/(?P<nome>[^/]+)"): lambda s, a, q, c: projeto.perfil(a["nome"]),
     ("GET", r"/api/materiais"): lambda s, a, q, c: projeto.materiais_disponiveis(),

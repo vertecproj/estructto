@@ -173,27 +173,16 @@ A linha W150×29,8 / 25 mm / 857 kN do CBCA não foi usada, porque não se repro
 
 ## 7. WPF (`JanelaPlaca.cs`)
 
-A janela continua calculando com o `Nucleo.cs`, sem nenhuma alteração nas contas, para continuar batendo com a planilha.
-
-O cabeçalho do resultado ganhou o aviso: "Método legado (pivô na borda) — use o motor Python para o método NBR com bloco de compressão".
-
-Diferenças entre o que a janela mostra e o motor v2:
-
-- pivô na borda × bloco de compressão;
-- coeficiente n global × esforços de cálculo;
-- corte V/n × atrito, barra e 2 efetivos;
-- chapa por faixas elásticas × CBCA;
-- sem concreto × NBR 6.6.5 e ACI 17.
+Desde 21/10/2026 a janela calcula com o motor (método NBR). Detalhes na §10. O `Nucleo.cs` só aparece na seção recolhida "Comparar com método legado".
 
 ## 8. Pendências
 
-- Flexão biaxial.
+- Flexão biaxial somada (hoje: dois cálculos uniaxiais, §10.3).
 - Enrijecedores e efeito alavanca (Kulak cap. 17).
 - λn' de Thornton.
 - Cone ACI 349 e solda da barra de cisalhamento.
 - Armadura de ancoragem (NBR 6118).
 - Solda pela NBR 6.2.5.
-- Ligar a janela WPF ao motor Python.
 - Conferir os exemplos do DG1 real (AISC-DG1.md §0).
 - Charneiras (Thornton/DG1) com a alma para chumbadores entre mesas; hoje só a faixa biengastada entre mesas.
 - Modos de aço do ACI (17.6.1, 17.7.1) dentro da interação 17.8.
@@ -219,3 +208,97 @@ Testes do verificador ajustados:
 - `test_tres_bordas_borda_pryout_interacao`: o pryout esperado é o do par efetivo (V2-02), não o do grupo de 4.
 
 Os valores da §4 foram calculados antes destas correções. O lado comprimido não mudou. Onde governa o lado tracionado, a chapa pode sair um pouco mais grossa: na terceira saída de `guincho()` (test_placa_base.py), passou de 2,87 mm para 2,97 mm.
+
+## 10. API e janela da placa (21/10/2026)
+
+### 10.1 Rotas (`web/servidor.py`, `projeto.py`)
+
+| Rota | Função | Uso |
+|---|---|---|
+| `GET /api/placa_base/esquema` | `placa_base_esquema` | campos, chapas, diâmetros e classes |
+| `POST /api/placa_base/verificar` | `placa_base_verificar` | `{dados, membros: [{barra, ponta}]}` usa todas as combinações ELU do cálculo (409 sem cálculo); ou `{dados, esforcos, secao}` |
+| `POST /api/placa_base/dimensionar` | `placa_base_dimensionar` | menor fixação que passa em todos os casos, chapa comercial ≥ t do CBCA, perna e eletrodo da solda |
+| `POST /api/placa_base/gravar` | `placa_base_gravar` | grava a placa como projeto `placa_base` do grupo de ligações (empilha desfazer, não descarta o cálculo) |
+
+O resultado de `verificar` traz `ok`, `taxa_max`, `governante` (combinação, barra, eixo, N, V, M), `resultado` (o `verificar_placa_base` do governante), `passos` (fixação, chapa, solda: taxa, ok, critério, local e esforços; `chapa.t_nec` e `solda.h_max` são os máximos nos casos), `combinacoes`, `membros` e `biaxial`.
+
+Com `variantes` (lista de `dados`), cada variante volta resumida. Com `triagem` = `fixacao`, a variante é testada primeiro no caso governante da placa atual e para ali se reprovar (`parcial`). A janela usa isso para a régua de diâmetros, a lista "Trocar", "Sugerir" e a troca de tipo.
+
+Não há `sugerir` para a placa no motor; `dimensionar` cobre esse papel.
+
+Teste: `testes/test_web.py::TestCalculoAPI::test_placa_base` e `testes/test_placa_base.py::test_biaxial_dois_eixos_mesma_placa`.
+
+### 10.2 Fonte única
+
+A placa é o projeto `placa_base` do grupo de ligações das bases (`modelo.ligacoes`). É o mesmo dado que o gerenciador de ligações e a vista realista usam.
+
+- Comando PLACA: abre a placa do grupo do nó (identifica os grupos se ainda não há). "Aplicar" grava pelo `/api/placa_base/gravar`. Se a placa é do grupo, o padrão é aplicar ao grupo inteiro; sem essa marca, o nó sai para um grupo próprio.
+- `DocumentoEspacial.Placas` (placas antigas do `.estructto` e da conversão do 2D) é só caminho de migração. Na primeira abertura da placa ou do relatório, as placas iguais viram um grupo com o projeto e `Placas` fica vazio.
+- Anexo do relatório 3D: cada grupo com placa verificado pelo motor (tabela-resumo e verificações do governante).
+- Placa do grupo (`PlacaDoGrupo`): a janela verifica todos os membros do grupo e devolve os `dados` do motor.
+- `MontarPes` (pé 2D para o desenho e a comparação) garante, dentro do `Motor.Exclusivo`, que o servidor tem o modelo e o cálculo deste documento.
+
+### 10.3 Esforços e biaxial
+
+Os esforços são os da ponta da barra em todas as combinações ELU (`ligacoes_modelo.esforcos_ponta`), de todos os membros pedidos. O método é uniaxial. Cada caso é verificado duas vezes (`placa_base.casos_biaxiais`):
+
+- My no eixo forte;
+- Mz no eixo fraco, com a mesma placa física girada (`dados_no_eixo`: H↔B, fileiras↔por_fileira, bloco_H↔bloco_B, perfil deitado).
+
+Vale o pior. Os dois momentos não são somados. A janela mostra a nota, as taxas dos dois eixos e um aviso quando governa o eixo fraco.
+
+`ligacoes_modelo._verif_placa` passou a usar a mesma função. Antes ele girava só o perfil e mantinha H, B e as fileiras: no eixo fraco a placa ficava girada em relação à real.
+
+### 10.4 Janela
+
+Mesma aparência e os mesmos 3 passos. Entradas mapeadas (`PlacaMotor.Dados`):
+
+- placa: H, B, espessura, borda, sobra, medir pelo perfil;
+- chumbador de catálogo (mecânico ou químico) ou **pré-concretado** (antigo "Parafuso"): diâmetro, classe, arranjo, hef, rosca no corte, concreto não fissurado;
+- concreto: fck e bloco H × B (A2) e altura;
+- corte: arruela soldada, barra de cisalhamento (b × t × h) e graute;
+- solda: perna e eletrodo.
+
+Novos campos da `PlacaBase` (mm): `BlocoH`, `BlocoB`, `BlocoAltura`, `Hef`, `NaoFissurado`, `LugB`, `LugT`, `LugH`, `Graute`, `ArruelaSoldada`.
+
+Saídas mostradas:
+
+- veredito e chips por passo (taxa e critério que governa, com a combinação);
+- pressão no concreto e bloco de compressão (Y, fp, σc,Rd);
+- tração por chumbador e corte (mecanismo, n_ef);
+- chapa CBCA × Pfeil e `governa`;
+- modos de concreto do ACI 318 cap. 17;
+- solda;
+- avisos do motor;
+- as piores combinações.
+
+O desenho (Planta e Forças) mostra o bloco de compressão em amarelo e os chumbadores tracionados com anel vermelho e T em kN.
+
+"Dimensionar tudo", "Sugerir", "Trocar", a régua de diâmetros e "Aplicar também em…" (outros pés selecionados na vista e o grupo de ligações) usam o motor. "Comparar ›" (catálogo lado a lado) continua sendo a tabela do catálogo pelo método legado.
+
+O cabeçalho "Método legado" saiu. O `Nucleo.cs` ficou em "Comparar com método legado", recolhido no fim da coluna: combinação crítica do legado, Tmáx e corte legado × NBR, segurança n, chapa legado × CBCA, o n e o giro na mesa.
+
+### 10.5 Antes × depois no guincho (UI, `ESTRUCTTO_CAPTURAS=placa`, `55-placa.txt`)
+
+`guincho-com-placa` convertido para 3D, nó n1, 4 × Parabolt PB 1/2" hef 80, placa 410 × 410 × 19, tubo Ø203,2 × 3,75.
+
+| | Legado (antes) | Motor NBR (depois) |
+|---|---|---|
+| Combinação | ELU G (N = −11,77, V = 3,56, M = 1,97) | ELU G, eixo forte (N = −11,77, V = 3,56, M = −1,97) |
+| Modelo | sem tração (pivô na borda) | compressão sem tração, Y = 75 mm, fp = 0,38 MPa |
+| Tração máx. | 0 | 0 |
+| Corte por fixação | 0,89 kN (V/4) | 1,78 kN (2 efetivos, furo alargado) |
+| Fixação | n = 38,28 ≥ 3,00 | taxa 16% (concreto do catálogo, 5/3) |
+| Chapa | 11,9 mm (com n = 2) | CBCA 7,1 mm (taxa 37%); Pfeil 40,4 mm |
+| Solda | — | 26% |
+
+Base com arrancamento (`exemplos/base-com-arrancamento.json`, nó N0-0-0, 4 × Ø16 8.8 pré-concretado, ELU V1 princ. G fav, N = +28,58, V = 21,78, M = 46,08):
+
+| | Legado | Motor NBR |
+|---|---|---|
+| Tração máx. | 57,33 kN | 59,17 kN (2 tracionados, bloco Y = 24 mm a σc,Rd) |
+| Corte | 5,45 kN (V/4) | 10,89 kN (2 efetivos) |
+| Fixação | n = 1,62 < 2,00 | 177%, governa o arrancamento da cabeça (ACI 17.6.3) |
+| Chapa (19 mm) | 35,8 mm | CBCA 27,4 mm (144%) |
+
+"Dimensionar tudo" pelo motor dá 4 × Ø24 8.8, chapa 31,5 mm e solda 5 mm E90. Taxa máxima 89% (solda); passa.

@@ -642,13 +642,13 @@ namespace NovoFtool
                 var j = PlacaDoGrupo(d, g, dim, out No nb);
                 if (j == null) return null;
                 j.ShowDialog();
-                return j.Mudou && nb.Placa != null ? DadosDePlaca(nb.Placa) : null;
+                return j.Mudou && nb.Placa != null ? PlacaMotor.Dados(nb.Placa) : null;
             }
         };
 
-        // JanelaPlaca (pórtico 2D do núcleo) montada só com o pilar que governa: base engastada em (0, 0), pilar vertical,
-        // ResBarra com N, V, M da pior combinação na base (N = −F0, V = F1, M = −F2 em x = 0; PlacaCalc lê daí).
-        // Eixo fraco quando o pior caso do motor foi com Mz.
+        // JanelaPlaca do grupo: o motor verifica a placa em TODOS os membros do grupo, em todas as combinações ELU e nos dois
+        // eixos (/api/placa_base/verificar com membros). O pórtico 2D mínimo (base engastada em (0, 0), pilar vertical, N, V, M do
+        // pior membro no eixo forte) só alimenta o "Comparar com método legado" e o desenho.
         internal JanelaPlaca PlacaDoGrupo(DocumentoEspacial d, JsonNode g, JsonNode dim, out No nb)
         {
             nb = null;
@@ -656,48 +656,23 @@ namespace NovoFtool
             var mb = Lista(dim?["membros"]).FirstOrDefault(x => S(x, "barra") == S(gov, "barra") && S(x, "ponta") == S(gov, "ponta"));
             var e = mb?["esforcos"];
             if (e == null) { MostrarToast("Placa do grupo: sem esforços (calcule com F5).", true); return null; }
-            bool fraco = S(dim["resultado"], "eixo").StartsWith("fraco");
             string sec = (string)d.Json["barras"]?[S(gov, "barra")]?["secao"] ?? "";
             var s2d = Biblioteca.AcharSecao(sec) ?? Biblioteca.AcharSecao(sec + ".0");   // motor "W360x51" = núcleo "W 360 x 51,0"
             if (s2d == null) { MostrarToast("Placa do grupo: perfil \"" + sec + "\" não está no catálogo do núcleo.", true); return null; }
             sec = s2d.Nome;
-            double N = D(e, "N"), V = Math.Sqrt(D(e, "Vy") * D(e, "Vy") + D(e, "Vz") * D(e, "Vz")), M = fraco ? D(e, "Mz") : D(e, "My");
+            double N = D(e, "N"), V = Math.Sqrt(D(e, "Vy") * D(e, "Vy") + D(e, "Vz") * D(e, "Vz")), M = D(e, "My");
             var m = new Modelo { Seguranca = 2, Eletrodo = "E70" };
-            nb = new No { Id = 1, X = 0, Y = 0, ApoioX = true, ApoioY = true, ApoioGiro = true, Placa = PlacaDeDados(g?["projeto"]?["dados"]) };
+            nb = new No { Id = 1, X = 0, Y = 0, ApoioX = true, ApoioY = true, ApoioGiro = true, Placa = PlacaMotor.Placa(g?["projeto"]?["dados"]) };
             m.Nos.Add(nb); m.Nos.Add(new No { Id = 2, X = 0, Y = 3 });
-            var b = new Barra { Id = 1, N1 = 1, N2 = 2, Secao = sec, Dono = m, EixoFraco = fraco };
+            var b = new Barra { Id = 1, N1 = 1, N2 = 2, Secao = sec, Dono = m };
             b.Res = new ResBarra { L = 3, C = 0, S = 1, EA = 1, EI = 1 };
             b.Res.F[0] = -N; b.Res.F[1] = V; b.Res.F[2] = -M; b.Res.F[3] = N; b.Res.F[4] = -V; b.Res.F[5] = M - 3 * V;
             m.Barras.Add(b); m.ProxId = 3;
-            var j = new JanelaPlaca(m, nb) { Owner = this };
-            j.Title += " — grupo " + S(g, "nome") + " · pior: " + S(gov, "barra") + " (" + S(gov, "combinacao") + ")";
+            var j = new JanelaPlaca(m, nb) { Owner = this, Api = d.Placa, CombLegado = S(gov, "combinacao") + " · " + S(gov, "barra") + ", eixo forte (My)" };
+            foreach (var x in Lista(g?["membros"])) j.Membros.Add(new JsonObject { ["barra"] = S(x, "barra"), ["ponta"] = S(x, "ponta") });
+            j.Title += " — grupo " + S(g, "nome") + " (" + j.Membros.Count + " bases)";
             return j;
         }
-
-        static PlacaBase PlacaDeDados(JsonNode d)
-        {
-            double Nn(string k, double pad) { double v = D(d, k); return double.IsNaN(v) ? pad : v; }
-            string Sx(string k, string pad) { string s = S(d, k); return s == "" ? pad : s; }
-            bool Bx(string k, bool pad) => d?[k] is JsonValue v && v.TryGetValue(out bool x) ? x : pad;
-            return new PlacaBase
-            {
-                H = Nn("H", .4) * 1000, B = Nn("B", .3) * 1000, Esp = Nn("esp", .019) * 1000, Borda = Nn("borda", .05) * 1000, Sobra = Nn("sobra", .1) * 1000,
-                PeloPerfil = Bx("pelo_perfil", false), Fileiras = (int)Nn("fileiras", 2), PorFileira = (int)Nn("por_fileira", 2), Diametro = Nn("diametro_mm", 16),
-                Classe = Sx("classe", "8.8"), RoscaNoCorte = Bx("rosca_no_corte", true), PivoNaMesa = Bx("pivo_na_mesa", false),
-                FyChapa = Nn("fy_chapa", 250000) / 1000, Fck = Nn("fck", 20000) / 1000, Seguranca = Nn("seguranca", 0), Chumbador = Sx("chumbador", ""),
-                ClasseBarra = Sx("classe_barra", "4.6"), TipoCarga = Sx("tipo_carga", ""), Risco = Sx("risco", ""), CoefChumbador = Nn("coef_chumbador", 0),
-                Solda = Nn("solda", 0) * 1000, Eletrodo = Sx("eletrodo", "E70")
-            };
-        }
-
-        static JsonObject DadosDePlaca(PlacaBase p) => new JsonObject
-        {
-            ["H"] = p.H / 1000, ["B"] = p.B / 1000, ["esp"] = p.Esp / 1000, ["borda"] = p.Borda / 1000, ["sobra"] = p.Sobra / 1000, ["pelo_perfil"] = p.PeloPerfil,
-            ["fileiras"] = p.Fileiras, ["por_fileira"] = p.PorFileira, ["diametro_mm"] = p.Diametro, ["classe"] = p.Classe ?? "8.8", ["rosca_no_corte"] = p.RoscaNoCorte,
-            ["pivo_na_mesa"] = p.PivoNaMesa, ["fy_chapa"] = p.FyChapa * 1000, ["fck"] = p.Fck * 1000, ["seguranca"] = p.Seguranca, ["chumbador"] = p.Chumbador ?? "",
-            ["classe_barra"] = p.ClasseBarra ?? "4.6", ["tipo_carga"] = p.TipoCarga ?? "", ["risco"] = p.Risco ?? "", ["coef_chumbador"] = p.CoefChumbador,
-            ["solda"] = p.Solda / 1000, ["eletrodo"] = string.IsNullOrEmpty(p.Eletrodo) ? "E70" : p.Eletrodo
-        };
     }
 
     // ---------------------------------------------------------------- capturas 49) gerenciador de ligações (motor real)
