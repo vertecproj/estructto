@@ -738,6 +738,7 @@ def editar(modelo, tipo, id, dados):  # noqa: A002
         col[id] = novo
     else:
         col[pos] = novo
+    modelo._max_lista.clear()  # troca no mesmo lugar não muda o tamanho da lista: cache de ids vale menos que a verdade
     return _el_dict(novo)
 
 
@@ -1055,9 +1056,6 @@ def validar(modelo):
             if b.tipo == "pff" and p.get("tipo") not in ("Ue", "U"):
                 add("aviso", "secao_incompativel", f"barra {b.id}: perfil formado a frio exige seção Ue/U "
                     f"(seção '{sec.nome}')", ref)
-            if b.tipo == "aco" and p.get("tipo") in ("retangular", "circular"):
-                add("aviso", "secao_incompativel", f"barra {b.id}: seção maciça '{sec.nome}' sem verificação "
-                    "de aço", ref)
         _val_trechos_cortante(
             b.params, lambda campo, msg: add("erro", "param_invalido", f"{campo}: {msg}", ref),
             _comprimento(m, b), sec)
@@ -2865,10 +2863,15 @@ def _norm(s):
     return str(s).upper().replace(" ", "").replace(",", ".")
 
 
+def catalogo_arvore():
+    """Catálogo em árvore: [{nivel1, familias:[{nome, series:[{nome, perfis:[nome]}]}]}]."""
+    return _sec.arvore_catalogo()
+
+
 def catalogo_perfis(filtro="", familia=None):
     """#26 Resumo dos perfis do catálogo (W/HP Gerdau e PFF NBR 6355). `filtro`: trecho do nome."""
-    if familia is not None and familia not in ("W", "HP", "Ue", "U"):
-        raise ErroEntrada("familia: use W, HP, Ue ou U", "familia")
+    if familia is not None and familia not in {p["familia"] for p in _sec.lista_catalogo()}:
+        raise ErroEntrada("familia: use uma das famílias de GET /api/catalogo?formato=arvore (W, HP, Ue, U, IPE...)", "familia")
     f = _norm(filtro or "")
     return [p for p in _sec.lista_catalogo(familia) if f in _norm(p["nome"])]
 

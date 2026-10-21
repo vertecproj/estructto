@@ -97,7 +97,8 @@ namespace NovoFtool
         public static async void AbrirCatalogo(Window dono)
         {
             var d = await Buscar(dono, "Catálogo de perfis", () => Motor.Get("/api/catalogo"));
-            if (d != null) Mostrar(dono, new JanelaCatalogo(d, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome))));
+            JsonNode arv = null; try { arv = await Motor.Get("/api/catalogo?formato=arvore"); } catch { } // motor antigo: sem árvore
+            if (d != null) Mostrar(dono, new JanelaCatalogo(d, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome)), arv));
         }
     }
 

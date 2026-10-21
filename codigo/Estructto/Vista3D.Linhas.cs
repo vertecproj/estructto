@@ -97,7 +97,7 @@ namespace NovoFtool
                     }
                     lo.Desenhar(dc, CanetaLinha(TemaPlant.TextoMudo, 1, true));
                 }
-                foreach (No3D n in mod.Nos) if (EhSel(n, n.Origem) && pr.Visivel(P(n))) PontoNo(dc, pr.Tela(P(n)), true, 3);
+                if (CargasSempreVisiveis) foreach (No3D n in mod.Nos) if (EhSel(n, n.Origem) && pr.Visivel(P(n))) PontoNo(dc, pr.Tela(P(n)), true, 3);
                 return;
             }
 

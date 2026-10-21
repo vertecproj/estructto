@@ -233,7 +233,8 @@ namespace NovoFtool
             JsonNode lista;
             try { lista = await Motor.Get("/api/catalogo"); }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; return; }
-            var j = new JanelaCatalogo(lista, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome))) { Owner = this };
+            JsonNode arv = null; try { arv = await Motor.Get("/api/catalogo?formato=arvore"); } catch { }
+            var j = new JanelaCatalogo(lista, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome)), arv) { Owner = this };
             j.PerfilEscolhido += nome => _ = UsarSecao3D(nome);
             j.Show();
         }

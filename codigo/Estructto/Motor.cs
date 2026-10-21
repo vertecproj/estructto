@@ -99,6 +99,9 @@ namespace NovoFtool
             }
         }
 
+        // Sobe o motor em segundo plano ao abrir o programa: o primeiro "Novo" não paga a partida a frio (até 60 s).
+        public static void Aquecer() => Garantir().ContinueWith(t => { _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+
         static async Task Iniciar()
         {
             Dono = null; geracao++;

@@ -262,6 +262,8 @@ namespace NovoFtool
         // ---------- prévia ----------
         void PedirPrevia() { tmPrevia.Stop(); tmPrevia.Start(); }
 
+        const int LimitePrevia = 200;
+
         async Task AtualizarPrevia()
         {
             int v = ++versaoPrevia;
@@ -272,6 +274,10 @@ namespace NovoFtool
             string aviso = "";
             var dados = modelo.Dados(g, c["material"].Text.Trim(), c["pilar"].Text.Trim(), c["viga"].Text.Trim());
             JsonNode p = null;
+            // teto da prévia: grade grande custa segundos no motor a cada tecla; acima de 200 barras desenha só a grade
+            int nx = g.X.Count + 1, ny = g.Y.Count + 1, niv = Math.Max(1, g.Z.Count - 1);
+            int estimadas = niv * (nx * ny + g.X.Count * ny + g.Y.Count * nx);
+            if (dados != null && estimadas > LimitePrevia) { dados = null; aviso = "Prévia só da grade (~" + estimadas + " barras; o limite da prévia é " + LimitePrevia + ")."; }
             if (dados != null)
             {
                 try { p = await Inicio.Acoes.Previa(dados); (br, ax) = Miniatura3D.DePrevia(p); }

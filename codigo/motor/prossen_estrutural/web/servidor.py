@@ -141,6 +141,14 @@ def _int(q, chave, padrao):
         raise projeto.ErroEntrada(f"{chave}: número inteiro esperado", chave) from None
 
 
+def _limpar_historico(srv):
+    """N1: o WPF acabou de criar o documento e já tem o modelo do motor; começa sem desfazer/refazer/cálculo sem reabrir o arquivo."""
+    srv.estado["desfazer"].clear()
+    srv.estado["refazer"].clear()
+    srv.estado["calculo"] = None
+    return {"ok": True}
+
+
 def _novo(srv, m):
     srv.estado.update(modelo=m, calculo=None)
     srv.estado["desfazer"].clear()
@@ -206,6 +214,7 @@ ROTAS = {
     ("GET", r"/api/modelo/(?P<tipo>[a-z_]+)"): lambda s, a, q, c: projeto.listar(_modelo(s), a["tipo"], dict(q) or None),
     ("PATCH", r"/api/modelo/(?P<tipo>[a-z_]+)/(?P<id>[^/]+)"): lambda s, a, q, c: projeto.editar(_modelo(s), a["tipo"], a["id"], c or {}),
     ("DELETE", r"/api/modelo/(?P<tipo>[a-z_]+)/(?P<id>[^/]+)"): lambda s, a, q, c: projeto.remover(_modelo(s), a["tipo"], a["id"], cascata=bool(_bool(q, "cascata"))),
+    ("POST", r"/api/historico/limpar"): lambda s, a, q, c: _limpar_historico(s),
     ("POST", r"/api/desfazer"): lambda s, a, q, c: _trocar(s, "desfazer", "refazer"),
     ("POST", r"/api/refazer"): lambda s, a, q, c: _trocar(s, "refazer", "desfazer"),
     ("PATCH", r"/api/config"): lambda s, a, q, c: projeto.configurar(_modelo(s), c or {}),
@@ -237,7 +246,7 @@ ROTAS = {
     ("POST", r"/api/placa_base/verificar"): lambda s, a, q, c: projeto.placa_base_verificar(_modelo(s), _calc_membros(s, c), c or {}),
     ("POST", r"/api/placa_base/dimensionar"): lambda s, a, q, c: projeto.placa_base_dimensionar(_modelo(s), _calc_membros(s, c), c or {}),
     ("POST", r"/api/placa_base/gravar"): lambda s, a, q, c: _ligacoes(s, lambda m: projeto.placa_base_gravar(m, c or {})),
-    ("GET", r"/api/catalogo"): lambda s, a, q, c: projeto.catalogo_perfis(q.get("filtro", ""), q.get("familia")),
+    ("GET", r"/api/catalogo"): lambda s, a, q, c: projeto.catalogo_arvore() if q.get("formato") == "arvore" else projeto.catalogo_perfis(q.get("filtro", ""), q.get("familia")),
     ("GET", r"/api/catalogo/(?P<nome>[^/]+)"): lambda s, a, q, c: projeto.perfil(a["nome"]),
     ("GET", r"/api/materiais"): lambda s, a, q, c: projeto.materiais_disponiveis(),
     ("GET", r"/api/normas"): lambda s, a, q, c: projeto.normas_implementadas(),

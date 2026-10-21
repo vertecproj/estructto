@@ -240,6 +240,22 @@ class TestModeloAPI(BaseWeb):
         self.assertTrue(any(e["campo"].startswith("itens[1]") for e in d["erros"]), d)
         self.assertEqual(sorted(n["id"] for n in self.api("GET", "/api/modelo/no")), ["a", "b"])  # nada criado
 
+    def test_historico_limpar(self):
+        self.api("POST", "/api/modelo/novo", {})
+        self.api("POST", "/api/modelo/no", {"id": "a", "x": 0, "y": 0, "z": 0})
+        self.api("POST", "/api/modelo/no", {"id": "b", "x": 1, "y": 0, "z": 0})
+        self.api("POST", "/api/desfazer", {})                                  # enche o refazer
+        self.api("POST", "/api/historico/limpar", {})
+        self.assertEqual(self.api("POST", "/api/desfazer", status=409)["erro"], "pilha_vazia")
+        self.assertEqual(self.api("POST", "/api/refazer", status=409)["erro"], "pilha_vazia")
+        self.assertEqual([n["id"] for n in self.api("GET", "/api/modelo/no")], ["a"])
+
+    def test_historico_limpar_descarta_calculo(self):
+        self.api("POST", "/api/exemplos/viga_biapoiada")
+        self.api("POST", "/api/calcular", {})
+        self.api("POST", "/api/historico/limpar", {})
+        self.assertEqual(self.api("GET", "/api/verificacao", status=409)["erro"], "sem_calculo")
+
     def test_desfazer_refazer(self):
         self.api("POST", "/api/modelo/novo", {})
         self.assertEqual(self.api("POST", "/api/desfazer", status=409)["erro"], "pilha_vazia")

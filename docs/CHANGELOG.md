@@ -7,7 +7,16 @@ Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e
 - 21/10/2026 — Frente G (G2, rodada 1): cope da ponta entra nas verificações da viga recortada; comprimento livre com desloc e recuo das duas pontas; gusset usa a ponta; perfil do apoio vindo do grupo; `BarraCurta`. Ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#g2-rodada-1).
 - 21/10/2026 — Frente G (G2): todas as ligações preenchem `geometria.pontas`; chapa de topo solda na largura real da ponta; barra curta vira aviso, ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md#g2-pontas-nas-ligações).
 - 21/10/2026 — Frente G (G1): contrato de pontas e recortes no motor (`aco/pontas.py`), ver [v3/PONTAS-CONTRATO.md](v3/PONTAS-CONTRATO.md).
+- 21/10/2026 — Frente N1: novo arquivo lento. Causa: id automático de carga em `Modelo.add` era O(n²) (grade 20×20: 12 s só no lote). Cache no motor, motor aquecido ao abrir, teto de 200 barras na prévia, auto-teste `--testes-novo`. Detalhe em [v3/NOVO-ARQUIVO.md](v3/NOVO-ARQUIVO.md).
+- 21/10/2026 — Frente V, V2: sombra do chão sem artefatos (nativo sem malha projetada, DX com chão menor na cobertura do ShadowMap3D); botão Vista › Mostrar › Sombra; captura 59. [docs/v3/render/SOMBRA.md](v3/render/SOMBRA.md)
+- 21/10/2026 — Frente V, V1: setas de carga no Realista DX respeitam a profundidade (malha no Viewport3DX); opção "Cargas sempre visíveis" (padrão só no Analítico); captura 58. [docs/v3/render/CARGAS-PROFUNDIDADE.md](v3/render/CARGAS-PROFUNDIDADE.md)
 - 21/10/2026 — A pedido do usuário, manual v3 em [manual/](manual/README.md) e seção do produto no README atualizados para o fluxo só 3D, com aliases do código, vento integrado, ligações/grupos, placa NBR, exportação e limites/ART.
+
+## 21/10/2026 — Catálogo de perfis, dados K1 (branch wt5-catalogo)
+
+- Novas tabelas em `codigo/motor/prossen_estrutural/dados/perfis/` (uma CSV por família, 15 famílias) e `test_catalogo.py`; detalhes e fontes em [v3/CATALOGO-PERFIS.md](v3/CATALOGO-PERFIS.md).
+- K2: `secoes.catalogo()` resolve também os CSV novos (T, L desigual, tubos, chata, IPE/HEA/UPN...); `GET /api/catalogo?formato=arvore` devolve a árvore; metalon com raio de canto 1,5t; Ix/Iy tabelados prevalecem em Vallourec, U laminado/UPN e L desigual. Teste `test_catalogo_secoes.py`.
+- K3: seletor de perfis em árvore (nível 1 > família > série) na `JanelaCatalogo`, com busca; captura `46-catalogo-arvore`.
 
 ## 21/10/2026 — Vista 3D: chapa do joelho rente à mesa do pilar (branch wt-joelho)
 - Viga inclinada (água do telhado) contra pilar: a chapa ficava perpendicular à viga, tocando a mesa só no eixo e flutuando nas bordas. Agora o corte da viga é paralelo à face do pilar, o referencial da ligação gira até x ficar na normal da face (`LigacoesAmostra.Referencial`) e a chapa fica rente à mesa. Pilar de eixo fraco: só chapa simples na alma (`Corte.NaMesa`). Teste: folga chapa–mesa < 1 mm (render3d em `--testes-exportar`).

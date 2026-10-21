@@ -143,7 +143,9 @@ namespace NovoFtool
                 noMotor = null;
                 await preparar();
                 await d.Recarregar();
-                await d.Garantir();
+                // o modelo do motor já é o deste documento: não reabre (~0,3 s); só zera o desfazer, como o abrir fazia
+                try { await Motor.Post("/api/historico/limpar"); noMotor = d; Motor.Dono = d; d.TemHistorico = false; }
+                catch (MotorErro ex) when (ex.Status == 404) { await d.Garantir(); }   // motor antigo sem a rota: reabre como antes
             });
             return d;
         }

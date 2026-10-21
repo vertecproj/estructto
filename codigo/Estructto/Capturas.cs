@@ -29,6 +29,7 @@ namespace NovoFtool
         public static bool Configurar(MainWindow w, string[] args)
         {
             if (args == null) return false;
+            if (args.Length >= 3 && args[1] == "--testes-novo") { ConfigurarNovo(w, args[2]); return true; }   // TestesNovo.cs
             if (args.Length >= 3 && args[1] == "--testes-comandos") { ConfigurarComandos(w, args[2]); return true; }   // TestesComandos.cs
             if (args.Length >= 3 && args[1] == "--testes-fluxo") { ConfigurarFluxos(w, args[2], args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null); return true; }   // TestesFluxo.cs
             for (int i = 1; i < args.Length; i++)
@@ -147,6 +148,64 @@ namespace NovoFtool
 
         // 42) Vista 3D Realista x analítica: guincho (modelo 2D), pórtico espacial 2 x 2 e exemplos do motor (concreto e galpão).
         // Atalho para iterar só nelas: variável ESTRUCTTO_CAPTURAS=3d.
+        // V2: sombra do chão. Pórtico 2x2 em duas vistas, Realista DX e Sombreado nativo (59-sombra-<estilo>-<vista>).
+        static void CapturasSombra(MainWindow w)
+        {
+            Esperar(w.NovoEmBranco(true));
+            var esp = Portico2x2();
+            w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = false;
+            w.vista3D.Carregar(esp, false);
+            foreach (var (est, nome) in new[] { (EstiloVisual.Realista, "dx"), (EstiloVisual.Sombreado, "nativo") })
+            {
+                w.DefinirEstilo(est);
+                foreach (var (az, el, vn) in new[] { (-60.0, 40.0, "alto"), (-30.0, 18.0, "rasante") })
+                {
+                    w.vista3D.Reconstruir();
+                    w.vista3D.Focar(new System.Windows.Media.Media3D.Point3D(6, 5, 0), 26, az, el);
+                    CapturarPrincipal(w, "59-sombra-" + nome + "-" + vn);
+                }
+            }
+            w.FecharEspaciaisSemPerguntar();
+            // regressão: obra real do usuário (plataforma elevada ~30 m), importada do CYPE; testes-aceite/ é gitignored (pula se faltar)
+            string ed3 = null;
+            for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null && ed3 == null; d = d.Parent) { string c = Path.Combine(d.FullName, "testes-aceite", "PLATAFORMA.ed3"); if (File.Exists(c)) ed3 = c; }
+            if (ed3 == null) ed3 = new[] { "C:/dev/wt/v5-vista/testes-aceite/PLATAFORMA.ed3" }.FirstOrDefault(File.Exists);
+            if (ed3 == null) return;
+            Esperar(w.AbrirTarefa(ed3)); EsperarIdle();
+            w.DefinirEstilo(EstiloVisual.Realista);
+            foreach (var (az, el, vn) in new[] { (-60.0, 38.0, "alto"), (-30.0, 10.0, "rasante") })
+            {
+                w.vista3D.Enquadrar(az, el, false); EsperarIdle();
+                CapturarPrincipal(w, "59-sombra-plataforma-" + vn);
+            }
+            w.FecharEspaciaisSemPerguntar();
+        }
+
+        // V1: seta e nó escolhido atrás de uma viga (pórtico 2x2 real). Sem "sempre visíveis" a viga os esconde (Realista DX e
+        // Sombreado nativo); com ele a seta e o nó aparecem por cima.
+        static void CapturasCargasProfundidade(MainWindow w)
+        {
+            Esperar(w.NovoEmBranco(true));
+            var esp = Portico2x2();
+            esp.Cargas.Add(new Carga3D { No = 17, F = new System.Windows.Media.Media3D.Vector3D(0, -10, -5) });   // nó (6, 10, 3,5): atrás da viga da frente
+            w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = false;
+            w.vista3D.Carregar(esp, false);
+            w.vista3D.Escolher(esp.Nos[16]);
+            foreach (var (est, nome) in new[] { (EstiloVisual.Realista, "dx"), (EstiloVisual.Sombreado, "nativo") })
+            {
+                w.DefinirEstilo(est);
+                foreach (bool topo in new[] { false, true })
+                {
+                    w.vista3D.CargasSempre = topo;
+                    w.vista3D.Reconstruir();
+                    w.vista3D.Focar(new System.Windows.Media.Media3D.Point3D(6, 5, 3.5), 6, -90, 0);
+                    CapturarPrincipal(w, "58-cargas-profundidade-" + nome + "-" + (topo ? "sempre" : "oculta"));
+                }
+            }
+            w.vista3D.CargasSempre = null;
+            w.FecharEspaciaisSemPerguntar();
+        }
+
         static void CapturasRealista(MainWindow w)
         {
             var abaVista = w.Faixa.Tabs.First(t => (t.Header as string) == "Vista");
@@ -1065,6 +1124,8 @@ namespace NovoFtool
                 if (w.EspacialAtivo == null) throw new InvalidOperationException("o modelo não abriu como documento 3D: " + caminhoModelo);
                 string so = Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS");
                 Action<Action> so1 = f => { f(); w.alterado = false; w.Close(); Environment.Exit(0); };
+                if (so == "sombra") so1(() => CapturasSombra(w));   // só as 59) de sombra do chão
+                if (so == "cargasprof") so1(() => CapturasCargasProfundidade(w));   // só as 58) de cargas com profundidade
                 if (so == "planos") so1(() => CapturasPlanos(w));                 // só as capturas 43) de níveis e planos
                 if (so == "trelicas") so1(() => CapturasTrelicas(w));             // só as 50) de treliças e contraventamentos
                 if (so == "ligacoes") so1(() => CapturasLigacoes(w));             // só as 49) do gerenciador de ligações
@@ -1433,6 +1494,13 @@ namespace NovoFtool
                 RenderizarJanela(jk, (int)jk.Width, (int)jk.Height, "46-catalogo-vazio.png");
             });
             jk.Close();
+            var jka = new JanelaCatalogo(Amostras.Ler("catalogo"), n => System.Threading.Tasks.Task.FromResult(n == "W250x32.7" ? perfil : null), Amostras.Ler("catalogo-arvore"));
+            Cap(jka, "46-catalogo-arvore", () =>
+            {
+                jka.EscolherNo("Gerdau (ABNT)", "W/HP", "W"); jka.Escolher("W250x32.7"); EsperarIdle();
+                RenderizarJanela(jka, (int)jka.Width, (int)jka.Height, "46-catalogo-arvore.png");
+            });
+            jka.Close();
             EsperarIdle();
             CapturarVerificacao5000();
         }

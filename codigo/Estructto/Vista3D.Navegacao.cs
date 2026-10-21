@@ -145,7 +145,7 @@ namespace NovoFtool
 
         public void ZoomFator(double f) { var c = Atual(); c.Larg /= f; IrPara(c, false); }   // > 1 aproxima, em torno do centro
 
-        void Enquadrar(double azv, double elv, bool animar)
+        public void Enquadrar(double azv, double elv, bool animar)
         {
             IrPara(Enquadramento(azv, elv), animar);
         }
