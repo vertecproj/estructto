@@ -114,6 +114,69 @@ def _sela(m, ap):
     return min(ts), max(ts), math.acos(min(1.0, abs(c)))
 
 
+FORMAS_RAMAL = ("I", "H", "U", "tubo_retangular", "retangular", "tubo_circular")
+
+
+def contorno(p):
+    """Contorno externo da seção (m) como polígono [(yb, zh)]: yb na largura b, zh na altura h, centro na caixa h × b.
+    I/H: 12 pontos (mesas e alma); U: 8 pontos, alma em yb = −b/2, mesas abrindo para +yb; tubo retangular e
+    retangular: 4 cantos (raios ignorados); tubo circular: 72 pontos. Outras formas: ValueError."""
+    forma = p.get("tipo", "I")
+    h, b = p["h"], p.get("b", p["h"])
+    if forma == "tubo_circular":
+        r = h / 2
+        return [(r * math.cos(2 * math.pi * k / _N_SELA), r * math.sin(2 * math.pi * k / _N_SELA)) for k in range(_N_SELA)]
+    if forma in ("tubo_retangular", "retangular"):
+        return [(-b / 2, -h / 2), (b / 2, -h / 2), (b / 2, h / 2), (-b / 2, h / 2)]
+    if forma in ("I", "H", "U"):
+        tw, tf = p["tw"], p["tf"]
+        if forma == "U":
+            return [(-b / 2, -h / 2), (b / 2, -h / 2), (b / 2, -h / 2 + tf), (-b / 2 + tw, -h / 2 + tf),
+                    (-b / 2 + tw, h / 2 - tf), (b / 2, h / 2 - tf), (b / 2, h / 2), (-b / 2, h / 2)]
+        return [(-b / 2, -h / 2), (b / 2, -h / 2), (b / 2, -h / 2 + tf), (tw / 2, -h / 2 + tf), (tw / 2, h / 2 - tf),
+                (b / 2, h / 2 - tf), (b / 2, h / 2), (-b / 2, h / 2), (-b / 2, h / 2 - tf), (-tw / 2, h / 2 - tf),
+                (-tw / 2, -h / 2 + tf), (-b / 2, -h / 2 + tf)]
+    raise ValueError(f"seção '{forma}' sem contorno para solda em tubo (use I, H, U, tubo ou retangular)")
+
+
+def contato_tubo(m, ap):
+    """Perfil `m` encostado no tubo `ap` (circular: superfície do cilindro; retangular: a face voltada para o perfil).
+    Cada ponto do contorno anda ao longo de m.dir até tocar o tubo. → (pontos [[x,y,z]] relativos ao nó,
+    t [distância no eixo de cada ponto], beta = largura do perfil no tubo / largura do tubo). ValueError se o perfil não
+    cabe no tubo (beta > 1) ou é paralelo a ele."""
+    u, a = m["dir"], ap["dir"]
+    c = _dot(u, a)
+    if 1 - abs(c) < 1e-6:
+        raise ValueError("perfil paralelo ao tubo: solda em tubo impossível")
+    up = _add(u, a, -c)                     # u ⊥ ao eixo do tubo
+    n = _unit(up)                           # do eixo do tubo para o perfil
+    lat = _cross(a, n)                      # largura da face (tubo retangular) / corda (circular)
+    d, eb = m["eixo_d"], _cross(m["dir"], m["eixo_d"])
+    p0s = [_add(_mul(eb, yb), d, zh) for yb, zh in contorno(m["perfil"])]
+    pa = ap["perfil"]
+    circ = pa.get("tipo") == "tubo_circular"
+    larg = pa["h"] if circ else 2 * _meia_largura(ap, lat)
+    beta = 2 * max(abs(_dot(p, lat)) for p in p0s) / larg
+    if beta > 1 + 1e-9:
+        raise ValueError(f"perfil mais largo que o tubo (β = {beta:.2f} > 1): solda em tubo impossível")
+    ts = []
+    if circ:
+        R, s2 = pa["h"] / 2, _dot(up, up)
+        for p in p0s:
+            pp = _add(p, a, -_dot(p, a))
+            B, C = _dot(up, pp), _dot(pp, pp) - R * R
+            ts.append((-B + math.sqrt(max(0.0, B * B - s2 * C))) / s2)
+    else:
+        f = _meia_largura(ap, n)
+        un = _dot(u, n)
+        ts = [(f - _dot(p, n)) / un for p in p0s]
+    return [_add(p, u, t) for p, t in zip(p0s, ts)], ts, beta
+
+
+def _mul(a, k):
+    return [x * k for x in a]
+
+
 def _curta(dist, m):
     if dist >= m["comprimento"]:
         raise BarraCurta()
@@ -165,6 +228,23 @@ def pontas_do_no(no, membros, tipo_ligacao, params=None):
             dist, tmax, ang = _sela(m, ap)
             _curta(tmax, m)
             recortes, fol = [dict(tipo="boca_peixe", raio=ap["perfil"]["h"] / 2, eixo=list(ap["dir"]), angulo=ang)], 0.0
+        elif tipo_ligacao == "solda_em_tubo":
+            # perfil qualquer (I, U, tubo, retangular) encostado no tubo: circular → recorte boca_peixe (o sólido do perfil
+            # é cortado pelo cilindro); retangular → plano da face do tubo (corte oblíquo, sem recorte)
+            _pts, ts, _beta = contato_tubo(m, ap)   # o cordão (contorno de contato) vai em geometria.soldas
+            _curta(max(ts), m)
+            ang = math.acos(min(1.0, abs(_dot(u, ap["dir"]))))
+            if ap["perfil"].get("tipo") == "tubo_circular":
+                out.append(dict(barra=m["barra"], extremo=m["extremo"], plano=dict(ponto=_add(no, u, min(ts)),
+                                normal=[-x for x in u]), folga=0.0,
+                                recortes=[dict(tipo="boca_peixe", raio=ap["perfil"]["h"] / 2, eixo=list(ap["dir"]),
+                                               angulo=ang)]))
+            else:
+                nf = _unit(_add(u, ap["dir"], -_dot(u, ap["dir"])))
+                f = _meia_largura(ap, nf)
+                out.append(dict(barra=m["barra"], extremo=m["extremo"], plano=dict(ponto=_add(no, u, f / _dot(u, nf)),
+                                normal=[-x for x in nf]), folga=0.0, recortes=[]))
+            continue
         else:
             raise ValueError(f"tipo de ligação sem pontas: {tipo_ligacao}")
         _curta(dist + max((c.get("comprimento", 0.0) for c in recortes), default=0.0), m)

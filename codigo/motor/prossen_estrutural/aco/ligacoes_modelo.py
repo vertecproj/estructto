@@ -21,6 +21,7 @@ import math
 
 from . import ligacoes as _lig
 from . import placa_base as _placa
+from . import pontas as _P
 from .ligacoes_rigidas import U_RIGIDA
 from ..solver import eixos_locais
 
@@ -34,6 +35,7 @@ TIPOS = {
     "gusset_contraventamento": ("Gusset de contraventamento", "ligacao_tracao"),
     "no_trelica": ("Nó de treliça", "ligacao_tracao"),
     "tubo_tubo_soldado": ("Tubo–tubo soldado", "tubo_tubo_soldado"),
+    "perfil_tubo_soldado": ("Perfil–tubo soldado", "perfil_tubo_soldado"),
 }
 _COS_COLINEAR = math.cos(math.radians(1.0))
 _PRIORIDADE = {"pilar": 0, "viga": 1, "diagonal": 2}
@@ -122,6 +124,11 @@ def _classificar_no(m, nid, ends, motivos=None):
 
 def _motivo_vazio(m, nid, ends):
     if len(ends) < 2:
+        enc = encosto(m, nid)
+        if enc:
+            b = enc["barra"]
+            return (f"{ends[0]['b'].id} chega em {b} a {enc['distancia'] * 1000:.0f} mm do eixo, mas {b} não tem nó "
+                    f"aqui: as barras não estão ligadas na análise — ajuste: ligar {nid} em {b} (divide {b} no ponto)")
         return "ponta livre: 1 barra, sem apoio"
     papeis = sorted(e.get("papel", "?") for e in ends)
     return f"só barras contínuas ou pilar que termina ({', '.join(papeis)}): sem ligação a dimensionar"
@@ -169,6 +176,14 @@ def _tubo_em_tubo(m, b, ap):
             and pb.get("h", 0) <= pa.get("h", 0) + 1e-9)
 
 
+def _em_tubo(m, b, ap):
+    """Perfil (I, U, tubo, retangular) encostado num tubo (circular ou retangular) que não é o caso tubo–tubo redondo:
+    solda direta no contorno com recorte (perfil_tubo_soldado)."""
+    sb, sa = m.secoes.get(b.secao), m.secoes.get(ap.secao)
+    return (sb is not None and sa is not None and sa.props.get("tipo") in ("tubo_circular", "tubo_retangular")
+            and sb.props.get("tipo", "I") in _P.FORMAS_RAMAL and not _tubo_em_tubo(m, b, ap))
+
+
 def _classificar(m, nid, ends, recusas):
     no = m.nos[nid]
     apoiado = _apoiado(no)
@@ -213,6 +228,10 @@ def _classificar(m, nid, ends, recusas):
         if not apoiado and tubo_ap is not None and tubo_ap is not e and _tubo_em_tubo(m, b, tubo_ap["b"]):
             # v0.6 A3: tubo redondo na superfície de tubo redondo ≥ = solda direta com boca de peixe (não gusset)
             _anexar(m, nid, e, "tubo_tubo_soldado", tubo_ap, out, recusas)
+            continue
+        if not apoiado and tubo_ap is not None and tubo_ap is not e and _em_tubo(m, b, tubo_ap["b"]):
+            # viga ou diagonal encostada num pilar/banzo tubular: filete no contorno com recorte (sem chapa)
+            _anexar(m, nid, e, "perfil_tubo_soldado", tubo_ap, out, recusas)
             continue
         if apoiado and (papel != "diagonal" or so_trelica and not b.params.get("trelica")):
             # barra inclinada única sobre apoio (classe "diagonal" pela geometria) também é base
@@ -266,6 +285,66 @@ def membros(modelo, motivos=None):
         if nid in pontas:
             out += _classificar_no(m, nid, pontas[nid], motivos)
     return _nos_proximos(m, out, motivos)
+
+
+_ENCOSTO_FOLGA = 0.050   # m além da meia seção: ponta desenhada até a face (ou um pouco dentro/fora) da barra vizinha
+_TOL_NO = 1e-3
+
+
+def encosto(m, nid):
+    """Nó com UMA ponta de barra e sem apoio que cai sobre o vão de outra barra de aço (a ≤ meia seção + 50 mm do eixo)
+    sem nó ali: a barra foi desenhada até a coluna/viga, mas não está ligada na análise.
+    → {no, barra, ponto [x,y,z] no eixo da barra, t (0–1 ao longo dela), distancia (m)} ou None."""
+    n = m.nos[nid]
+    if _apoiado(n):
+        return None
+    donas = [b for b in m.barras.values() if nid in (b.ni, b.nj) and b.tipo != "concreto"]
+    if len(donas) != 1:
+        return None
+    p = (n.x, n.y, n.z)
+    melhor = None
+    for b in m.barras.values():
+        if b.tipo == "concreto" or b is donas[0] or nid in (b.ni, b.nj):
+            continue
+        a, c = m.nos[b.ni], m.nos[b.nj]
+        v = (c.x - a.x, c.y - a.y, c.z - a.z)
+        L = math.sqrt(_dot(v, v))
+        if L <= 0:
+            continue
+        t = _dot((p[0] - a.x, p[1] - a.y, p[2] - a.z), v) / (L * L)
+        if not (_TOL_NO < t * L < L - _TOL_NO):   # ponytail: perto de um nó da barra = outro caso (unir nós), não tratado
+            continue
+        q = (a.x + t * v[0], a.y + t * v[1], a.z + t * v[2])
+        d = math.dist(p, q)
+        pr = m.secoes[b.secao].props if b.secao in m.secoes else {}
+        if d <= max(pr.get("h", 0.0), pr.get("b", 0.0)) / 2 + _ENCOSTO_FOLGA and (melhor is None or d < melhor["distancia"]):
+            melhor = dict(no=nid, barra=b.id, ponto=list(q), t=t, distancia=d)
+    return melhor
+
+
+def ligar_no(modelo, dados):
+    """Ajuste oferecido pelo gerenciador para o nó com `encosto`: leva o nó ao eixo da barra vizinha e divide essa
+    barra nele (cargas reinterpoladas, rótulas de ponta só nos trechos das pontas — geradores_extra._Obra.dividir).
+    Muda a estrutura: o cálculo anterior deixa de valer. → {no, barra, barras: [ids novos]}"""
+    from ..geradores_extra import _Obra
+    nid = (dados or {}).get("no")
+    if nid not in modelo.nos:
+        raise ValueError(f"nó '{nid}' não existe")
+    enc = encosto(modelo, nid)
+    if enc is None or (dados.get("barra") not in (None, enc["barra"])):
+        raise ValueError(f"nó {nid}: nenhuma barra passa junto dele sem nó (nada a ligar)")
+    n = modelo.nos[nid]
+    n.x, n.y, n.z = enc["ponto"]
+    b = modelo.barras[enc["barra"]]
+    obra = _Obra(modelo, "")
+    novos = obra.dividir(b, [nid])
+    modelo.barras.pop(b.id)
+    if obra.cargas_removidas:
+        modelo.cargas_distribuidas[:] = [c for c in modelo.cargas_distribuidas if id(c) not in obra.cargas_removidas]
+        modelo.cargas_pontuais[:] = [c for c in modelo.cargas_pontuais if id(c) not in obra.cargas_removidas]
+    for o in (*obra.barras.values(), *obra.cargas_novas):
+        modelo.add(o)
+    return dict(no=nid, barra=b.id, barras=[x[0] for x in novos])
 
 
 _D_PROXIMOS = 0.200   # m: nós mais perto que isso com chapa nos dois → uma ligação só (G5)
@@ -323,9 +402,36 @@ def _projeto_padrao(tipo, modelo=None, n=None):
     sug = TIPOS[tipo][1]
     if sug == "placa_base":
         return dict(tipo_ligacao=sug, dados=dict(pelo_perfil=True))
+    if sug == "perfil_tubo_soldado" and modelo is not None and n and n.get("apoio"):
+        return dict(tipo_ligacao=sug, dados=dados_perfil_tubo(modelo, n))
     if modelo is not None and n and tipo in _APOIO_FLEX and not n.get("sem_tipo") and n.get("apoio"):
         return _solda_direta_padrao(modelo, n, tipo)
     return None
+
+
+def dados_perfil_tubo(modelo, n):
+    """Entradas de perfil_tubo_soldado (mm, °) tiradas das seções do modelo: perfil da ponta, tubo de apoio, ângulo entre
+    os eixos e o lado do tubo retangular voltado para a barra (D) e a largura dessa face (B)."""
+    b, ap = modelo.barras[n["barra"]], modelo.barras[n["apoio"]]
+    pb, pa = modelo.secoes[b.secao].props, modelo.secoes[ap.secao].props
+    u, a = _dir(modelo, b, n["ponta"]), _dir(modelo, ap, "i")
+    if _dot(u, a) < 0:
+        a = tuple(-x for x in a)
+    _ex, _ey, zb = eixos_locais(modelo, b.id)   # z local da barra = altura h (igual nas duas pontas)
+    yb = (zb[1] * u[2] - zb[2] * u[1], zb[2] * u[0] - zb[0] * u[2], zb[0] * u[1] - zb[1] * u[0])   # y = z × x
+    tw = pb.get("tw", pb.get("t", 0.0))
+    d = dict(forma_ramal=pb.get("tipo", "I"), h_ramal=pb["h"] * 1e3, b_ramal=pb.get("b", pb["h"]) * 1e3,
+             tw_ramal=tw * 1e3, tf_ramal=pb.get("tf", tw) * 1e3, forma_receptor=pa["tipo"],
+             t_receptor=pa.get("t", pa.get("tw", 0.0)) * 1e3, theta=max(1, _ang(u, a)),
+             giro=round(math.degrees(math.atan2(_dot(a, yb), _dot(a, zb))), 3))
+    if pa["tipo"] == "tubo_circular":
+        d.update(D_receptor=pa["h"] * 1e3)
+    else:   # lado do tubo na direção da barra (⊥ ao eixo): eixo local z do tubo = altura h
+        _ex, ey, ez = eixos_locais(modelo, ap.id)
+        up = tuple(x - _dot(u, a) * y for x, y in zip(u, a))
+        alto = abs(_dot(up, ez)) >= abs(_dot(up, ey))
+        d.update(D_receptor=(pa["h"] if alto else pa["b"]) * 1e3, B_receptor=(pa["b"] if alto else pa["h"]) * 1e3)
+    return d
 
 
 def _solda_direta_padrao(modelo, n, tipo):
@@ -384,8 +490,10 @@ def identificar(modelo):
         colocados.add(k)
     for gid in [k for k, g in grupos.items() if not g["membros"]]:
         del grupos[gid]
+    # ajuste oferecido (ligar_no) para cada nó sem ligação que encosta numa barra sem nó compartilhado
+    ajustes = {nid: enc for nid in sem_tipo if (enc := encosto(modelo, nid))}
     return dict(grupos=len(grupos), membros=len(colocados), novos=[g for g in criados if g in grupos],
-                sem_tipo=sem_tipo)
+                sem_tipo=sem_tipo, ajustes=ajustes)
 
 
 def _grupo(modelo, gid):

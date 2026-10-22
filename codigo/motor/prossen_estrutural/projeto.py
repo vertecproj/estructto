@@ -2621,6 +2621,12 @@ def ligacoes_identificar(modelo):
     return _lm("identificar", modelo)
 
 
+def ligacoes_ligar_no(modelo, dados):
+    """Liga o nó {no} que encosta no vão de outra barra sem nó compartilhado (ajuste de `identificar.ajustes`): o nó
+    vai ao eixo da barra e ela é dividida ali. Muda a estrutura (rota em MUTAM: descarta o cálculo)."""
+    return _lm("ligar_no", modelo, dados)
+
+
 def ligacoes_grupos(modelo, calculo=None):
     """Grupos de ligações; com cálculo, cada grupo vem com taxa por membro, governante e taxa máxima."""
     return _lm("resumo_grupos", modelo, calculo)

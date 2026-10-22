@@ -21,7 +21,7 @@ from prossen_estrutural.aco import placa_base
 class TestTodosOsTipos(unittest.TestCase):
     def test_19_tipos_tem_pontas(self):
         tipos = P.tipos_ligacao()
-        self.assertEqual(len(tipos), 21)   # G5: + solda_direta_alma; v0.6: + tubo_tubo_soldado
+        self.assertEqual(len(tipos), 22)   # G5: + solda_direta_alma; v0.6: + tubo_tubo_soldado; + perfil_tubo_soldado
         for t in tipos:
             with self.subTest(t["tipo"]):
                 r = L.verificar_ligacao(t["tipo"], t["exemplo"]["dados"], t["exemplo"]["esforcos"])

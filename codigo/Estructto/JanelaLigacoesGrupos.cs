@@ -27,6 +27,7 @@ namespace NovoFtool
         public Func<Task> Calcular;                                      // F5 do documento
         public Func<JsonNode, JsonNode, JsonObject> AbrirPlaca;          // (grupo, dimensionamento) → dados novos da placa ou null
         public Action Mudou;                                             // o documento mudou (ligacoes no JSON)
+        public Func<string, Task> LigarNo;                               // ajuste "ligar nó na barra" (muda a estrutura; redesenha a vista)
         public Func<JanelaLigacoesGrupos, JsonNode, Task> Projetar;                          // abre o projetista de ligações com o grupo (JanelaLigacaoProjeto)
         public List<JsonObject> Propostas;   // do documento (DocumentoEspacial.TrocasPropostas): trocas do Realista, por membro, ainda não gravadas
         public List<string> AvisosVista;     // do documento (AvisosLigacoes): pontas sem ligação válida e erros do motor na última carga do Realista
@@ -83,6 +84,8 @@ namespace NovoFtool
             ["emenda"] = "M3,16 H12 M20,16 H29 M12,9 V23 M20,9 V23 M10,11 H22 V21 H10 Z",
             ["gusset_contraventamento"] = "M5,4 V28 H28 M5,13 L14,28 M5,28 L26,7",
             ["no_trelica"] = "M3,26 H29 M3,26 L16,6 L29,26 M16,6 V26",
+            ["tubo_tubo_soldado"] = "M8,3 V29 M16,3 V29 M16,12 L29,5 M16,20 L29,13",
+            ["perfil_tubo_soldado"] = "M6,3 V29 M16,3 V29 M16,10 H29 M16,22 H29 M16,16 H29",
         };
         const string Cadeado = "M10,15 V11 A6,6 0 0 1 22,11 V15 M8,15 H24 V28 H8 Z";
         const string CadeadoAberto = "M10,15 V9 A6,6 0 0 1 21,7 M8,15 H24 V28 H8 Z";
@@ -91,6 +94,7 @@ namespace NovoFtool
         // Nós sem ligação (sem_tipo de POST /api/ligacoes/identificar: {nó: motivo}). O gerenciador mostra todos os nós:
         // os dos grupos e estes, num cartão próprio ("Nós sem ligação"), com o motivo de cada um.
         JsonObject semTipo = new JsonObject();
+        JsonObject ajustes = new JsonObject();   // {nó: {barra, ponto, distancia}}: nó que encosta numa barra sem nó ali (botão "Ligar")
         const string SemLig = "~sem-ligacao";
         int NosComLigacao => grupos.SelectMany(g => Lista(g["membros"])).Select(m => S(m, "no")).Distinct().Count();
         // Resumo para testes e capturas: grupos, ligações, nós com ligação e nós sem ligação.
@@ -142,6 +146,7 @@ namespace NovoFtool
                 {
                     var idr = await Api("POST", "/api/ligacoes/identificar", new JsonObject());
                     semTipo = idr?["sem_tipo"]?.DeepClone() as JsonObject ?? new JsonObject();
+                    ajustes = idr?["ajustes"]?.DeepClone() as JsonObject ?? new JsonObject();
                     Mudou?.Invoke();
                 }
                 if (tipos == null) tipos = await Api("GET", "/api/ligacoes/tipos", null);
@@ -399,6 +404,14 @@ namespace NovoFtool
                     var gl = new Grid(); gl.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) }); gl.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                     var no = Tx(kv.Key, 12, TemaPlant.BTexto1); var mo = Tx((string)kv.Value ?? "", 11.5, TemaPlant.BTexto2); mo.TextWrapping = TextWrapping.Wrap;
                     Grid.SetColumn(mo, 1); gl.Children.Add(no); gl.Children.Add(mo);
+                    if (ajustes[kv.Key] is JsonObject aj && LigarNo != null)
+                    {
+                        string nid = kv.Key, bar = (string)aj["barra"];
+                        gl.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                        var bl = Botao("Ligar em " + bar, null, async () => { await Rodar(() => LigarNo(nid)); await Carregar(true); },
+                                       "Leva o nó " + nid + " ao eixo de " + bar + " e divide " + bar + " ali (a barra passa a estar ligada na análise). Muda a estrutura: calcule de novo.");
+                        Grid.SetColumn(bl, 2); gl.Children.Add(bl);
+                    }
                     sp.Children.Add(new Border { Padding = new Thickness(8, 5, 8, 5), Background = r++ % 2 == 0 ? TemaPlant.BSup0 : TemaPlant.BSupAlt, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 0, 0, 1), Child = gl });
                 }
                 hostMembros.Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp };
@@ -742,6 +755,7 @@ namespace NovoFtool
             Destacar = (nos, barras) => { if (Esp == d && vista3D != null) vista3D.Selecionar(nos, barras); },
             Calcular = async () => { if (Esp == d) await CalcularEspacial(); },
             Mudou = () => { if (Esp == d) { alterado = true; AtualizarTitulo(); } },
+            LigarNo = no => Esp == d ? Espacial(dd => dd.LigarNo(no), "Nó " + no + " ligado") : Task.CompletedTask,
             Projetar = (ger, g) => AbrirProjetistaGrupo(d, g, ger),
             Propostas = d.TrocasPropostas, AvisosVista = d.AvisosLigacoes,
             AbrirPlaca = (g, dim) =>

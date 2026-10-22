@@ -38,7 +38,7 @@ namespace NovoFtool
 
         static readonly HashSet<string> Antigos = new HashSet<string> { "parafuso", "solda_filete", "chapa_simples", "ligacao_tracao" };
         static readonly (string id, string nome)[] Familias =
-        { ("flexivel", "Flexíveis"), ("rigida", "Rígidas"), ("emenda", "Emendas"), ("contraventamento", "Contraventamento e treliça"), ("base", "Bases"), ("componente", "Componentes") };
+        { ("flexivel", "Flexíveis"), ("rigida", "Rígidas"), ("emenda", "Emendas"), ("contraventamento", "Contraventamento e treliça"), ("base", "Bases"), ("tubo", "Tubos"), ("componente", "Componentes") };
         static readonly double[] DiamMm = { 15.875, 16, 19.05, 20, 22.225, 24, 25.4, 27 };
         static readonly double[] EspMm = { 4.75, 6.3, 8, 9.5, 12.5, 16, 19, 22.4, 25, 31.5, 37.5, 44.5, 50 };
         static readonly double[] PernaMm = { 3, 4, 5, 6, 8, 10, 12, 14, 16 };

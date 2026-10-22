@@ -270,3 +270,46 @@ class TestNosInclinados(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDiagonalNaColuna(unittest.TestCase):
+    """Diagonal com placa de base chegando na coluna (captura 6/7): o topo foi desenhado até a face do pilar, num nó
+    próprio; o pilar não tem nó ali. Antes: 'ponta livre'. Agora: motivo certo + ajuste ligar_no → gusset."""
+
+    def _modelo(self):
+        m = _monta(_vazio(), {"n1": (0, 0, 0), "n2": (0, 0, 6), "n4": (4, 0, 0), "n5": (0.155, 0, 3)},
+                   {"b1": ("n1", "n2", "pilar", {}), "b3": ("n4", "n5", "pilar", {})}, apoios=("n1", "n4"))
+        m.add(CargaNodal("Q1", "n2", (5.0, 0.0, -20.0, 0.0, 0.0, 0.0)))
+        return m
+
+    def test_motivo_e_ajuste(self):
+        m = self._modelo()
+        r = P.ligacoes_identificar(m)
+        self.assertIn("b3 chega em b1 a 155 mm do eixo", r["sem_tipo"]["n5"])
+        self.assertNotIn("ponta livre", r["sem_tipo"]["n5"])
+        aj = r["ajustes"]["n5"]
+        self.assertEqual(aj["barra"], "b1")
+        self.assertAlmostEqual(aj["t"], 0.5)
+
+    def test_ligar_no_identifica_e_dimensiona(self):
+        m = self._modelo()
+        r = P.ligacoes_ligar_no(m, {"no": "n5"})
+        self.assertEqual((r["barra"], r["barras"]), ("b1", ["b1.1", "b1.2"]))
+        self.assertEqual((m.nos["n5"].x, m.nos["n5"].z), (0.0, 3.0))
+        self.assertEqual(_tipos_no(m, "n5"), ["gusset_contraventamento"])
+        idr = P.ligacoes_identificar(m)
+        self.assertNotIn("n5", idr["sem_tipo"])
+        gid = next(k for k, g in m.ligacoes["grupos"].items() if g["tipo"] == "gusset_contraventamento")
+        c = P.calcular(m)
+        d = P.ligacoes_dimensionar(m, c, gid)
+        self.assertEqual(d["membros"][0]["barra"], "b3")
+        self.assertGreater(d["membros"][0]["demanda"]["N"], 0.0)   # agora a diagonal trabalha (escora o pilar)
+        with self.assertRaises(Exception):
+            P.ligacoes_ligar_no(m, {"no": "n5"})   # já ligado: nada a ligar
+
+    def test_ponta_livre_de_verdade(self):
+        m = _monta(_vazio(), {"n1": (0, 0, 0), "n2": (0, 0, 3), "n3": (2, 0, 3)},
+                   {"b1": ("n1", "n2", "pilar", {}), "b2": ("n2", "n3", "viga", {})}, apoios=("n1",))
+        r = P.ligacoes_identificar(m)
+        self.assertEqual(r["sem_tipo"]["n3"], "ponta livre: 1 barra, sem apoio")
+        self.assertEqual(r["ajustes"], {})

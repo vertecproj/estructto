@@ -246,6 +246,7 @@ ROTAS = {
     ("POST", r"/api/ligacoes/memorial"): lambda s, a, q, c: projeto.memorial_ligacao((c or {}).get("tipo"), (c or {}).get("dados", {}), (c or {}).get("esforcos", {})),
     ("GET", r"/api/ligacoes/grupos"): lambda s, a, q, c: projeto.ligacoes_grupos(_modelo(s), s.estado["calculo"]),
     ("POST", r"/api/ligacoes/identificar"): lambda s, a, q, c: _ligacoes(s, projeto.ligacoes_identificar),
+    ("POST", r"/api/ligacoes/ligar_no"): lambda s, a, q, c: projeto.ligacoes_ligar_no(_modelo(s), c or {}),
     ("POST", r"/api/ligacoes/grupos/editar"): lambda s, a, q, c: _ligacoes(s, lambda m: projeto.ligacoes_editar(m, c or {})),
     ("POST", r"/api/ligacoes/grupos/aplicar_troca"): lambda s, a, q, c: _ligacoes(s, lambda m: projeto.ligacoes_aplicar_troca(m, _calculo(s), c or {})),
     ("POST", r"/api/ligacoes/grupos/(?P<id>[^/]+)/dimensionar"): lambda s, a, q, c: projeto.ligacoes_dimensionar(_modelo(s), _calculo(s), a["id"]),
@@ -263,7 +264,8 @@ ROTAS = {
 ROTAS_ED3 = {("POST", r"/api/importar_cype"), ("POST", r"/api/comparar_cype")}  # corpo até LIMITE_CORPO_ED3
 MUTAM = {("PUT", r"/api/modelo"), ("POST", r"/api/importar_cype"), ("POST", r"/api/modelo/lote"), ("POST", r"/api/modelo/(?P<tipo>[a-z_]+)"),
          ("PATCH", r"/api/modelo/(?P<tipo>[a-z_]+)/(?P<id>[^/]+)"), ("DELETE", r"/api/modelo/(?P<tipo>[a-z_]+)/(?P<id>[^/]+)"),
-         ("PATCH", r"/api/config"), ("POST", r"/api/gerar-estrutura"), ("POST", r"/api/acoes/gerar")}
+         ("PATCH", r"/api/config"), ("POST", r"/api/gerar-estrutura"), ("POST", r"/api/acoes/gerar"),
+         ("POST", r"/api/ligacoes/ligar_no")}
 _COMPILADAS = [(m, re.compile(p), (m, p)) for (m, p) in ROTAS]
 
 
