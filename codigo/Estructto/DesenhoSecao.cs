@@ -13,7 +13,7 @@ using static NovoFtool.UiAnalise;
 
 namespace NovoFtool
 {
-    public static class DesenhoSecao
+    public static class DesenhoSecaoForma
     {
         // Geometria em px (origem no canto superior esquerdo, y para baixo). W, H já em escala.
         public static Geometry Forma(string tipo, string nome, double W, double H, double Tw, double Tf, double T, double esc)

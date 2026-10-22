@@ -104,7 +104,7 @@ def forca_flambagem(sec, mat, KLx, KLy, KLz):
     cisalhamento (u0, v0) e, como KLx/KLy vêm dos eixos geométricos, KL = max(KLx, KLy) nos dois."""
     p, E, G = sec.props, mat.E, mat.G
     Ix, Iy, x0, y0 = p["Ix"], p["Iy"], p["x0"], p["y0"]
-    if p["tipo"] == "L":  # E.1.2/E.1.3: eixos principais (Ixy ≠ 0 nos geométricos)
+    if "Iu" in p:  # cantoneira ou 2L em cruz — E.1.2/E.1.3: eixos principais (Ixy ≠ 0 nos geométricos)
         Ix, Iy, x0, y0 = p["Iu"], p["Iv"], p["u0"], p["v0"]
         KLx = KLy = max(KLx, KLy)
     Nex = math.pi ** 2 * E * Ix / KLx ** 2   # E.1.1 a)
@@ -190,6 +190,11 @@ def _dupla_5_3_4(sec, KLx, KLy):
 def fator_Q(sec, mat):
     """NBR 8800 anexo F: Q = Qs·Qa (elementos AL e AA). Barra composta aberta: Q do perfil isolado."""
     if sec.props["tipo"] == "dupla":
+        return fator_Q(_componente(sec), mat)
+    if sec.props["tipo"] == "I_chapa":  # chapa dentro da largura da mesa: apoiada na mesa, Q do I
+        c = sec.props["composicao"]
+        if c["chapa"]["b"] > c["componente"]["b"] + 1e-9:
+            raise NotImplementedError("I + chapa mais larga que a mesa: Q da chapa em balanço fora do escopo")
         return fator_Q(_componente(sec), mat)
     p, E, fy = sec.props, mat.E, mat.fy
     tipo = p["tipo"]
@@ -534,6 +539,8 @@ def cortante_y(sec, mat, kv=5.0, Lv=None):
     Aw = 2h·t com h = altura plana ≈ lado − 3t), tubo circular (5.4.3.6, Lv opcional), cantoneira (aba h, aviso)."""
     p, E, fy = sec.props, mat.E, mat.fy
     tipo = p["tipo"]
+    if tipo == "I_chapa":  # só a alma do I (chapa desprezada)
+        return cortante_y(_componente(sec), mat, kv, Lv)
     if tipo == "dupla":
         return _dobro(cortante_y(_componente(sec), mat, kv, Lv))
     if tipo in ("I", "U"):
@@ -552,6 +559,8 @@ def cortante_x(sec, mat, Lv=None):
     (5.4.3.2 com as paredes de largura b), tubo circular (5.4.3.6), cantoneira (aba b, aviso)."""
     p, E, fy = sec.props, mat.E, mat.fy
     tipo = p["tipo"]
+    if tipo == "I_chapa":
+        return cortante_x(_componente(sec), mat, Lv)
     if tipo == "dupla":
         return _dobro(cortante_x(_componente(sec), mat, Lv))
     if tipo in ("I", "U"):

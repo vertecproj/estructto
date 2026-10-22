@@ -129,6 +129,106 @@ class TestVerificacao(unittest.TestCase):
         self.assertFalse(v["ok"])
 
 
+class TestCompostasV06(unittest.TestCase):
+    """v0.6 Frente D. Valores à mão (mm), mesas paralelas e cantos vivos:
+    UPN 200 (h 200, b 75, tw 8,5, tf 11,5): A1 = 2·75·11,5 + 177·8,5 = 3229,5 mm²;
+      xg = (2·862,5·37,5 + 1504,5·4,25)/3229,5 = 22,010; Ix1 = (75·200³ − 66,5·177³)/12 = 19 270 167;
+      Iy1 = 2·(11,5·75³/12 + 862,5·15,49²) + 177·8,5³/12 + 1504,5·17,76² = 1 706 102.
+    2 UPN 200 caixão soldado s = 0 = caixão 150 × 200 (almas 8,5, mesas 11,5):
+      A = 150·200 − 133·177 = 6459; Ix = (150·200³ − 133·177³)/12 = 38 540 334; Iy = (200·150³ − 177·133³)/12
+      = 21 548 604; J (Bredt) = 4·(188,5·141,5)²/(2·141,5/11,5 + 2·188,5/8,5) = 41 265 7xx.
+    2 UPN 200 costas com costas s = 10: Ix = 2·Ix1 = 38 540 334; d = 5 + 22,010 = 27,010;
+      Iy = 2·(1 706 102 + 3229,5·27,010²) = 8 124 304.
+    2L 2"×1/4" (50,8 × 6,35): A1 = 322,58 + 282,26 = 604,84; xg = yg = 15,028; Ix1 = Iy1 = 144 678
+      (Gerdau tabela: 14,6 cm⁴); Ixy1 = −84 980.
+      costas com costas s = 6,3: Ix = 289 356; d = 3,15 + 15,028 = 18,178; Iy = 2·(144 678 + 604,84·330,44) = 689 088.
+      em cruz s = 6,3: Ix = Iy = 689 088; Ixy = 2·(−84 980 + 604,84·18,178²) = 229 772; Imin = 459 316, rmin = 19,49.
+    I 200 × 100 × 6 × 10 + chapa 100 × 10 na mesa superior: A = 3080 + 1000 = 4080; yc = 1000·105/4080 = 25,735;
+      Ix = 20 982 667 + 3080·25,735² + 100·10³/12 + 1000·79,265² = 29 313 793."""
+
+    def u200(self):
+        return secoes.secao_U(0.2, 0.075, 0.0085, 0.0115, nome="UPN 200")
+
+    def L2(self):
+        return secoes.secao_cantoneira(0.0508, 0.0508, 0.00635, nome='L 2"x1/4"')
+
+    def chk(self, v, esp, tol=0.005):
+        self.assertAlmostEqual(v, esp, delta=abs(esp) * tol)
+
+    def test_2upn200_caixao_s0(self):
+        s = secoes.secao_dupla(self.u200(), "caixao", "soldada")
+        self.chk(s.A * 1e6, 6459)
+        self.chk(s.props["Ix"] * 1e12, 38_540_334)
+        self.chk(s.props["Iy"] * 1e12, 21_548_604)
+        self.chk(s.J * 1e12, 4 * (188.5 * 141.5) ** 2 / (2 * 141.5 / 11.5 + 2 * 188.5 / 8.5))
+
+    def test_2upn200_costas_s10(self):
+        s = secoes.secao_dupla(self.u200(), "I", "presilhas", s=0.010, chapas_espacadoras=True, l_ligacoes=0.6)
+        self.chk(s.A * 1e6, 6459)
+        self.chk(s.props["Ix"] * 1e12, 38_540_334)
+        self.chk(s.props["Iy"] * 1e12, 8_124_304)
+        r = nbr8800.compressao(s, A36, 3.0, 3.0)   # 5.3.4: 0,6/ry1 ≤ ½·KL/r do conjunto
+        ry1 = math.sqrt(1_706_102 / 3229.5) * 1e-3
+        self.chk(r["composta"]["l_ri"], 0.6 / ry1)
+
+    def test_2L_costas_s63(self):
+        s = secoes.secao_dupla(self.L2(), "I", "presilhas", s=0.0063, chapas_espacadoras=True)
+        self.chk(s.A * 1e6, 1209.68)
+        self.chk(s.props["Ix"] * 1e12, 289_356)
+        self.chk(s.props["Iy"] * 1e12, 689_088)
+
+    def test_2L_cruz_s63(self):
+        s = secoes.secao_dupla(self.L2(), "cruz", "presilhas", s=0.0063, chapas_espacadoras=True, l_ligacoes=0.4)
+        self.chk(s.props["Ix"] * 1e12, 689_088)
+        self.chk(s.props["Ixy"] * 1e12, 229_772)
+        self.chk(s.props["rmin"] * 1e3, 19.49)
+        r = nbr8800.compressao(s, A36, 2.0, 2.0)   # Ne pelos eixos principais (Iv)
+        self.chk(r["Ney"] if "Ney" in r else nbr8800.forca_flambagem(s, A36, 2, 2, 2)["Ney"],
+                 math.pi ** 2 * 200e6 * 459_316e-12 / 4)
+
+    def test_2I_lado_a_lado(self):
+        i = secoes.secao_I(0.2, 0.1, 0.006, 0.010)
+        s = secoes.secao_dupla(i, "lado_a_lado", "soldada", s=0.05)
+        d = (0.1 + 0.05) / 2
+        self.chk(s.props["Iy"], 2 * (i.props["Iy"] + i.A * d * d))
+        self.chk(s.props["Zx"], 2 * i.props["Zx"])
+        self.chk(nbr8800.flexao_x(s, A36, 2.0)["MRd"], 2 * nbr8800.flexao_x(i, A36, 2.0)["MRd"])
+
+    def test_2I_lado_a_lado_Zy_a_mao(self):
+        """I 200×100×6×10, s = 50: d = 75; cada I fica inteiro de um lado da LN plástica (x de 25 a 125 mm), então
+        Zy = Σ|x|·dA = 2·A1·d = 2·3080·75 = 462 000 mm³. Somar 2·Zy1 (= 103 240) contaria de novo o momento estático
+        de cada I em torno do próprio eixo, que já está dentro de A1·d (Σ(x−d)dA = 0) — a revisão pedia 565 240, recusado."""
+        s = secoes.secao_dupla(secoes.secao_I(0.2, 0.1, 0.006, 0.010), "lado_a_lado", "soldada", s=0.05)
+        self.chk(s.props["Zy"] * 1e9, 462_000)
+
+    def test_espelho_L(self):
+        L = secoes.secao_cantoneira(0.1, 0.05, 0.008)
+        e = secoes.espelhar(L)
+        self.assertAlmostEqual(e.props["Ixy"], -L.props["Ixy"])
+        self.assertAlmostEqual(e.props["Iu"], L.props["Iu"])
+        self.assertAlmostEqual(e.props["alfa_principal"], -L.props["alfa_principal"])
+        r1, r2 = nbr8800.compressao(L, A36, 2.0, 2.0), nbr8800.compressao(e, A36, 2.0, 2.0)
+        self.assertAlmostEqual(r1["NcRd"], r2["NcRd"], places=6)   # resistência invariante ao espelho
+
+    def test_I_chapa(self):
+        s = secoes.secao_de_spec({"forma": "dupla", "arranjo": "I_chapa",
+                                  "base": {"forma": "I", "h": 0.2, "b": 0.1, "tw": 0.006, "tf": 0.010},
+                                  "chapa": {"b": 0.1, "t": 0.010}})
+        self.chk(s.A * 1e6, 4080)
+        self.chk(s.props["Ix"] * 1e12, 29_313_793)
+        self.assertGreater(s.props["y0"], 0)          # CC sobe para a mesa reforçada
+        with self.assertRaises(NotImplementedError):  # flexão de I monossimétrico com chapa: fora da G.1
+            nbr8800.flexao_x(s, A36, 2.0)
+
+    def test_spec_dupla(self):
+        s = secoes.secao_de_spec({"forma": "dupla", "base": {"forma": "U", "h": 0.2, "b": 0.075, "tw": 0.0085,
+                                  "tf": 0.0115}, "arranjo": "caixao", "ligacao": "soldada", "s": 0})
+        self.chk(s.props["Ix"] * 1e12, 38_540_334)
+        with self.assertRaises(ValueError):
+            secoes.secao_de_spec({"forma": "dupla", "base": {"forma": "U", "h": 0.2, "b": 0.075, "tw": 0.0085,
+                                  "tf": 0.0115}, "arranjo": "cruz"})
+
+
 class TestPainel(unittest.TestCase):
     def test_equilibrio_e_faixas_biapoiadas(self):
         # painel 4 × 6, transmissão em x; barras em x = 0, 2, 4 (paralelas a y): faixas de 2 m biapoiadas

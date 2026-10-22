@@ -33,6 +33,7 @@ TIPOS = {
     "emenda": ("Emenda", "parafuso"),
     "gusset_contraventamento": ("Gusset de contraventamento", "ligacao_tracao"),
     "no_trelica": ("Nó de treliça", "ligacao_tracao"),
+    "tubo_tubo_soldado": ("Tubo–tubo soldado", "tubo_tubo_soldado"),
 }
 _COS_COLINEAR = math.cos(math.radians(1.0))
 _PRIORIDADE = {"pilar": 0, "viga": 1, "diagonal": 2}
@@ -158,6 +159,16 @@ def _anexar(m, nid, e, tipo, ap, out, recusas):
     out.append(_membro(m, nid, e, tipo, ap, ang))
 
 
+def _tubo_em_tubo(m, b, ap):
+    """Ramal e receptor tubos circulares, diâmetro do ramal ≤ o do receptor (β ≤ 1)."""
+    sb, sa = m.secoes.get(b.secao), m.secoes.get(ap.secao)
+    if sb is None or sa is None:
+        return False
+    pb, pa = sb.props, sa.props
+    return (pb.get("tipo") == "tubo_circular" and pa.get("tipo") == "tubo_circular"
+            and pb.get("h", 0) <= pa.get("h", 0) + 1e-9)
+
+
 def _classificar(m, nid, ends, recusas):
     no = m.nos[nid]
     apoiado = _apoiado(no)
@@ -194,10 +205,15 @@ def _classificar(m, nid, ends, recusas):
     if apoio_pilar is not None:
         apoio_pilar = dict(apoio_pilar, papel="pilar continuo" if id(apoio_pilar) in passa else "pilar termina")
     so_trelica = all(e["papel"] == "diagonal" for e in ends)
+    tubo_ap = continuo[0] if continuo else apoio_pilar
     for e in ends:
         if id(e) in passa:
             continue
         b, papel = e["b"], e["papel"]
+        if not apoiado and tubo_ap is not None and tubo_ap is not e and _tubo_em_tubo(m, b, tubo_ap["b"]):
+            # v0.6 A3: tubo redondo na superfície de tubo redondo ≥ = solda direta com boca de peixe (não gusset)
+            _anexar(m, nid, e, "tubo_tubo_soldado", tubo_ap, out, recusas)
+            continue
         if apoiado and (papel != "diagonal" or so_trelica and not b.params.get("trelica")):
             # barra inclinada única sobre apoio (classe "diagonal" pela geometria) também é base
             cond = "rotulada" if _rotulada(b, e["ponta"]) or not (no.apoio[3] and no.apoio[4]) else "rigida"
@@ -488,6 +504,7 @@ def demanda(e):
 
 
 _ORDEM_DEMANDA = {"base": ("M", "N", "V"), "gusset_contraventamento": ("N", "V", "M"), "no_trelica": ("N", "V", "M"),
+                  "tubo_tubo_soldado": ("N", "V", "M"),
                   "emenda": ("M", "V", "N")}  # vigas: V, N, M
 
 

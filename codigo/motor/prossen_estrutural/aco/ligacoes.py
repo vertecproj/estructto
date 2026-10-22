@@ -272,7 +272,7 @@ def tipos_ligacao():
 
 
 # Módulos de família do contrato (docs/v3/LIGACOES-CONTRATO.md §Registro): cada um expõe TIPOS.
-_MODULOS_CONTRATO = ("ligacoes_flexiveis", "ligacoes_rigidas", "ligacoes_contraventamento")
+_MODULOS_CONTRATO = ("ligacoes_flexiveis", "ligacoes_rigidas", "ligacoes_contraventamento", "ligacoes_tubos")
 
 
 def tipos_contrato():

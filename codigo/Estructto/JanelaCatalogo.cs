@@ -19,6 +19,7 @@ namespace NovoFtool
     public class JanelaCatalogo : JanelaEscura
     {
         public event Action<string> PerfilEscolhido;
+        public event Action<JsonObject> CompostoCriado;   // spec {"forma":"dupla"} (JanelaComposto); sem assinante o botão some
         readonly List<JsonNode> todos;
         readonly Func<string, Task<JsonNode>> buscarPerfil;
         readonly Dictionary<string, JsonNode> cache = new Dictionary<string, JsonNode>();
@@ -60,6 +61,14 @@ namespace NovoFtool
 
             Content = Raiz(cab, corpo, Rodape(Tx("Propriedades geométricas calculadas pelo motor a partir das dimensões do catálogo.", 11.5, TemaPlant.BTexto3),
                 B("Fechar", Close, false, "Fecha a janela (Esc)."),
+                B("Composto…", () =>
+                {
+                    if (sel == null || CompostoCriado == null) return;
+                    cache.TryGetValue(sel, out JsonNode js);
+                    var jc = new JanelaComposto(sel, js?["secao"]) { Owner = this };
+                    jc.Criar += spec => { CompostoCriado?.Invoke(spec); Close(); };
+                    jc.ShowDialog();
+                }, false, "Dois perfis iguais unidos (2U caixão/costas, 2L costas/cruz, 2I lado a lado) ou I + chapa, a partir do perfil escolhido."),
                 B("Usar este perfil", () => { if (sel != null) { PerfilEscolhido?.Invoke(sel); Close(); } }, true, "Aplica o perfil escolhido (à seleção, se houver).")));
             Montar();
         }
@@ -180,6 +189,6 @@ namespace NovoFtool
             hostPerfil.Child = Cartao("Perfil", new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp }, null, new Thickness(0));
         }
 
-        static FrameworkElement Desenho(JsonNode p, JsonNode props) => DesenhoSecao.Cotado(p);
+        static FrameworkElement Desenho(JsonNode p, JsonNode props) => DesenhoSecaoForma.Cotado(p);
     }
 }

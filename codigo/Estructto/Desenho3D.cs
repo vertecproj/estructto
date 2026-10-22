@@ -201,6 +201,10 @@ namespace NovoFtool
             grpConfig3D.Items.Add(tbGiro);
             grpConfig3D.Items.Add(cbCardinal3D);
             grpConfig3D.Items.Add(tgApoioBase3D);
+            var btDisp = new F.Button { Header = "Disposição", Icon = Icone("sel", 16), LargeIcon = Icone("sel", 32), Size = F.RibbonControlSize.Middle,
+                ToolTip = Dica("Disposição do perfil", "Giro (0/90/180/270 ou livre), espelho e ponto cardinal das barras selecionadas, com o desenho da seção sobre o eixo.", "DISP") };
+            btDisp.Click += (s, e) => CmdDisposicao();
+            grpConfig3D.Items.Add(btDisp);
         }
 
         // ---------- Configurações: material, giro e ponto cardinal das próximas barras ----------
@@ -237,7 +241,19 @@ namespace NovoFtool
             JsonNode arv = null; try { arv = await Motor.Get("/api/catalogo?formato=arvore"); } catch { }
             var j = new JanelaCatalogo(lista, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome)), arv) { Owner = this };
             j.PerfilEscolhido += nome => _ = UsarSecao3D(nome);
+            j.CompostoCriado += spec => _ = UsarComposto3D(spec);
             j.Show();
+        }
+
+        // Composto (JanelaComposto): a seção entra no modelo pela spec {"forma":"dupla"} e vira a seção do desenho.
+        internal async Task UsarComposto3D(JsonObject spec)
+        {
+            var d = Esp; string nome = (string)spec["nome"];
+            if (d == null || nome == null) return;
+            if (d.Json["secoes"]?[nome] == null) await Espacial(dd => dd.Adicionar("secao", spec), "Seção composta " + nome + " entrou no modelo.");
+            if (Esp?.Json["secoes"]?[nome] == null) return;
+            secao3D = nome;
+            ListarSecoes3D();
         }
 
         // Escolhe a seção do desenho; perfil do catálogo fora do modelo entra pelo motor (POST /api/modelo/secao, um desfazer).
