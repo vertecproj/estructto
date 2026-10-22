@@ -177,6 +177,7 @@ namespace NovoFtool
         FrameworkElement PassoGrade()
         {
             var sp = new StackPanel();
+            if (modelo.Chave == "branco") { sp.Children.Add(T("Projeto em branco: sem grade de eixos, sem níveis e sem barras. Desenhe com Barra (B) e Nó, ou gere uma estrutura depois.", 12, BFraco)); return sp; }
             sp.Children.Add(T("Vãos entre eixos em metros: \"3x6 2x5\" = três de 6 m e dois de 5 m. Eixos 1, 2, 3… em X; filas A, B, C… em Y; níveis N0, N+3,50… pela altura de cada andar.", 11.5, BFraco));
             sp.Children[0].SetValue(MarginProperty, new Thickness(0, 0, 0, 12));
             sp.Children.Add(Linha(modelo.RotX, c["ex"]));
@@ -231,7 +232,7 @@ namespace NovoFtool
             if (!ValidarProjeto()) { IrPasso(1); return; }
             GradeNiveis g;
             try { g = LerGrade(); } catch (FormatException ex) { erro.Text = "Confira os vãos: \"" + ex.Message + "\" não é \"n×valor\" nem um número."; return; }
-            if (modelo.Gerador == null && g.X.Count == 0 && g.Y.Count == 0) { erro.Text = "Informe ao menos um vão em X ou em Y."; return; }
+            if (modelo.Gerador == null && modelo.Chave != "branco" && g.X.Count == 0 && g.Y.Count == 0) { erro.Text = "Informe ao menos um vão em X ou em Y."; return; }
             Dados = new NovoProjetoDados
             {
                 Modelo = modelo, Grade = g, Nome = c["nome"].Text.Trim(), Pasta = c["pasta"].Text.Trim(), Cliente = c["cliente"].Text.Trim(), Engenheiro = c["engenheiro"].Text.Trim(), Empresa = c["empresa"].Text.Trim(),

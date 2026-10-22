@@ -955,6 +955,14 @@ namespace NovoFtool
             r.Checar(v.Ferramenta == Ferramenta3D.Selecionar, "Esc em cascata sai do Medir");
             Esperar(w.CalcularEspacial());
             r.Checar(w.EspacialAtivo.Calculado || w.StatusMsg.Text.Contains("Motor"), "modelo editado calcula ou o motor explica (" + w.StatusMsg.Text + ")");
+            // v0.6 B8: arquivo novo sem nenhuma carga do usuário, peso próprio ligado: o cálculo roda só com o PP
+            Esperar(w.NovoDocumento(null, "Só peso próprio"));
+            Esperar(w.OperarEspacial(dd => dd.DesenharBarras(new[] { (Q(0, 0, 0), Q(0, 0, 3)) }, null, true), "teste: pilar engastado"));
+            var jm = J(w);
+            r.Checar(((jm["cargas_nodais"] as JsonArray)?.Count ?? 0) + ((jm["cargas_distribuidas"] as JsonArray)?.Count ?? 0) + ((jm["cargas_pontuais"] as JsonArray)?.Count ?? 0) == 0, "modelo novo sem nenhuma carga do usuário");
+            r.Checar((string)jm["peso_proprio"] == "PP", "peso próprio ligado por padrão no arquivo novo (peso_proprio = " + (string)jm["peso_proprio"] + ")");
+            Esperar(w.CalcularEspacial());
+            r.Checar(w.EspacialAtivo.Calculado, "calcula só com o peso próprio (" + w.StatusMsg.Text + ")");
         }
 
         // ================================================================ E) robustez

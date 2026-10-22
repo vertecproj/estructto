@@ -413,7 +413,7 @@ namespace NovoFtool
             Esperar(w.MiniaturasInicio);
             CapturarPrincipal(w, "01-inicio", () => Esperar(w.MiniaturasInicio));
 
-            foreach (string chave in new[] { "galpao", "vazio" })
+            foreach (string chave in new[] { "galpao", "vazio", "branco" })
             {
                 var j = new JanelaNovoProjeto(w, chave) { Owner = w };
                 PrepararDialogoForaDaTela(j);
@@ -826,7 +826,7 @@ namespace NovoFtool
             // árvore e tabelas mostram o modelo espacial e os resultados do motor; HUD diz o que está na tela
             if (!w.TextoResultado.Contains("envoltória")) throw new InvalidOperationException("HUD do espacial: " + w.TextoResultado);
             if (!(w.TabNos.ItemsSource is IEnumerable<LinhaNoEsp> ln) || ln.Count() != d.Json["nos"].AsObject().Count) throw new InvalidOperationException("tabela de nós não mostra o modelo espacial");
-            w.PainelTabelas.IsSelected = true;
+            w.PainelTabelas.Show(); w.PainelTabelas.IsSelected = true; EsperarIdle();
             foreach (var (aba, nome) in new[] { (0, "nos"), (1, "barras"), (2, "verificacao") })
             {
                 w.AbasTabela.SelectedIndex = aba;
@@ -1141,6 +1141,7 @@ namespace NovoFtool
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
+                if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)
                 if (so == "visual") so1(() => CapturasVisual(w));                 // só as 58) close-ups de parafusos, linhas e ligações propostas
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado

@@ -23,7 +23,7 @@ namespace NovoFtool
         F.TextBox cGrade;
         internal HudVista Hud;
         F.ToggleButton tgCalor;
-        internal F.RibbonTabItem abaModelo, abaAnalise, abaDimens;
+        internal F.RibbonTabItem abaModelo, abaAnalise, abaDimens, abaDesenhar, abaEditar, abaApoios;
 
         public MainWindow()
         {
@@ -57,6 +57,7 @@ namespace NovoFtool
             Bastidor.Background = TemaPlant.B(TemaPlant.Abas);              // "Arquivo" como mais uma aba, sem botao colorido
             Comando.TextChanged += (s, e) => DicaComando.Visibility = Comando.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             MontarFaixa();
+            LigarEstadoPaineis();
             MontarBastidores();
             MontarStatus();
             MontarEstiloVisual();   // seletor na vista e chip na barra de status (SeletorEstilo.cs)
@@ -269,7 +270,7 @@ namespace NovoFtool
         {
             var t = new F.RibbonTabItem { Header = titulo };
             F.KeyTip.SetKeys(t, keytip);
-            foreach (var g in grupos) t.Groups.Add(g);
+            foreach (var g in grupos) if (g != null) t.Groups.Add(g);
             Faixa.Tabs.Add(t);
             return t;
         }
@@ -330,6 +331,17 @@ namespace NovoFtool
                 Botao("rotulab", "Rótulas na barra", () => ExecutarComando("ROTULAR"), "Liga/desliga a rótula nas duas pontas das barras (escolha antes ou depois).", "RB", true)));
             abaModelo.ToolTip = "Gerar, grade estrutural, planos de trabalho, barras e pilares, chapas, modificar, apoios e configurações das próximas barras.";
             MontarTrelicas();    // Treliças e contraventamentos (Modelo › Gerar + paleta), JanelaTrelicas.cs
+            // B6 v0.6: a aba Modelo lotada vira quatro: Estrutura, Desenhar, Editar, Apoios (mesmos botões, atalhos e comandos).
+            grpDesenho3D.Items.Insert(1, Botao("no", "Nó", () => ExecutarComando("NO"), "Insere nós: clique o ponto (com atração) ou digite x,y,z; Enter termina.", "NO"));
+            F.RibbonGroupBox Tirar(string h) { var g = abaModelo.Groups.FirstOrDefault(x => (x.Header as string) == h); if (g != null) abaModelo.Groups.Remove(g); return g; }
+            var gDesenhar = new[] { Tirar("Barras"), Tirar("Chapas"), Tirar("Configurações") };
+            var gEditar = new[] { Tirar("Modificar") };
+            var gApoios = new[] { Tirar("Apoios") };
+            abaModelo.Header = "Estrutura"; F.KeyTip.SetKeys(abaModelo, "E");
+            abaModelo.ToolTip = "Gerar 3D, assistente, importar CYPE, treliças, grade, níveis, elevações, planos, copiar pavimento e pilares entre níveis.";
+            abaDesenhar = Aba("Desenhar", "H", gDesenhar); abaDesenhar.ToolTip = "Selecionar, nó, barra, pilar, laje, medir e as configurações das próximas barras (seção, material, cardinal, giro).";
+            abaEditar = Aba("Editar", "I", gEditar); abaEditar.ToolTip = "Mover, copiar, rotacionar, matriz, espelhar, aparar, estender, dividir, unir nós, apagar, copiar propriedades e edição em lote.";
+            abaApoios = Aba("Apoios", "P", gApoios); abaApoios.ToolTip = "Engaste, articulado, móvel, molas, livre e rótulas nas barras.";
 
             // ACOES: casos de carga (inseridos por MontarCasosNaFaixa), cargas nos nós e barras (painel Propriedades), ações automáticas
             var abaAcoes = Aba("Ações", "A",

@@ -161,7 +161,7 @@ namespace NovoFtool
         }
 
         // ---------- Desenhar 3D › Seção e Apoio na base ----------
-        F.ComboBox cbSecao3D; F.ToggleButton tgApoioBase3D;
+        F.DropDownButton ddSecao3D; SeletorSecao sel3D; F.ToggleButton tgApoioBase3D;
         string secao3D;                                  // escolhida no seletor (null = a da última barra)
         bool montandoSecao3D;
         const string DoCatalogo = "Do catálogo…";
@@ -173,15 +173,11 @@ namespace NovoFtool
 
         void MontarSecaoDesenho3D()
         {
-            cbSecao3D = new F.ComboBox { Header = "Seção", IsEditable = false, Width = 150,
-                ToolTip = Dica("Seção", "Seção das barras e pilares desenhados: as do modelo, ou um perfil do catálogo do motor (entra no modelo ao escolher).") };
-            cbSecao3D.DropDownOpened += (s, e) => ListarSecoes3D();
-            cbSecao3D.SelectionChanged += (s, e) =>
-            {
-                if (montandoSecao3D || !(cbSecao3D.SelectedItem is string v)) return;
-                if (v == DoCatalogo) { ListarSecoes3D(); _ = EscolherDoCatalogo3D(); return; }
-                secao3D = v;
-            };
+            ddSecao3D = new F.DropDownButton { Header = "Seção", Width = 150, Icon = Icone("sel", 16), LargeIcon = Icone("sel", 32), Size = F.RibbonControlSize.Middle,
+                ToolTip = Dica("Seção", "Seção das barras e pilares desenhados: busca, seções do modelo, recentes e a árvore do catálogo do motor (o perfil entra no modelo ao escolher).") };
+            Tamanho(ddSecao3D, true);
+            ddSecao3D.Items.Add(sel3D = new SeletorSecao(() => (Esp?.Json["secoes"] as JsonObject)?.Select(x => x.Key) ?? Enumerable.Empty<string>(), null, v => { ddSecao3D.IsDropDownOpen = false; _ = UsarSecao3D(v); }));
+            ddSecao3D.DropDownOpened += (s, e) => { _ = SeletorSecao.Carregar(); sel3D.Montar(); };
             tgApoioBase3D = new F.ToggleButton { Header = "Apoio na base", Icon = Icone("engaste", 16), LargeIcon = Icone("engaste", 32), Size = F.RibbonControlSize.Middle,
                 ToolTip = Dica("Apoio na base", "Nó novo desenhado no nível mais baixo nasce engastado (6 GL travados).") };
             cbMaterial3D = new F.ComboBox { Header = "Material", IsEditable = false, Width = 150, ToolTip = Dica("Material", "Material das próximas barras: os do modelo (vazio = o da última barra).") };
@@ -200,7 +196,7 @@ namespace NovoFtool
             foreach (string c in Cardinais) cbCardinal3D.Items.Add(c);
             cbCardinal3D.SelectedIndex = 4;
             cbCardinal3D.SelectionChanged += (s, e) => { if (cbCardinal3D.SelectedIndex >= 0) cardinal3D = cbCardinal3D.SelectedIndex + 1; };
-            grpConfig3D.Items.Add(cbSecao3D);
+            grpConfig3D.Items.Add(ddSecao3D);
             grpConfig3D.Items.Add(cbMaterial3D);
             grpConfig3D.Items.Add(tbGiro);
             grpConfig3D.Items.Add(cbCardinal3D);
@@ -217,15 +213,10 @@ namespace NovoFtool
         // Itens: seções do modelo + "Do catálogo…"; mostra a que vale agora.
         internal void ListarSecoes3D()
         {
-            if (cbSecao3D == null) return;
-            montandoSecao3D = true;
-            cbSecao3D.Items.Clear();
+            if (ddSecao3D == null) return;
             var d = Esp;
-            if (d != null) foreach (var kv in d.Json["secoes"] as JsonObject ?? new JsonObject()) cbSecao3D.Items.Add(kv.Key);
-            cbSecao3D.Items.Add(DoCatalogo);
             string atual = d == null ? null : SecaoDesenho3D(d);
-            cbSecao3D.SelectedItem = atual != null && cbSecao3D.Items.Contains(atual) ? atual : null;
-            montandoSecao3D = false;
+            ddSecao3D.Header = atual == null ? "Seção" : "Seção: " + atual;
         }
 
         async Task EscolherDoCatalogo3D()

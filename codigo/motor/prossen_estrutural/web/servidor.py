@@ -149,6 +149,11 @@ def _limpar_historico(srv):
     return {"ok": True}
 
 
+def _com_peso_proprio(modelo, corpo):
+    """v0.6: modelo novo da interface já nasce com o peso próprio ligado (caso PP); {"peso_proprio": false} desliga."""
+    return modelo if (corpo or {}).get("peso_proprio") is False else modelo.ligar_peso_proprio()
+
+
 def _novo(srv, m):
     srv.estado.update(modelo=m, calculo=None)
     srv.estado["desfazer"].clear()
@@ -200,7 +205,7 @@ def _arquivos(srv, a, q, c):
 ROTAS = {
     ("GET", r"/api/modelo"): lambda s, a, q, c: projeto.para_dict(_modelo(s)),
     ("PUT", r"/api/modelo"): lambda s, a, q, c: (s.estado.__setitem__("modelo", projeto.de_dict(c)), projeto.para_dict(s.estado["modelo"]))[1],
-    ("POST", r"/api/modelo/novo"): lambda s, a, q, c: _novo(s, projeto.novo_modelo((c or {}).get("nome", ""))),
+    ("POST", r"/api/modelo/novo"): lambda s, a, q, c: _novo(s, _com_peso_proprio(projeto.novo_modelo((c or {}).get("nome", "")), c)),
     ("POST", r"/api/modelo/abrir"): lambda s, a, q, c: _novo(s, projeto.carregar(_caminho(s, c))),
     ("POST", r"/api/importar_cype"): _importar_cype,
     ("POST", r"/api/comparar_cype"): _comparar_cype,

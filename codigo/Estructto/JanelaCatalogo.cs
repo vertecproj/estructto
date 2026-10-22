@@ -71,22 +71,7 @@ namespace NovoFtool
         // Árvore nível 1 > família > série; escolher um nó filtra a tabela pelos perfis abaixo dele.
         void MontarArvore()
         {
-            TreeViewItem No(string txt, HashSet<string> ps, bool aberto) => new TreeViewItem { Header = Tx(txt + " (" + ps.Count + ")", 12, TemaPlant.BTexto1), Tag = ps, IsExpanded = aberto, Foreground = TemaPlant.BTexto1 };
-            IEnumerable<string> Pf(JsonNode n) => Lista(n).Select(x => x.ToString());
-            var raiz = new TreeViewItem { Header = Tx("Todos os perfis (" + todos.Count + ")", 12, TemaPlant.BTexto1, FontWeights.SemiBold), Tag = null, IsExpanded = true, Foreground = TemaPlant.BTexto1 };
-            foreach (var n1 in Lista(arvore))
-            {
-                var fams = Lista(n1["familias"]).ToList();
-                var a = No(S(n1, "nivel1"), new HashSet<string>(fams.SelectMany(f => Lista(f["series"]).SelectMany(se => Pf(se["perfis"])))), true);
-                foreach (var f in fams)
-                {
-                    var ss = Lista(f["series"]).ToList();
-                    var b = No(S(f, "nome"), new HashSet<string>(ss.SelectMany(se => Pf(se["perfis"]))), false);
-                    foreach (var se in ss) b.Items.Add(No(S(se, "nome"), new HashSet<string>(Pf(se["perfis"])), false));
-                    a.Items.Add(b);
-                }
-                raiz.Items.Add(a);
-            }
+            var raiz = ArvoreCatalogo.Montar(arvore, todos.Count);
             tv.Items.Add(raiz);
             tv.SelectedItemChanged += (o, e) => { noPerfis = (tv.SelectedItem as TreeViewItem)?.Tag as HashSet<string>; Montar(); };
         }
@@ -195,49 +180,6 @@ namespace NovoFtool
             hostPerfil.Child = Cartao("Perfil", new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp }, null, new Thickness(0));
         }
 
-        // Desenho da seção (I ou C/U), em escala, centrado, com cotas d e bf.
-        static FrameworkElement Desenho(JsonNode p, JsonNode props)
-        {
-            double h = D(p, "d_mm"), b = D(p, "bf_mm"), tw = D(p, "tw_mm"), tf = D(p, "tf_mm"), t = D(p, "t_mm");
-            string fam = S(p, "familia");
-            if (double.IsNaN(h) || double.IsNaN(b)) return new Border();
-            if (double.IsNaN(tw)) tw = double.IsNaN(t) ? h / 40 : t;
-            if (double.IsNaN(tf)) tf = double.IsNaN(t) ? h / 30 : t;
-            double esc = Math.Min(130 / h, 220 / b);
-            double W = b * esc, H = h * esc, Tw = Math.Max(1.5, tw * esc), Tf = Math.Max(1.5, tf * esc);
-            var pts = new List<Point>();
-            if (fam == "U" || fam == "Ue")
-            {
-                // enrijecedor do Ue: 3º número do nome (Ue 127x50x17x2,65 → 17 mm)
-                var partes = S(p, "nome").Split('x');
-                double lab = fam == "Ue" ? (partes.Length >= 4 && Portico.Num.Ler(partes[2], out double dl) ? dl * esc : Math.Min(H * 0.25, W * 0.35)) : 0;
-                pts.AddRange(new[] { new Point(0, 0), new Point(W, 0) });
-                if (lab > 0) pts.AddRange(new[] { new Point(W, lab), new Point(W - Tf, lab), new Point(W - Tf, Tf) }); else pts.Add(new Point(W, Tf));
-                pts.AddRange(new[] { new Point(Tw, Tf), new Point(Tw, H - Tf) });
-                if (lab > 0) pts.AddRange(new[] { new Point(W - Tf, H - Tf), new Point(W - Tf, H - lab), new Point(W, H - lab), new Point(W, H) }); else pts.AddRange(new[] { new Point(W, H - Tf), new Point(W, H) });
-                pts.Add(new Point(0, H));
-            }
-            else
-            {
-                double xa = (W - Tw) / 2;
-                pts.AddRange(new[] { new Point(0, 0), new Point(W, 0), new Point(W, Tf), new Point(xa + Tw, Tf), new Point(xa + Tw, H - Tf), new Point(W, H - Tf), new Point(W, H),
-                    new Point(0, H), new Point(0, H - Tf), new Point(xa, H - Tf), new Point(xa, Tf), new Point(0, Tf) });
-            }
-            var geo = new StreamGeometry();
-            using (var c = geo.Open()) { c.BeginFigure(pts[0], true, true); c.PolyLineTo(pts.Skip(1).ToList(), true, true); }
-            geo.Freeze();
-            var cv = new Canvas { Width = W + 70, Height = H + 34 };
-            double x0 = 46, y0 = 8;
-            var forma = new Path { Data = geo, Fill = TemaPlant.BAcentoSutil, Stroke = TemaPlant.BRealce, StrokeThickness = 1.5, StrokeLineJoin = PenLineJoin.Miter };
-            Canvas.SetLeft(forma, x0); Canvas.SetTop(forma, y0); cv.Children.Add(forma);
-            // cotas
-            cv.Children.Add(new Line { X1 = x0 - 12, Y1 = y0, X2 = x0 - 12, Y2 = y0 + H, Stroke = TemaPlant.BTexto2, StrokeThickness = 1 });
-            var td = Tx("d = " + F(h, 0), 11, TemaPlant.BTexto2); td.RenderTransform = new RotateTransform(-90);
-            Canvas.SetLeft(td, x0 - 30); Canvas.SetTop(td, y0 + H / 2 + 22); cv.Children.Add(td);
-            cv.Children.Add(new Line { X1 = x0, Y1 = y0 + H + 10, X2 = x0 + W, Y2 = y0 + H + 10, Stroke = TemaPlant.BTexto2, StrokeThickness = 1 });
-            var tb = Tx("bf = " + F(b, 0) + " mm", 11, TemaPlant.BTexto2);
-            Canvas.SetLeft(tb, x0 + W / 2 - 30); Canvas.SetTop(tb, y0 + H + 12); cv.Children.Add(tb);
-            return new Viewbox { Stretch = Stretch.None, Child = cv, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        }
+        static FrameworkElement Desenho(JsonNode p, JsonNode props) => DesenhoSecao.Cotado(p);
     }
 }

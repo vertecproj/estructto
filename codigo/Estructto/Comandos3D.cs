@@ -36,6 +36,7 @@ namespace NovoFtool
         List<Cmd3D> Cmds3D => cmds3D ??= new List<Cmd3D>
         {
             C("BARRA", "Barra (perfil das Configurações) em cadeia de cliques no plano de trabalho", w => Ferr(Ferramenta3D.Barra), "L", "B", "LINE", "VG", "VIGA", "MEMBRO"),
+            C("NO", "Nó: clique o ponto ou digite x,y,z (vários; Enter termina)", w => CmdNo(), "NÓ", "NODE", "PT"),
             C("PILAR", "Pilar: clique o ponto; a altura vem dos níveis", w => Ferr(Ferramenta3D.Pilar), "PI", "PL", "COLUNA"),
             C("SELECIONAR", "Selecionar (clique, janela, cruzamento)", w => Ferr(Ferramenta3D.Selecionar), "S", "SEL"),
             C("MOVER", "Mover a seleção: ponto base e segundo ponto", w => CmdMoverCopiar(false), "M", "MV", "MOVE"),

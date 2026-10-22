@@ -23,7 +23,7 @@ VIGA = {"secao": {"perfil": "W360x51"}, "material": {"aco": "A-572 GR.50"}}
 
 def montar_viga(api):
     """F1 pela API: viga biapoiada L = 6 m com G1 (5 kN/m + peso próprio) e Q1 (10 kN/m)."""
-    assert api("POST", "/api/modelo/novo", {"nome": "Viga F1"})[0] == 200
+    assert api("POST", "/api/modelo/novo", {"nome": "Viga F1", "peso_proprio": False})[0] == 200   # o peso próprio vai no G1 (abaixo)
     assert api("POST", "/api/modelo/secao", VIGA["secao"])[0] == 200
     assert api("POST", "/api/modelo/material", VIGA["material"])[0] == 200
     assert api("POST", "/api/modelo/no", {"id": "n1", "x": 0, "y": 0, "z": 0, "apoio": [True, True, True, True, False, False]})[0] == 200
@@ -151,7 +151,7 @@ class TestApiWeb(unittest.TestCase):
 
     def test_edificio_f2_pela_api_igual_a_biblioteca(self):
         _, _, ref = referencia_f2()
-        self.ok("POST", "/api/modelo/novo", {"nome": "F5"})
+        self.ok("POST", "/api/modelo/novo", {"nome": "F5", "peso_proprio": False})   # a referência da biblioteca não tem o caso PP
         g = self.ok("POST", "/api/gerar-estrutura", EDIFICIO_F2)
         self.assertEqual((g["nos_criados"], g["barras_criadas"], g["pavimentos_criados"]), (60, 116, 4))
         self.ok("PATCH", "/api/config", {"peso_proprio": "G1", "vento": VENTO_F2})

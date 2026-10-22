@@ -441,9 +441,7 @@ namespace NovoFtool
             PainelAvisos.Title = resumo == "" ? "Avisos" : "Avisos (" + resumo.Trim() + ")";
             SeloAvisos.Content = string.Join("  ", new[] { erros > 0 ? "⛔ " + erros + (erros == 1 ? " erro" : " erros") : null, avisos > 0 ? "⚠ " + avisos + (avisos == 1 ? " aviso" : " avisos") : null }.Where(x => x != null));
             SeloAvisos.Visibility = resumo == "" ? Visibility.Collapsed : Visibility.Visible;
-            // um erro novo traz o painel para frente uma vez
-            if (erros > 0 && !avisosJaMostrados) { PainelAvisos.Show(); PainelAvisos.IsSelected = true; avisosJaMostrados = true; }
-            if (erros == 0) avisosJaMostrados = false;
+            // v0.6: o painel não abre sozinho; o selo de avisos na barra de status abre quando o usuário quiser
         }
     }
 }

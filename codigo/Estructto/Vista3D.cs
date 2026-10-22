@@ -1306,11 +1306,6 @@ namespace NovoFtool
                     dc.DrawRoundedRectangle(TemaPlant.B(TemaPlant.CorProposta3D), null, new Rect(x + 10, y + 8, 18, 8), 2, 2);
                     dc.DrawText(ft, new Point(x + 34, y + (h - ft.Height) / 2));
                 }
-                if (v.mod.Nos.Count == 0 && !v.Desenhando)
-                {
-                    var ft = Txt(v.CriarBarras != null ? "Modelo vazio: digite L (barra) ou PI (pilar) e clique no plano — ou Modelo › Barra. Shift + arrastar orbita." : "Modelo vazio: desenhe barras na vista 2D.", TemaPlant.BTexto3, 12);
-                    dc.DrawText(ft, new Point((ActualWidth - ft.Width) / 2, ActualHeight / 2));
-                }
             }
         }
     }
