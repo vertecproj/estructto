@@ -936,6 +936,11 @@ namespace NovoFtool
             double du = Vector3D.DotProduct(dv, plano.U), dw = Vector3D.DotProduct(dv, plano.W), dm = Math.Sqrt(du * du + dw * dw);
             double angM = dm < 1e-9 ? 0 : Math.Atan2(dw, du);
             bool tl = Ler(din[0], out double l), tg = Ler(din[1], out double g);
+            if (tl && !tg && ferr == Ferramenta3D.Barra)   // C1: só o comprimento digitado: segue a direção apontada em 3D (vertical/inclinada)
+            {
+                var dir = Snap3D.DirecaoDigitada(a, cursor3, Tela(a), Tela(a + new Vector3D(0, 0, 1)), mouseTela, Orto);
+                if (dir != null) return a + dir.Value * l;
+            }
             double ang = tg ? g * Math.PI / 180 : angM, len = tl ? l : dm * Math.Max(0, Math.Cos(angM - ang));
             return a + plano.U * len * Math.Cos(ang) + plano.W * len * Math.Sin(ang);
         }
@@ -1137,6 +1142,10 @@ namespace NovoFtool
         static readonly Typeface TfEntrada = new Typeface(TemaPlant.Fonte, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         static readonly Pen PGuia3 =Caneta(TemaPlant.BGuiaSnap, 1, new double[] { 2, 3 });
 
+        string etUltimo; long etDesde; const int TempoAjuda = 3000;
+        DispatcherTimer timerEt;
+        DispatcherTimer TimerEt { get { if (timerEt == null) { timerEt = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(TempoAjuda + 50) }; timerEt.Tick += (s, e) => { timerEt.Stop(); sobre.InvalidateVisual(); }; } return timerEt; } }
+
         void DesenharEntrada(DrawingContext dc, FrameworkElement alvoTxt)
         {
             FormattedText Ft(string s, Brush b, double tam) => new FormattedText(s, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, TfEntrada, tam, b, 1.0);
@@ -1189,10 +1198,9 @@ namespace NovoFtool
                 et = (ferr == Ferramenta3D.Barra ? (inicio == null ? "BARRA — clique o 1º ponto" : "BARRA — próximo ponto (Esc ou botão direito termina)")
                                                  : "PILAR — clique o ponto (até o nível de baixo; na base, até o de cima)")
                      + " · plano " + plano.Nome + EstadoSnap() + " · digite x,y,z ou @dx,dy,dz";
-            else if (et == null && ferr == Ferramenta3D.Selecionar)
-                et = Selecao.Count > 0 ? "SELECIONAR — " + Pl.N(Selecao.Nos.Count, "nó", "nós") + " · " + Pl.N(Selecao.Barras.Count, "barra", "barras") + " · Shift soma, Ctrl tira, Esc limpa"
-                                       : "SELECIONAR — arraste: esq.→dir. janela, dir.→esq. cruzamento · Shift soma, Ctrl tira";
-            if (et != null)
+            // C3: a ajuda aparece uma vez por comando/passo e some em 3 s (nada fixo sobre a vista; o resto está nos tooltips da faixa)
+            if (et != etUltimo) { etUltimo = et; etDesde = Environment.TickCount64; if (et != null) { TimerEt.Stop(); TimerEt.Start(); } }
+            if (et != null && Environment.TickCount64 - etDesde < TempoAjuda)
             {
                 var ft = Ft(et, TemaPlant.BTexto1, 11.5);
                 var r = new Rect(Math.Max(100, (ActualWidth - ft.Width) / 2 - 10), ActualHeight - ft.Height - 22, ft.Width + 20, ft.Height + 8);   // embaixo: o HUD e o seletor de vistas ocupam o topo
@@ -1222,9 +1230,6 @@ namespace NovoFtool
                 dc.DrawText(fu, new Point(r.Right - 8 - fu.Width, r.Y + (h - fu.Height) / 2));
                 dc.DrawText(fv, new Point(r.Right - 12 - fu.Width - fv.Width, r.Y + (h - fv.Height) / 2));
             }
-            var fd = Ft("Tab alterna · Enter confirma · Esc cancela", TemaPlant.BTexto2, 10);
-            dc.DrawRectangle(TemaPlant.BCaixaHud, null, new Rect(x0, y0 + 2 * (h + 2), fd.Width + 8, fd.Height + 2));
-            dc.DrawText(fd, new Point(x0 + 4, y0 + 2 * (h + 2) + 1));
         }
 
         // Grade do plano de trabalho na faixa do modelo (+ margem), eixos do plano tracejados.
@@ -1305,11 +1310,6 @@ namespace NovoFtool
                     dc.DrawRoundedRectangle(TemaPlant.B(TemaPlant.CorCaixaHud), new Pen(TemaPlant.BBordaSutil, 1), new Rect(x, y, w, h), 6, 6);
                     dc.DrawRoundedRectangle(TemaPlant.B(TemaPlant.CorProposta3D), null, new Rect(x + 10, y + 8, 18, 8), 2, 2);
                     dc.DrawText(ft, new Point(x + 34, y + (h - ft.Height) / 2));
-                }
-                if (v.mod.Nos.Count == 0 && !v.Desenhando)
-                {
-                    var ft = Txt(v.CriarBarras != null ? "Modelo vazio: digite L (barra) ou PI (pilar) e clique no plano — ou Modelo › Barra. Shift + arrastar orbita." : "Modelo vazio: desenhe barras na vista 2D.", TemaPlant.BTexto3, 12);
-                    dc.DrawText(ft, new Point((ActualWidth - ft.Width) / 2, ActualHeight / 2));
                 }
             }
         }

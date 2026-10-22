@@ -474,6 +474,28 @@ namespace NovoFtool
             return true;
         }
 
+        // C1: direção da medida digitada. Segue o cursor em 3D (inclui o que sai do plano, ex.: snap a um ponto alto); se o mouse
+        // aponta, na tela, ao longo do eixo Z (a ±20°) e Z aparece na tela, vale a vertical (+Z ou -Z). Orto: só o eixo travado (3D puro).
+        // telaA/telaZ: tela do 1º ponto e de 1º ponto + 1 m em Z. null = sem direção (cursor sobre o 1º ponto).
+        public static Vector3D? DirecaoDigitada(Point3D a, Point3D? cursor3, Point telaA, Point telaZ, Point telaMouse, bool orto)
+        {
+            Vector z = telaZ - telaA, m = telaMouse - telaA;
+            if (!orto && z.Length > 4 && m.Length > 6)
+            {
+                double ang = Math.Abs(Vector.AngleBetween(z, m));
+                if (ang < 20) return new Vector3D(0, 0, 1);
+                if (ang > 160) return new Vector3D(0, 0, -1);
+            }
+            if (cursor3 == null) return null;
+            Vector3D d = cursor3.Value - a;
+            if (d.Length < 1e-9) return null;
+            d.Normalize(); return d;
+        }
+
+        // C2: grip só esquenta num clique (soltar a menos de 6 px de onde apertou); arrastar a partir dele não faz nada.
+        public const double LimiarGrip = 6;
+        public static bool CliqueNoGrip(Vector arrasto) => arrasto.Length < LimiarGrip;
+
         // ---------- entrada digitada (AutoCAD, entrada dinâmica) ----------
         // "x,y,z" ou "u,w" (no plano): com 1º ponto é RELATIVO a ele (padrão do AutoCAD do 2º ponto em diante); "@" relativo
         // explícito; "#" absoluto; "L<a" polar no plano (relativo; a de U para W, graus). Ponto decimal (a vírgula separa).
@@ -665,6 +687,22 @@ namespace NovoFtool
             Ok("\"4,5,6\" sem 1º ponto = absoluto", Perto(Snap3D.LerCoordenada("4,5,6", null, pl), 4, 5, 6));
             Ok("\"2<90\" polar relativo = (1,4,3)", Perto(Snap3D.LerCoordenada("2<90", bb, pl), 1, 4, 3));
             Ok("\"1,x\" inválido", Snap3D.LerCoordenada("1,x", bb, pl) == null);
+
+            // --- C1: medida digitada segue o cursor em 3D; C2: limiar do grip ---
+            var A0 = new Point3D(0, 0, 0); Point tA = new Point(300, 400), tZ = new Point(300, 350);   // Z aparece 50 px/m para cima
+            var dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(380, 410), false);
+            Ok("C1 mouse na horizontal: direção do cursor no plano (+X)", dv1 != null && (dv1.Value - new Vector3D(1, 0, 0)).Length < 1e-9);
+            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(305, 300), false);
+            Ok("C1 mouse apontando para cima (eixo Z na tela): vertical +Z, não deitada", dv1 != null && (dv1.Value - new Vector3D(0, 0, 1)).Length < 1e-9);
+            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(298, 480), false);
+            Ok("C1 mouse para baixo ao longo de Z: vertical -Z", dv1 != null && (dv1.Value - new Vector3D(0, 0, -1)).Length < 1e-9);
+            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(3, 0, 4), tA, tZ, new Point(380, 410), false);
+            Ok("C1 cursor num ponto alto (snap): direção inclinada 3D (3,0,4)/5", dv1 != null && (dv1.Value - new Vector3D(0.6, 0, 0.8)).Length < 1e-9);
+            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(300, 300), true);
+            Ok("C1 Orto: respeita o eixo travado (+X), sem vertical", dv1 != null && (dv1.Value - new Vector3D(1, 0, 0)).Length < 1e-9);
+            Ok("C1 sem cursor sobre o 1º ponto: sem direção", Snap3D.DirecaoDigitada(A0, A0, tA, new Point(300, 400), new Point(300, 400), false) == null);
+            Ok("C2 5 px de arrasto ainda é clique no grip", Snap3D.CliqueNoGrip(new Vector(3, 4)));
+            Ok("C2 6 px ou mais é arrasto: grip não esquenta", !Snap3D.CliqueNoGrip(new Vector(6, 0)) && !Snap3D.CliqueNoGrip(new Vector(4, 5)));
 
             // --- medidas (Medir3D.cs) ---
             TestesMedir.Rodar(Ok);

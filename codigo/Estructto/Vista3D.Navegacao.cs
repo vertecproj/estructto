@@ -299,6 +299,8 @@ namespace NovoFtool
             AplicarCamera(); AgendarArestas(); AtualizarCursor();
         }
 
+        bool gripApertado;   // botão esquerdo apertado sobre um grip frio (Vista3D.Grips.cs): vira clique ou arrasto
+
         protected override void OnMouseDown(MouseButtonEventArgs e)
         {
             Focus();
@@ -313,8 +315,8 @@ namespace NovoFtool
             if (e.ChangedButton == MouseButton.Middle) { if (shift) IniciarOrbita(p); else { modo = Modo.Pan; panIni = p; } CaptureMouse(); return; }
             if (e.ChangedButton == MouseButton.Right) { modo = Modo.Clique; CaptureMouse(); return; }
             if (e.ChangedButton != MouseButton.Left) return;
-            // grip sob o cursor: pressionar já o deixa quente; arrastar e soltar = destino (como clicar duas vezes)
-            if (!shift && gripQuente == null && !Desenhando && pedeObjeto == null && GripSob(p) is Grip g) { Esquentar(g); modo = Modo.Arrasto; CaptureMouse(); return; }
+            // C2: grip sob o cursor só esquenta no CLIQUE (soltar a < 6 px); apertar e arrastar não move nada (clique-solta-clique, como no CAD)
+            gripApertado = !shift && gripQuente == null && !Desenhando && pedeObjeto == null && GripSob(p) != null;
             modo = Modo.Clique;
             CaptureMouse();
         }
@@ -438,6 +440,11 @@ namespace NovoFtool
             switch (modo)
             {
                 case Modo.Clique:
+                    if (gripApertado)   // C2: abaixo do limiar ainda é clique; acima, é arrasto e o grip fica frio
+                    {
+                        if (Snap3D.CliqueNoGrip(dv)) return;
+                        gripApertado = false; moveu = true; modo = Modo.Arrasto; return;
+                    }
                     if (dv.Length < 3) { if (Desenhando) AtualizarCursor(); return; }
                     moveu = true;
                     bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
@@ -486,6 +493,7 @@ namespace NovoFtool
             Point p = e.GetPosition(this);
             var m = modo; modo = Modo.Nada;
             ReleaseMouseCapture();
+            gripApertado = false;
             switch (m)
             {
                 case Modo.Caixa:
