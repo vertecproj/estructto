@@ -183,6 +183,33 @@ namespace NovoFtool
             w.FecharEspaciaisSemPerguntar();
         }
 
+        // E1: chão do Realista. Modelo de 2 barras, pórtico 2x2, galpão e PLATAFORMA, vista alta e rasante (60-chao-<modelo>-<vista>).
+        static void CapturasChao(MainWindow w)
+        {
+            // documentos reais (Propriedades e barra de estado batem com o uso): arquivos do motor gerados em C:/dev/build/modelos-chao + exemplos + PLATAFORMA
+            var abrir = new List<(string, Func<System.Threading.Tasks.Task>)>();
+            foreach (string n in new[] { "2barras", "2barras-1m" })
+            {
+                string f = "C:/dev/build/modelos-chao/" + n + ".json"; string nn = n;
+                if (File.Exists(f)) abrir.Add((nn, () => w.AbrirTarefa(f)));
+            }
+            foreach (string ex in new[] { "portico_aco", "galpao_aco" }) { string e = ex; abrir.Add((e, () => w.AbrirEspacial(() => DocumentoEspacial.Exemplo(e), "exemplo"))); }
+            string ed3 = new[] { "C:/dev/wt/v5-vista/testes-aceite/PLATAFORMA.ed3", "H:/20.  CLAUDE CODE AGENTES/14. CYPE/estructto/testes-aceite/PLATAFORMA.ed3" }.FirstOrDefault(File.Exists);
+            if (ed3 != null) abrir.Add(("plataforma", () => w.AbrirTarefa(ed3)));
+            foreach (var (nome, ab) in abrir)
+            {
+                Esperar(ab()); EsperarIdle(); w.DefinirEstilo(EstiloVisual.Realista);
+                foreach (var (az, el, vn) in new[] { (-60.0, 38.0, "alto"), (-30.0, 8.0, "rasante") })
+                { w.vista3D.Enquadrar(az, el, false); EsperarIdle(); CapturarPrincipal(w, "60-chao-" + nome + "-" + vn); }
+                if (nome == "galpao_aco")
+                {
+                    w.vista3D.Enquadrar(-60, 38, false); w.Vista.Diag = Diagrama.Momento; w.Hud.Atualizar(); EsperarIdle(); CapturarPrincipal(w, "60-chao-chip-sem-calculo");   // E2: modelo desenhado, sem cálculo
+                    w.Vista.Diag = Diagrama.Nenhum; w.Hud.Atualizar();
+                }
+                w.FecharEspaciaisSemPerguntar();
+            }
+        }
+
         // V1: seta e nó escolhido atrás de uma viga (pórtico 2x2 real). Sem "sempre visíveis" a viga os esconde (Realista DX e
         // Sombreado nativo); com ele a seta e o nó aparecem por cima.
         static void CapturasCargasProfundidade(MainWindow w)
@@ -1127,6 +1154,7 @@ namespace NovoFtool
                 if (w.EspacialAtivo == null) throw new InvalidOperationException("o modelo não abriu como documento 3D: " + caminhoModelo);
                 string so = Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS");
                 Action<Action> so1 = f => { f(); w.alterado = false; w.Close(); Environment.Exit(0); };
+                if (so == "chao") so1(() => CapturasChao(w));   // só as 60) de chão do Realista
                 if (so == "sombra") so1(() => CapturasSombra(w));   // só as 59) de sombra do chão
                 if (so == "cargasprof") so1(() => CapturasCargasProfundidade(w));   // só as 58) de cargas com profundidade
                 if (so == "planos") so1(() => CapturasPlanos(w));                 // só as capturas 43) de níveis e planos

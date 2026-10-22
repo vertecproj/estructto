@@ -144,7 +144,7 @@ namespace NovoFtool
 
             faixas.Children.Clear();
             string leg = "";
-            if (temDiag && !vista.Resolvido) leg = "Sem resultados: calcule a estrutura (F5).";
+            if (temDiag && !vista.Resolvido) leg = "Sem cálculo (F5)";   // E2: chip curto, nunca a frase longa que estourava o painel
             else if (vista.Diag == Diagrama.Verificacao)
             {
                 leg = vista.MapaCalor ? "⚠ acima de 90%  ·  ✕ não passa" : "Verificação por barra";

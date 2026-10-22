@@ -75,8 +75,8 @@ namespace NovoFtool
         public readonly Viewport3DX Vista;
         readonly HxCamera cam = new HxCamera { NearPlaneDistance = 1, FarPlaneDistance = 100 };
         readonly HelixToolkit.Wpf.SharpDX.PerspectiveCamera pcam = new HelixToolkit.Wpf.SharpDX.PerspectiveCamera { FieldOfView = 45 };
-        readonly MeshGeometryModel3D mAco, mConcreto, mSel, mChao, mParafusos, mSoldas, mProp, mPropDet, mCargas, mNos;
-        readonly LineGeometryModel3D lArestas;
+        readonly MeshGeometryModel3D mDecal, mAco, mConcreto, mSel, mChao, mParafusos, mSoldas, mProp, mPropDet, mCargas, mNos;
+        readonly LineGeometryModel3D lArestas, lGrade;
         readonly ShadowMap3D sombra;
         public bool Sombra { set { Vista.IsShadowMappingEnabled = value && !(Environment.GetEnvironmentVariable("ESTRUCTTO_3D_SEM") ?? "").Contains("sombra"); } }
         readonly List<(MeshGeometryModel3D M, int[] Ini, object[] Obj)> faixas = new List<(MeshGeometryModel3D, int[], object[])>();
@@ -124,14 +124,22 @@ namespace NovoFtool
             if (sem.Contains("ssao")) Vista.EnableSSAO = false;
             if (sem.Contains("fxaa")) Vista.FXAALevel = FXAALevel.None;
             Vista.RenderExceptionOccurred += ErroRender;
+            // E1 fix: registra o adaptador usado (diagnóstico de "cena escura"). WARP/software já é recusado por Disponivel (cai no nativo); se o dispositivo
+            // falhar em tempo de execução, ErroRender devolve a Vista3D ao nativo, então SSAO/ambiente quebrados não chegam a desenhar um disco escuro.
+            try
+            {
+                using (var f = new SharpDX.DXGI.Factory1())
+                    foreach (var ad in f.Adapters1) using (ad) { var d = ad.Description1; Registrar("adaptador DXGI: " + d.Description + ((d.Flags & SharpDX.DXGI.AdapterFlags.Software) != 0 ? " (software)" : "") + "; SSAO " + (Vista.EnableSSAO ? "ligado" : "desligado")); }
+            }
+            catch (Exception ex) { Registrar("adaptador: erro " + ex.Message); }
             Vista.SizeChanged += (s, e) => pcam.FieldOfView = Vfov();   // o FOV vertical depende do aspecto
 
             // estúdio: chave quente (sombra), enchimento frio, contraluz; somadas ficam abaixo de 1 para não estourar o aço claro
-            Vista.Items.Add(new AmbientLight3D { Color = Color.FromRgb(0x30, 0x34, 0x3C) });
+            Vista.Items.Add(new AmbientLight3D { Color = sem.Contains("ambiente") ? Colors.Black : Color.FromRgb(0x30, 0x34, 0x3C) });   // diagnóstico: ambiente 0
             Vista.Items.Add(new DirectionalLight3D { Color = Color.FromRgb(0xF2, 0xE8, 0xD6), Direction = Luz });          // 1ª direcional = sombra
             Vista.Items.Add(new DirectionalLight3D { Color = Color.FromRgb(0x30, 0x3A, 0x4C), Direction = LuzEnch });
             Vista.Items.Add(new DirectionalLight3D { Color = Color.FromRgb(0x48, 0x54, 0x6A), Direction = LuzContra });
-            sombra = new ShadowMap3D { Resolution = new Size(4096, 4096), Intensity = 0.7, Bias = 0.0012, AutoCoverCompleteScene = true };
+            sombra = new ShadowMap3D { Resolution = new Size(4096, 4096), Intensity = 0.55, Bias = 0.0012, AutoCoverCompleteScene = true };
             Vista.Items.Add(sombra);
             Vista.Items.Add(new PostEffectMeshOutlineBlur { EffectName = "selecao", Color = TemaPlant.CorBarraSel, ScaleX = 1.2f, ScaleY = 1.2f, NumberOfBlurPass = 1 });   // halo justo: o pós-efeito passa por cima de tudo
 
@@ -141,10 +149,14 @@ namespace NovoFtool
             {
                 AlbedoColor = new Color4(1, 1, 1, 1), MetallicFactor = metal, RoughnessFactor = rugo, ReflectanceFactor = refl,
                 VertexColorBlendingFactor = 1f, RenderShadowMap = true, AmbientOcclusionFactor = 1f, RenderEnvironmentMap = ceu,
+                EmissiveColor = new Color4(0.075f, 0.08f, 0.09f, 1),   // piso de legibilidade: sem luz/SSAO/ambiente as pecas ainda aparecem
             };
             var (metal, rugo) = Aco == Acabamento.Primer ? (0.0f, 0.78f) : Aco == Acabamento.Pintado ? (0.08f, 0.5f) : (0.3f, 0.5f);   // galvanizado: metálico com o céu
             // opaco: a passagem transparente do Helix ignora a profundidade das peças (grade aparecia por cima de tudo)
-            mChao = new MeshGeometryModel3D { Material = Pbr(0f, 0.95f, 0.25f), IsThrowingShadow = false, CullMode = SharpDX.Direct3D11.CullMode.None };
+            // chao e decal: so emissivo + alfa por vertice (E1 fix; ver Chao). Transparentes: desenham depois das pecas, com teste de profundidade.
+            mChao = new MeshGeometryModel3D { Material = new PhongMaterial { DiffuseColor = new Color4(0, 0, 0, 1), AmbientColor = new Color4(0, 0, 0, 1), SpecularColor = new Color4(0, 0, 0, 1), EmissiveColor = MalhaDx.Cor(TemaPlant.CorChao3D), VertexColorBlendingFactor = 1f }, IsTransparent = true, IsThrowingShadow = false, CullMode = SharpDX.Direct3D11.CullMode.None };
+            mDecal = new MeshGeometryModel3D { Material = new PhongMaterial { DiffuseColor = new Color4(0, 0, 0, 1), AmbientColor = new Color4(0, 0, 0, 1), SpecularColor = new Color4(0, 0, 0, 1), EmissiveColor = new Color4(0, 0, 0, 1), VertexColorBlendingFactor = 1f }, IsTransparent = true, IsThrowingShadow = false, CullMode = SharpDX.Direct3D11.CullMode.None };
+            lGrade = new LineGeometryModel3D { Color = System.Windows.Media.Colors.White, Thickness = 0.8, Smoothness = 0.4, IsThrowingShadow = false, Visibility = Visibility.Collapsed };
             mConcreto = new MeshGeometryModel3D { Material = Pbr(0f, 0.9f, 0.35f), IsThrowingShadow = true };
             mAco = new MeshGeometryModel3D { Material = Pbr(metal, rugo, 0.5f, true), IsThrowingShadow = true };
             mSel = new MeshGeometryModel3D { Material = Pbr(metal, rugo, 0.5f, true), IsThrowingShadow = true, PostEffects = "selecao" };
@@ -159,8 +171,8 @@ namespace NovoFtool
             mCargas = new MeshGeometryModel3D { Material = new PhongMaterial { DiffuseColor = new Color4(0, 0, 0, 1), EmissiveColor = MalhaDx.Cor(TemaPlant.CorCarga) }, IsThrowingShadow = false, IsHitTestVisible = false, CullMode = SharpDX.Direct3D11.CullMode.None };
             mNos = new MeshGeometryModel3D { Material = new PhongMaterial { DiffuseColor = new Color4(0, 0, 0, 1), EmissiveColor = MalhaDx.Cor(TemaPlant.CorBarraSel) }, IsThrowingShadow = false, IsHitTestVisible = false, CullMode = SharpDX.Direct3D11.CullMode.None };
             lArestas = new LineGeometryModel3D { Color = TemaPlant.CorArestaDx3D, Thickness = 0.9, Smoothness = 0.6, DepthBias = -4, IsThrowingShadow = false };
-            foreach (var m in new Element3D[] { mChao, mConcreto, mAco, mSel, mParafusos, mSoldas, mProp, mPropDet, mCargas, mNos, lArestas }) Vista.Items.Add(m);
-            mChao.IsHitTestVisible = lArestas.IsHitTestVisible = false;   // picking (Acertar) mais barato: o chão e as arestas não contam
+            foreach (var m in new Element3D[] { mChao, mDecal, lGrade, mConcreto, mAco, mSel, mParafusos, mSoldas, mProp, mPropDet, mCargas, mNos, lArestas }) Vista.Items.Add(m);
+            mChao.IsHitTestVisible = mDecal.IsHitTestVisible = lGrade.IsHitTestVisible = lArestas.IsHitTestVisible = false;   // picking (Acertar) mais barato: o chão e as arestas não contam
         }
 
         // Mapa de ambiente procedural: cubo DDS BGRA8 n×n com mips (o PBR lê o mip pela rugosidade). Mundo com Z para cima:
@@ -213,6 +225,7 @@ namespace NovoFtool
         }
 
         // Um aviso só (o Helix pode repetir a exceção a cada quadro); quem recebe chama Descartar.
+        static void Registrar(string t) { try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "estructto-render.log"), DateTime.Now.ToString("s") + " " + t + "\r\n"); } catch { } }
         void ErroRender(object s, EventArgs e) { Vista.RenderExceptionOccurred -= ErroRender; disponivel = false; Falhou?.Invoke(); }
 
         // Depois de Falhou: tira o viewport da árvore e libera o dispositivo D3D (EffectsManager).
@@ -256,7 +269,11 @@ namespace NovoFtool
         // TemaPlant são as cores-alvo na tela, então o albedo entra dividido por isso.
         // Chão (horizontal, recebe as 3 luzes): 0,42. Peças (faces verticais recebem menos luz e o SSAO escurece as quinas): 0,6.
         const float Expo = 0.42f, ExpoPecas = 0.6f;
-        static Color4 Cor(Color c, float expo = ExpoPecas) { var k = MalhaDx.Cor(c); return new Color4(k.Red * expo, k.Green * expo, k.Blue * expo, 1); }
+        static Color4 Cor(Color c, float expo = ExpoPecas)
+        {
+            var k = MalhaDx.Cor(c);
+            if (expo == ExpoPecas) { float l = (k.Red + k.Green + k.Blue) / 3, m = 0.28f; if (l < m && l > 0) { float f = m / l; k = new Color4(Math.Min(1, k.Red * f), Math.Min(1, k.Green * f), Math.Min(1, k.Blue * f), 1); } }   // peças nunca somem no fundo (aço muito escuro)
+            return new Color4(k.Red * expo, k.Green * expo, k.Blue * expo, 1); }
         static Color CorAco => Aco == Acabamento.Primer ? TemaPlant.CorPrimer3D : Aco == Acabamento.Pintado ? TemaPlant.CorAcoPintado3D : TemaPlant.CorAco3D;
         public static Color CorBase(bool concreto) => concreto ? TemaPlant.CorConcreto3D : CorAco;
 
@@ -269,10 +286,11 @@ namespace NovoFtool
             var g = Construir(c, Coleta);
             Propostas = g.Propostas; nLig = g.NLig; largSecao = g.LargSecao;
             MalhaDx mallAco = g.Aco, mallConc = g.Conc, mallSel = g.Sel, arestas = g.Arestas, mallParaf = g.Paraf, mallSolda = g.Solda, mallProp = g.Prop, mallPropDet = g.PropDet;
-            var mallChao = new MalhaDx(); Chao(c, mallChao);
+            var mallChao = new MalhaDx(); var mallDecal = new MalhaDx(); var gP = new List<Vector3>(); var gC = new List<Color4>(); Chao(c, mallChao, mallDecal, gP, gC);
 
             faixas.Clear(); pickParaf = g.Parafs;
-            Aplicar(mAco, mallAco); Aplicar(mConcreto, mallConc); Aplicar(mSel, mallSel); Aplicar(mParafusos, mallParaf); Aplicar(mSoldas, mallSolda); Aplicar(mChao, mallChao); Aplicar(mProp, mallProp); Aplicar(mPropDet, mallPropDet);
+            Aplicar(mAco, mallAco); Aplicar(mConcreto, mallConc); Aplicar(mSel, mallSel); Aplicar(mParafusos, mallParaf); Aplicar(mSoldas, mallSolda); Aplicar(mChao, mallChao); Aplicar(mDecal, mallDecal);
+            if (gP.Count > 0) { lGrade.Geometry = new HxLine { Positions = new Vector3Collection(gP), Colors = new Color4Collection(gC), Indices = new IntCollection(Enumerable.Range(0, gP.Count)) }; lGrade.Visibility = Visibility.Visible; } else { lGrade.Geometry = null; lGrade.Visibility = Visibility.Collapsed; } Aplicar(mProp, mallProp); Aplicar(mPropDet, mallPropDet);
             var mallCargas = new MalhaDx();
             if (c.Cargas != null)
             {
@@ -635,15 +653,16 @@ namespace NovoFtool
             return new Perfil3D { Forma = "L", H = b / 1000, B = b / 1000, Tw = t / 1000, Tf = t / 1000 };
         }
 
-        // Chão: disco com degradê radial (cor do chão → cor do canvas, some no fundo) e grade de linhas que esmaece junto.
-        void Chao(Cena3D c, MalhaDx m)
+        // Chão independente de iluminação (E1 fix): material só emissivo (nenhuma luz, SSAO ou sombra entra na cor) e o desvanecimento é
+        // alfa radial até 0 no aro: o que sobra é o próprio canvas. Mesmo que a luz/SSAO falhe no dispositivo, nunca aparece um disco escuro.
+        // Sombra de contato = decal preto com alfa (sob o modelo e sob cada apoio), malha à parte; grade = linhas (sem luz) com o mesmo alfa.
+        void Chao(Cena3D c, MalhaDx m, MalhaDx decal, List<Vector3> gradeP, List<Color4> gradeC)
         {
             Rect3D cx = c.Caixa; double raio = c.Raio, z = c.Z0;
-            double xm = cx.X + cx.SizeX / 2, ym = cx.Y + cx.SizeY / 2, R = Math.Max(cx.SizeX, cx.SizeY) / 2 + raio * 0.9;   // V2: só modelo + margem (o ShadowMap3D cobre a cena inteira, chão incluso)
-            Color cc = TemaPlant.CorChao3D, cf = TemaPlant.BgCanvas, cg = TemaPlant.CorGrade3D;   // a borda chega à cor do canvas (Expo) e some
-            Color cfA = cf;
-            Color4 CorR(double r, Color centro) { double t = Suave((r / R - 0.2) / 0.8); return Cor(Mistura(centro, cfA, t), Expo); }
-            const int seg = 72; double[] aneis = { 0.3, 0.55, 0.75, 0.9, 1.0, 1.5 };   // o último anel já é a cor do canvas: a borda fica fora da tela
+            double xm = cx.X + cx.SizeX / 2, ym = cx.Y + cx.SizeY / 2, R = Math.Min(400, Math.Max(5, Math.Max(cx.SizeX, cx.SizeY) / 2 + raio * 0.9));
+            const float aChao = 0.95f;
+            Color4 Branco(double r) { double t = 1 - Suave((r / R - 0.25) / 0.75); return new Color4(0, 0, 0, (float)(aChao * t)); }   // a cor vem do EmissiveColor do material
+            const int seg = 72; double[] aneis = { 0.25, 0.45, 0.65, 0.8, 0.9, 1.0 };
             var ant = Enumerable.Repeat(new Point3D(xm, ym, z), seg + 1).ToArray(); double rAnt = 0;
             foreach (double fr in aneis)
             {
@@ -651,23 +670,44 @@ namespace NovoFtool
                 for (int k = 0; k <= seg; k++) { double t = 2 * Math.PI * k / seg; cur[k] = new Point3D(xm + r * Math.Cos(t), ym + r * Math.Sin(t), z); }
                 for (int k = 0; k < seg; k++)
                 {
-                    if (rAnt == 0) Tri(m, cur[k + 1], ant[k], cur[k], CorR(r, cc), CorR(0, cc), CorR(r, cc));
-                    else Quad(m, ant[k], cur[k], cur[k + 1], ant[k + 1], CorR(rAnt, cc), CorR(r, cc), CorR(r, cc), CorR(rAnt, cc));
+                    if (rAnt == 0) Tri(m, cur[k + 1], ant[k], cur[k], Branco(r), Branco(0), Branco(r));
+                    else Quad(m, ant[k], cur[k], cur[k + 1], ant[k + 1], Branco(rAnt), Branco(r), Branco(r), Branco(rAnt));
                 }
                 ant = cur; rAnt = r;
             }
-            // grade: passo igual ao do analítico, linhas finas um fio acima do chão, cor que some com o raio
+            // decal de sombra: preto com alfa, 3 anéis; um sob a projeção do modelo em planta e um por apoio
+            double zd = z + raio * 0.0004;
+            void Mancha(double mx, double my, double rx, double ry, float a0)
+            {
+                var a = Enumerable.Repeat(new Point3D(mx, my, zd), 25).ToArray(); double fa = 0;
+                foreach (double f in new[] { 0.4, 0.7, 1.0 })
+                {
+                    var b = new Point3D[25];
+                    for (int k = 0; k <= 24; k++) { double t = 2 * Math.PI * k / 24; b[k] = new Point3D(mx + rx * f * Math.Cos(t), my + ry * f * Math.Sin(t), zd); }
+                    Color4 Cd(double ff) => new Color4(0, 0, 0, (float)(a0 * (1 - Suave(ff))));
+                    for (int k = 0; k < 24; k++)
+                    {
+                        if (fa == 0) Tri(decal, b[k + 1], a[k], b[k], Cd(f), Cd(0), Cd(f));
+                        else Quad(decal, a[k], b[k], b[k + 1], a[k + 1], Cd(fa), Cd(f), Cd(f), Cd(fa));
+                    }
+                    a = b; fa = f;
+                }
+            }
+            Mancha(xm, ym, cx.SizeX / 2 + raio * 0.12 + 0.3, cx.SizeY / 2 + raio * 0.12 + 0.3, 0.22f);
+            if (c.Mod != null && c.Apoio != null)
+                foreach (No3D n in c.Mod.Nos) { double s = c.Apoio(n); if (s > 0) Mancha(n.X, n.Y, s * 2.6, s * 2.6, 0.45f); }
+            // grade: linhas, passo igual ao do analítico, alfa some com o raio
             double passo = Math.Pow(10, Math.Floor(Math.Log10(Math.Max(1e-6, raio / 2)))); if (raio / passo > 12) passo *= 2.5; if (raio / passo > 12) passo *= 2;
             double g0x = Math.Floor((xm - R) / passo) * passo, g1x = Math.Ceiling((xm + R) / passo) * passo, g0y = Math.Floor((ym - R) / passo) * passo, g1y = Math.Ceiling((ym + R) / passo) * passo;
-            double w = raio * 0.0012, zg = z + raio * 0.0006;
-            Color4 CorG(double x, double y) { double r = Math.Sqrt((x - xm) * (x - xm) + (y - ym) * (y - ym)); double t = Suave((r / R - 0.05) / 0.7); return Cor(Mistura(cg, Mistura(cc, cfA, Suave((r / R - 0.2) / 0.8)), t), Expo); }
-            bool Dentro(double x, double y) => (x - xm) * (x - xm) + (y - ym) * (y - ym) <= R * R * 0.8;
-            for (double x = g0x; x <= g1x + 1e-9; x += passo)
-                for (double y = g0y; y < g1y - 1e-9; y += passo)
-                    if (Dentro(x, y) || Dentro(x, y + passo)) Quad(m, new Point3D(x - w, y, zg), new Point3D(x + w, y, zg), new Point3D(x + w, y + passo, zg), new Point3D(x - w, y + passo, zg), CorG(x, y), CorG(x, y), CorG(x, y + passo), CorG(x, y + passo));
-            for (double y = g0y; y <= g1y + 1e-9; y += passo)
-                for (double x = g0x; x < g1x - 1e-9; x += passo)
-                    if (Dentro(x, y) || Dentro(x + passo, y)) Quad(m, new Point3D(x, y - w, zg), new Point3D(x + passo, y - w, zg), new Point3D(x + passo, y + w, zg), new Point3D(x, y + w, zg), CorG(x, y), CorG(x + passo, y), CorG(x + passo, y), CorG(x, y));
+            double zg = z + raio * 0.0008; Color cg = TemaPlant.CorGrade3D;
+            Color4 CorG(double x, double y) { double r = Math.Sqrt((x - xm) * (x - xm) + (y - ym) * (y - ym)); return new Color4(cg.R / 255f, cg.G / 255f, cg.B / 255f, (float)(1 - Suave((r / R - 0.1) / 0.7))); }
+            void Seg(double x0, double y0, double x1, double y1)
+            {
+                if ((x0 - xm) * (x0 - xm) + (y0 - ym) * (y0 - ym) > R * R * 0.8 && (x1 - xm) * (x1 - xm) + (y1 - ym) * (y1 - ym) > R * R * 0.8) return;
+                gradeP.Add(new Vector3((float)x0, (float)y0, (float)zg)); gradeP.Add(new Vector3((float)x1, (float)y1, (float)zg)); gradeC.Add(CorG(x0, y0)); gradeC.Add(CorG(x1, y1));
+            }
+            for (double x = g0x; x <= g1x + 1e-9; x += passo) for (double y = g0y; y < g1y - 1e-9; y += passo / 2) Seg(x, y, x, y + passo / 2);
+            for (double y = g0y; y <= g1y + 1e-9; y += passo) for (double x = g0x; x < g1x - 1e-9; x += passo / 2) Seg(x, y, x + passo / 2, y);
         }
 
         static void Tri(MalhaDx m, Point3D a, Point3D b, Point3D c, Color4 ca, Color4 cb, Color4 cc)
