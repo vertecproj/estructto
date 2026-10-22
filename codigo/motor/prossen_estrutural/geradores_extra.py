@@ -224,6 +224,7 @@ def _aplicar(modelo, obra, novas, novos):
         modelo.add(CasoCarga("G1", "G"))
     if "Q1" not in modelo.casos:
         modelo.add(CasoCarga("Q1", "Q"))
+    modelo.liberar_pp_vazio()
     if modelo.peso_proprio is None:
         modelo.peso_proprio = "G1"
     if not obra.barras:

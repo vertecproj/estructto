@@ -11,6 +11,8 @@ namespace NovoFtool
         static void CapturarV06(MainWindow w)
         {
             // B1: desenho da seção por forma (JSON reais do motor em amostras/perfis-formas.json)
+            if (Environment.GetEnvironmentVariable("ESTRUCTTO_SEMFORMAS") != "1")   // atalho para reconferir só as 47)
+            {
             var formas = Amostras.Ler("perfis-formas").AsArray().ToList();
             var jf = new JanelaCatalogo(Amostras.Ler("catalogo"), n => System.Threading.Tasks.Task.FromResult(formas.FirstOrDefault(x => (string)x["nome"] == n)));
             PrepararDialogoForaDaTela(jf); jf.Show(); EsperarIdle();
@@ -20,6 +22,7 @@ namespace NovoFtool
                 RenderizarJanela(jf, (int)jf.Width, (int)jf.Height, "46-catalogo-forma-" + (string)f["secao"]["props"]["tipo"] + "-" + (string)f["familia"] + ".png");
             }
             jf.Close();
+            }
 
             // B6: uma captura por aba nova da faixa (Estrutura = a antiga Modelo)
             foreach (var (aba, nome) in new[] { (w.abaModelo, "estrutura"), (w.abaDesenhar, "desenhar"), (w.abaEditar, "editar"), (w.abaApoios, "apoios") })

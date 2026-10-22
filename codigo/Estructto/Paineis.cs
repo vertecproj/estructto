@@ -380,7 +380,7 @@ namespace NovoFtool
             if (Esp != null) { MostrarAvisos(AvisosEspaciais()); return; }
             var lista = new List<(string, string, List<object>)>();   // nivel, texto, itens
             if (M.Barras.Count > 0 && !M.Nos.Any(n => n.TemApoio))
-                lista.Add(("erro", "Nenhum apoio. Selecione os nós da base e use Modelo › Engaste/Fixo/Móvel.", new List<object>()));
+                lista.Add(("erro", "Nenhum apoio. Selecione os nós da base e use Apoios › Engaste/Articulado/Móvel.", new List<object>()));
             foreach (Barra b in M.Barras)
             {
                 if (Biblioteca.AcharSecao(b.Secao) == null) lista.Add(("erro", "Barra " + b.Id + ": seção \"" + b.Secao + "\" não reconhecida.", new List<object> { b }));

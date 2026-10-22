@@ -77,7 +77,7 @@ namespace NovoFtool
             // recuperação só depois da janela aparecer: diálogo antes do primeiro quadro deixava a janela principal invisível
             ContentRendered += (s, e) => { if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste-"))) Dispatcher.BeginInvoke(new Action(OferecerRecuperacao), System.Windows.Threading.DispatcherPriority.ApplicationIdle); };   // execução automática: sem diálogo modal (travava o --teste-motor quando havia cópia de recuperação)
             ContentRendered += (s, e) => { if (!Capturas.Ativo && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--teste"))) Dispatcher.BeginInvoke(new Action(IniciarChecagemAtualizacao), System.Windows.Threading.DispatcherPriority.ApplicationIdle); };   // AtualizadorUi.cs: em segundo plano, falha silenciosa
-            Log("Bem-vindo. Escolha uma ferramenta na faixa, use Modelo › Gerar estrutura ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
+            Log("Bem-vindo. Escolha uma ferramenta na faixa, use Estrutura › Gerar 3D ou digite um comando (AJUDA lista todos). F1 = atalhos.", false);
 
             string[] args = Environment.GetCommandLineArgs();
             Loaded += (s, e) => AplicarModoEspacial();   // só existe vista 3D (docs/MODELO-ESPACIAL.md)

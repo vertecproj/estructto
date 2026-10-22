@@ -1,4 +1,4 @@
-// Host da Vista3D na janela principal: alternância, estilo visual (SeletorEstilo.cs) e Modelo › Desenhar 3D (docs/MODELO-ESPACIAL.md).
+// Host da Vista3D na janela principal: alternância, estilo visual (SeletorEstilo.cs) e Desenhar (docs/MODELO-ESPACIAL.md).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -74,7 +74,7 @@ namespace NovoFtool
             vista3D.Carregar(Modelo3D.De(M, Vista.Resolvido ? Vista.Verificar : null), enquadrar);
         }
 
-        // ================= desenhar no modelo espacial (Modelo › Desenhar 3D) =================
+        // ================= desenhar no modelo espacial (Desenhar) =================
 
         F.RibbonGroupBox grpDesenho3D, grpConfig3D;
         readonly Dictionary<Ferramenta3D, F.ToggleButton> btnFerr3D = new Dictionary<Ferramenta3D, F.ToggleButton>();
@@ -187,7 +187,7 @@ namespace NovoFtool
                 foreach (var kv in Esp?.Json["materiais"] as JsonObject ?? new JsonObject()) cbMaterial3D.Items.Add(kv.Key);
                 cbMaterial3D.SelectedItem = material3D;
             };
-            cbMaterial3D.SelectionChanged += (s, e) => { if (cbMaterial3D.SelectedItem is string v) material3D = v; };
+            cbMaterial3D.SelectionChanged += (s, e) => { if (!montandoSecao3D && cbMaterial3D.SelectedItem is string v) material3D = v; };
             var tbGiro = new F.TextBox { Header = "Giro (°)", Text = "0", Width = 150, ToolTip = Dica("Giro da seção", "Rotação do perfil em torno do próprio eixo nas próximas barras (Angle do Plant 3D). Ctrl+R no desenho soma 90°.") };
             void LerGiro() { if (Num.Ler(tbGiro.Text, out double g)) giro3D = g; tbGiro.Text = Num.Fmt(giro3D, 1); }
             tbGiro.LostFocus += (s, e) => LerGiro(); tbGiro.KeyDown += (s, e) => { if (e.Key == Key.Enter) LerGiro(); };
@@ -217,6 +217,15 @@ namespace NovoFtool
             var d = Esp;
             string atual = d == null ? null : SecaoDesenho3D(d);
             ddSecao3D.Header = atual == null ? "Seção" : "Seção: " + atual;
+            if (cbMaterial3D != null)   // mostra o material que vale agora: o escolhido ou o da última barra
+            {
+                montandoSecao3D = true;
+                cbMaterial3D.Items.Clear();
+                foreach (var kv in d?.Json["materiais"] as JsonObject ?? new JsonObject()) cbMaterial3D.Items.Add(kv.Key);
+                string mat = d == null ? null : MaterialDesenho3D(d) ?? (string)(d.Json["barras"] as JsonObject)?.LastOrDefault().Value?["material"];
+                cbMaterial3D.SelectedItem = mat != null && cbMaterial3D.Items.Contains(mat) ? mat : null;
+                montandoSecao3D = false;
+            }
         }
 
         async Task EscolherDoCatalogo3D()

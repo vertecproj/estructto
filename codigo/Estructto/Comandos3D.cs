@@ -185,7 +185,7 @@ namespace NovoFtool
                 case Key.F3: AlternarSnap("osnap"); return true;
                 case Key.F4: vista3D?.Enquadrar(); return true;   // ponytail: F4 = 3D OSNAP no AutoCAD; aqui enquadrar até haver snap em faces
                 case Key.F5: Calcular(); return true;
-                case Key.F6: Log("F6 (UCS dinâmico) ainda não existe: use PgUp/PgDn ou Modelo › Planos para trocar o plano de trabalho."); return true;
+                case Key.F6: Log("F6 (UCS dinâmico) ainda não existe: use PgUp/PgDn ou Estrutura › Planos para trocar o plano de trabalho."); return true;
                 case Key.F7: AlternarStatus(stGrade, v => V3(x => x.MostrarGradePlano = v), "Grade do plano"); return true;
                 case Key.F8: AlternarSnap("orto"); return true;
                 case Key.F9: AlternarStatus(stAtrair, v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; }), "Snap na grade"); return true;
@@ -559,7 +559,7 @@ namespace NovoFtool
                 return true;
             }));
 
-        // Modelo › Configurações nas barras escolhidas: seção, material, giro e cardinal de uma vez (um Ctrl+Z).
+        // Desenhar › Configurações nas barras escolhidas: seção, material, giro e cardinal de uma vez (um Ctrl+Z).
         void CmdAplicarConfig() => ComEscolha("APLICAR CONFIGURAÇÕES", "barra", (nn, bs) =>
         {
             var d0 = Esp; string sec = SecaoDesenho3D(d0), mat = MaterialDesenho3D(d0); double g = giro3D; int c = cardinal3D;

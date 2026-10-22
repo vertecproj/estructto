@@ -2,7 +2,7 @@
 
 ## Grade e níveis
 
-Em **Modelo › Planos**, ative um **Nível** para desenhar na sua cota ou uma **Elevação X/Y** para trabalhar num plano vertical. **3D completo** remove o isolamento e volta à isométrica. As peças fora do plano isolado ficam em fantasma e não participam da seleção nem do snap.
+Em **Estrutura › Planos**, ative um **Nível** para desenhar na sua cota ou uma **Elevação X/Y** para trabalhar num plano vertical. **3D completo** remove o isolamento e volta à isométrica. As peças fora do plano isolado ficam em fantasma e não participam da seleção nem do snap.
 
 **PgUp/PgDn** troca o nível do plano de trabalho. No painel **Níveis**, crie, renomeie, altere cotas ou detecte níveis pela geometria. **Copiar pavimento para cima** replica o andar e suas cargas; confira altura e quantidade. Os apoios não são copiados. **Gerar pilares entre níveis** cria pilares sob os nós do nível escolhido, quando ainda não há barra.
 
@@ -10,7 +10,7 @@ Execute **GRADE** (`GR`) para editar a grade. Informe posições em metros como 
 
 ## Desenhar barras e pilares
 
-1. Ative o nível ou plano correto. Em **Modelo › Configurações**, escolha seção, material, giro e ponto cardinal das próximas barras.
+1. Ative o nível ou plano correto. Em **Desenhar › Configurações**, escolha seção, material, giro e ponto cardinal das próximas barras.
 2. Execute **BARRA** (`L`). Clique o primeiro ponto da grade ou um nó existente e os destinos sucessivos. Use snap ou coordenadas para dar precisão.
 3. Enter ou botão direito termina a cadeia; Esc cancela em etapas. Orbite com **Shift+arrastar** sem sair do comando.
 
@@ -60,7 +60,7 @@ As medidas são consultas, sem cotas permanentes. Peso considera aço com 7850 k
 
 Clique para selecionar; arraste da esquerda para a direita para conter objetos e da direita para a esquerda para cruzá-los. Shift soma e Ctrl retira. A árvore e as tabelas também selecionam na vista.
 
-Em **Modelo › Modificar**, use as operações abaixo. **Confira a indicação de seleção:** nos painéis de edição, sem itens selecionados a operação pode atingir o modelo inteiro.
+Em **Editar**, use as operações abaixo. **Confira a indicação de seleção:** nos painéis de edição, sem itens selecionados a operação pode atingir o modelo inteiro.
 
 | Operação | Como usar |
 |---|---|
@@ -84,7 +84,7 @@ Sem seleção, Propriedades oferece Novo nó, casos e ações e carga em área. 
 
 ## Treliças, contraventamentos, terças e tirantes
 
-Abra **Modelo › Gerar › Treliças e contraventamentos** ou procure a ferramenta em Ctrl+K.
+Abra **Estrutura › Gerar › Treliças e contraventamentos** ou procure a ferramenta em Ctrl+K.
 
 1. Escolha Treliça plana, Tesouras em série, Contraventamento ou Terças e tirantes.
 2. Defina geometria, perfis, material, rótulas e apoios. **Usar seleção** toma dois nós para apoiar uma treliça, duas barras ou quatro nós para um painel de contraventamento e as vigas/tesouras para terças.

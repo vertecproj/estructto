@@ -157,7 +157,7 @@ namespace NovoFtool
             Vista.Resolvido = false;
             erroCalculo = "";
             Aviso.Visibility = Visibility.Collapsed;
-            if (M.Barras.Count == 0) { StatusMsg.Text = "Modelo vazio: desenhe barras (B) ou use Modelo › Gerar estrutura."; AtualizarLegenda(); Vista.InvalidateVisual(); return; }
+            if (M.Barras.Count == 0) { StatusMsg.Text = "Nada para calcular: o modelo ainda não tem barras."; AtualizarLegenda(); Vista.InvalidateVisual(); return; }
             // cada caso de carga e resolvido separadamente; combinacoes e envoltorias saem por superposicao
             resCasos = M.Nos.Any(n => n.TemApoio) ? Analise.ResolverCasos(M) : new ResultadosCasos { Erro = "Sem apoios: selecione um nó e aplique um apoio (aba Modelo)." };
             if (!string.IsNullOrEmpty(resCasos.Erro))

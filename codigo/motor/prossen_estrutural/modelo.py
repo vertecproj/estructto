@@ -191,6 +191,12 @@ class Modelo:
     def _tem_ligacoes(self):
         return isinstance(self.ligacoes, dict) and bool(self.ligacoes.get("grupos"))
 
+    def liberar_pp_vazio(self):
+        """Geradores: o caso PP automático (sem cargas) cede o lugar ao G1, que leva o peso próprio como sempre."""
+        if self.peso_proprio == "PP" and not any(c.caso == "PP" for l in (self.cargas_nodais, self.cargas_distribuidas, self.cargas_pontuais) for c in l):
+            self.casos.pop("PP", None)
+            self.peso_proprio = None
+
     def ligar_peso_proprio(self):
         """Peso próprio ligado por padrão (v0.6): cria o caso permanente 'PP' e aponta `peso_proprio` para ele."""
         if self.peso_proprio is None:

@@ -729,7 +729,7 @@ namespace NovoFtool
         internal void AbrirGerenciadorLigacoes()
         {
             var d = Esp;
-            if (d == null) { MostrarToast("Gerenciar ligações: abra ou gere um modelo 3D (espacial) primeiro — Modelo › Gerar 3D ou Arquivo › Exemplos 3D.", true); return; }
+            if (d == null) { MostrarToast("Gerenciar ligações: abra ou gere um modelo 3D (espacial) primeiro — Estrutura › Gerar 3D ou Arquivo › Exemplos 3D.", true); return; }
             if (janLig != null && janLig.IsVisible) { janLig.Activate(); return; }
             janLig = NovoGerenciadorLigacoes(d);
             janLig.Show();
