@@ -147,7 +147,8 @@ namespace NovoFtool
                 }
                 default: Poe(bas, -1, 1, -d, 0); Poe(bas, 1, 1, d, 0); break;                      // I (costas) e lado_a_lado
             }
-            f.H = H; f.B = B; f.Tw = tw; f.Tf = tf; f.Forma = "DUPLA";
+            // caixão: faces externas = almas, como um tubo (as ligações encostam as chapas por fora: Render3DLigacoes)
+            f.H = H; f.B = B; f.Tw = tw; f.Tf = tf; f.Forma = p.Arranjo == "caixao" ? "TR" : "DUPLA";
         }
 
         // Ponto cardinal (docs/MODELO-ESPACIAL.md, Plant 3D): 1..9 como o teclado numérico olhando a seção com v para cima

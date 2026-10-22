@@ -935,7 +935,8 @@ namespace NovoFtool
                     linha("Combinação", leitura((string)v0["combinacao"] ?? "—"));
                 }
                 else if (d.Calculado) { secao("Verificação"); sp.Children.Add(leitura("Barra não verificada pelo motor.")); }
-                botoes(("Apagar barra", () => _ = Espacial(dd => dd.Remover("barra", id), "Barra " + id + " apagada (com as cargas dela).")));
+                botoes(("Disposição do perfil…", () => AbrirDisposicao(new List<string> { id })),
+                       ("Apagar barra", () => _ = Espacial(dd => dd.Remover("barra", id), "Barra " + id + " apagada (com as cargas dela).")));
                 PainelCargasBarra(sp, d, id, casoCargas);   // CargasEspacial.cs: distribuídas (trapezoidais) e pontuais
             }
             painelEsp.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = TemaPlant.BSup1 };

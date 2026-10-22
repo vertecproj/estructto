@@ -55,6 +55,7 @@ namespace NovoFtool
             C("MATERIAL", "Material nas barras (Enter = o das Configurações)", w => CmdMaterial(Arg(w)), "MAT"),
             C("GIRO", "Giro da seção (°) nas barras (Enter = o das Configurações)", w => CmdGiro(Arg(w))),
             C("CARDINAL", "Ponto cardinal (1..9, 10 centroide) nas barras", w => CmdCardinal(Arg(w)), "CARD"),
+            C("DISPOSICAO", "Disposição do perfil: giro, espelho e cardinal com desenho", w => CmdDisposicao(), "DISP"),
             C("APLICARCONFIG", "Seção, material, giro e cardinal das Configurações nas barras", w => CmdAplicarConfig(), "APLICAR"),
             C("CARGANO", "Carga nodal no caso ativo: Fx,Fy,Fz[,Mx,My,Mz] nos nós", w => CmdCargaNodal(Arg(w)), "CN", "CARGA", "CARGANODAL"),
             C("CARGADIST", "Carga distribuída (kN/m, global) nas barras; trapezoidal: q1/q2", w => CmdCargaDist(Arg(w)), "CD", "CARGADISTRIBUIDA"),
@@ -557,6 +558,22 @@ namespace NovoFtool
                 await Espacial(d => d.Aplicar(m => GeometriaEdicao.Cardinal(m, bs, c)), "Cardinal " + c + " em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + ").");
                 return true;
             }));
+
+        void CmdDisposicao() => ComEscolha("DISPOSIÇÃO DO PERFIL", "barra", (nn, bs) => AbrirDisposicao(bs));
+
+        // Janela Disposição do perfil (v0.6 D2): giro e cardinal da 1ª barra como ponto de partida, aplicados a todas (um Ctrl+Z).
+        internal void AbrirDisposicao(List<string> bs)
+        {
+            var d0 = Esp; if (d0 == null || bs.Count == 0) return;
+            var b0 = d0.Json["barras"]?[bs[0]];
+            if (b0 == null) return;
+            double g0 = (double)(b0["rot"] ?? 0.0) * 180 / Math.PI;
+            int c0 = b0["params"]?["cardinal"] is JsonValue cv && cv.TryGetValue(out int ci) ? ci : 5;
+            var j = new JanelaDisposicao(PerfilDaSecao((string)b0["secao"]), g0, c0, bs.Count) { Owner = this };
+            j.Aplicar += (g, c) => _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, bs, null, null, g, null), bs, c)),
+                                                "Disposição em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + "): giro " + Num.Fmt(g, 1) + "°, cardinal " + c + ".");
+            j.ShowDialog();
+        }
 
         // Modelo › Configurações nas barras escolhidas: seção, material, giro e cardinal de uma vez (um Ctrl+Z).
         void CmdAplicarConfig() => ComEscolha("APLICAR CONFIGURAÇÕES", "barra", (nn, bs) =>
