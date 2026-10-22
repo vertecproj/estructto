@@ -87,3 +87,11 @@ Todo resultado de `verificar` (19 tipos de `tipos_ligacao()` e `placa_base`) tra
 
 - O comprimento do cope é medido do plano de corte: `bf_apoio/2 − tw_apoio/2 − folga + cope_folga_comp`. O valor antigo, `bf/2 + folga`, contava duas vezes a distância do eixo do apoio até o plano.
 - O apoio da ponta no agrupamento é a barra de apoio que `_classificar_no` escolhe (contínua > pilar > viga suporte), guardada em `membro.apoio`. A barra mais alta do nó só vale quando não há essa indicação.
+
+## v0.6 Frente A (22/10/2026)
+
+- `topo_pilar(no, pilar, outros, chapa=0)`: pilar que **termina** no nó vai até o topo das barras que chegam. Prolongamento além do nó, no eixo do pilar, `= max(offset + meia extensão da seção)` das outras barras `+ chapa` (chapa de cabeça). Ponta com o plano além do nó, normal para cima (fora do material), `prolongamento`. Sem barra para cobrir: `None`.
+  No Realista/export (`Render3DGeometria.Juntas`): só modelo v5, pilar chegando de baixo, sem par contínuo, e **só com barras horizontais no nó** (viga inclinada do joelho tem chapa perpendicular a ela e bateria no pilar prolongado: fica como antes). Vale para viga na mesa, na alma e viga "contínua" (duas vigas colineares; o modelo analítico não distingue chapa de cabeça, as vigas seguem cortadas na face).
+- `ponta_sobre_placa(no, barra, esp, vertical)`: barra vertical ou inclinada sobre placa de base horizontal. Placa com a face de baixo no nível do nó, centrada na projeção da barra; a barra é cortada no plano da face de cima (`ponto = no + dir·esp/(dir·vertical)`, `normal = −vertical`). Barra deitada ou descendo (`dir·vertical < 0,2`): `ValueError`.
+  No Realista: `LigacoesAmostra.AssentarPlaca` refaz a placa da ligação (sobra e distância dos furos às bordas mantidas), chumbadores verticais, solda projetada no plano de cima, e põe a Ponta. A placa assentada não liga o modo v5.
+- Tubo redondo em tubo redondo maior ou igual: boca de peixe sempre (também sem v5) e a **proposta** de ligação naquela ponta sai (era o gusset solto no nó). Ligação projetada pelo usuário fica.

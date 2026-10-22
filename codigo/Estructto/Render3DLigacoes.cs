@@ -277,6 +277,42 @@ namespace NovoFtool
             return l;
         }
 
+        // v0.6 A2 (motor: pontas.ponta_sobre_placa): barra inclinada sobre a placa de base. g = vertical do mundo no referencial
+        // local (x ao longo da barra, saindo do nó). A placa fica horizontal (face de baixo no nível do nó), centrada na projeção
+        // da seção no plano de cima, com a mesma sobra e a mesma distância dos furos às bordas; chumbadores verticais; a barra é
+        // cortada no plano de cima (Ponta do motor). Barra vertical (ou deitada/descendo): nada muda.
+        public static void AssentarPlaca(Ligacao3D l, Vector3D g, Contorno f)
+        {
+            var ch = l.Chapas.FirstOrDefault(c => c.Nome == "placa de base");
+            g.Normalize();
+            if (ch == null || g.X > 0.9999 || g.X < 0.2 || ch.Contorno.Length < 3) return;
+            Vector3D xb = new Vector3D(1, 0, 0), a1 = xb - g * g.X; a1.Normalize(); Vector3D a2 = Vector3D.CrossProduct(g, a1);
+            double esp = ch.Espessura, ly = ch.Contorno.Max(p => p.X) - ch.Contorno.Min(p => p.X), lz = ch.Contorno.Max(p => p.Y) - ch.Contorno.Min(p => p.Y);
+            Vector3D cOld = ch.Origem + ch.U * ((ch.Contorno.Max(p => p.X) + ch.Contorno.Min(p => p.X)) / 2) + Vector3D.CrossProduct(ch.Normal, ch.U) * ((ch.Contorno.Max(p => p.Y) + ch.Contorno.Min(p => p.Y)) / 2);
+            Vector3D T = xb * (esp / g.X);   // eixo da barra no plano de cima
+            // pegada da seção (caixa) projetada ao longo da barra no plano de cima, em (a1, a2) a partir de T
+            var pts = (f.Lacos.Count > 0 ? f.Lacos[0] : new Point[0]).Select(p => new Vector3D(0, p.X * 1000, p.Y * 1000)).ToList();
+            if (pts.Count == 0) return;
+            var pg = pts.Select(c => { Vector3D q = c + xb * (Vector3D.DotProduct(T - c, g) / g.X) - T; return new Point(Vector3D.DotProduct(q, a1), Vector3D.DotProduct(q, a2)); }).ToList();
+            double sobra = Math.Max(0, Math.Min((ly - f.B * 1000) / 2, (lz - f.H * 1000) / 2));
+            double m1 = (pg.Max(p => p.X) + pg.Min(p => p.X)) / 2, m2 = (pg.Max(p => p.Y) + pg.Min(p => p.Y)) / 2;
+            double L1 = pg.Max(p => p.X) - pg.Min(p => p.X) + 2 * sobra, L2 = pg.Max(p => p.Y) - pg.Min(p => p.Y) + 2 * sobra;
+            Vector3D cb = T + a1 * m1 + a2 * m2 - g * esp;   // centro da face de baixo
+            ch.Origem = cb - a1 * (L1 / 2) - a2 * (L2 / 2); ch.Normal = g; ch.U = a1; ch.Contorno = Ret(0, 0, L1, L2);
+            // furos: mesma distância às bordas; a1 casa com o eixo local (y ou z) mais alinhado
+            bool a1y = Math.Abs(a1.Y) >= Math.Abs(a1.Z);
+            foreach (var pf in l.Parafusos)
+            {
+                Vector3D r = pf.Origem - cOld; double py = r.Y, pz = r.Z;
+                double q1 = a1y ? py : pz, h1 = a1y ? ly / 2 : lz / 2, q2 = a1y ? pz : py, h2 = a1y ? lz / 2 : ly / 2;
+                double n1 = Math.Sign(q1) * (L1 / 2 - (h1 - Math.Abs(q1))), n2 = Math.Sign(q2) * (L2 / 2 - (h2 - Math.Abs(q2)));
+                pf.Origem = cb + a1 * n1 + a2 * n2 + g * pf.Origem.X; pf.Eixo = g;   // Origem.X = −200: embutido abaixo da placa
+            }
+            foreach (var sd in l.Soldas) sd.Pontos = sd.Pontos?.Select(p => p + xb * (Vector3D.DotProduct(T - p, g) / g.X)).ToArray();
+            l.Recortes.RemoveAll(r => r.Tipo == "recuo" && r.Barra == "pilar");
+            l.Ponta = new Ligacao3D.PontaMotor { P = T / 1000, N = -g };
+        }
+
         // Placa de base do modelo 2D (Nucleo.cs: PlacaBase do nó + ResPlaca calculada).
         public static Ligacao3D DaPlaca2D(int no, Barra3D pilar, bool emI, Contorno fPilar, PlacaBase p, ResPlaca r)
         {

@@ -235,9 +235,20 @@ namespace NovoFtool
                         }
                     }
                     k.NaMesa = top.F.H * Math.Abs(Vector3D.DotProduct(q.D, top.U)) <= top.F.B * Math.Abs(Vector3D.DotProduct(q.D, top.V));
-                    if (v5 && k.Contra != null && Redondo(q.F) && Redondo(top.F) && q.F.H <= top.F.H + 1e-9) { k.P = q.No; k.N = q.D; k.Inclinada = false; Boca(k, q, top); }   // tubo em tubo: boca de peixe
+                    if (k.Contra != null && Redondo(q.F) && Redondo(top.F) && q.F.H <= top.F.H + 1e-9) { k.P = q.No; k.N = q.D; k.Inclinada = false; Boca(k, q, top); }   // tubo em tubo: boca de peixe (v0.6 A3: também sem v5)
                     else if (v5 && k.Contra != null && !k.Inclinada && (q.Rank == 1 || double.IsNaN(fixo))) k.Extra = Angulo(q, top, folga(q.B, q.EmI));   // barra oblíqua ao apoio (diagonal, água do telhado): nenhum canto entra nele
                     cortes[(q.B, q.EmI)] = k;
+                }
+                // v0.6 A1 (pontas.topo_pilar): pilar que TERMINA no nó, chegando de baixo, vai até o topo das barras que chegam
+                // (antes parava no eixo da viga e a viga ficava no ar). Só v5: sem pontas do motor fica a v0.4 (Review Focus 3).
+                // ponytail: só com barras horizontais no nó; viga inclinada (joelho do galpão) tem a chapa perpendicular a ela e bateria
+                // no pilar prolongado — fica como antes até o motor cortar a viga no plano vertical da face.
+                if (v5 && top.Rank == 3 && par == null && nTop == 1 && top.D.Z < 0 && ord.Count > 1 && !top.F.Concreto && !cortes.ContainsKey((top.B, top.EmI))
+                    && ord.All(q => q == top || Math.Abs(q.D.Z) < 0.02))
+                {
+                    Vector3D up = -top.D;
+                    double ext = ord.Where(q => q != top).Max(q => Vector3D.DotProduct(q.No - top.No, up) + q.F.H / 2 * Math.Abs(Vector3D.DotProduct(up, q.V)) + q.F.B / 2 * Math.Abs(Vector3D.DotProduct(up, q.U)));
+                    if (ext > 1e-6) cortes[(top.B, top.EmI)] = new Corte { P = top.No + up * ext, N = top.D, Recuo = -ext };
                 }
             }
             return cortes;
@@ -251,7 +262,7 @@ namespace NovoFtool
             return Math.Abs(a / 2);
         }
 
-        static bool Redondo(Contorno f) => !f.Concreto && f.Liso.Count > 0 && f.Liso[0];
+        public static bool Redondo(Contorno f) => !f.Concreto && f.Liso.Count > 0 && f.Liso[0];
 
         // Recorte "angulo": plano paralelo à face do apoio (no plano barra–apoio), afastado dela pela folga.
         static Corte Angulo(Ponta q, Ponta top, double folga)

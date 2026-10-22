@@ -159,5 +159,47 @@ class TestPontas(unittest.TestCase):
             pontas_do_no([0, 0, 3], ms, "viga_pilar_mesa")
 
 
+class TestV06Geo(unittest.TestCase):
+    """v0.6 Frente A: pilar que termina no nó (A1) e barra inclinada sobre a placa de base (A2)."""
+
+    def test_pilar_terminal_vai_ao_topo_da_viga(self):
+        from prossen_estrutural.aco.pontas import topo_pilar
+        pil = _m(1, [0, 0, -1], PILAR, X, ext="j")
+        vg = _m(2, X, VIGA, Z)
+        p = topo_pilar([0, 0, 3], pil, [vg])
+        e = VIGA["h"] / 2
+        self.assertAlmostEqual(p["prolongamento"], e)
+        self.assertEqual((p["barra"], p["extremo"]), (1, "j"))
+        for a, b in zip(p["plano"]["ponto"], [0, 0, 3 + e]):
+            self.assertAlmostEqual(a, b)
+        for a, b in zip(p["plano"]["normal"], [0, 0, 1]):
+            self.assertAlmostEqual(a, b)
+        # viga na alma (eixo y) e viga mais alta deslocada para cima: vale a mais alta; chapa de cabeça soma
+        v2 = _m(3, Y, PILAR, Z, desloc=[0, 0, 0.05])
+        p = topo_pilar([0, 0, 3], pil, [vg, v2], chapa=0.016)
+        self.assertAlmostEqual(p["prolongamento"], PILAR["h"] / 2 + 0.05 + 0.016)
+
+    def test_pilar_terminal_sem_viga_nao_prolonga(self):
+        from prossen_estrutural.aco.pontas import topo_pilar
+        pil = _m(1, [0, 0, -1], PILAR, X, ext="j")
+        self.assertIsNone(topo_pilar([0, 0, 3], pil, []))
+
+    def test_barra_inclinada_sobre_placa(self):
+        from prossen_estrutural.aco.pontas import ponta_sobre_placa
+        d = _unit3([1, 0, 1])   # 45°
+        p = ponta_sobre_placa([2, 0, 0], _m(5, d, PILAR, _unit3([-1, 0, 1])), 0.019)
+        for a, b in zip(p["plano"]["ponto"], [2 + 0.019, 0, 0.019]):   # eixo da barra no plano z = esp
+            self.assertAlmostEqual(a, b)
+        for a, b in zip(p["plano"]["normal"], [0, 0, -1]):
+            self.assertAlmostEqual(a, b)
+        for a, b in zip(p["placa"]["centro"], [2 + 0.019, 0, 0]):   # placa centrada na projeção, face de baixo no nó
+            self.assertAlmostEqual(a, b)
+        # pilar vertical: igual à regra antiga (ponta a esp do nó)
+        p = ponta_sobre_placa([0, 0, 0], _m(1, Z, PILAR, X), 0.019)
+        self.assertAlmostEqual(p["plano"]["ponto"][2], 0.019)
+        with self.assertRaises(ValueError):
+            ponta_sobre_placa([0, 0, 0], _m(1, X, PILAR, Z), 0.019)   # deitada: não assenta na placa
+
+
 if __name__ == "__main__":
     unittest.main()

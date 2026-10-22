@@ -207,6 +207,37 @@ def pontas_locais(tipo_no, barra=None, apoio=None, comprimento=math.inf, theta=N
     return pontas_do_no([0.0, 0.0, 0.0], [m, ap], tipo_no, params)
 
 
+def topo_pilar(no, pilar, outros, chapa=0.0):
+    """v0.6 A1: pilar que TERMINA no nó vai até o topo das barras que chegam (+ chapa de cabeça).
+
+    pilar: membro (dir saindo do nó para dentro do pilar). outros: membros das demais barras no nó.
+    Prolongamento além do nó, no eixo do pilar = max(offset + meia extensão da seção) das outras barras + chapa.
+    Devolve a Ponta (plano além do nó, normal para fora do material) ou None sem barra para cobrir."""
+    up = [-x for x in pilar["dir"]]
+    d0 = pilar.get("desloc", [0, 0, 0])
+    ext = max((_dot(_add(m.get("desloc", [0, 0, 0]), d0, -1), up) + _meia_largura(m, up) for m in outros), default=None)
+    if ext is None or ext <= 0:
+        return None
+    ext += chapa
+    return dict(barra=pilar["barra"], extremo=pilar["extremo"], plano=dict(ponto=_add(no, up, ext), normal=up),
+                folga=0.0, recortes=[], prolongamento=ext)
+
+
+def ponta_sobre_placa(no, barra, esp, vertical=(0.0, 0.0, 1.0)):
+    """v0.6 A2: barra (vertical ou inclinada) sobre a placa de base horizontal de espessura esp.
+
+    A placa fica com a face de baixo no nível do nó e centrada na projeção da barra; a barra é cortada no plano
+    da face de cima (corte em ângulo assentando na placa). ValueError se a barra não sobe da placa."""
+    up = _unit(list(vertical))
+    u = barra["dir"]
+    c = _dot(u, up)
+    if c < 0.2:
+        raise ValueError("barra deitada ou descendo: não assenta na placa de base")
+    topo = _add(no, u, esp / c)
+    return dict(barra=barra["barra"], extremo=barra["extremo"], plano=dict(ponto=topo, normal=[-x for x in up]),
+                folga=0.0, recortes=[], placa=dict(centro=_add(topo, up, -esp), normal=up))
+
+
 def largura_util(ponta, b):
     """Largura das mesas na ponta: b menos os copes laterais (esq/dir)."""
     return b - sum(c["altura"] for c in ponta["recortes"] if c["tipo"] == "cope" and c["face"] in ("esq", "dir"))

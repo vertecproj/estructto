@@ -252,6 +252,107 @@ namespace NovoFtool
     // Estructto.exe --testes-exportar <pasta>: exporta o guincho (2D) e o edifício do motor e confere relendo.
     public static class TestesExportar
     {
+        // v0.6 Frente A (docs/v3/PONTAS-CONTRATO.md, v0.6): modelos mínimos de cada caso, 0 pares de interferência e sem vão > 2 mm.
+        // Captura simples (WPF Viewport3D fora da tela) das peças da cena em volta de um ponto: antes/depois do relatório.
+        static void Png(string arq, List<Render3D.Peca3D> col, Point3D centro, double raio, Vector3D olhar)
+        {
+            var grp = new Model3DGroup(); grp.Children.Add(new AmbientLight(System.Windows.Media.Color.FromRgb(80, 80, 90)));
+            olhar.Normalize();
+            grp.Children.Add(new DirectionalLight(System.Windows.Media.Color.FromRgb(200, 200, 200), olhar + new Vector3D(0.3, 0, -0.6)));
+            grp.Children.Add(new DirectionalLight(System.Windows.Media.Color.FromRgb(90, 90, 90), new Vector3D(-olhar.X, -olhar.Y, -0.3)));
+            foreach (var pc in col)
+            {
+                var g = new MeshGeometry3D(); foreach (var q in pc.M.P) g.Positions.Add(new Point3D(q.X, q.Y, q.Z)); foreach (int i in pc.M.T) g.TriangleIndices.Add(i);
+                var c = pc.Tipo == "barra" ? System.Windows.Media.Color.FromRgb(150, 165, 180) : pc.Tipo == "parafuso" ? System.Windows.Media.Color.FromRgb(200, 170, 60) : System.Windows.Media.Color.FromRgb(90, 110, 140);
+                var mat = new System.Windows.Media.Media3D.DiffuseMaterial(new System.Windows.Media.SolidColorBrush(c));
+                grp.Children.Add(new GeometryModel3D(g, mat) { BackMaterial = mat });
+            }
+            var vp = new Viewport3D { Width = 640, Height = 480, Camera = new PerspectiveCamera(centro - olhar * raio * 5, olhar, new Vector3D(0, 0, 1), 45) };
+            vp.Children.Add(new ModelVisual3D { Content = grp });
+            var bd = new Border { Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(20, 24, 32)), Child = vp, Width = 640, Height = 480 };
+            bd.Measure(new Size(640, 480)); bd.Arrange(new Rect(0, 0, 640, 480)); bd.UpdateLayout();
+            var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(640, 480, 96, 96, System.Windows.Media.PixelFormats.Pbgra32); bmp.Render(bd);
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+            using var fs = File.Create(arq); enc.Save(fs);
+        }
+
+        static void V06Geo(Action<string, bool> Ok, string pasta)
+        {
+            string F(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+            Cena3D Cena(Modelo3D md, Func<string, Perfil3D> pf) => new Cena3D { Mod = md, Forma = s => GeometriaPerfis.CriarContorno(pf(s), 0.1), Cor = _ => System.Windows.Media.Colors.Gray, Selecionada = _ => false, Apoio = _ => 0,
+                Pontos = b => { No3D p = md.Nos.First(n => n.Id == b.Ni), q = md.Nos.First(n => n.Id == b.Nj); return (new Point3D(p.X, p.Y, p.Z), new Point3D(q.X, q.Y, q.Z)); } };
+            IEnumerable<Point3D> Vs(MalhaDx m) => m.P.Select(p => new Point3D(p.X, p.Y, p.Z));
+            Perfil3D Pf(string s) => s == "P" ? new Perfil3D { Forma = "I", H = 0.2, B = 0.2, Tw = 0.008, Tf = 0.012 } : s == "V" ? new Perfil3D { Forma = "I", H = 0.3, B = 0.15, Tw = 0.006, Tf = 0.01 }
+                                   : s == "TQ" ? new Perfil3D { Forma = "TQ", H = 0.1, B = 0.1, Tw = 0.005 } : new Perfil3D { Forma = "TC", H = s == "TC168" ? 0.168 : 0.114, Tw = 0.006 };
+            Ligacao3D Marca(int no, int barra) => new Ligacao3D { No = no, Barra = barra, Nome = "marca v5", Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.112, 0, 0), N = new Vector3D(-1, 0, 0) } };
+
+            // A1: pilar I200 terminal (0..3 m) com viga I300 na mesa, na alma (pilar girado) e viga contínua sobre o pilar
+            foreach (var (caso, rot, cont) in new[] { ("mesa", 0.0, false), ("alma", Math.PI / 2, false), ("viga contínua", 0.0, true) })
+            {
+                var m = new Modelo3D(); m.Nos.Add(new No3D { Id = 1 }); m.Nos.Add(new No3D { Id = 2, Z = 3 }); m.Nos.Add(new No3D { Id = 3, X = 4, Z = 3 }); m.Nos.Add(new No3D { Id = 4, X = -4, Z = 3 });
+                var pil = new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "P", Rot = rot }; m.Barras.Add(pil); m.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "V" });
+                if (cont) m.Barras.Add(new Barra3D { Id = 3, Ni = 4, Nj = 2, Secao = "V" });
+                m.Ligacoes.Add(Marca(2, 2));
+                var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
+                Png(Path.Combine(pasta, "v06-A1-" + (cont ? "continua" : caso) + ".png"), col, new Point3D(0, 0, 3), 0.35, new Vector3D(1, 1.6, -0.5));
+                double ztop = Vs(col.First(p => p.Barra == pil).M).Max(p => p.Z);
+                int ip = Render3DGeometria.Interferencias(col.Where(p => p.Tipo == "barra").Select(p => p.M).ToList()).Count;
+                Ok("v0.6 A1: pilar terminal, viga " + caso + ": pilar vai ao topo da viga (z " + F(ztop * 1000) + " mm = 3150), " + ip + " pares", Math.Abs(ztop - 3.15) < 1e-6 && ip == 0);
+            }
+            {   // sem v5 (modelo sem pontas do motor): v0.4 intacta, o pilar para no nó
+                var m = new Modelo3D(); m.Nos.Add(new No3D { Id = 1 }); m.Nos.Add(new No3D { Id = 2, Z = 3 }); m.Nos.Add(new No3D { Id = 3, X = 4, Z = 3 });
+                var pil = new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "P" }; m.Barras.Add(pil); m.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "V" });
+                var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
+                Ok("v0.6 A1: sem pontas do motor o pilar para no nó (v0.4)", Math.Abs(Vs(col.First(p => p.Barra == pil).M).Max(p => p.Z) - 3) < 1e-6);
+            }
+
+            // A2: tubo quadrado 100 inclinado 60° sobre placa de base
+            {
+                var m = new Modelo3D(); m.Nos.Add(new No3D { Id = 1, X = 1, Y = 1 }); m.Nos.Add(new No3D { Id = 2, X = 1 + 1.5, Y = 1, Z = 1.5 * Math.Sqrt(3) });
+                var b = new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "TQ" }; m.Barras.Add(b);
+                var fb = GeometriaPerfis.CriarContorno(Pf("TQ"), 0.1);
+                m.Ligacoes.Add(LigacoesAmostra.PlacaDeBase(1, b, true, fb, 300, 300, 19, 16, new List<(double, double)> { (-100, -100), (100, -100), (100, 100), (-100, 100) }, 0));
+                var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
+                Png(Path.Combine(pasta, "v06-A2-placa.png"), col, new Point3D(1.05, 1, 0.05), 0.3, new Vector3D(0.3, 1, -0.45));
+                var tb = col.First(p => p.Barra == b); var pl = col.First(p => p.Tipo == "chapa"); var ch = col.Where(p => p.Tipo == "parafuso").ToList();
+                var vp = Vs(pl.M).ToList(); var vb = Vs(tb.M).ToList();
+                double zmin = vb.Min(p => p.Z), plZ0 = vp.Min(p => p.Z), plZ1 = vp.Max(p => p.Z);
+                // centro da placa x pegada da barra no plano de cima
+                var pe = vb.Where(p => p.Z < 0.019 + 1e-6).ToList();
+                double cx = (vp.Min(p => p.X) + vp.Max(p => p.X)) / 2, cy = (vp.Min(p => p.Y) + vp.Max(p => p.Y)) / 2, px = (pe.Min(p => p.X) + pe.Max(p => p.X)) / 2, py = (pe.Min(p => p.Y) + pe.Max(p => p.Y)) / 2;
+                bool vert = ch.Count == 4 && ch.All(p => { var v = Vs(p.M).ToList(); return v.Max(q => q.X) - v.Min(q => q.X) < 0.05 && v.Max(q => q.Z) - v.Min(q => q.Z) > 0.15; });
+                int ip = Render3DGeometria.Interferencias(new[] { tb.M, pl.M }).Count;
+                Ok("v0.6 A2: barra a 60° sobre a placa: placa horizontal (z " + F(plZ0 * 1000) + "–" + F(plZ1 * 1000) + " mm), barra assenta (z mín " + F(zmin * 1000) + " mm = 19), centro da placa a "
+                   + F(Math.Sqrt((cx - px) * (cx - px) + (cy - py) * (cy - py)) * 1000) + " mm da pegada, chumbadores verticais, " + ip + " pares",
+                   Math.Abs(plZ0) < 1e-6 && Math.Abs(plZ1 - 0.019) < 1e-6 && Math.Abs(zmin - 0.019) < 1e-6 && pe.Count >= 4 && Math.Abs(cx - px) < 0.002 && Math.Abs(cy - py) < 0.002 && vert && ip == 0);
+            }
+
+            // A3: diagonal TC114 chegando no pilar TC168 contínuo, com proposta de ligação (modelo nunca identificado): boca de peixe
+            foreach (bool v5 in new[] { false, true })
+            {
+                var m = new Modelo3D(); m.Nos.Add(new No3D { Id = 1 }); m.Nos.Add(new No3D { Id = 2, Z = 3 }); m.Nos.Add(new No3D { Id = 3, Z = 6 }); m.Nos.Add(new No3D { Id = 4, X = 2, Z = 1 }); m.Nos.Add(new No3D { Id = 5, X = 3, Z = 3 });
+                m.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "TC168" }); m.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "TC168" });
+                var dg = new Barra3D { Id = 3, Ni = 2, Nj = 4, Secao = "TC114" }; m.Barras.Add(dg); m.Barras.Add(new Barra3D { Id = 4, Ni = 2, Nj = 5, Secao = "V" });
+                m.Ligacoes.Add(new Ligacao3D { Pendente = "*", Proposta = true });
+                if (v5)
+                {   // + proposta de gusset do motor na diagonal (ponta "angulo" e chapa): era a peça solta e o corte sem boca (12.jpg)
+                    m.Ligacoes.Add(Marca(2, 4));
+                    var gp = new Ligacao3D { No = 2, Barra = 3, Nome = "gusset proposto", Proposta = true, Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.15, 0, 0), N = new Vector3D(-1, 0, 0) } };
+                    gp.Ponta.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "angulo", Folga = 12 });
+                    gp.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, 60, 0), Normal = new Vector3D(0, -1, 0), U = new Vector3D(1, 0, 0), Espessura = 10, Contorno = new[] { new System.Windows.Point(20, -150), new System.Windows.Point(400, -150), new System.Windows.Point(400, 150), new System.Windows.Point(20, 150) } });
+                    m.Ligacoes.Add(gp);
+                }
+                var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
+                Png(Path.Combine(pasta, "v06-A3-tubo" + (v5 ? "-v5" : "") + ".png"), col, new Point3D(0.15, 0, 2.9), 0.35, new Vector3D(0, 1, -0.15));
+                var tb = col.First(p => p.Barra == dg); var pils = col.Where(p => p.Barra != null && p.Barra.Secao == "TC168").Select(p => p.M).ToList();
+                double rmin = Vs(tb.M).Min(p => Math.Sqrt(p.X * p.X + p.Y * p.Y));
+                bool solta = col.Any(p => p.Lig != null && p.Lig.Barra == dg.Id);
+                int ip = pils.Sum(pm => Render3DGeometria.Interferencias(new[] { tb.M, pm }).Count);
+                Ok("v0.6 A3: tubo em tubo" + (v5 ? " (v5)" : "") + ": boca de peixe encosta no pilar (menor raio " + F(rmin * 1000) + " mm, R = 84), sem peça da proposta no tubo, " + ip + " pares",
+                   Math.Abs(rmin - 0.084) < 0.002 && rmin > 0.084 - 1e-4 && !solta && ip == 0);
+            }
+        }
+
         public static string Rodar(string pasta, string raiz)
         {
             var sb = new StringBuilder(); int falhas = 0;
@@ -354,6 +455,8 @@ namespace NovoFtool
                 var dc = DwgReader.Read(arqC); var errC = new List<string>(); Exportador.ConferirStep(Exportador.Step(pc, "cope", "cope.stp"), errC);
                 Ok("exportar: DWG com " + dc.Entities.OfType<PolyfaceMesh>().Count() + " malhas (barras + chapa) e STEP sem erro", dc.Entities.OfType<PolyfaceMesh>().Count() == pc.Count && errC.Count == 0);
             }
+
+            V06Geo(Ok, pasta);
 
             {   // Review Focus 3: modelo sem pontas do motor (guincho .estructto, galpão do motor) = planos de corte da v0.4
                 var gal = new DocumentoEspacial { Json = JsonNode.Parse(File.ReadAllText(Path.Combine(raiz, "codigo", "motor", "exemplos", "galpao_aco.json"))).AsObject() };

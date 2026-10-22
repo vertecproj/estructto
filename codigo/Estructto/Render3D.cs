@@ -341,6 +341,10 @@ namespace NovoFtool
             bool todas = mod.Ligacoes.Any(l => l.Pendente == "*");
             if (ligs.Count == 0 && (c.Amostras || todas))
                 foreach (Ligacao3D q in LigacoesAmostra.Gerar(mod, cortes, forma, FolgaPadrao).Take(c.Amostras ? int.MaxValue : MaxPropostas)) { q.Proposta = !c.Amostras; ligs.Add(q); }
+            // v0.6 A3: tubo redondo chegando em tubo redondo maior ou igual = solda direta com boca de peixe (Juntas); a proposta
+            // de gusset/chapa ali ficava solta no nó e impedia o recorte. Ligação projetada pelo usuário fica.
+            ligs.RemoveAll(l => l.Proposta && barras.TryGetValue(l.Barra, out Barra3D bt) && cortes.TryGetValue((bt, l.No == bt.Ni), out Corte kt)
+                                && kt.Contra != null && Render3DGeometria.Redondo(forma(bt)) && Render3DGeometria.Redondo(forma(kt.Contra)) && forma(bt).H <= forma(kt.Contra).H + 1e-9);
             g.Propostas = ligs.Count(l => l.Proposta);
             var porPonta = new Dictionary<(int, bool), Ligacao3D>();
             foreach (Ligacao3D l in ligs) if (barras.TryGetValue(l.Barra, out Barra3D bl)) porPonta[(l.Barra, l.No == bl.Ni)] = l;
@@ -352,6 +356,15 @@ namespace NovoFtool
                 Point dc = GeometriaPerfis.Cardinal(forma(b), b.Cardinal);
                 return LigacoesAmostra.Referencial((emI ? pa : pd) + u * dc.X + v * dc.Y, emI ? e : -e, v, null);
             }
+            bool v5 = ligs.Any(l => l.Ponta != null);   // modelo com pontas do motor: regras novas do fallback; sem elas, v0.4 (antes do A2, que põe Ponta na placa)
+            // v0.6 A2 (pontas.ponta_sobre_placa): barra inclinada sobre placa de base = placa horizontal centrada na projeção da
+            // barra, chumbadores verticais e a barra cortada no plano de cima da placa (antes a placa ia perpendicular à barra)
+            foreach (Ligacao3D l in ligs)
+                if (l.Chapas.Any(ch => ch.Nome == "placa de base") && barras.TryGetValue(l.Barra, out Barra3D bp))
+                {
+                    var (_, x, y, z) = Local(bp, l.No == bp.Ni); Vector3D up = new Vector3D(0, 0, 1);
+                    LigacoesAmostra.AssentarPlaca(l, new Vector3D(Vector3D.DotProduct(up, x), Vector3D.DotProduct(up, y), Vector3D.DotProduct(up, z)), forma(bp));
+                }
             // placa de base no nó: as outras barras que chegam nele (viga no pé do pilar) param fora da placa (meia diagonal + 12 mm)
             var placaNo = new Dictionary<int, (int Pilar, double R)>();
             foreach (Ligacao3D l in ligs)
@@ -363,7 +376,6 @@ namespace NovoFtool
             if (ligs.Count > 0)
             {
                 Ligacao3D Lig(Barra3D b, bool emI) => porPonta.TryGetValue((b.Id, emI), out Ligacao3D l) ? l : null;
-                bool v5 = ligs.Any(l => l.Ponta != null);   // modelo com pontas do motor: regras novas do fallback; sem elas, v0.4
                 double Placa(Barra3D b, bool emI) => v5 && Lig(b, emI) == null && placaNo.TryGetValue(emI ? b.Ni : b.Nj, out var pl) && pl.Pilar != b.Id ? pl.R + 0.012 : double.NaN;
                 cortes = Render3DGeometria.Juntas(mod, c.Pontos, forma,
                     (b, emI) => { double r = Lig(b, emI)?.RecuoDe("viga") ?? double.NaN; return double.IsNaN(r) ? FolgaPadrao(b, emI) : r; },
