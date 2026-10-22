@@ -337,6 +337,7 @@ namespace NovoFtool
                 int no = emI ? b.Ni : b.Nj;
                 double face = c.Face;
                 if (vert.Contains(b)) continue;
+                if (c.Raio > 0) continue;   // v0.6 A3: tubo em tubo = solda direta com boca de peixe (motor tubo_tubo_soldado), sem chapa
                 bool horiz = Math.Abs(nos[b.Nj].Z - nos[b.Ni].Z) < 0.2 * (P(nos[b.Nj]) - P(nos[b.Ni])).Length;
                 if (!horiz) r.Add(Gusset(no, b, emI, f, c.Recuo));
                 else if (vert.Contains(c.Contra) && c.NaMesa) { Contorno fp = forma(c.Contra); r.Add(ChapaDeTopo(no, b, emI, f, face, fp.Tf, Math.Max(fp.B, fp.H) / 2, fp.Forma == "I", fp.B)); }
@@ -384,6 +385,7 @@ namespace NovoFtool
             bool emI = b.Ni == p.No;
             if (!cortes.TryGetValue((b, emI), out Corte c) || c.Contra == null) return r;
             Contorno f = forma(b), fc = forma(c.Contra); if (f.Concreto || fc.Concreto) return r;
+            if (c.Raio > 0) return r;   // v0.6 A3: tubo em tubo, boca de peixe sem chapa
             var nos = mod.Nos.Where(n => n.Id == b.Ni || n.Id == b.Nj).ToDictionary(n => n.Id);
             if (nos.Count < 2) return r;
             Vector3D e = P(nos[b.Nj]) - P(nos[b.Ni]); double dz = Math.Abs(e.Z) / e.Length;

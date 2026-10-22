@@ -299,11 +299,28 @@ namespace NovoFtool
                 int ip = Render3DGeometria.Interferencias(col.Where(p => p.Tipo == "barra").Select(p => p.M).ToList()).Count;
                 Ok("v0.6 A1: pilar terminal, viga " + caso + ": pilar vai ao topo da viga (z " + F(ztop * 1000) + " mm = 3150), " + ip + " pares", Math.Abs(ztop - 3.15) < 1e-6 && ip == 0);
             }
-            {   // sem v5 (modelo sem pontas do motor): v0.4 intacta, o pilar para no nó
+            {   // joelho: viga I300 subindo a 10° no pilar terminal, chapa de topo do motor (16 mm, ponta a 116 mm): chapa na face do
+                // pilar (vertical), viga cortada no plano vertical, pilar até o canto mais alto da viga na face
+                double al = 10 * Math.PI / 180;
+                var m = new Modelo3D(); m.Nos.Add(new No3D { Id = 1 }); m.Nos.Add(new No3D { Id = 2, Z = 3 }); m.Nos.Add(new No3D { Id = 3, X = 4 * Math.Cos(al), Z = 3 + 4 * Math.Sin(al) });
+                var pil = new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "P" }; m.Barras.Add(pil); var vg = new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "V" }; m.Barras.Add(vg);
+                var lg = new Ligacao3D { No = 2, Barra = 2, Nome = "chapa de topo", Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.116, 0, 0), N = new Vector3D(-1, 0, 0) } };
+                lg.Chapas.Add(new Ligacao3D.Chapa { Nome = "chapa de topo", Origem = new Vector3D(100, -75, -210), Normal = new Vector3D(1, 0, 0), U = new Vector3D(0, 1, 0), Espessura = 16, Contorno = new[] { new System.Windows.Point(0, 0), new System.Windows.Point(150, 0), new System.Windows.Point(150, 420), new System.Windows.Point(0, 420) } });
+                m.Ligacoes.Add(lg);
+                var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
+                Png(Path.Combine(pasta, "v06-A1-joelho.png"), col, new Point3D(0.1, 0, 3.05), 0.4, new Vector3D(0.2, 1, -0.3));
+                double ztop = Vs(col.First(p => p.Barra == pil).M).Max(p => p.Z), esperado = 3 + 0.1 * Math.Tan(al) + 0.15 / Math.Cos(al);
+                var vc = Vs(col.First(p => p.Tipo == "chapa").M).ToList(); double xs = vc.Max(p => p.X) - vc.Min(p => p.X);
+                int ip = Render3DGeometria.Interferencias(col.Where(p => p.Tipo == "barra" || p.Tipo == "chapa").Select(p => p.M).ToList()).Count;
+                double xv = Vs(col.First(p => p.Barra == vg).M).Min(p => p.X);
+                Ok("v0.6 A1: joelho a 10°: pilar até " + F(ztop * 1000) + " mm (canto da viga na face " + F(esperado * 1000) + "), chapa vertical (espessura em x " + F(xs * 1000) + " mm), viga começa em x " + F(xv * 1000) + " mm, " + ip + " pares",
+                   Math.Abs(ztop - esperado) < 1e-6 && Math.Abs(xs - 0.016) < 1e-6 && Math.Abs(xv - 0.116) < 1e-6 && ip == 0);
+            }
+            {   // sem v5 (modelo sem pontas do motor): também (decisão v0.6: a v0.4 registrava o defeito)
                 var m = new Modelo3D(); m.Nos.Add(new No3D { Id = 1 }); m.Nos.Add(new No3D { Id = 2, Z = 3 }); m.Nos.Add(new No3D { Id = 3, X = 4, Z = 3 });
                 var pil = new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "P" }; m.Barras.Add(pil); m.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "V" });
                 var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
-                Ok("v0.6 A1: sem pontas do motor o pilar para no nó (v0.4)", Math.Abs(Vs(col.First(p => p.Barra == pil).M).Max(p => p.Z) - 3) < 1e-6);
+                Ok("v0.6 A1: sem pontas do motor o pilar também vai ao topo da viga", Math.Abs(Vs(col.First(p => p.Barra == pil).M).Max(p => p.Z) - 3.15) < 1e-6);
             }
 
             // A2: tubo quadrado 100 inclinado 60° sobre placa de base
@@ -335,20 +352,21 @@ namespace NovoFtool
                 var dg = new Barra3D { Id = 3, Ni = 2, Nj = 4, Secao = "TC114" }; m.Barras.Add(dg); m.Barras.Add(new Barra3D { Id = 4, Ni = 2, Nj = 5, Secao = "V" });
                 m.Ligacoes.Add(new Ligacao3D { Pendente = "*", Proposta = true });
                 if (v5)
-                {   // + proposta de gusset do motor na diagonal (ponta "angulo" e chapa): era a peça solta e o corte sem boca (12.jpg)
+                {   // + tubo_tubo_soldado do motor na diagonal (como o motor devolve: ponta boca_peixe no fundo da sela, filete, sem chapa)
                     m.Ligacoes.Add(Marca(2, 4));
-                    var gp = new Ligacao3D { No = 2, Barra = 3, Nome = "gusset proposto", Proposta = true, Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(0.15, 0, 0), N = new Vector3D(-1, 0, 0) } };
-                    gp.Ponta.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "angulo", Folga = 12 });
-                    gp.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, 60, 0), Normal = new Vector3D(0, -1, 0), U = new Vector3D(1, 0, 0), Espessura = 10, Contorno = new[] { new System.Windows.Point(20, -150), new System.Windows.Point(400, -150), new System.Windows.Point(400, 150), new System.Windows.Point(20, 150) } });
+                    double R = 0.084, r = 0.057, sn = Math.Sin(Math.Atan2(2, 2));
+                    var gp = new Ligacao3D { No = 2, Barra = 3, Nome = "tubo-tubo soldado", Proposta = true, Ponta = new Ligacao3D.PontaMotor { P = new Vector3D(Math.Sqrt(R * R - r * r) / sn, 0, 0), N = new Vector3D(-1, 0, 0) } };
+                    gp.Ponta.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "boca_peixe" });
+                    gp.Soldas.Add(new Ligacao3D.Solda { Perna = 5, Pontos = new[] { new Vector3D(120, 0, 57), new Vector3D(120, 57, 0), new Vector3D(120, 0, -57) } });
                     m.Ligacoes.Add(gp);
                 }
                 var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
                 Png(Path.Combine(pasta, "v06-A3-tubo" + (v5 ? "-v5" : "") + ".png"), col, new Point3D(0.15, 0, 2.9), 0.35, new Vector3D(0, 1, -0.15));
                 var tb = col.First(p => p.Barra == dg); var pils = col.Where(p => p.Barra != null && p.Barra.Secao == "TC168").Select(p => p.M).ToList();
                 double rmin = Vs(tb.M).Min(p => Math.Sqrt(p.X * p.X + p.Y * p.Y));
-                bool solta = col.Any(p => p.Lig != null && p.Lig.Barra == dg.Id);
+                bool solta = col.Any(p => p.Lig != null && p.Lig.Barra == dg.Id && (p.Tipo == "chapa" || p.Tipo == "parafuso" || p.Tipo == "cantoneira"));
                 int ip = pils.Sum(pm => Render3DGeometria.Interferencias(new[] { tb.M, pm }).Count);
-                Ok("v0.6 A3: tubo em tubo" + (v5 ? " (v5)" : "") + ": boca de peixe encosta no pilar (menor raio " + F(rmin * 1000) + " mm, R = 84), sem peça da proposta no tubo, " + ip + " pares",
+                Ok("v0.6 A3: tubo em tubo" + (v5 ? " (v5)" : "") + ": boca de peixe encosta no pilar (menor raio " + F(rmin * 1000) + " mm, R = 84), sem chapa nem parafuso no nó do tubo, " + ip + " pares",
                    Math.Abs(rmin - 0.084) < 0.002 && rmin > 0.084 - 1e-4 && !solta && ip == 0);
             }
         }
@@ -468,9 +486,13 @@ namespace NovoFtool
                     Func<Barra3D, GeometriaPerfis.Contorno> fm = b => GeometriaPerfis.CriarContorno(perfil(b.Secao ?? ""), 0.1);
                     Func<Barra3D, bool, double> fg = (b, emI) => fm(b).Concreto ? 0 : 0.012, nan = (b, emI) => double.NaN;
                     var novo = Render3DGeometria.Juntas(mod, pts, fm, fg, nan); var v04 = Render3DGeometria.JuntasV04(mod, pts, fm, fg, nan);
-                    int dif = v04.Count(kv => !novo.TryGetValue(kv.Key, out Corte k) || (k.P - kv.Value.P).Length > 1e-9 || (k.N - kv.Value.N).Length > 1e-9) + novo.Keys.Count(k => !v04.ContainsKey(k))
+                    // v0.6 (decisão do coordenador): a v0.4 deixava o pilar terminal parar no nó (defeito do 9.jpg). Fora isso, iguais;
+                    // os planos novos só podem ser o topo de pilar terminal (vertical, além do nó, Recuo < 0)
+                    var topos = novo.Where(kv => !v04.ContainsKey(kv.Key)).ToList();
+                    bool soTopos = topos.All(kv => kv.Value.Recuo < 0 && Math.Abs(kv.Value.N.Z) > 0.999);
+                    int dif = v04.Count(kv => !novo.TryGetValue(kv.Key, out Corte k) || (k.P - kv.Value.P).Length > 1e-9 || (k.N - kv.Value.N).Length > 1e-9)
                               + novo.Values.Count(k => k.Extra != null || k.Raio > 0);
-                    Ok("sem pontas (v0.4): " + nome + " com os mesmos " + v04.Count + " planos de corte da v0.4 (" + dif + " diferentes)", dif == 0 && v04.Count > 0);
+                    Ok("sem pontas (v0.4): " + nome + " com os mesmos " + v04.Count + " planos de corte da v0.4 (" + dif + " diferentes) + " + topos.Count + " topos de pilar terminal (v0.6)", dif == 0 && soTopos && v04.Count > 0);
                 }
             }
 

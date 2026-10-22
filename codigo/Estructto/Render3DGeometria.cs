@@ -208,6 +208,17 @@ namespace NovoFtool
                     if (km != null)   // pontas do motor: o plano manda (sem o limite 0,3·L); angulo e boca de peixe montados no mundo
                     {
                         km.Motor = true; km.Recuo = Vector3D.DotProduct(km.P - q.No, q.D); km.Contra = q == top ? null : top.B;
+                        if (top.Rank == 3 && q.Rank == 2 && km.Contra != null)
+                        {   // v0.6 A1: viga inclinada (joelho) com ponta do motor: o motor a vê perpendicular ao pilar; no mundo o corte e a
+                            // chapa ficam no plano vertical da face (pontas.pontas_do_no), à mesma distância horizontal do nó
+                            Vector3D nf = q.D - Vector3D.DotProduct(q.D, top.D) * top.D; double cs = nf.Length;
+                            if (cs > 0.5 && cs < 1 - 1e-6)
+                            {
+                                nf /= cs; double dist = km.Recuo;
+                                km.N = Vector3D.DotProduct(km.N, q.D) < 0 ? -nf : nf; km.P = q.No + q.D * (dist / cs); km.Recuo = dist / cs;
+                                km.Inclinada = true; km.Face = dist;
+                            }
+                        }
                         km.NaMesa = top.F.H * Math.Abs(Vector3D.DotProduct(q.D, top.U)) <= top.F.B * Math.Abs(Vector3D.DotProduct(q.D, top.V));
                         if (!double.IsNaN(km.FolgaAngulo)) km.Extra = Angulo(q, top, km.FolgaAngulo);
                         if (km.Boca) Boca(km, q, top);
@@ -239,15 +250,22 @@ namespace NovoFtool
                     else if (v5 && k.Contra != null && !k.Inclinada && (q.Rank == 1 || double.IsNaN(fixo))) k.Extra = Angulo(q, top, folga(q.B, q.EmI));   // barra oblíqua ao apoio (diagonal, água do telhado): nenhum canto entra nele
                     cortes[(q.B, q.EmI)] = k;
                 }
-                // v0.6 A1 (pontas.topo_pilar): pilar que TERMINA no nó, chegando de baixo, vai até o topo das barras que chegam
-                // (antes parava no eixo da viga e a viga ficava no ar). Só v5: sem pontas do motor fica a v0.4 (Review Focus 3).
-                // ponytail: só com barras horizontais no nó; viga inclinada (joelho do galpão) tem a chapa perpendicular a ela e bateria
-                // no pilar prolongado — fica como antes até o motor cortar a viga no plano vertical da face.
-                if (v5 && top.Rank == 3 && par == null && nTop == 1 && top.D.Z < 0 && ord.Count > 1 && !top.F.Concreto && !cortes.ContainsKey((top.B, top.EmI))
-                    && ord.All(q => q == top || Math.Abs(q.D.Z) < 0.02))
+                // v0.6 A1 (pontas.topo_pilar): pilar que TERMINA no nó, chegando de baixo, vai até o ponto mais alto das barras que
+                // chegam, medido no plano da face do pilar por onde cada uma sai (viga inclinada do joelho: canto de cima nesse plano).
+                // Vale também sem pontas do motor (o teste "sem pontas (v0.4)" registrava o defeito).
+                if (top.Rank == 3 && par == null && nTop == 1 && top.D.Z < 0 && ord.Count > 1 && !top.F.Concreto && !cortes.ContainsKey((top.B, top.EmI)))
                 {
-                    Vector3D up = -top.D;
-                    double ext = ord.Where(q => q != top).Max(q => Vector3D.DotProduct(q.No - top.No, up) + q.F.H / 2 * Math.Abs(Vector3D.DotProduct(up, q.V)) + q.F.B / 2 * Math.Abs(Vector3D.DotProduct(up, q.U)));
+                    Vector3D up = -top.D; double ext = double.NegativeInfinity;
+                    foreach (Ponta q in ord.Where(q => q != top))
+                    {
+                        Vector3D h = q.D - Vector3D.DotProduct(q.D, top.D) * top.D; if (h.Length < 1e-6) continue; h.Normalize();
+                        double f = FaceDist(h, top), uh = Vector3D.DotProduct(q.D, h);
+                        foreach (double sv in new[] { 1.0, -1.0 }) foreach (double su in new[] { 1.0, -1.0 })
+                        {
+                            Vector3D k = (q.No - top.No) + q.V * (sv * q.F.H / 2) + q.U * (su * q.F.B / 2);
+                            ext = Math.Max(ext, Vector3D.DotProduct(k + q.D * ((f - Vector3D.DotProduct(k, h)) / uh), up));
+                        }
+                    }
                     if (ext > 1e-6) cortes[(top.B, top.EmI)] = new Corte { P = top.No + up * ext, N = top.D, Recuo = -ext };
                 }
             }
@@ -717,7 +735,7 @@ namespace NovoFtool
             Contorno fViga = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "I", H = 0.25, B = 0.15, Tw = 0.008, Tf = 0.01 }, 0.1);
             var cortes = Juntas(mod, b => (new Point3D(nos[b.Ni].X, 0, nos[b.Ni].Z), new Point3D(nos[b.Nj].X, 0, nos[b.Nj].Z)), b => b == pilar ? fPilar : fViga,
                                 (b, emI) => 0.01, (b, emI) => double.NaN);
-            afirmar(!cortes.ContainsKey((pilar, true)) && !cortes.ContainsKey((pilar, false)), "pilar contínuo (sem corte)");
+            afirmar(!cortes.ContainsKey((pilar, true)) && cortes.TryGetValue((pilar, false), out Corte kt0) && kt0.Recuo < 0 && kt0.P.Z > 3, "pilar: pé sem corte, topo terminal prolongado acima do nó (v0.6)");
             afirmar(cortes.TryGetValue((viga, true), out Corte cv) && Math.Abs(cv.Recuo - (0.15 + 0.01)) < 1e-9 && cv.Contra == pilar, "viga para na face da mesa do pilar (H/2 = 0,15) + folga 0,01");
             afirmar(cortes.TryGetValue((diag, true), out Corte cd) && cd.Recuo > 0.10 && cd.Contra == pilar, "diagonal recua além da face do pilar");
             afirmar(cortes.TryGetValue((r1, false), out Corte c1) && c1.Esquadria && cortes.TryGetValue((r2, true), out Corte c2) && c2.Esquadria, "cumeeira: esquadria nos dois banzos");

@@ -179,6 +179,23 @@ class TestV06Geo(unittest.TestCase):
         p = topo_pilar([0, 0, 3], pil, [vg, v2], chapa=0.016)
         self.assertAlmostEqual(p["prolongamento"], PILAR["h"] / 2 + 0.05 + 0.016)
 
+    def test_joelho_viga_inclinada(self):
+        from prossen_estrutural.aco.pontas import topo_pilar
+        al = math.radians(10)
+        u, ed = [math.cos(al), 0, math.sin(al)], [-math.sin(al), 0, math.cos(al)]
+        pil = _m(1, [0, 0, -1], PILAR, X, ext="j")
+        vg = _m(2, u, VIGA, ed)
+        f = PILAR["h"] / 2
+        p = topo_pilar([0, 0, 3], pil, [vg])
+        # canto de cima da viga no plano da face (x = f): f·tg α + h/(2 cos α)
+        self.assertAlmostEqual(p["prolongamento"], f * math.tan(al) + VIGA["h"] / 2 / math.cos(al))
+        # a viga é cortada no plano vertical da face (normal horizontal), a h/2 + folga do nó em x
+        q = pontas_do_no([0, 0, 3], [_m(1, Z, PILAR, X, continuo=True), vg], "viga_pilar_mesa")[0]
+        for a, b in zip(q["plano"]["normal"], [-1, 0, 0]):
+            self.assertAlmostEqual(a, b)
+        self.assertAlmostEqual(q["plano"]["ponto"][0], f + 0.012)
+        self.assertAlmostEqual(q["plano"]["ponto"][2], 3 + (f + 0.012) * math.tan(al))
+
     def test_pilar_terminal_sem_viga_nao_prolonga(self):
         from prossen_estrutural.aco.pontas import topo_pilar
         pil = _m(1, [0, 0, -1], PILAR, X, ext="j")

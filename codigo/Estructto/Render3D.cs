@@ -341,10 +341,6 @@ namespace NovoFtool
             bool todas = mod.Ligacoes.Any(l => l.Pendente == "*");
             if (ligs.Count == 0 && (c.Amostras || todas))
                 foreach (Ligacao3D q in LigacoesAmostra.Gerar(mod, cortes, forma, FolgaPadrao).Take(c.Amostras ? int.MaxValue : MaxPropostas)) { q.Proposta = !c.Amostras; ligs.Add(q); }
-            // v0.6 A3: tubo redondo chegando em tubo redondo maior ou igual = solda direta com boca de peixe (Juntas); a proposta
-            // de gusset/chapa ali ficava solta no nó e impedia o recorte. Ligação projetada pelo usuário fica.
-            ligs.RemoveAll(l => l.Proposta && barras.TryGetValue(l.Barra, out Barra3D bt) && cortes.TryGetValue((bt, l.No == bt.Ni), out Corte kt)
-                                && kt.Contra != null && Render3DGeometria.Redondo(forma(bt)) && Render3DGeometria.Redondo(forma(kt.Contra)) && forma(bt).H <= forma(kt.Contra).H + 1e-9);
             g.Propostas = ligs.Count(l => l.Proposta);
             var porPonta = new Dictionary<(int, bool), Ligacao3D>();
             foreach (Ligacao3D l in ligs) if (barras.TryGetValue(l.Barra, out Barra3D bl)) porPonta[(l.Barra, l.No == bl.Ni)] = l;
