@@ -111,7 +111,7 @@ namespace NovoFtool
                 {
                     Vector3D vr = Modelo3D.EixoY(er, r.Rot + r.RotPerfil), ur = Vector3D.CrossProduct(vr, er);
                     System.Windows.Point dr = GeometriaPerfis.Cardinal(fr, r.Cardinal);
-                    return fr.Lacos[0].Max(p => Vector3D.DotProduct(ur * (p.X + dr.X) + vr * (p.Y + dr.Y), xb));
+                    return fr.Lacos.SelectMany(z => z).Max(p => Vector3D.DotProduct(ur * (p.X + dr.X) + vr * (p.Y + dr.Y), xb));
                 }
                 double ext = Ext(q, f, es);
                 // G6 r1: as outras barras do nó quase ⟂ a esta (ex.: a viga na mesa de um pilar UPN 50 com a chapa nas costas da alma):

@@ -316,7 +316,9 @@ def secao_cantoneira(b, h, t, nome=None):
     return sec
 
 
-ARRANJOS = ("caixao", "I")       # caixão/tubo: abas para dentro; I: costas com costas (2L: forma um T)
+ARRANJOS = ("caixao", "I", "cruz", "lado_a_lado")
+# caixao: abas para dentro (tubo); I: costas com costas = abas para fora (2U → I/W; 2L → T);
+# cruz: 2L em estrela (quinas opostas, afastadas s nos dois sentidos); lado_a_lado: 2I com as mesas afastadas s
 LIGACOES = ("soldada", "presilhas", "generica")
 
 
@@ -336,10 +338,14 @@ def secao_dupla(comp, arranjo, ligacao, s=0.0, nome=None, l_ligacoes=None, chapa
         raise ValueError("secao_dupla: afastamento s deve ser >= 0")
     p = comp.props
     forma = p["tipo"]
-    if forma not in ("U", "L") or (forma == "U" and "tw" not in p):
-        raise ValueError(f"secao_dupla: componente '{forma}' não suportado (use U laminado ou cantoneira)")
-    comp_spec = ({"forma": "U", **{k: p[k] for k in ("h", "b", "tw", "tf")}} if forma == "U" else
+    validos = {"U": ("caixao", "I"), "L": ("caixao", "I", "cruz"), "I": ("lado_a_lado",)}
+    if forma not in validos or (forma == "U" and "tw" not in p) or arranjo not in validos[forma]:
+        raise ValueError(f"secao_dupla: componente '{forma}' com arranjo '{arranjo}' não suportado "
+                         f"(U: caixao/I; L: caixao/I/cruz; I: lado_a_lado)")
+    comp_spec = ({"forma": forma, **{k: p[k] for k in ("h", "b", "tw", "tf")}} if forma in ("U", "I") else
                  {"forma": "cantoneira", **{k: p[k] for k in ("b", "h", "t")}})
+    if forma == "I" and p.get("r"):
+        comp_spec["r"] = p["r"]
     nome = nome or f"2{comp.nome} {arranjo} {ligacao}" + (f" s={s * 1e3:g}" if s else "")
     compos = dict(arranjo=arranjo, ligacao=ligacao, s=s, l_ligacoes=l_ligacoes, componente=comp_spec,
                   nome_componente=comp.nome, chapas_espacadoras=bool(chapas_espacadoras))
@@ -363,6 +369,26 @@ def secao_dupla(comp, arranjo, ligacao, s=0.0, nome=None, l_ligacoes=None, chapa
         ymax, x0, y0 = p["h"] / 2, 0.0, 0.0
         Zx, Zy = 2 * p["Zx"], 2 * A1 * d    # LN plástica no eixo de simetria: Z = 2·A₁·d
         extra = dict(h=p["h"], b=B, tw=p["tw"], tf=p["tf"])
+    elif forma == "I":  # lado a lado: centroides afastados (b + s)
+        B = 2 * p["b"] + s
+        d = (p["b"] + s) / 2
+        ymax, x0, y0 = p["h"] / 2, 0.0, 0.0
+        Zx, Zy = 2 * p["Zx"], 2 * A1 * d
+        extra = dict(h=p["h"], b=B, tw=p["tw"], tf=p["tf"])
+    elif arranjo == "cruz":  # quina de L1 em (s/2, s/2) abas +x/+y; L2 girada 180° (simetria central)
+        xg = p["b"] - p["Iy"] / p["Wy"]
+        yg = p["h"] - p["Ix"] / p["Wx"]
+        dx, dy = s / 2 + xg, s / 2 + yg
+        Ix, Iy = 2 * (p["Ix"] + A1 * dy * dy), 2 * (p["Iy"] + A1 * dx * dx)
+        Ixy = 2 * (p["Ixy"] + A1 * dx * dy)
+        m, rr = (Ix + Iy) / 2, math.hypot((Ix - Iy) / 2, Ixy)
+        B, H = 2 * p["b"] + s, 2 * p["h"] + s
+        sec = _monta(nome, "dupla", 2 * A1, Ix, Iy, 2 * p["J"], Ix / (H / 2), Iy / (B / 2), None, None, 0.0,
+                     0.0, 0.0, composicao=compos, Ay=2 * p["Ay"], Az=2 * p["Az"], h=H, b=B, t=p["t"], Ixy=Ixy,
+                     Iu=m + rr, Iv=m - rr, rmin=math.sqrt((m - rr) / (2 * A1)), u0=0.0, v0=0.0,
+                     alfa_principal=0.5 * math.atan2(-2 * Ixy, Ix - Iy))
+        del sec.props["Zx"], sec.props["Zy"]
+        return sec
     else:  # cantoneiras: aba b horizontal, h vertical; em I = T (costas com costas pelas abas h)
         if arranjo == "caixao":
             raise ValueError("2L em caixão só soldado com s = 0 (tubo); com afastamento não suportado")
@@ -382,6 +408,54 @@ def secao_dupla(comp, arranjo, ligacao, s=0.0, nome=None, l_ligacoes=None, chapa
     if Zx is None:
         del sec.props["Zx"], sec.props["Zy"]
     return sec
+
+
+def secao_I_chapa(comp, bp, tp, nome=None):
+    """Perfil I (`comp`, secao_I/catálogo) com chapa bp × tp soldada sobre a mesa superior (reforço).
+    Monossimétrica: A, Ix (Steiner), Iy, Wx (fibra mais afastada), J = J_I + bp·tp³/3; centro de cisalhamento
+    e Cw de I monossimétrico tomando mesa+chapa como mesa superior (I1 = tf·bf³/12 + tp·bp³/12, I2 = tf·bf³/12,
+    ho entre centroides das mesas: e = ho·I2/(I1+I2) da mesa superior, Cw = ho²·I1·I2/(I1+I2); Galambos,
+    Guide to Stability Design Criteria, cap. 5). tipo 'I_chapa': a flexão (G.1 não cobre monossimétrico com
+    chapa) e Q com chapa mais larga que a mesa ficam fora do escopo (NotImplementedError na NBR 8800)."""
+    p = comp.props
+    if p["tipo"] != "I":
+        raise ValueError("secao_I_chapa: componente deve ser perfil I")
+    if not (bp > 0 and tp > 0):
+        raise ValueError("secao_I_chapa: chapa bp, tp > 0")
+    h, bf, tw, tf, A1 = p["h"], p["b"], p["tw"], p["tf"], comp.A
+    Ap = bp * tp
+    A = A1 + Ap
+    yc = Ap * (h / 2 + tp / 2) / A                       # centroide acima do meio do I
+    Ix = p["Ix"] + A1 * yc ** 2 + bp * tp ** 3 / 12 + Ap * (h / 2 + tp / 2 - yc) ** 2
+    Iy = p["Iy"] + tp * bp ** 3 / 12
+    I1, I2 = tf * bf ** 3 / 12 + tp * bp ** 3 / 12, tf * bf ** 3 / 12
+    ysup = (bf * tf * (h / 2 - tf / 2) + Ap * (h / 2 + tp / 2)) / (bf * tf + Ap)  # centroide mesa+chapa
+    ho = ysup + (h / 2 - tf / 2)
+    y0 = ysup - ho * I2 / (I1 + I2) - yc                 # CC em relação ao centroide (y para cima)
+    Cw = ho ** 2 * I1 * I2 / (I1 + I2)
+    J = p["J"] + bp * tp ** 3 / 3
+    nome = nome or f"{comp.nome} + CH {bp * 1e3:g}x{tp * 1e3:g}"
+    compos = dict(arranjo="I_chapa", ligacao="soldada", s=0.0, componente={"forma": "I", **{k: p[k] for k in
+                  ("h", "b", "tw", "tf")}}, nome_componente=comp.nome, chapa=dict(b=bp, t=tp))
+    sec = _monta(nome, "I_chapa", A, Ix, Iy, J, Ix / max(h / 2 + tp - yc, h / 2 + yc), Iy / (max(bf, bp) / 2),
+                 None, None, Cw, 0.0, y0, h=h + tp, b=max(bf, bp), tw=tw, tf=tf, yg=yc, composicao=compos,
+                 Ay=p["Ay"], Az=p["Az"])
+    del sec.props["Zx"], sec.props["Zy"]
+    return sec
+
+
+def espelhar(sec):
+    """Seção refletida em torno do eixo y (x → −x), params.espelho da barra. A, Ix, Iy, J, Cw, W, Z e os momentos
+    principais não mudam; trocam de sinal Ixy, x0, u0 e o ângulo dos eixos principais (cantoneira/2L). Como a NBR 8800
+    usa |x0|, |y0| (E.1.3: (x0/r0)²) e Iu/Iv, as resistências são as mesmas: o espelho só muda desenho e orientação."""
+    p = dict(sec.props)
+    for k in ("Ixy", "x0", "alfa_principal"):
+        if k in p:
+            p[k] = -p[k]
+    if "alfa_principal" in p:  # (u0, v0) do CC nos eixos principais refletidos
+        c, s_ = math.cos(p["alfa_principal"]), math.sin(p["alfa_principal"])
+        p["u0"], p["v0"] = p["x0"] * c + p["y0"] * s_, -p["x0"] * s_ + p["y0"] * c
+    return Secao(sec.nome, sec.A, sec.Iy, sec.Iz, sec.J, p)
 
 
 def _caixao_soldado(h, B, tw, tf, nome):
@@ -629,6 +703,18 @@ def secao_de_spec(dados):
             return catalogo(str(dados["perfil"]))
         except KeyError:
             raise ValueError(f"secao.perfil: '{dados['perfil']}' não está no catálogo") from None
+    if dados.get("forma") == "dupla":  # composta: {"forma": "dupla", "base": spec, "arranjo", "ligacao", "s", ...}
+        base = secao_de_spec(dados.get("base"))
+        if dados.get("arranjo") == "I_chapa":
+            ch = dados.get("chapa") or {}
+            return secao_I_chapa(base, _num(ch, "b"), _num(ch, "t"), nome=dados.get("nome"))
+        s_ = dados.get("s", 0.0)
+        if isinstance(s_, bool) or not isinstance(s_, (int, float)) or s_ < 0:
+            raise ValueError("secao.s: afastamento >= 0 (m)")
+        l = dados.get("l_ligacoes")
+        return secao_dupla(base, dados.get("arranjo"), dados.get("ligacao", "soldada"), s=float(s_),
+                           nome=dados.get("nome"), l_ligacoes=_num(dados, "l_ligacoes") if l else None,
+                           chapas_espacadoras=bool(dados.get("chapas_espacadoras")))
     if "forma" in dados:
         forma = dados["forma"]
         if forma not in _FORMAS:

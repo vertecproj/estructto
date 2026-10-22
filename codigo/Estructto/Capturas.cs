@@ -1504,6 +1504,18 @@ namespace NovoFtool
                 RenderizarJanela(jka, (int)jka.Width, (int)jka.Height, "46-catalogo-arvore.png");
             });
             jka.Close();
+            // v0.6 D: perfil composto (2 UPN 200 a partir de props de motor) e disposição do perfil
+            var upn = new JsonObject { ["props"] = new JsonObject { ["tipo"] = "U", ["h"] = 0.2, ["b"] = 0.075, ["tw"] = 0.0085, ["tf"] = 0.0115 } };
+            var jco = new JanelaComposto("UPN 200", upn);
+            Cap(jco, "49-composto-2upn");
+            jco.Close();
+            var l2 = new JsonObject { ["props"] = new JsonObject { ["tipo"] = "L", ["h"] = 0.0508, ["b"] = 0.0508, ["t"] = 0.00635 } };
+            var jcl = new JanelaComposto("L 2\" x 1/4\"", l2);
+            Cap(jcl, "49-composto-2L");
+            jcl.Close();
+            var jd = new JanelaDisposicao(new Perfil3D { Forma = "U", H = 0.2, B = 0.075, Tw = 0.0085, Tf = 0.0115 }, 90, 7, 3);
+            Cap(jd, "49-disposicao");
+            jd.Close();
             EsperarIdle();
             CapturarVerificacao5000();
         }

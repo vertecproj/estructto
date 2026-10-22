@@ -312,7 +312,7 @@ namespace NovoFtool
             var nos = new Dictionary<int, No3D>();
             foreach (No3D n in mod.Nos) if (!nos.ContainsKey(n.Id)) nos[n.Id] = n;
             var barras = mod.Barras.ToDictionary(b => b.Id, b => b);
-            Func<Barra3D, Contorno> forma = b => c.Forma(b.Secao);
+            Func<Barra3D, Contorno> forma = b => b.Espelho ? GeometriaPerfis.Espelhar(c.Forma(b.Secao)) : c.Forma(b.Secao);
             double FolgaPadrao(Barra3D b, bool emI)
             {
                 if (forma(b).Concreto) return 0;
@@ -498,7 +498,7 @@ namespace NovoFtool
                 Point3D os = sa + us * dcs.X + vs * dcs.Y;
                 Vector3D nz = xd - Vector3D.DotProduct(xd, es) * es; nz -= Vector3D.DotProduct(nz, nn) * nn;   // no plano da chapa, para longe do apoio
                 if (nz.Length < 1e-6) return new Vector3D(); nz.Normalize();
-                double ext = fs.Lacos[0].Max(p => Vector3D.DotProduct(us * p.X + vs * p.Y, nz));
+                double ext = fs.Lacos.SelectMany(z => z).Max(p => Vector3D.DotProduct(us * p.X + vs * p.Y, nz));
                 double dmin = double.MaxValue;
                 foreach (Point p in ct) foreach (double t in new[] { 0, esp }) dmin = Math.Min(dmin, Vector3D.DotProduct(org + uu * p.X + ww * p.Y + nn * t - os, nz));
                 return dmin < ext && ext - dmin < 0.1 ? nz * (ext - dmin) : new Vector3D();   // mais de 10 cm: geometria estranha, fica como veio
@@ -544,7 +544,7 @@ namespace NovoFtool
                     {
                         zp.Normalize(); Vector3D yp = EscolheY(Vector3D.CrossProduct(x, zp), zp);
                         Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
-                        double ymin = forma(b).Lacos[0].Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, yp));
+                        double ymin = forma(b).Lacos.SelectMany(z => z).Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, yp));
                         (o, y, z) = (o + yp * (ymin - gus.Espessura / 2000), yp, zp);
                     }
                 }
@@ -554,14 +554,14 @@ namespace NovoFtool
                     if (forma(b).Forma != "TC" && forma(b).Forma != "CIRC")   // perfil aberto: o contrato põe a peça do lado +y da chapa (sem rasgo); encosta na face −y
                     {
                         Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
-                        o += y * (forma(b).Lacos[0].Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y)) - gus.Espessura / 2000);
+                        o += y * (forma(b).Lacos.SelectMany(z => z).Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y)) - gus.Espessura / 2000);
                     }
                 }
                 else if (l.Ponta != null && gus != null && l.ApoioDir == null)   // sem apoio conhecido: só encosta a chapa na face −y da peça
                 {   // (tubo: chapa a R + esp/2 do eixo, sobre a superfície, não rasgando o tubo)
                     y = EscolheY(y, z);
                     Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
-                    double ymin = forma(b).Lacos[0].Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y));
+                    double ymin = forma(b).Lacos.SelectMany(z => z).Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y));
                     o += y * (ymin - gus.Espessura / 2000);
                 }
                 Point3D W(Vector3D p) => o + (x * p.X + y * p.Y + z * p.Z) / 1000;
