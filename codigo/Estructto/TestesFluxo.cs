@@ -96,6 +96,14 @@ namespace NovoFtool
         static readonly List<string> caixasVistas = new List<string>();   // texto das Caixa (mensagens modais) que apareceram
         static string respostaCaixa;                                      // botão a clicar na próxima Caixa (null = fechar)
 
+        static void ZerarVista(Vista3D v)
+        {
+            if (v == null) return;
+            v.Ferramenta = Ferramenta3D.Selecionar; v.TravaZ = false; v.PlanoAtual = PlanoTrabalho.Horizontal(0);
+            var p = new Snap3D(); var s = v.Snap;
+            s.Modos = p.Modos; s.Unico = null; s.Osnap = p.Osnap; s.Orto = p.Orto; s.Polar = p.Polar; s.Rastreio = p.Rastreio; s.RastreioPolar = p.RastreioPolar; s.PolarInc = p.PolarInc;
+        }
+
         static void RodarFluxos(MainWindow w)
         {
             var sw = Stopwatch.StartNew();
@@ -117,6 +125,7 @@ namespace NovoFtool
                 {
                     var r = new Rel(f.Id, f.Titulo); relatos.Add(r);
                     var t0 = Stopwatch.StartNew();
+                    ZerarVista(w.vista3D);   // onda final: estado da vista herdado do fluxo anterior (trava Z, plano, snaps) deixava o D instável
                     try { f.Corpo(w, r); }
                     catch (Exception ex) { r.Checar(false, "fluxo interrompido: " + ex.GetType().Name + ": " + ex.Message + " | status: " + w.StatusMsg.Text); r.L(ex.ToString()); }
                     finally

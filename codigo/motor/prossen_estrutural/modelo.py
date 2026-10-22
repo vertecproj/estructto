@@ -124,7 +124,9 @@ class Modelo:
     casos: dict = field(default_factory=dict)
     cargas_nodais: list = field(default_factory=list)
     cargas_distribuidas: list = field(default_factory=list)
-    peso_proprio: str | None = None  # nome do caso que recebe o peso próprio
+    # nome do caso que recebe o peso próprio. None no dataclass (modelos lidos/gerados mantêm o que têm); modelo novo da
+    # interface/MCP liga "PP" por padrão via ligar_peso_proprio() (v0.6), e liberar_pp_vazio() devolve aos geradores.
+    peso_proprio: str | None = None
     config: dict = field(default_factory=dict)  # tipo_uso, vento, sismo...
     nome: str = ""
     versao_formato: int = 1  # em memória; to_dict grava 2 só quando há `ligacoes`

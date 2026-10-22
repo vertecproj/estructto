@@ -45,7 +45,7 @@ namespace NovoFtool
                         if (!dentro) foreach (var pl in pf.Pilha) if (t >= pl[0] && t <= pl[1]) { dentro = true; break; }
                         if (dentro) ocup.Add(i);
                     }
-                    if (ocup.Count == 0) semPilha++;
+                    if (ocup.Count == 0) { semPilha++; if (ex.Count < 12) ex.Add("  sem peça: " + l.Nome + " nó " + l.No + " " + pf.Campo + " d" + pf.D + " L" + pf.Comprimento + " origem " + pf.Origem + " eixo " + e); }
                     else
                     {
                         double ini = ocup.Min * passo, fim = (ocup.Max + 1) * passo;

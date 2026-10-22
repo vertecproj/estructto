@@ -82,6 +82,8 @@ Selecione nós e use **ENGASTE**, **ROTULA** (também `FIXO`, articulado com as 
 
 Sem seleção, Propriedades oferece Novo nó, casos e ações e carga em área. Com nó, edite posição, apoios e cargas; com barra, seção, material, giro e cargas. O comando Laje distribui carga em vigas; não cria elemento de casca.
 
+**Limitação (v0.6):** barra inclinada sobre placa de base é desenhada assentada na placa horizontal (corte em ângulo, chumbadores verticais), mas o cálculo da placa de base falha para ela — a verificação da placa só aceita pilar vertical. Dimensione essa base à parte.
+
 ## Treliças, contraventamentos, terças e tirantes
 
 Abra **Estrutura › Gerar › Treliças e contraventamentos** ou procure a ferramenta em Ctrl+K.

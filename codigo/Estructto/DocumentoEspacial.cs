@@ -475,7 +475,6 @@ namespace NovoFtool
         static List<string> catalogoEsp;      // nomes do GET /api/catalogo (uma vez por sessão)
         readonly ContentControl painelEsp = new ContentControl();
 
-        static bool avisouConversao;   // o aviso da conversão 2D -> 3D aparece uma vez por sessão
 
         internal async Task<DocumentoEspacial> AbrirEspacial(Func<Task<DocumentoEspacial>> criar, string oque, string recente = null, bool silencioso = false)
         {
@@ -504,7 +503,7 @@ namespace NovoFtool
             if (d.Origem != null)
             {
                 Log("Convertido para 3D: " + Path.GetFileName(d.Origem) + " (Y do 2D virou Z; fora do plano travado). Salvar grava o formato novo (.estructto 3D).", false);
-                if (!avisouConversao) { avisouConversao = true; MostrarToast("Modelo 2D convertido para 3D: o Y do desenho virou Z e o que sai do plano ficou travado. Ao salvar, o arquivo vai no formato novo (.estructto 3D); o original não é alterado.", true); }
+                StatusMsg.Text = "Modelo 2D convertido para 3D (Y do 2D virou Z); salvar grava .estructto 3D, o original fica intacto.";   // onda final: linha de status, não toast sobre a vista
             }
             string semApoios = d.Avisos.FirstOrDefault(a => a.StartsWith("Apoios e cargas"));   // .ftl (E2E-10): não deixa o F5 achar o mecanismo sozinho
             if (semApoios != null && !silencioso) MostrarToast(semApoios, true);

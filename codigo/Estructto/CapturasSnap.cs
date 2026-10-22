@@ -36,7 +36,7 @@ namespace NovoFtool
             Esperar(d.Adicionar("secao", new JsonObject { ["forma"] = "tubo_circular", ["d"] = 0.2, ["t"] = 0.008, ["nome"] = "TC200x8" }));
             Esperar(w.OperarEspacial(dd => dd.DesenharBarras(new[] { (Q(9, 0, 0), Q(9, 0, 3)) }, "TC200x8", true), "tubo"));
             if (d.Json["barras"].AsObject().Count != 12) Falha("esperado 12 barras, há " + d.Json["barras"].AsObject().Count);
-            w.Faixa.SelectedTabItem = w.abaModelo;
+            w.Faixa.SelectedTabItem = w.abaDesenhar;
             EsperarIdle();
             var v = w.vista3D;
             Point T(Point3D p) => v.Tela(p);

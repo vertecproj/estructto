@@ -1,10 +1,14 @@
 param(
-    [string]$PastaSaida = "C:\dev\build\EstructtoV2\capturas",
+    [string]$PastaSaida = "",
     [string]$Modelo = ""
 )
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
+# mesma regra do Directory.Build.props: checkout principal (estructto/ftool) em EstructtoV2, worktree em EstructtoV2-<raiz>
+$raizWt = Split-Path -Leaf (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$pastaBuild = if ($raizWt -in @("estructto", "ftool", "")) { "C:\dev\build\EstructtoV2" } else { "C:\dev\build\EstructtoV2-$raizWt" }
+if (-not $PastaSaida) { $PastaSaida = Join-Path $pastaBuild "capturas" }
 
 Write-Host "Compilando Estructto (Release)..." -ForegroundColor Cyan
 dotnet build -c Release --nologo
@@ -12,7 +16,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Falha ao compilar Estructto (codigo $LASTEXITCODE)."
 }
 
-$exe = "C:\dev\build\EstructtoV2\bin\Release\net8.0-windows\Estructto.exe"
+$exe = Join-Path $pastaBuild "bin\Release\net8.0-windows\Estructto.exe"
 if (-not (Test-Path $exe)) {
     throw "Executavel nao encontrado em: $exe"
 }

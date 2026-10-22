@@ -18,6 +18,7 @@ contato (I soldado), s > 0 dá almas afastadas com chapas espaçadoras/presilhas
   afastamento sem chapas espaçadoras; fora disso a barra reprova com aviso.
 - Z em torno do eixo de simetria: cada perfil fica inteiro de um lado da linha neutra plástica, então Z = 2·A1·d. Não se soma o Z
   próprio de cada perfil, porque ele já está contido em A1·d.
+- 2L em cruz: a flexão NÃO é verificada (só esforço normal); use a barra só como escora/tirante ou verifique a flexão à parte.
 - I + chapa: flexão fora da tabela G.1, então NotImplementedError (reprova). Q é o do I; chapa mais larga que a mesa também reprova.
 
 ## Disposição do perfil (`params` da barra)
@@ -27,3 +28,5 @@ contato (I soldado), s > 0 dá almas afastadas com chapas espaçadoras/presilhas
   - No 3D e na exportação, `GeometriaPerfis.Espelhar` reflete o contorno.
   - No motor, `secoes.espelhar` inverte o sinal de Ixy, de x0 e do ângulo principal. A, I, W, Z, Iu/Iv e as resistências não
     mudam, porque a E.1.3 usa (x0/r0)². Por isso o cálculo não lê `espelho`.
+  - Ressalva: isso vale enquanto a flexão de L for verificada pelos eixos geométricos. Se um dia for por eixos principais
+    (u, v), o espelho troca o sinal do ângulo principal e o momento se decompõe diferente: aí o cálculo terá de ler `espelho`.

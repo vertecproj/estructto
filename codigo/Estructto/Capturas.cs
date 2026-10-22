@@ -564,7 +564,7 @@ namespace NovoFtool
             jg.Close();
             Esperar(w.AbrirEspacial(() => DocumentoEspacial.Gerar(jg.Dados, "Pórtico (edição)", jg.G, jg.Q), "gerando"));
             Func<int> nb = () => w.EspacialAtivo.Json["barras"].AsObject().Count;
-            w.Faixa.SelectedTabItem = w.abaModelo;   // aba Modelo: grupo Modificar com os botões do espacial
+            w.Faixa.SelectedTabItem = w.abaEditar;   // aba Editar: botões de modificar do espacial
             int b0 = nb(), c0 = w.EspacialAtivo.Json["cargas_distribuidas"].AsArray().Count;
             Action<string, string, (string, string)[]> rodar = (op, png, campos) =>
             {
@@ -604,7 +604,7 @@ namespace NovoFtool
             void Falha(string s) => throw new InvalidOperationException("Desenho 3D: " + s + " | " + w.StatusMsg.Text);
             Esperar(w.AbrirEspacial(() => DocumentoEspacial.Vazio("Pórtico desenhado"), "modelo vazio"));
             var d = w.EspacialAtivo ?? throw new InvalidOperationException("Desenho 3D: modelo vazio não abriu");
-            w.Faixa.SelectedTabItem = w.abaModelo;
+            w.Faixa.SelectedTabItem = w.abaDesenhar;
             EsperarIdle();
             var v = w.vista3D;
             v.MostrarVista(VistaPadrao.Iso, false);
@@ -691,7 +691,7 @@ namespace NovoFtool
                 log.AppendLine("ok " + passo + ": " + nos + " nós, " + barras + " barras" + (apoios >= 0 ? ", " + apoios + " apoios" : ""));
             }
             double Z(string no) => (double)J()["nos"][no]["z"];
-            w.Faixa.SelectedTabItem = w.abaModelo;
+            w.Faixa.SelectedTabItem = w.abaDesenhar;
             var v = w.vista3D;
             Conta("modelo vazio", 0, 0);
             CapturarPrincipal(w, "49-fluxo3d-1-vazio");
@@ -1175,7 +1175,7 @@ namespace NovoFtool
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado
                 w.MostrarDiagrama(Diagrama.Nenhum);
-                w.Faixa.SelectedTabItem = w.abaModelo;
+                w.Faixa.SelectedTabItem = w.abaDesenhar;
                 w.vista3D.MostrarVista(VistaPadrao.Iso, false);
                 CapturarPrincipal(w, "02-modelo-convertido");
                 Esperar(w.CalcularEspacial());
@@ -1246,7 +1246,7 @@ namespace NovoFtool
                     EsperarIdle();
                     CapturarPrincipal(w, "09-ribbon-" + slug, () => { w.Faixa.SelectedTabItem = tab; TemaPlant.AjustarFaixa(w.Faixa, null); });
                 }
-                w.Faixa.SelectedTabItem = w.abaModelo;
+                w.Faixa.SelectedTabItem = w.abaApoios;
 
                 // 30-32) Painel Propriedades do documento 3D: modelo, nó do pé (com apoio) e barra
                 {

@@ -52,10 +52,11 @@ namespace NovoFtool
                     req.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 }
             }
-            HttpResponseMessage resp;
-            try { resp = await http.SendAsync(req); }
-            catch (HttpRequestException) { Desligar(); throw Parou(); }   // conexão caiu: o motor morreu (ou travou) no meio da chamada
-            var texto = await resp.Content.ReadAsStringAsync();
+            HttpResponseMessage resp; string texto;
+            // conexão caiu: o motor morreu (ou travou) no meio da chamada. Inclui a leitura do corpo: no modelo grande a resposta
+            // do F5 é longa e o processo pode morrer no meio dela (IOException), o que antes escapava como erro genérico.
+            try { resp = await http.SendAsync(req); texto = await resp.Content.ReadAsStringAsync(); }
+            catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is TaskCanceledException && (proc == null || proc.HasExited))) { Desligar(); throw Parou(); }
             if (!resp.IsSuccessStatusCode) throw new MotorErro((int)resp.StatusCode, texto);
             return string.IsNullOrWhiteSpace(texto) ? null : JsonNode.Parse(texto);
         }

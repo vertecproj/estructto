@@ -317,7 +317,7 @@ namespace NovoFtool
                 Botao("rotacionar", "Rotacionar", () => ExecutarComando("ROTACIONAR"), "Em torno do eixo vertical: ponto base e ângulo (digite) ou direção (clique).", "RO", true),
                 Botao("matriz", "Matriz", () => ExecutarComando("MATRIZ"), "Matriz retangular nx × ny × nz: escolha antes ou depois, depois o painel.", "AR", true),
                 Botao("dividir", "Dividir barra", () => ExecutarComando("DIVIDIR"), "Em partes iguais ou a uma distância: escolha as barras antes ou depois, depois o painel.", "DIV", true),
-                Botao("juntar", "Juntar barras", () => ExecutarComando("JUNTARBARRAS"), "Barras colineares em cadeia viram uma só: escolha antes ou depois. Recusa se mudar seção/material/giro, se o nó do meio tem outra barra, apoio, mola ou carga nodal.", "JB", true),
+                Botao("juntar", "Juntar barras", () => ExecutarComando("JUNTARBARRAS"), "Barras colineares em cadeia viram uma só: escolha antes ou depois. Recusa se mudar seção/material/giro, se o nó do meio tem outra barra, apoio, mola ou carga nodal.", "JN", true),
                 Botao("aparar", "Aparar", () => ExecutarComando("APARAR"), "Barras limite (escolhidas antes, ou escolha + Enter) e depois as barras: o lado clicado sai.", "TR", true),
                 Botao("estender", "Estender", () => ExecutarComando("ESTENDER"), "Barras limite (escolhidas antes, ou escolha + Enter) e depois as barras: a ponta perto do clique vai até o limite.", "EX", true),
                 Botao("unir", "Unir nós", () => ExecutarComando("UNIR"), "Funde nós coincidentes: escolha os nós (Enter sem nada = todos), depois o painel.", "J", true),

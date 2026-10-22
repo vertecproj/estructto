@@ -1,5 +1,7 @@
 # Sombra do chão (V2)
 
+> Decisão v0.6 (onda final): **só sombra de contato.** A sombra projetada das barras foi removida (disco/sombra bugada no chão); fica o decal de contato no pé das peças. Custo: menos realismo.
+
 - Causa das manchas/linhas soltas: no Sombreado nativo, `Vista3D.Sombra()` desenhava um quad plano por barra projetado pela luz (textura alfa), com faixas soltas longe do modelo. No DX, o disco do chão ia até 3R e entrava na cobertura automática do `ShadowMap3D` (4096²), gastando resolução fora do modelo.
 - Nativo (Sombreado): malha de sombra projetada removida; fica só o contato suave (`MatAo`) no pé dos pilares.
 - DX (Realista): chão recebe `ShadowMap3D` (material PBR com `RenderShadowMap`); último anel do chão de 3,0R para 1,5R (ainda some no canvas) para a sombra cobrir só a cena útil.

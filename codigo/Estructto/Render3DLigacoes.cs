@@ -286,6 +286,7 @@ namespace NovoFtool
             var ch = l.Chapas.FirstOrDefault(c => c.Nome == "placa de base");
             g.Normalize();
             if (ch == null || g.X > 0.9999 || g.X < 0.2 || ch.Contorno.Length < 3) return;
+            if (Math.Abs(ch.Normal.X - 1) > 1e-9 || Math.Abs(ch.Normal.Length - 1) > 1e-9) return;   // já assentada: a ligação é reaproveitada entre renders (2ª passada deslocava os chumbadores para fora da placa)
             Vector3D xb = new Vector3D(1, 0, 0), a1 = xb - g * g.X; a1.Normalize(); Vector3D a2 = Vector3D.CrossProduct(g, a1);
             double esp = ch.Espessura, ly = ch.Contorno.Max(p => p.X) - ch.Contorno.Min(p => p.X), lz = ch.Contorno.Max(p => p.Y) - ch.Contorno.Min(p => p.Y);
             Vector3D cOld = ch.Origem + ch.U * ((ch.Contorno.Max(p => p.X) + ch.Contorno.Min(p => p.X)) / 2) + Vector3D.CrossProduct(ch.Normal, ch.U) * ((ch.Contorno.Max(p => p.Y) + ch.Contorno.Min(p => p.Y)) / 2);

@@ -42,6 +42,27 @@ class TestTuboTubo(unittest.TestCase):
         self.assertAlmostEqual(v["resistente"], 0.6 * 0.707 * 0.005 * 485e3 / 1.35, places=1)
         self.assertTrue(any("NBR 16239" in a for a in r["avisos"]))
 
+    def test_momento_entra_na_solda(self):
+        # à mão: projeção da sela = círculo r = 57,15 mm ⇒ W = π r² = 1,0261e-2 m²; M = 2 kN·m ⇒ q = 194,9 kN/m
+        from prossen_estrutural.aco.ligacoes_tubos import modulo_sela
+        W = modulo_sela(sela(0.05715, 0.08415, math.pi / 4))
+        self.assertAlmostEqual(W, math.pi * 0.05715 ** 2, delta=0.005 * W)   # polígono de 72 lados
+        r = L.registro("tubo_tubo_soldado")["verificar"](DADOS, dict(N=0, V=0, M=2))
+        v = next(x for x in r["verificacoes"] if x["nome"].startswith("solda ramal"))
+        self.assertAlmostEqual(v["solicitante"], 2 / (math.pi * 0.05715 ** 2), delta=0.5)
+        # com N e V: q = hypot(N/Lw + M/W, V/Lw) > só N
+        r2 = L.registro("tubo_tubo_soldado")["verificar"](DADOS, dict(N=200, V=50, M=2))
+        r0 = L.registro("tubo_tubo_soldado")["verificar"](DADOS, dict(N=200, V=50))
+        q = lambda rr: next(x for x in rr["verificacoes"] if x["nome"].startswith("solda ramal"))["solicitante"]
+        self.assertGreater(q(r2), q(r0) + 190)
+
+    def test_momento_sem_W_reprova(self):
+        from unittest import mock
+        with mock.patch("prossen_estrutural.aco.ligacoes_tubos.modulo_sela", return_value=0.0):
+            r = L.registro("tubo_tubo_soldado")["verificar"](DADOS, dict(N=10, M=1))
+        self.assertFalse(r["ok"])
+        self.assertTrue(any("W_sela" in x["nome"] or "módulo resistente" in a for x in r["verificacoes"] for a in r["avisos"]))
+
     def test_beta_maior_que_1_reprova(self):
         r = L.registro("tubo_tubo_soldado")["verificar"](dict(DADOS, d_ramal=200), dict(N=10))
         self.assertFalse(r["ok"])
