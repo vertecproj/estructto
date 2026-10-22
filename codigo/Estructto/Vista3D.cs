@@ -938,7 +938,7 @@ namespace NovoFtool
             bool tl = Ler(din[0], out double l), tg = Ler(din[1], out double g);
             if (tl && !tg && ferr == Ferramenta3D.Barra)   // C1: só o comprimento digitado: segue a direção apontada em 3D (vertical/inclinada)
             {
-                var dir = Snap3D.DirecaoDigitada(a, cursor3, Tela(a), Tela(a + new Vector3D(0, 0, 1)), mouseDentro ? mouseTela : Tela(a));
+                var dir = Snap3D.DirecaoDigitada(a, cursor3, Tela(a), Tela(a + new Vector3D(0, 0, 1)), mouseDentro ? mouseTela : Tela(a), TravaZ);
                 if (dir != null) return a + dir.Value * l;
             }
             double ang = tg ? g * Math.PI / 180 : angM, len = tl ? l : dm * Math.Max(0, Math.Cos(angM - ang));
@@ -985,7 +985,7 @@ namespace NovoFtool
         async Task Ponto(Point3D? p)
         {
             if (p == null) { Aviso = "O plano de trabalho está de perfil nesta vista: gire a vista (Iso ou Topo)."; sobre.InvalidateVisual(); return; }
-            Aviso = null;
+            Aviso = null; TravaZ = false;
             DinLimpar(); coord = "";
             if (gripQuente != null) { await SoltarGrip(p.Value); return; }       // Vista3D.Grips.cs
             if (pedePonto != null) { await PontoPedido(p.Value); return; }
@@ -1022,7 +1022,7 @@ namespace NovoFtool
                     else if (DinTravado) DinLimpar();
                     else if (gripQuente != null) { Esfriar(); return true; }
                     else if (Pedindo) { LimparPedido(); return true; }
-                    else if (inicio != null) inicio = null;
+                    else if (inicio != null) { inicio = null; TravaZ = false; }
                     else if (Desenhando) { Ferramenta = Ferramenta3D.Selecionar; return true; }
                     else if (Selecao.Count > 0 || Selecionado != null) { LimparSelecao(); Escolher(null); }
                     else return false;
@@ -1051,8 +1051,10 @@ namespace NovoFtool
         }
 
         // Dígitos: comprimento/ângulo da entrada dinâmica; vírgula, ';' ou '@' passam a coordenada.
+        public bool TravaZ;   // tecla Z na barra em andamento: a medida digitada vai na vertical (rastreio Z fixo)
         public bool Digitar(string texto)
         {
+            if (texto == "z" || texto == "Z") { if (ferr == Ferramenta3D.Barra && inicio != null && coord == "") { TravaZ = !TravaZ; Aviso = TravaZ ? "Z travado: a medida digitada vai na vertical (Z de novo destrava)." : null; AtualizarCursor(); return true; } }
             if (DigitarSnap(texto)) return true;   // letras: linha de comando (END, MID, ME...)
             if (!Desenhando || string.IsNullOrEmpty(texto)) return false;
             char c = texto[0];
@@ -1166,11 +1168,11 @@ namespace NovoFtool
                 {
                     Point a = Tela(inicio.Value);
                     if (cursor3 != null && DinTravado) dc.DrawLine(PGuia3, a, Tela(cursor3.Value));
-                    if (ferr == Ferramenta3D.Barra && Snap3D.TrilhaZ(a, Tela(inicio.Value + new Vector3D(0, 0, 1)), mouseTela) != 0)   // C1: rastreio em Z (vertical), como o polar do CAD
+                    if (ferr == Ferramenta3D.Barra && (TravaZ || Snap3D.TrilhaZ(a, Tela(inicio.Value + new Vector3D(0, 0, 1)), mouseTela) != 0))   // C1: rastreio em Z (vertical), como o polar do CAD
                     {
                         Vector vz = Tela(inicio.Value + new Vector3D(0, 0, 1)) - a; vz.Normalize();
                         dc.DrawLine(PGuia3, a - vz * 4000, a + vz * 4000);
-                        var fz = Ft("Z", TemaPlant.BTexto1, 11);
+                        var fz = Ft(TravaZ ? "Z (travado)" : "Z", TemaPlant.BTexto1, 11);
                         dc.DrawText(fz, new Point(s.X + 12, s.Y - 26));
                     }
                     dc.DrawLine(PElastico, a, s);

@@ -393,6 +393,7 @@ namespace NovoFtool
             if (Editando() || Comando.IsKeyboardFocusWithin || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
             if (vista3D == null || !(vista3D.IsKeyboardFocusWithin || vista3D.IsMouseOver || Keyboard.FocusedElement == null || Keyboard.FocusedElement is Window)) return;
             char c = e.Text[0];
+            if ((c == 'z' || c == 'Z') && Comando.Text == "" && vista3D.Digitar(e.Text)) { e.Handled = true; return; }   // tecla Z: trava a vertical na barra em andamento
             bool numerico = char.IsDigit(c) || c == '.' || c == '-' || c == ',' || c == ';' || c == '@';
             if (vista3D.Desenhando && numeroPendente == null && numerico && vista3D.IsKeyboardFocusWithin) return;   // Vista3D.OnTextInput
             if (char.IsLetterOrDigit(c) || numerico || c == '<' || c == '#' || c == '?')
