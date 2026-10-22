@@ -787,13 +787,13 @@ namespace NovoFtool
             ("Motor Python", "Análise › Modos de vibração · Estabilidade", "análise modal · γz e deslocamentos-limite (estabilidade calcula antes)"),
             ("Motor Python", "Dimensionamento › Verificação de barras · Catálogo", "todas as barras pela NBR 8800 (calcula antes) · propriedades dos perfis"),
             ("Motor Python", "Ligações e bases › Ligações", "parafusos, filete de solda, chapa simples e ligação de tração"),
-            ("Níveis e planos (modelo espacial)", "Modelo › Planos › Nível", "ativa o nível: plano de trabalho em planta, só o andar dele (entre ele e o nível de baixo), o resto em fantasma"),
+            ("Níveis e planos (modelo espacial)", "Estrutura › Planos › Nível", "ativa o nível: plano de trabalho em planta, só o andar dele (entre ele e o nível de baixo), o resto em fantasma"),
             ("Níveis e planos (modelo espacial)", "Elevação X · Elevação Y", "plano vertical no valor escolhido: só as barras desse plano, vista de lado/frente"),
             ("Níveis e planos (modelo espacial)", "3D completo", "volta ao modelo inteiro em isométrica"),
-            ("Níveis e planos (modelo espacial)", "Modelo › Planos › Níveis", "criar, renomear, mudar a cota, apagar e detectar níveis pela geometria"),
+            ("Níveis e planos (modelo espacial)", "Estrutura › Planos › Níveis", "criar, renomear, mudar a cota, apagar e detectar níveis pela geometria"),
             ("Níveis e planos (modelo espacial)", "Copiar pavimento para cima", "barras, nós e cargas do andar para N níveis acima com a altura dada (um Ctrl+Z desfaz)"),
             ("Níveis e planos (modelo espacial)", "Gerar pilares entre níveis", "um pilar sob cada nó do nível escolhido até o nível de baixo"),
-            ("Motor Python", "Modelo › Importar CYPE", "importa .ed3 ou compara com o CYPE (também em Arquivo)"),
+            ("Motor Python", "Estrutura › Importar CYPE", "importa .ed3 ou compara com o CYPE (também em Arquivo)"),
             ("Geral", "Ctrl+K + nome", "todos os comandos acima também estão na paleta (ex.: vento, gama z, catálogo)"),
             ("Geral", "Ctrl+N / O / S / Shift+S", "novo · abrir · salvar · salvar como"),
             ("Geral", "Ctrl+Z / Ctrl+Y", "desfazer · refazer"),
@@ -855,7 +855,7 @@ namespace NovoFtool
                 var sp = new StackPanel();
                 sp.Children.Add(T("Como usar em 4 passos", 13, BTexto, FontWeights.SemiBold));
                 int n = 1;
-                foreach (string p in new[] { "Desenhe as barras (B) ou use Gerar estrutura.", "Selecione os nós da base e aplique apoios (aba Modelo).", "Aplique cargas (aba Ações).", "Veja os diagramas (aba Análise): o cálculo é refeito a cada alteração." })
+                foreach (string p in new[] { "Desenhe as barras (B) ou use Gerar estrutura.", "Selecione os nós da base e aplique apoios (aba Apoios).", "Aplique cargas (aba Ações).", "Veja os diagramas (aba Análise): o cálculo é refeito a cada alteração." })
                 {
                     var l = new DockPanel { Margin = new Thickness(0, 5, 0, 0) };
                     var num = new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Background = TemaPlant.BAcento, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Top, Child = new TextBlock { Text = (n++).ToString(), FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = TemaPlant.BTextoSobreAcento, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };

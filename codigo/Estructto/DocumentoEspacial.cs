@@ -420,7 +420,7 @@ namespace NovoFtool
                 var b = kv.Value;
                 if (!ids.TryGetValue((string)b["ni"], out int ni) || !ids.TryGetValue((string)b["nj"], out int nj)) continue;
                 var b3 = new Barra3D { Id = ++ib, Ni = ni, Nj = nj, Secao = (string)b["secao"] ?? "", Rot = (double)(b["rot"] ?? 0.0) * 180 / Math.PI, Origem = Ref("barra", kv.Key),
-                                   Cardinal = CardinalDe(b) };
+                                   Cardinal = CardinalDe(b), Espelho = b["params"]?["espelho"] is JsonValue ev && ev.TryGetValue(out bool eb) && eb };
                 var e = esforcos?[kv.Key];
                 if (e != null) { b3.N = Vetor(e["N"]); b3.V = Vetor(e["Vz"]); b3.M = Vetor(e["My"]); }
                 if (PiorPorBarra.TryGetValue(kv.Key, out var l) && Taxa(l) >= 0) b3.Aprov = Taxa(l);
@@ -907,8 +907,8 @@ namespace NovoFtool
                 cargas("cargas_nodais", "carga_nodal", "no", id);
                 casoCargas();
                 if (d.CasoAtivo != null)
-                    vetor(new[] { "Fx", "Fy", "Fz" }, new double[] { 0, 0, -10 }, "Adicionar (kN)", v => _ = Espacial(dd => dd.Adicionar("carga_nodal", new JsonObject
-                    { ["caso"] = dd.CasoAtivo, ["no"] = id, ["F"] = new JsonArray(v[0], v[1], v[2], 0.0, 0.0, 0.0) }), "Carga nodal no nó " + id + " (" + d.CasoAtivo + ")."));
+                    vetor(new[] { "Fx", "Fy", "Fz" }, new double[] { 0, 0, 0 }, "Adicionar (kN)", v => { if (v.All(x => Math.Abs(x) < 1e-12)) { StatusMsg.Text = "Informe o valor da carga (os campos começam em 0)."; return; } _ = Espacial(dd => dd.Adicionar("carga_nodal", new JsonObject
+                    { ["caso"] = dd.CasoAtivo, ["no"] = id, ["F"] = new JsonArray(v[0], v[1], v[2], 0.0, 0.0, 0.0) }), "Carga nodal no nó " + id + " (" + d.CasoAtivo + ")."); });
             }
             else
             {
@@ -916,13 +916,12 @@ namespace NovoFtool
                 cab("Barra " + id + " · " + (string)el["secao"], (string)el["material"] + " · " + (string)el["tipo"] + " · " + (string)el["ni"] + " → " + (string)el["nj"]);
                 secao("Barra");
                 // seções do modelo + perfis do catálogo do motor; perfil novo entra no modelo antes do PATCH
-                if (catalogoEsp == null) _ = CarregarCatalogoEsp();
-                var noModelo = d.Json["secoes"].AsObject().Select(x => x.Key).ToList();
-                linha("Seção", combo(noModelo.Concat((catalogoEsp ?? new List<string>()).Where(x => !noModelo.Contains(x))), (string)el["secao"], v => _ = Espacial(async dd =>
+                _ = SeletorSecao.Carregar();
+                linha("Seção", new BotaoSecao(() => d.Json["secoes"].AsObject().Select(x => x.Key), (string)el["secao"], v => { if (v != (string)el["secao"]) _ = Espacial(async dd =>
                 {
                     await dd.GarantirSecao(v);
                     await dd.Editar("barra", id, new JsonObject { ["secao"] = v });
-                }, "Barra " + id + ": seção " + v + (noModelo.Contains(v) ? "." : " (do catálogo, adicionada ao modelo)."))));
+                }, "Barra " + id + ": seção " + v + (d.Json["secoes"][v] != null ? "." : " (do catálogo, adicionada ao modelo).")); }));
                 linha("Material", combo(d.Json["materiais"].AsObject().Select(x => x.Key), (string)el["material"], v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["material"] = v }), "Barra " + id + ": material " + v + ".")));
                 linha("Giro (°)", num((double)(el["rot"] ?? 0.0) * 180 / Math.PI, v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["rot"] = v * Math.PI / 180 }), "Barra " + id + ": giro " + Num.Fmt(v, 1) + "°.")));
                 linha("Papel", leitura((string)el["params"]?["papel"] ?? "—"));
@@ -935,7 +934,8 @@ namespace NovoFtool
                     linha("Combinação", leitura((string)v0["combinacao"] ?? "—"));
                 }
                 else if (d.Calculado) { secao("Verificação"); sp.Children.Add(leitura("Barra não verificada pelo motor.")); }
-                botoes(("Apagar barra", () => _ = Espacial(dd => dd.Remover("barra", id), "Barra " + id + " apagada (com as cargas dela).")));
+                botoes(("Disposição do perfil…", () => AbrirDisposicao(new List<string> { id })),
+                       ("Apagar barra", () => _ = Espacial(dd => dd.Remover("barra", id), "Barra " + id + " apagada (com as cargas dela).")));
                 PainelCargasBarra(sp, d, id, casoCargas);   // CargasEspacial.cs: distribuídas (trapezoidais) e pontuais
             }
             painelEsp.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = TemaPlant.BSup1 };
@@ -1072,6 +1072,7 @@ namespace NovoFtool
             var lista = new List<(string, string, List<object>)>();
             foreach (var a in d.Validacao)
             {
+                if ((string)a?["codigo"] is "sem_barras" or "sem_nos") continue;   // v0.6: modelo em branco não é erro
                 var r = a?["ref"]; string tipo = (string)r?["tipo"], id = (string)r?["id"];
                 var objs = tipo == "no" || tipo == "barra" ? new List<object> { d.Ref(tipo, id) } : new List<object>();
                 lista.Add(((string)a["nivel"] == "erro" ? "erro" : "aviso", (string)a["mensagem"], objs));

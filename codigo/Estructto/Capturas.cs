@@ -413,7 +413,7 @@ namespace NovoFtool
             Esperar(w.MiniaturasInicio);
             CapturarPrincipal(w, "01-inicio", () => Esperar(w.MiniaturasInicio));
 
-            foreach (string chave in new[] { "galpao", "vazio" })
+            foreach (string chave in new[] { "galpao", "vazio", "branco" })
             {
                 var j = new JanelaNovoProjeto(w, chave) { Owner = w };
                 PrepararDialogoForaDaTela(j);
@@ -826,7 +826,7 @@ namespace NovoFtool
             // árvore e tabelas mostram o modelo espacial e os resultados do motor; HUD diz o que está na tela
             if (!w.TextoResultado.Contains("envoltória")) throw new InvalidOperationException("HUD do espacial: " + w.TextoResultado);
             if (!(w.TabNos.ItemsSource is IEnumerable<LinhaNoEsp> ln) || ln.Count() != d.Json["nos"].AsObject().Count) throw new InvalidOperationException("tabela de nós não mostra o modelo espacial");
-            w.PainelTabelas.IsSelected = true;
+            w.PainelTabelas.Show(); w.PainelTabelas.IsSelected = true; EsperarIdle();
             foreach (var (aba, nome) in new[] { (0, "nos"), (1, "barras"), (2, "verificacao") })
             {
                 w.AbasTabela.SelectedIndex = aba;
@@ -1142,6 +1142,7 @@ namespace NovoFtool
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
+                if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)
                 if (so == "visual") so1(() => CapturasVisual(w));                 // só as 58) close-ups de parafusos, linhas e ligações propostas
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado
@@ -1505,6 +1506,18 @@ namespace NovoFtool
                 RenderizarJanela(jka, (int)jka.Width, (int)jka.Height, "46-catalogo-arvore.png");
             });
             jka.Close();
+            // v0.6 D: perfil composto (2 UPN 200 a partir de props de motor) e disposição do perfil
+            var upn = new JsonObject { ["props"] = new JsonObject { ["tipo"] = "U", ["h"] = 0.2, ["b"] = 0.075, ["tw"] = 0.0085, ["tf"] = 0.0115 } };
+            var jco = new JanelaComposto("UPN 200", upn);
+            Cap(jco, "49-composto-2upn");
+            jco.Close();
+            var l2 = new JsonObject { ["props"] = new JsonObject { ["tipo"] = "L", ["h"] = 0.0508, ["b"] = 0.0508, ["t"] = 0.00635 } };
+            var jcl = new JanelaComposto("L 2\" x 1/4\"", l2);
+            Cap(jcl, "49-composto-2L");
+            jcl.Close();
+            var jd = new JanelaDisposicao(new Perfil3D { Forma = "U", H = 0.2, B = 0.075, Tw = 0.0085, Tf = 0.0115 }, 90, 7, 3);
+            Cap(jd, "49-disposicao");
+            jd.Close();
             EsperarIdle();
             CapturarVerificacao5000();
         }

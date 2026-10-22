@@ -57,6 +57,7 @@ namespace NovoFtool
                 case "viga_pilar_mesa": return rigida && !vigaU ? "chapa_topo_estendida" : "chapa_simples_alma";   // G6: U não tem rígida no motor: flexível
                 case "viga_pilar_alma": case "viga_viga": return "chapa_simples_alma";
                 case "gusset_contraventamento": return "gusset_contraventamento";
+                case "tubo_tubo_soldado": return "tubo_tubo_soldado";   // v0.6 A3: boca de peixe + filete na sela
                 case "emenda": return a.Length > 3 && int.TryParse(a[3], out int ang) && ang <= 5 ? (vertical ? "emenda_pilar" : "emenda_viga")
                                       : "chapa_simples_alma";   // G6: canto (> 5°) = viga–viga na outra barra (o membro traz o apoio), não proposta local
             }
@@ -110,7 +111,7 @@ namespace NovoFtool
                 {
                     Vector3D vr = Modelo3D.EixoY(er, r.Rot + r.RotPerfil), ur = Vector3D.CrossProduct(vr, er);
                     System.Windows.Point dr = GeometriaPerfis.Cardinal(fr, r.Cardinal);
-                    return fr.Lacos[0].Max(p => Vector3D.DotProduct(ur * (p.X + dr.X) + vr * (p.Y + dr.Y), xb));
+                    return fr.Lacos.SelectMany(z => z).Max(p => Vector3D.DotProduct(ur * (p.X + dr.X) + vr * (p.Y + dr.Y), xb));
                 }
                 double ext = Ext(q, f, es);
                 // G6 r1: as outras barras do nó quase ⟂ a esta (ex.: a viga na mesa de um pilar UPN 50 com a chapa nas costas da alma):
@@ -229,6 +230,31 @@ namespace NovoFtool
                         double H = peloPerfil ? Math.Ceiling((f.H * 1000 + 2 * sobra) / 10) * 10 : Dd("H", 0.4) * 1000, B = peloPerfil ? Math.Ceiling((f.B * 1000 + 2 * sobra) / 10) * 10 : Dd("B", 0.3) * 1000;
                         var furos = new List<(double, double)> { (-H / 2 + borda, -B / 2 + borda), (H / 2 - borda, -B / 2 + borda), (H / 2 - borda, B / 2 - borda), (-H / 2 + borda, B / 2 - borda) };
                         lig = LigacoesAmostra.PlacaDeBase(idN, b, b.Ni == idN, f, H, B, esp, dia, furos, Dd("solda", 0) * 1000);
+                    }
+                    else if (tl == "tubo_tubo_soldado")
+                    {   // v0.6 A3: medidas dos tubos (mm) e o ângulo entre os eixos; a sela do contrato (receptor no plano xz local) gira em
+                        // torno da barra até o receptor real
+                        string apoioId = (string)mb["apoio"] ?? SuporteBarra(no, bid), sup = apoioId == null ? null : (string)bj[apoioId]?["secao"];
+                        if (sup == null || !barras.TryGetValue(apoioId, out Barra3D ba)) continue;
+                        bool emINo = b.Ni == idN;
+                        Vector3D x = Eixo(b); x.Normalize(); if (!emINo) x = -x;
+                        Vector3D sa = Eixo(ba); sa.Normalize(); if (Vector3D.DotProduct(sa, x) < 0) sa = -sa;
+                        double th = Math.Acos(Math.Min(1, Vector3D.DotProduct(sa, x))) * 180 / Math.PI;
+                        double Tw(string s) => Prop(s, "t") > 0 ? Prop(s, "t") : Prop(s, "tw");
+                        var dt = new JsonObject { ["d_ramal"] = Prop(sec, "h") * 1000, ["t_ramal"] = Tw(sec) * 1000, ["D_receptor"] = Prop(sup, "h") * 1000, ["t_receptor"] = Tw(sup) * 1000, ["theta"] = Math.Round(Math.Max(1, th), 3) };
+                        JsonObject geo = await Geometria(tl, dt, null);
+                        if (geo != null)
+                        {
+                            lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]); lig.Grupo = (string)g["id"];
+                            Vector3D eb = Eixo(b); eb.Normalize();
+                            Vector3D zb = Modelo3D.EixoY(eb, b.Rot + b.RotPerfil), yb = Vector3D.CrossProduct(x, zb);
+                            double sy = Vector3D.DotProduct(sa, yb), sz = Vector3D.DotProduct(sa, zb), n = Math.Sqrt(sy * sy + sz * sz);
+                            if (n > 1e-9)
+                            {
+                                double sn = -sy / n, cs = sz / n;
+                                foreach (var sd in lig.Soldas) sd.Pontos = sd.Pontos.Select(q => new Vector3D(q.X, q.Y * cs - q.Z * sn, q.Y * sn + q.Z * cs)).ToArray();
+                            }
+                        }
                     }
                     else if (tl != null)
                     {

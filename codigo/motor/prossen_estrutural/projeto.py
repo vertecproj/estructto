@@ -191,7 +191,7 @@ _PARAMS_BARRA = {"kx", "ky", "kz", "Lb", "Cb", "rotula_i", "rotula_j", "trelica"
                  "t0_meses", "ligacao_uma_aba", "fator_EI", "emenda", "Lv", "tubo_com_costura", "Ndist", "Mdist",
                  "trecho_rigido_i", "trecho_rigido_j", "cortante", "l0_x", "l0_y", "t_alvenaria_meses",
                  "fracao_qp_pos_alvenaria", "ponto_aplicacao", "C2",
-                 "cardinal"}  # cardinal: justificação do desenho (1..9 da caixa, 10 = centroide); a análise usa o eixo
+                 "cardinal", "espelho"}  # espelho: seção refletida no desenho (secoes.espelhar: resistências invariantes); cardinal: justificação do desenho (1..9 da caixa, 10 = centroide); a análise usa o eixo
 _AUTO = ("V+X", "V-X", "V+Y", "V-Y", "SX", "SY")
 _RE_AUTO_V = re.compile(r"V[SM]?[+-][XY]( Cpi=.*)?")  # vento de edifício/barras ("V+X"), galpão ("V+X Cpi=-0.3"), NBR 8400 ("VS+X", "VM+X")
 _RE_AUTO_S = re.compile(r"S[XY](" + re.escape(_comb.TORCAO) + ")?")  # sismo e torção acidental

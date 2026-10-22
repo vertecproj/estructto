@@ -363,6 +363,7 @@ def gerar_estrutura(modelo, dados):
         modelo.add(CasoCarga("G1", "G"))
     if "Q1" not in modelo.casos:
         modelo.add(CasoCarga("Q1", "Q"))
+    modelo.liberar_pp_vazio()
     if modelo.peso_proprio is None:
         modelo.peso_proprio = "G1"
     log.debug("gerar_estrutura %s: %d nós, %d barras", tipo, len(p.nos), len(p.barras))

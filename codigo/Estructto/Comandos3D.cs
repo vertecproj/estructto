@@ -36,6 +36,7 @@ namespace NovoFtool
         List<Cmd3D> Cmds3D => cmds3D ??= new List<Cmd3D>
         {
             C("BARRA", "Barra (perfil das Configurações) em cadeia de cliques no plano de trabalho", w => Ferr(Ferramenta3D.Barra), "L", "B", "LINE", "VG", "VIGA", "MEMBRO"),
+            C("NO", "Nó: clique o ponto ou digite x,y,z (vários; Enter termina)", w => CmdNo(), "NÓ", "NODE", "PT"),
             C("PILAR", "Pilar: clique o ponto; a altura vem dos níveis", w => Ferr(Ferramenta3D.Pilar), "PI", "PL", "COLUNA"),
             C("SELECIONAR", "Selecionar (clique, janela, cruzamento)", w => Ferr(Ferramenta3D.Selecionar), "S", "SEL"),
             C("MOVER", "Mover a seleção: ponto base e segundo ponto", w => CmdMoverCopiar(false), "M", "MV", "MOVE"),
@@ -57,6 +58,7 @@ namespace NovoFtool
             C("MATERIAL", "Material nas barras (Enter = o das Configurações)", w => CmdMaterial(Arg(w)), "MAT"),
             C("GIRO", "Giro da seção (°) nas barras (Enter = o das Configurações)", w => CmdGiro(Arg(w))),
             C("CARDINAL", "Ponto cardinal (1..9, 10 centroide) nas barras", w => CmdCardinal(Arg(w)), "CARD"),
+            C("DISPOSICAO", "Disposição do perfil: giro, espelho e cardinal com desenho", w => CmdDisposicao(), "DISP"),
             C("APLICARCONFIG", "Seção, material, giro e cardinal das Configurações nas barras", w => CmdAplicarConfig(), "APLICAR"),
             C("CARGANO", "Carga nodal no caso ativo: Fx,Fy,Fz[,Mx,My,Mz] nos nós", w => CmdCargaNodal(Arg(w)), "CN", "CARGA", "CARGANODAL"),
             C("CARGADIST", "Carga distribuída (kN/m, global) nas barras; trapezoidal: q1/q2", w => CmdCargaDist(Arg(w)), "CD", "CARGADISTRIBUIDA"),
@@ -186,7 +188,7 @@ namespace NovoFtool
                 case Key.F3: AlternarSnap("osnap"); return true;
                 case Key.F4: vista3D?.Enquadrar(); return true;   // ponytail: F4 = 3D OSNAP no AutoCAD; aqui enquadrar até haver snap em faces
                 case Key.F5: Calcular(); return true;
-                case Key.F6: Log("F6 (UCS dinâmico) ainda não existe: use PgUp/PgDn ou Modelo › Planos para trocar o plano de trabalho."); return true;
+                case Key.F6: Log("F6 (UCS dinâmico) ainda não existe: use PgUp/PgDn ou Estrutura › Planos para trocar o plano de trabalho."); return true;
                 case Key.F7: AlternarStatus(stGrade, v => V3(x => x.MostrarGradePlano = v), "Grade do plano"); return true;
                 case Key.F8: AlternarSnap("orto"); return true;
                 case Key.F9: AlternarStatus(stAtrair, v => V3(x => { if (x.Snap.Modos.HasFlag(ModoSnap.Grade) != v) x.Snap.Modos ^= ModoSnap.Grade; }), "Snap na grade"); return true;
@@ -560,7 +562,24 @@ namespace NovoFtool
                 return true;
             }));
 
-        // Modelo › Configurações nas barras escolhidas: seção, material, giro e cardinal de uma vez (um Ctrl+Z).
+        void CmdDisposicao() => ComEscolha("DISPOSIÇÃO DO PERFIL", "barra", (nn, bs) => AbrirDisposicao(bs));
+
+        // Janela Disposição do perfil (v0.6 D2): giro e cardinal da 1ª barra como ponto de partida, aplicados a todas (um Ctrl+Z).
+        internal void AbrirDisposicao(List<string> bs)
+        {
+            var d0 = Esp; if (d0 == null || bs.Count == 0) return;
+            var b0 = d0.Json["barras"]?[bs[0]];
+            if (b0 == null) return;
+            double g0 = (double)(b0["rot"] ?? 0.0) * 180 / Math.PI;
+            int c0 = b0["params"]?["cardinal"] is JsonValue cv && cv.TryGetValue(out int ci) ? ci : 5;
+            bool e0 = b0["params"]?["espelho"] is JsonValue ev && ev.TryGetValue(out bool eb) && eb;
+            var j = new JanelaDisposicao(PerfilDaSecao((string)b0["secao"]), g0, c0, bs.Count, e0) { Owner = this };
+            j.Aplicar += (g, c, es) => _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Espelho(GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, bs, null, null, g, null), bs, c), bs, es)),
+                                                "Disposição em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + "): giro " + Num.Fmt(g, 1) + "°, cardinal " + c + (es ? ", espelhado." : "."));
+            j.ShowDialog();
+        }
+
+        // Desenhar › Configurações nas barras escolhidas: seção, material, giro e cardinal de uma vez (um Ctrl+Z).
         void CmdAplicarConfig() => ComEscolha("APLICAR CONFIGURAÇÕES", "barra", (nn, bs) =>
         {
             var d0 = Esp; string sec = SecaoDesenho3D(d0), mat = MaterialDesenho3D(d0); double g = giro3D; int c = cardinal3D;

@@ -162,10 +162,10 @@ namespace NovoFtool
             casoCargas();
             if (d.CasoAtivo != null)
             {
-                var tn = CamposEsp(sp, "ni", q, new double[] { 0, 0, -5 }).Concat(CamposEsp(sp, "nj", q, new double[] { 0, 0, -5 })).ToList();
+                var tn = CamposEsp(sp, "ni", q, new double[] { 0, 0, 0 }).Concat(CamposEsp(sp, "nj", q, new double[] { 0, 0, 0 })).ToList();
                 BotoesEsp(sp, ("Adicionar distribuída", () =>
                 {
-                    if (!LerEsp(tn, out var v)) return;
+                    if (!LerEsp(tn, out var v) || !ValorNaoNulo(v, 0, 6)) return;
                     var dados = new JsonObject { ["caso"] = d.CasoAtivo, ["barra"] = id, ["q"] = new JsonArray(v[0], v[1], v[2]) };
                     if (q2De(v) is JsonNode q2) dados["q2"] = q2;
                     _ = Espacial(dd => dd.Adicionar("carga_distribuida", dados), "Carga distribuída na barra " + id + " (" + d.CasoAtivo + ").");
@@ -184,13 +184,20 @@ namespace NovoFtool
             }
             if (d.CasoAtivo != null)
             {
-                var tp = CamposEsp(sp, "a (m)", new[] { "" }, new[] { L / 2 }).Concat(CamposEsp(sp, "F", f, new double[] { 0, 0, -10 })).ToList();
+                var tp = CamposEsp(sp, "a (m)", new[] { "" }, new[] { L / 2 }).Concat(CamposEsp(sp, "F", f, new double[] { 0, 0, 0 })).ToList();
                 BotoesEsp(sp, ("Adicionar pontual", () =>
                 {
-                    if (LerEsp(tp, out var v))
+                    if (LerEsp(tp, out var v) && ValorNaoNulo(v, 1, 3))
                         _ = Espacial(dd => dd.Adicionar("carga_pontual", new JsonObject { ["caso"] = dd.CasoAtivo, ["barra"] = id, ["a"] = v[0], ["F"] = new JsonArray(v[1], v[2], v[3]) }), "Carga pontual na barra " + id + " (" + d.CasoAtivo + ").");
                 }, true));
             }
+        }
+
+        // Carga só entra se o usuário digitou algum valor (campos nascem em 0).
+        bool ValorNaoNulo(double[] v, int ini, int n)
+        {
+            if (v.Skip(ini).Take(n).Any(x => Math.Abs(x) > 1e-12)) return true;
+            StatusMsg.Text = "Informe o valor da carga (os campos começam em 0)."; return false;
         }
 
         // Painel do modelo (sem escolha): casos e janelas do motor + carga em área num nível.
@@ -213,10 +220,10 @@ namespace NovoFtool
                 g.Children.Add(TxEsp(rot, 12, true)); Grid.SetColumn(cb, 1); g.Children.Add(cb);
                 sp.Children.Add(g);
             }
-            var tb = CamposEsp(sp, null, new[] { "p" }, new double[] { 3 });
+            var tb = CamposEsp(sp, null, new[] { "p" }, new double[] { 0 });
             casoCargas();
             if (d.CasoAtivo != null)
-                BotoesEsp(sp, ("Distribuir nas vigas", () => { if (LerEsp(tb, out var v)) _ = DistribuirArea(niveis[cbZ.SelectedIndex], v[0], cbDir.SelectedIndex == 0); }, true));
+                BotoesEsp(sp, ("Distribuir nas vigas", () => { if (LerEsp(tb, out var v) && ValorNaoNulo(v, 0, 1)) _ = DistribuirArea(niveis[cbZ.SelectedIndex], v[0], cbDir.SelectedIndex == 0); }, true));
         }
 
         // Uma chamada /api/modelo/lote com uma carga distribuída por viga. so = só estas vigas (as larguras de influência usam

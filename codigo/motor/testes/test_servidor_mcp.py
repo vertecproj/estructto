@@ -169,6 +169,20 @@ class TestErros(Base):
         self.assertIn("W999x1", m["perfil"])
         self.assertFalse(list(self.pasta.parent.glob("fora.json")))
 
+    def test_modelo_novo_liga_pp_e_calcula_so_com_pp(self):   # v0.6 B8
+        async def cena(c):
+            r = await self.ok(c, "modelo_novo", {"nome": "so PP"})
+            await self.ok(c, "no_adicionar", {"id": "n1", "x": 0, "y": 0, "z": 0, "apoio": "engaste"})
+            await self.ok(c, "no_adicionar", {"id": "n2", "x": 0, "y": 0, "z": 3})
+            await self.ok(c, "secao_adicionar", {"perfil": "W310x38.7"})
+            await self.ok(c, "material_adicionar", {"aco": "A-572 GR.50"})
+            await self.ok(c, "barra_adicionar", {"id": "p1", "ni": "n1", "nj": "n2", "secao": "W310x38.7", "material": "A-572 GR.50"})
+            calc = await self.ok(c, "projeto_calcular")   # nenhuma carga do usuário
+            return r, calc, servidor_mcp._estado["modelo"]
+        r, calc, m = rodar(cena)
+        self.assertEqual((m.peso_proprio, list(m.casos)), ("PP", ["PP"]))
+        self.assertTrue(calc)
+
     def test_consulta_sem_calculo_orienta(self):
         async def cena(c):
             await self.ok(c, "modelo_novo")

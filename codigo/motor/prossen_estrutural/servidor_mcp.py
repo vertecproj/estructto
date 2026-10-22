@@ -146,9 +146,9 @@ def _resumo_atual() -> dict[str, Any]:
 
 @_ferramenta(destrutiva=True, idem=True)
 def modelo_novo(nome: Annotated[str, Field(description="nome do projeto (texto livre)")] = "") -> dict[str, Any]:
-    """Cria um modelo vazio e descarta o modelo atual e o cálculo (salve antes com modelo_salvar).
+    """Cria um modelo vazio (com o caso PP de peso próprio ligado) e descarta o modelo atual e o cálculo (salve antes com modelo_salvar).
     Exemplo: modelo_novo(nome="Pórtico do galpão")."""
-    _estado["modelo"] = projeto.novo_modelo(nome)
+    _estado["modelo"] = projeto.novo_modelo(nome).ligar_peso_proprio()   # v0.6: nasce com o peso próprio (caso PP)
     return _resumo_atual()
 
 

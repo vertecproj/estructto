@@ -271,7 +271,7 @@ namespace NovoFtool
         bool ExigirEspacial()
         {
             if (Esp != null) return true;
-            MostrarToast("Níveis e planos valem para o modelo espacial (Modelo › Gerar 3D ou um .json do motor).", true);
+            MostrarToast("Níveis e planos valem para o modelo espacial (Estrutura › Gerar 3D ou um .json do motor).", true);
             return false;
         }
 

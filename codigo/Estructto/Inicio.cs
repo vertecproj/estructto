@@ -161,6 +161,7 @@ namespace NovoFtool
         public static readonly ModeloInicial[] Todos =
         {
             new ModeloInicial { Chave = "vazio", Titulo = "Vazio com grade", Sub = "só eixos e níveis, para desenhar", Icone = "grade", EixosX = "3x6", EixosY = "2x5", Niveis = "2x3,5", Gerador = null },
+            new ModeloInicial { Chave = "branco", Titulo = "Em branco", Sub = "sem grade, sem barras", Icone = "novo", EixosX = "", EixosY = "", Niveis = "", Gerador = null },
             new ModeloInicial { Chave = "galpao", Titulo = "Galpão", Sub = "pórticos de alma cheia, terças, contraventamento", Icone = "3d",
                 EixosX = "20", EixosY = "5x6", Niveis = "6 2", RotX = "Vão do pórtico", RotY = "Módulos (espaçamento)", RotZ = "Pé-direito, acréscimo até a cumeeira",
                 Pilar = "W360x51", Viga = "HP250x62", G = 1.5, Q = 1.5,
@@ -273,7 +274,7 @@ namespace NovoFtool
                         await Motor.Chamar("PATCH", "/api/config", new JsonObject
                         {
                             ["projeto"] = new JsonObject { ["cliente"] = d.Cliente ?? "", ["engenheiro"] = d.Engenheiro ?? "", ["empresa"] = d.Empresa ?? "", ["normas"] = new JsonArray(d.Normas.Select(n => (JsonNode)n).ToArray()), ["modelo"] = d.Modelo.Chave },
-                            ["grade"] = d.Grade.Json(),
+                            ["grade"] = d.Modelo.Chave == "branco" ? null : d.Grade.Json(),   // em branco: sem grade
                         });
                     }, d.Nome, d.Arquivo);
                     File.WriteAllText(d.Arquivo, doc.JsonFormatado());

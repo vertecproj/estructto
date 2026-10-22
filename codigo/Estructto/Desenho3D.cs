@@ -1,4 +1,4 @@
-// Host da Vista3D na janela principal: alternância, estilo visual (SeletorEstilo.cs) e Modelo › Desenhar 3D (docs/MODELO-ESPACIAL.md).
+// Host da Vista3D na janela principal: alternância, estilo visual (SeletorEstilo.cs) e Desenhar (docs/MODELO-ESPACIAL.md).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -74,7 +74,7 @@ namespace NovoFtool
             vista3D.Carregar(Modelo3D.De(M, Vista.Resolvido ? Vista.Verificar : null), enquadrar);
         }
 
-        // ================= desenhar no modelo espacial (Modelo › Desenhar 3D) =================
+        // ================= desenhar no modelo espacial (Desenhar) =================
 
         F.RibbonGroupBox grpDesenho3D, grpConfig3D;
         readonly Dictionary<Ferramenta3D, F.ToggleButton> btnFerr3D = new Dictionary<Ferramenta3D, F.ToggleButton>();
@@ -161,7 +161,7 @@ namespace NovoFtool
         }
 
         // ---------- Desenhar 3D › Seção e Apoio na base ----------
-        F.ComboBox cbSecao3D; F.ToggleButton tgApoioBase3D;
+        F.DropDownButton ddSecao3D; SeletorSecao sel3D; F.ToggleButton tgApoioBase3D;
         string secao3D;                                  // escolhida no seletor (null = a da última barra)
         bool montandoSecao3D;
         const string DoCatalogo = "Do catálogo…";
@@ -173,15 +173,11 @@ namespace NovoFtool
 
         void MontarSecaoDesenho3D()
         {
-            cbSecao3D = new F.ComboBox { Header = "Seção", IsEditable = false, Width = 150,
-                ToolTip = Dica("Seção", "Seção das barras e pilares desenhados: as do modelo, ou um perfil do catálogo do motor (entra no modelo ao escolher).") };
-            cbSecao3D.DropDownOpened += (s, e) => ListarSecoes3D();
-            cbSecao3D.SelectionChanged += (s, e) =>
-            {
-                if (montandoSecao3D || !(cbSecao3D.SelectedItem is string v)) return;
-                if (v == DoCatalogo) { ListarSecoes3D(); _ = EscolherDoCatalogo3D(); return; }
-                secao3D = v;
-            };
+            ddSecao3D = new F.DropDownButton { Header = "Seção", Width = 150, Icon = Icone("sel", 16), LargeIcon = Icone("sel", 32), Size = F.RibbonControlSize.Middle,
+                ToolTip = Dica("Seção", "Seção das barras e pilares desenhados: busca, seções do modelo, recentes e a árvore do catálogo do motor (o perfil entra no modelo ao escolher).") };
+            Tamanho(ddSecao3D, true);
+            ddSecao3D.Items.Add(sel3D = new SeletorSecao(() => (Esp?.Json["secoes"] as JsonObject)?.Select(x => x.Key) ?? Enumerable.Empty<string>(), null, v => { ddSecao3D.IsDropDownOpen = false; _ = UsarSecao3D(v); }));
+            ddSecao3D.DropDownOpened += (s, e) => { _ = SeletorSecao.Carregar(); sel3D.Montar(); };
             tgApoioBase3D = new F.ToggleButton { Header = "Apoio na base", Icon = Icone("engaste", 16), LargeIcon = Icone("engaste", 32), Size = F.RibbonControlSize.Middle,
                 ToolTip = Dica("Apoio na base", "Nó novo desenhado no nível mais baixo nasce engastado (6 GL travados).") };
             cbMaterial3D = new F.ComboBox { Header = "Material", IsEditable = false, Width = 150, ToolTip = Dica("Material", "Material das próximas barras: os do modelo (vazio = o da última barra).") };
@@ -191,7 +187,7 @@ namespace NovoFtool
                 foreach (var kv in Esp?.Json["materiais"] as JsonObject ?? new JsonObject()) cbMaterial3D.Items.Add(kv.Key);
                 cbMaterial3D.SelectedItem = material3D;
             };
-            cbMaterial3D.SelectionChanged += (s, e) => { if (cbMaterial3D.SelectedItem is string v) material3D = v; };
+            cbMaterial3D.SelectionChanged += (s, e) => { if (!montandoSecao3D && cbMaterial3D.SelectedItem is string v) material3D = v; };
             var tbGiro = new F.TextBox { Header = "Giro (°)", Text = "0", Width = 150, ToolTip = Dica("Giro da seção", "Rotação do perfil em torno do próprio eixo nas próximas barras (Angle do Plant 3D). Ctrl+R no desenho soma 90°.") };
             void LerGiro() { if (Num.Ler(tbGiro.Text, out double g)) giro3D = g; tbGiro.Text = Num.Fmt(giro3D, 1); }
             tbGiro.LostFocus += (s, e) => LerGiro(); tbGiro.KeyDown += (s, e) => { if (e.Key == Key.Enter) LerGiro(); };
@@ -200,11 +196,15 @@ namespace NovoFtool
             foreach (string c in Cardinais) cbCardinal3D.Items.Add(c);
             cbCardinal3D.SelectedIndex = 4;
             cbCardinal3D.SelectionChanged += (s, e) => { if (cbCardinal3D.SelectedIndex >= 0) cardinal3D = cbCardinal3D.SelectedIndex + 1; };
-            grpConfig3D.Items.Add(cbSecao3D);
+            grpConfig3D.Items.Add(ddSecao3D);
             grpConfig3D.Items.Add(cbMaterial3D);
             grpConfig3D.Items.Add(tbGiro);
             grpConfig3D.Items.Add(cbCardinal3D);
             grpConfig3D.Items.Add(tgApoioBase3D);
+            var btDisp = new F.Button { Header = "Disposição", Icon = Icone("sel", 16), LargeIcon = Icone("sel", 32), Size = F.RibbonControlSize.Middle,
+                ToolTip = Dica("Disposição do perfil", "Giro (0/90/180/270 ou livre), espelho e ponto cardinal das barras selecionadas, com o desenho da seção sobre o eixo.", "DISP") };
+            btDisp.Click += (s, e) => CmdDisposicao();
+            grpConfig3D.Items.Add(btDisp);
         }
 
         // ---------- Configurações: material, giro e ponto cardinal das próximas barras ----------
@@ -217,15 +217,19 @@ namespace NovoFtool
         // Itens: seções do modelo + "Do catálogo…"; mostra a que vale agora.
         internal void ListarSecoes3D()
         {
-            if (cbSecao3D == null) return;
-            montandoSecao3D = true;
-            cbSecao3D.Items.Clear();
+            if (ddSecao3D == null) return;
             var d = Esp;
-            if (d != null) foreach (var kv in d.Json["secoes"] as JsonObject ?? new JsonObject()) cbSecao3D.Items.Add(kv.Key);
-            cbSecao3D.Items.Add(DoCatalogo);
             string atual = d == null ? null : SecaoDesenho3D(d);
-            cbSecao3D.SelectedItem = atual != null && cbSecao3D.Items.Contains(atual) ? atual : null;
-            montandoSecao3D = false;
+            ddSecao3D.Header = atual == null ? "Seção" : "Seção: " + atual;
+            if (cbMaterial3D != null)   // mostra o material que vale agora: o escolhido ou o da última barra
+            {
+                montandoSecao3D = true;
+                cbMaterial3D.Items.Clear();
+                foreach (var kv in d?.Json["materiais"] as JsonObject ?? new JsonObject()) cbMaterial3D.Items.Add(kv.Key);
+                string mat = d == null ? null : MaterialDesenho3D(d) ?? (string)(d.Json["barras"] as JsonObject)?.LastOrDefault().Value?["material"];
+                cbMaterial3D.SelectedItem = mat != null && cbMaterial3D.Items.Contains(mat) ? mat : null;
+                montandoSecao3D = false;
+            }
         }
 
         async Task EscolherDoCatalogo3D()
@@ -237,7 +241,19 @@ namespace NovoFtool
             JsonNode arv = null; try { arv = await Motor.Get("/api/catalogo?formato=arvore"); } catch { }
             var j = new JanelaCatalogo(lista, nome => Motor.Get("/api/catalogo/" + Uri.EscapeDataString(nome)), arv) { Owner = this };
             j.PerfilEscolhido += nome => _ = UsarSecao3D(nome);
+            j.CompostoCriado += spec => _ = UsarComposto3D(spec);
             j.Show();
+        }
+
+        // Composto (JanelaComposto): a seção entra no modelo pela spec {"forma":"dupla"} e vira a seção do desenho.
+        internal async Task UsarComposto3D(JsonObject spec)
+        {
+            var d = Esp; string nome = (string)spec["nome"];
+            if (d == null || nome == null) return;
+            if (d.Json["secoes"]?[nome] == null) await Espacial(dd => dd.Adicionar("secao", spec), "Seção composta " + nome + " entrou no modelo.");
+            if (Esp?.Json["secoes"]?[nome] == null) return;
+            secao3D = nome;
+            ListarSecoes3D();
         }
 
         // Escolhe a seção do desenho; perfil do catálogo fora do modelo entra pelo motor (POST /api/modelo/secao, um desfazer).

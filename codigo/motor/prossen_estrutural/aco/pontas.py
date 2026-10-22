@@ -168,8 +168,14 @@ def pontas_do_no(no, membros, tipo_ligacao, params=None):
         else:
             raise ValueError(f"tipo de ligação sem pontas: {tipo_ligacao}")
         _curta(dist + max((c.get("comprimento", 0.0) for c in recortes), default=0.0), m)
+        n = u
+        if tipo_ligacao in ("viga_pilar_mesa", "viga_pilar_alma"):
+            # v0.6 A1: viga inclinada (joelho) cortada no plano da face do pilar (vertical), não perpendicular a ela
+            h = _add(u, ap["dir"], -_dot(u, ap["dir"]))
+            if 1e-6 < _dot(u, ap["dir"]) ** 2 < 0.75:
+                n = _unit(h)
         out.append(dict(barra=m["barra"], extremo=m["extremo"],
-                        plano=dict(ponto=_add(no, u, dist), normal=[-x for x in u]),
+                        plano=dict(ponto=_add(no, n, dist) if n is u else _add(no, u, dist / _dot(u, n)), normal=[-x for x in n]),
                         folga=fol, recortes=recortes))
     return out
 
@@ -205,6 +211,55 @@ def pontas_locais(tipo_no, barra=None, apoio=None, comprimento=math.inf, theta=N
                      folga=0.0 if recuo is not None else x, recortes=[])]
     ap = dict(barra=1, extremo="i", dir=d, eixo_d=e, perfil=apoio, continuo=True, comprimento=math.inf)
     return pontas_do_no([0.0, 0.0, 0.0], [m, ap], tipo_no, params)
+
+
+def topo_pilar(no, pilar, outros, chapa=0.0):
+    """v0.6 A1: pilar que TERMINA no nó vai até o ponto mais alto das barras que chegam (+ chapa de cabeça).
+
+    pilar: membro (dir saindo do nó para dentro do pilar). outros: membros das demais barras no nó.
+    Cada barra é medida no plano da face do pilar (vertical) por onde ela sai: viga horizontal dá h/2; viga inclinada
+    (joelho) dá o canto mais alto da seção nesse plano. Devolve a Ponta (plano além do nó, normal para fora do material)
+    ou None sem barra para cobrir."""
+    a = pilar["dir"]
+    up = [-x for x in a]
+    d0 = pilar.get("desloc", [0, 0, 0])
+    ext = None
+    for m in outros:
+        u = m["dir"]
+        h = _add(u, a, -_dot(u, a))
+        if _dot(h, h) < 1e-12:
+            continue
+        h = _unit(h)
+        f = _meia_largura(pilar, h)                          # face do pilar na direção horizontal da barra
+        p, ed = _perfil(m, "h", "b"), m["eixo_d"]
+        eb = _cross(u, ed)
+        off = _add(m.get("desloc", [0, 0, 0]), d0, -1)
+        for sh in (1, -1):
+            for sb in (1, -1):
+                k = _add(_add(off, ed, sh * p["h"] / 2), eb, sb * p["b"] / 2)
+                t = (f - _dot(k, h)) / _dot(u, h)
+                z = _dot(_add(k, u, t), up)
+                ext = z if ext is None else max(ext, z)
+    if ext is None or ext <= 0:
+        return None
+    ext += chapa
+    return dict(barra=pilar["barra"], extremo=pilar["extremo"], plano=dict(ponto=_add(no, up, ext), normal=up),
+                folga=0.0, recortes=[], prolongamento=ext)
+
+
+def ponta_sobre_placa(no, barra, esp, vertical=(0.0, 0.0, 1.0)):
+    """v0.6 A2: barra (vertical ou inclinada) sobre a placa de base horizontal de espessura esp.
+
+    A placa fica com a face de baixo no nível do nó e centrada na projeção da barra; a barra é cortada no plano
+    da face de cima (corte em ângulo assentando na placa). ValueError se a barra não sobe da placa."""
+    up = _unit(list(vertical))
+    u = barra["dir"]
+    c = _dot(u, up)
+    if c < 0.2:
+        raise ValueError("barra deitada ou descendo: não assenta na placa de base")
+    topo = _add(no, u, esp / c)
+    return dict(barra=barra["barra"], extremo=barra["extremo"], plano=dict(ponto=topo, normal=[-x for x in up]),
+                folga=0.0, recortes=[], placa=dict(centro=_add(topo, up, -esp), normal=up))
 
 
 def largura_util(ponta, b):
