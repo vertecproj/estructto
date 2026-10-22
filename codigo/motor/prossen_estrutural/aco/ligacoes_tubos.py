@@ -1,7 +1,7 @@
 """Tubo redondo soldado em tubo redondo (v0.6 Frente A3, docs/v3/PONTAS-CONTRATO.md §v0.6).
 
 Ponta do ramal em boca de peixe (pontas.pontas_do_no "boca_peixe") e um filete em todo o contorno da sela.
-Verificado: solda pela NBR 8800 6.2.5 / tabela 8 (q = |N|/Lw + M/W_sela combinada vetorialmente com V/Lw), filete
+Verificado: solda pela NBR 8800 6.2.5 / tabela 8 (q = |N|/Lw + M/W_sela combinada vetorialmente com V/Lw + T/(Lw·r); M e V biaxiais pela resultante), filete
 mínimo/máximo (6.2.6.2) e β = d/D ≤ 1. NÃO verificado: o nó tubular da NBR 16239 (plastificação da parede do
 receptor, punção, cisalhamento do banzo) — avisado no resultado.
 
@@ -95,8 +95,12 @@ def _verificar(dados, esforcos):
     d = _ler(dados)
     r = F._Col()
     e = dict(esforcos or {})
-    N, V = float(e.get("N", 0.0) or 0.0), abs(float(e.get("V", 0.0) or 0.0))
-    M = abs(float(e.get("M", 0.0) or 0.0))
+    # contrato (ligacoes_modelo.esforcos_contrato): M=My, Mz, V=|Vz|, Vz=|Vy|, T. Tubo redondo é axissimétrico:
+    # flexão e cortante biaxiais entram pela resultante.
+    N = float(e.get("N", 0.0) or 0.0)
+    V = math.hypot(abs(float(e.get("V", 0.0) or 0.0)), abs(float(e.get("Vz", 0.0) or 0.0)))
+    M = math.hypot(abs(float(e.get("M", 0.0) or 0.0)), abs(float(e.get("Mz", 0.0) or 0.0)))
+    T = abs(float(e.get("T", 0.0) or 0.0))
     dr, Dr = d["d_ramal"], d["D_receptor"]
     beta = dr / Dr
     r.val.update(beta=beta)
@@ -118,7 +122,8 @@ def _verificar(dados, esforcos):
         r.v.append(dict(nome="solda ramal–receptor: W_sela não calculável com M ≠ 0", item="NBR 8800 6.2.5",
                         solicitante=M, resistente=0.0, unidade="kN·m", taxa=F._INF, ok=False))
         return r.resultado(dict(chapas=[], cantoneiras=[], parafusos=[], soldas=[], recortes=[], pontas=[]))
-    q = math.hypot(abs(N) / Lw + (M / W if M else 0.0), V / Lw)
+    # torção: fluxo tangencial T/(Lw·r) somado (pior caso) ao cortante V/Lw, combinado vetorialmente com o normal
+    q = math.hypot(abs(N) / Lw + (M / W if M else 0.0), V / Lw + T / (Lw * dr / 2))
     r.res("solda ramal–receptor (filete em todo o contorno da sela)", q, L.resistencia_filete(bs, fw, fyr, fur)["FwRd"],
           "kN/m", "6.2.5 / tabela 8")
     r.res("receptor: metal base junto à solda", q, L.resistencia_filete(bs, fw, fyc, fuc)["metal_base"], "kN/m",
@@ -146,7 +151,7 @@ def _sugerir(perfis, esforcos):
 
 TIPOS = {
     "tubo_tubo_soldado": dict(
-        nome="Tubo–tubo soldado (boca de peixe)", familia="tubo", liga=["tubo-tubo"], entradas=_ENT, esforcos=["N", "V", "M"],
+        nome="Tubo–tubo soldado (boca de peixe)", familia="tubo", liga=["tubo-tubo"], entradas=_ENT, esforcos=["N", "V", "Vz", "M", "Mz", "T"],
         descricao="Tubo redondo com a ponta em boca de peixe soldado em todo o contorno num tubo redondo de diâmetro "
                   "maior ou igual. Solda pela NBR 8800 6.2.5; nó tubular (NBR 16239) não verificado.",
         verificar=_verificar, sugerir=_sugerir),

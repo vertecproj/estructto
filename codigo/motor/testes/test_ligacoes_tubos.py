@@ -56,6 +56,16 @@ class TestTuboTubo(unittest.TestCase):
         q = lambda rr: next(x for x in rr["verificacoes"] if x["nome"].startswith("solda ramal"))["solicitante"]
         self.assertGreater(q(r2), q(r0) + 190)
 
+    def test_biaxial_e_torcao(self):
+        q = lambda esf: next(x for x in L.registro("tubo_tubo_soldado")["verificar"](DADOS, esf)["verificacoes"]
+                             if x["nome"].startswith("solda ramal"))["solicitante"]
+        self.assertAlmostEqual(q(dict(M=1.41421356, Mz=1.41421356)), q(dict(M=2)), places=3)
+        self.assertAlmostEqual(q(dict(V=30, Vz=40)), q(dict(V=50)), places=6)
+        # T = 1 kN·m só: q = T/(Lw·r)
+        Lw = sum(math.dist(a, b) for a, b in zip(sela(0.05715, 0.08415, math.pi / 4),
+                                                  sela(0.05715, 0.08415, math.pi / 4)[1:] + sela(0.05715, 0.08415, math.pi / 4)[:1]))
+        self.assertAlmostEqual(q(dict(T=1)), 1 / (Lw * 0.05715), places=3)
+
     def test_momento_sem_W_reprova(self):
         from unittest import mock
         with mock.patch("prossen_estrutural.aco.ligacoes_tubos.modulo_sela", return_value=0.0):
