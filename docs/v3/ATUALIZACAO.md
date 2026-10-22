@@ -16,10 +16,10 @@ Código: `codigo/Estructto/Atualizador.cs` (lógica), `AtualizadorUi.cs` (faixa 
    Só então extrai em `%TEMP%\Estructto-update\v<versão>\pacote`, pergunta sobre documentos não salvos (a mesma pergunta de fechar o programa;
    cancelar adia a atualização), dispara o script atualizador e fecha o Estructto.
 5. **Script** (PowerShell, `%TEMP%\Estructto-update\atualizar-*.ps1`, `Atualizador.ScriptAtualizador`): espera o PID do Estructto terminar (até 120 s;
-   se não fechar, não mexe em nada), encerra `estructto-motor` da pasta, faz backup `<pasta>.bak`, apaga `motor\` antigo e copia o pacote novo por cima,
-   confere `motor\estructto-motor.exe` e reabre o Estructto. Qualquer erro: restaura o backup e reabre a versão antiga. O log fica em `%TEMP%\Estructto-update\atualizador.log`.
+   se não fechar, não mexe em nada e não reabre), encerra `estructto-motor` da pasta, faz backup `<pasta>.bak`, apaga `motor\` antigo e copia o pacote novo por cima,
+   confere `motor\estructto-motor.exe` e reabre o Estructto. Qualquer erro: restaura por renomeação (pasta nova → `.failed`, `.bak` → pasta, `.failed` apagada) e reabre a versão antiga. Se o Estructto não fechar no prazo, o script desiste (saída 2) sem alterar nada e **sem reabrir** (evita segunda cópia); se o `Close()` for cancelado depois de o script iniciar, o programa encerra o script pendente. O log fica em `%TEMP%\Estructto-update\atualizador.log`.
    Configurações do usuário (`%AppData%\NovoFtool`) ficam fora da pasta de instalação e nunca são tocadas; arquivos extras do usuário na pasta são mantidos.
-6. **Sem permissão de escrita** (ex.: Program Files): o script se reabre com `Start-Process -Verb RunAs` (UAC) só nesse caso; elevado, reabre o programa
+6. **Sem permissão de escrita** (ex.: Program Files): o script se reabre com `Start-Process -Verb RunAs` (UAC) só nesse caso, por um stub (`-EncodedCommand`) que grava o script em `%ProgramData%\Estructto\update` (pasta recriada, ACL só Administradores/SYSTEM) e o executa de lá, não de `%TEMP%`; elevado, reabre o programa
    pelo `explorer.exe` para ele não rodar como administrador. Se o UAC for recusado, nada muda e a versão antiga reabre.
 
 O `.bak` fica ao lado da pasta até a próxima atualização (permite voltar à versão anterior à mão).
@@ -31,10 +31,11 @@ Fora do pacote publicado (sem `motor\` ao lado do exe, como em `dotnet build`) o
 
 ## Segurança
 - Nada é instalado nem executado sem SHA-256 conferido; do pacote só se copiam arquivos (o script é nosso, gerado pelo programa).
-- Download só de `https` em `github.com`, `api.github.com` e `*.githubusercontent.com` (inclusive após redirecionamento); a URL vinda do JSON não escolhe outro host.
+- O JSON só vale se `browser_download_url` do zip e do `.sha256` começar com `https://github.com/vertecproj/estructto/releases/download/`; senão a release é ignorada (zip) ou fica sem hash (sha) e não instala. Redirecionamentos só para `github.com`/`*.githubusercontent.com`.
+- Flag `prerelease` do GitHub é respeitada: usuário estável nunca recebe pré-release.
 - `ZipFile.ExtractToDirectory` recusa entradas fora da pasta (zip-slip); o pacote tem de conter `Estructto.exe` e `motor\estructto-motor.exe`.
 - Limite conhecido: o hash vem da mesma release; protege contra download corrompido/adulterado em trânsito, não contra conta do GitHub comprometida
-  (assinatura de código seria o passo seguinte).
+  (**passo seguinte recomendado, não implementado:** assinar o pacote — Authenticode no `Estructto.exe` ou assinatura destacada com chave pública embutida no app — para o hash deixar de depender só da conta do GitHub).
 
 ## Publicar (publicar.ps1)
 `codigo\publicar.ps1 -Versao 0.5` gera `Estructto-0.5-win-x64.zip` **e** `Estructto-0.5-win-x64.zip.sha256` (formato sha256sum). Os dois são assets da release `v0.5`.
@@ -44,4 +45,5 @@ Fora do pacote publicado (sem `motor\` ao lado do exe, como em `dotnet build`) o
 `Estructto.exe --testes-atualizacao <pasta>` (sem rede, `TODOS PASSARAM`, saída 0): versões, parse do JSON de exemplo, hash (correto, errado, ausente, formatos),
 zip (válido, sem motor, zip-slip), conteúdo do script e **execução real do script** em pastas temporárias (instalação e restauração após pacote incompleto), e a faixa
 (aparece com versão maior, não aparece com igual, "Depois", busca manual). Captura `atualizacao-faixa.png` (também em `--capturas`).
-Não testado automaticamente: elevação (UAC) e o download real da release.
+Também cobre: URL de asset de outro host rejeitada, flag `prerelease`, processo que não fecha (script desiste sem reabrir), cancelamento do script pendente.
+Não testado automaticamente: elevação (UAC, inclusive o stub do `%ProgramData%`) e o download real da release.
