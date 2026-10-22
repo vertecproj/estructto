@@ -339,13 +339,19 @@ namespace NovoFtool
         // porca encosta nela); sem pega (NaN), a do comprimento do motor (pega + porca + arruela + fios: ligacoes_rigidas
         // _comprimento_parafuso). As arruelas ficam a Folga da chapa: sem faces no mesmo plano (z-fighting).
         public const double FolgaParafuso = 0.03;   // × d (0,6 mm no M20)
+        // Pega desenhada (m): a do contrato, ou estimada se faltar, limitada para a porca caber no fuste. O auto-teste (C4) compara com a pedida.
+        public static double PegaEfetiva(double d, double comp, double pega)
+        {
+            if (double.IsNaN(pega) || pega <= 0) pega = comp - 0.9 * d - 0.014;
+            return Math.Max(Math.Min(pega, comp - 0.8 * d - 0.14 * d), 0.3 * comp);
+        }
+
         public static void Parafuso(MalhaDx m, Point3D cabeca, Vector3D eixo, double d, double comp, Color4 cor, double pega = double.NaN, Vector3D? refU = null)
         {
             if (eixo.Length < 1e-12 || d <= 0 || comp <= 0) return;
             eixo.Normalize();
             double rc = 0.95 * d, hc = 0.65 * d, ra = 1.05 * d, ha = 0.14 * d, rp = 0.95 * d, hp = 0.8 * d, f = FolgaParafuso * d;
-            if (double.IsNaN(pega) || pega <= 0) pega = comp - 0.9 * d - 0.014;
-            pega = Math.Max(Math.Min(pega, comp - hp - ha), 0.3 * comp);
+            pega = PegaEfetiva(d, comp, pega);
             Point3D Em(double x) => cabeca + eixo * x;
             m.Tubo(Em(-f - ha - hc), Em(-f - ha), rc, 6, false, cor, true, 0, refU);            // cabeça
             m.Tubo(Em(-f - ha), Em(-f), ra, 12, true, cor);                               // arruela
@@ -552,7 +558,7 @@ namespace NovoFtool
 
         // G6: três raios tortos, maioria: um raio que passa numa aresta comum conta o cruzamento duas vezes (paridade errada)
         static readonly Vector3[] Raios = { Vector3.Normalize(new Vector3(0.5773f, 0.6129f, 0.5397f)), Vector3.Normalize(new Vector3(-0.3411f, 0.8127f, -0.4721f)), Vector3.Normalize(new Vector3(0.7071f, -0.2236f, -0.6708f)) };
-        static bool Dentro(MalhaDx b, Vector3 o) => Raios.Count(d => Dentro(b, o, d)) >= 2;
+        internal static bool Dentro(MalhaDx b, Vector3 o) => Raios.Count(d => Dentro(b, o, d)) >= 2;
         static bool Dentro(MalhaDx b, Vector3 o, Vector3 dir)
         {
             int n = 0;
@@ -568,7 +574,7 @@ namespace NovoFtool
             return n % 2 == 1;
         }
 
-        static double Distancia(MalhaDx b, Vector3 p)
+        internal static double Distancia(MalhaDx b, Vector3 p)
         {
             double d = double.MaxValue;
             for (int k = 0; k + 2 < b.T.Count; k += 3) d = Math.Min(d, DistTri(p, b.P[b.T[k]], b.P[b.T[k + 1]], b.P[b.T[k + 2]]));

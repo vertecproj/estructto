@@ -24,11 +24,31 @@ namespace NovoFtool
         public bool Proposta; public string Pendente;
         public sealed class Chapa { public string Nome; public Point[] Contorno; public Vector3D Origem, Normal, U; public double Espessura; }
         public sealed class Cantoneira { public string Perfil; public Vector3D Origem, Eixo, U; public double Comprimento; }
-        public sealed class Parafuso { public double D, Comprimento, Pega = double.NaN; public Vector3D Origem, Eixo; }   // pega: espessura apertada (NaN = estimada do comprimento)
+        public sealed class Parafuso { public double D, Comprimento, Pega = double.NaN; public Vector3D Origem, Eixo; public double[][] Pilha = new double[0][]; }   // Pilha: [t0, t1] (mm ao longo do eixo) das peças apertadas fora de `chapas` (aba da barra, cantoneira); pega: espessura apertada (NaN = estimada do comprimento)
         public sealed class Solda { public string Tipo = "filete"; public double Perna; public Vector3D[] Pontos; }
         public sealed class Recorte { public string Barra, Tipo; public double Folga = double.NaN, XPonta = double.NaN, Altura, Comprimento; public string Posicao = "topo"; }   // recuo: folga (vão até a face) ou x_ponta (posição absoluta da ponta); cope: posição (topo/base), altura e comprimento a partir da ponta (Render3D desenha)
         public readonly List<Chapa> Chapas = new List<Chapa>();
         public readonly List<Cantoneira> Cantoneiras = new List<Cantoneira>();
+        // Direção (local) da aresta do contorno da chapa mais próxima do parafuso, entre as chapas com normal ∥ eixo (hexágono alinhado a ela).
+        public Vector3D? ArestaMaisPerto(Parafuso pf)
+        {
+            Vector3D e = pf.Eixo; if (e.Length < 1e-9) return null; e.Normalize();
+            double melhor = double.PositiveInfinity; Vector3D? r = null;
+            foreach (var ch in Chapas)
+            {
+                Vector3D n = ch.Normal, u = ch.U; if (n.Length < 0.5 || u.Length < 0.5 || ch.Contorno == null || ch.Contorno.Length < 3) continue;
+                n.Normalize(); u.Normalize(); if (Math.Abs(Vector3D.DotProduct(n, e)) < 0.99) continue;
+                Vector3D w = Vector3D.CrossProduct(n, u); Vector3D rel = pf.Origem - ch.Origem;
+                var q = new Point(Vector3D.DotProduct(rel, u), Vector3D.DotProduct(rel, w));
+                for (int k = 0; k < ch.Contorno.Length; k++)
+                {
+                    Point a = ch.Contorno[k], b = ch.Contorno[(k + 1) % ch.Contorno.Length]; double dx = b.X - a.X, dy = b.Y - a.Y, L2 = dx * dx + dy * dy; if (L2 < 1e-9) continue;
+                    double t = Math.Max(0, Math.Min(1, ((q.X - a.X) * dx + (q.Y - a.Y) * dy) / L2)), dist = Math.Sqrt(Math.Pow(a.X + t * dx - q.X, 2) + Math.Pow(a.Y + t * dy - q.Y, 2));
+                    if (dist < melhor - 1e-9) { melhor = dist; r = u * dx + w * dy; }
+                }
+            }
+            return r;
+        }
         public readonly List<Parafuso> Parafusos = new List<Parafuso>();
         public readonly List<Solda> Soldas = new List<Solda>();
         public readonly List<Recorte> Recortes = new List<Recorte>();
@@ -96,7 +116,7 @@ namespace NovoFtool
             foreach (var c in g["cantoneiras"]?.AsArray() ?? new JsonArray())
                 l.Cantoneiras.Add(new Cantoneira { Perfil = (string)c["perfil"], Origem = V3(c["origem"]), Eixo = V3(c["eixo"]), U = V3(c["u"]), Comprimento = D(c, "comprimento") });
             foreach (var p in g["parafusos"]?.AsArray() ?? new JsonArray())
-                l.Parafusos.Add(new Parafuso { D = D(p, "d"), Comprimento = D(p, "comprimento"), Pega = D(p, "pega", double.NaN), Origem = V3(p["origem"]), Eixo = V3(p["eixo"]) });
+                l.Parafusos.Add(new Parafuso { D = D(p, "d"), Comprimento = D(p, "comprimento"), Pega = D(p, "pega", double.NaN), Origem = V3(p["origem"]), Eixo = V3(p["eixo"]), Pilha = (p["pilha"]?.AsArray() ?? new JsonArray()).Select(x => new[] { (double)x[0], (double)x[1] }).ToArray() });
             foreach (var s in g["soldas"]?.AsArray() ?? new JsonArray())
                 l.Soldas.Add(new Solda { Tipo = (string)s["tipo"] ?? "filete", Perna = D(s, "perna"), Pontos = (s["pontos"]?.AsArray() ?? new JsonArray()).Select(V3).ToArray() });
             foreach (var r in g["recortes"]?.AsArray() ?? new JsonArray())
@@ -135,7 +155,7 @@ namespace NovoFtool
                 ["chapas"] = new JsonArray(Chapas.Select(c => (JsonNode)new JsonObject { ["nome"] = c.Nome, ["contorno"] = new JsonArray(c.Contorno.Select(p => (JsonNode)new JsonArray(p.X, p.Y)).ToArray()),
                                                                                     ["origem"] = A(c.Origem), ["normal"] = A(c.Normal), ["u"] = A(c.U), ["espessura"] = c.Espessura }).ToArray()),
                 ["cantoneiras"] = new JsonArray(Cantoneiras.Select(c => (JsonNode)new JsonObject { ["perfil"] = c.Perfil, ["origem"] = A(c.Origem), ["eixo"] = A(c.Eixo), ["u"] = A(c.U), ["comprimento"] = c.Comprimento }).ToArray()),
-                ["parafusos"] = new JsonArray(Parafusos.Select(p => { var o = new JsonObject { ["d"] = p.D, ["comprimento"] = p.Comprimento, ["origem"] = A(p.Origem), ["eixo"] = A(p.Eixo) }; if (!double.IsNaN(p.Pega)) o["pega"] = p.Pega; return (JsonNode)o; }).ToArray()),
+                ["parafusos"] = new JsonArray(Parafusos.Select(p => { var o = new JsonObject { ["d"] = p.D, ["comprimento"] = p.Comprimento, ["origem"] = A(p.Origem), ["eixo"] = A(p.Eixo) }; if (!double.IsNaN(p.Pega)) o["pega"] = p.Pega; if (p.Pilha.Length > 0) o["pilha"] = new JsonArray(p.Pilha.Select(x => (JsonNode)new JsonArray(x[0], x[1])).ToArray()); return (JsonNode)o; }).ToArray()),
                 ["soldas"] = new JsonArray(Soldas.Select(s => (JsonNode)new JsonObject { ["tipo"] = s.Tipo, ["perna"] = s.Perna, ["pontos"] = new JsonArray(s.Pontos.Select(p => (JsonNode)A(p)).ToArray()) }).ToArray()),
                 ["recortes"] = new JsonArray(Recortes.Select(r => (JsonNode)new JsonObject { ["barra"] = r.Barra, ["tipo"] = r.Tipo,
                                                                                         ["parametros"] = r.Tipo != "recuo" ? new JsonObject { ["posicao"] = r.Posicao, ["altura"] = r.Altura, ["comprimento"] = r.Comprimento } : double.IsNaN(r.XPonta) ? new JsonObject { ["folga"] = r.Folga } : new JsonObject { ["x_ponta"] = r.XPonta } }).ToArray()),

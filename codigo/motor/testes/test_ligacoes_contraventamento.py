@@ -61,7 +61,8 @@ class TestPfeil352(unittest.TestCase):
         for p in g["parafusos"]:
             self.assertGreaterEqual(p["pega"] + 1e-6, p["origem"][1] - y_fim)   # 2L: passa também pela 2ª cantoneira, além do gusset
             self.assertAlmostEqual(p["pega"], 6.3 * 2 + 6.3 + 4, places=3)    # 2 cantoneiras de 6,3 + gusset 6,3 + 4 mm sob a cabeça
-            self.assertGreater(p["comprimento"], p["pega"] + 0.9 * p["d"])   # porca + fios cabem
+            self.assertGreater(p["comprimento"], p["pega"] + 0.94 * p["d"])   # porca + fios cabem: o render não encurta a pega
+            self.assertEqual(len(p["pilha"]), 2)                                # aba da cantoneira 1 e da 2
 
     def test_barra(self):
         self.assertLess(rel(linha(self.r, "barra: escoamento")["resistente"], 349.0), 0.01)   # 15,36·25/1,1
