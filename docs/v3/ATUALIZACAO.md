@@ -46,4 +46,4 @@ Fora do pacote publicado (sem `motor\` ao lado do exe, como em `dotnet build`) o
 zip (válido, sem motor, zip-slip), conteúdo do script e **execução real do script** em pastas temporárias (instalação e restauração após pacote incompleto), e a faixa
 (aparece com versão maior, não aparece com igual, "Depois", busca manual). Captura `atualizacao-faixa.png` (também em `--capturas`).
 Também cobre: URL de asset de outro host rejeitada, flag `prerelease`, processo que não fecha (script desiste sem reabrir), cancelamento do script pendente.
-Não testado automaticamente: elevação (UAC, inclusive o stub do `%ProgramData%`) e o download real da release.
+Não testado automaticamente: elevação (só o UAC; o stub roda como processo comum no teste) e o download real da release.
