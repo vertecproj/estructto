@@ -1375,17 +1375,18 @@ namespace NovoFtool
                 CapturarDialogo(ger, "interf-gerenciador.png");
                 ger.Close(); EsperarIdle();
 
+                string jsonAntes = d.Json.ToJsonString(); bool altAntes = w.alterado;
                 var swLig = Stopwatch.StartNew();
                 w.DefinirRealista(true); w.Atualizar3D(false); EsperarIdle();
                 Esperar(w.TarefaLigacoes3D); EsperarIdle();
                 sb.AppendLine("carga das ligações no Realista: " + swLig.ElapsedMilliseconds + " ms (pedidos novos ao motor num lote, POST /api/ligacoes/geometrias)");
-                {   // G6 r5: grupos trocados pelo motor têm o projeto gravado com o tipo novo
-                    var tg = Motor.Get("/api/ligacoes/grupos"); Esperar(tg);
-                    var gs = (tg.Result as JsonArray ?? (tg.Result as JsonObject)?["grupos"] as JsonArray ?? new JsonArray()).ToList();
-                    List<string> tr; lock (Render3D.Trocadas) tr = Render3D.Trocadas.ToList();
-                    int comSolda = gs.Count(g => (string)g?["projeto"]?["tipo_ligacao"] == "solda_direta_alma");
-                    sb.AppendLine("trocadas por solda direta: " + tr.Count + " grupos · grupos com projeto solda_direta_alma: " + comSolda + (tr.Count > comSolda ? " · FALHA: troca não gravada" : "") + (tr.Count > 0 ? " (" + string.Join("; ", tr.Take(3)) + ")" : ""));
-                    trocaFalhou = tr.Count > comSolda;
+                {   // onda final (G6-a): abrir o Realista não grava nada; trocas do motor ficam como proposta por membro no documento
+                    var tg = Motor.Get("/api/modelo"); Esperar(tg);
+                    bool igual = d.Json.ToJsonString() == jsonAntes && w.alterado == altAntes && JsonNode.DeepEquals(tg.Result?["ligacoes"], JsonNode.Parse(jsonAntes)["ligacoes"]);
+                    List<JsonObject> tr; List<string> av; lock (d.TrocasPropostas) { tr = d.TrocasPropostas.ToList(); av = d.AvisosLigacoes.ToList(); }
+                    sb.AppendLine("Realista aberto: documento " + (igual ? "inalterado" : "MODIFICADO · FALHA") + " · trocas propostas (não gravadas): " + tr.Count + (tr.Count > 0 ? " (" + string.Join("; ", tr.Take(3).Select(p => (string)p["nome"] + " barra " + (string)p["barra"] + ": " + (string)p["motivo"])) + ")" : ""));
+                    sb.AppendLine("avisos das ligações (sem ligação válida / erros do motor): " + av.Count + (av.Count > 0 ? " (" + string.Join("; ", av.Take(4)) + ")" : ""));
+                    trocaFalhou = !igual;
                 }
                 var v = w.vista3D;
                 if (!v.UsandoDx) throw new InvalidOperationException("Render3D (Direct3D 11) indisponível: sem placa de vídeo");
@@ -1397,7 +1398,7 @@ namespace NovoFtool
                 sb.AppendLine("fora do teste: " + todos.Count(x => x.Excluir && x.Tipo != "parafuso") + " sólidos (barras curtas demais para a ligação: " + string.Join(", ", Render3D.Curtas.Select(id => id + " [" + (Render3D.CurtasCausa.TryGetValue(id, out string cz) ? cz : "?") + "]")) + ")");
                 var sw = Stopwatch.StartNew();
                 var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList()).Where(x => col[x.A].Barra == null || col[x.A].Barra != col[x.B].Barra).ToList();   // trechos do cope da mesma barra encostam
-                pares = r.Count + (trocaFalhou ? 1 : 0);   // G6 r5: troca não gravada também reprova
+                pares = r.Count + (trocaFalhou ? 1 : 0);   // onda final: Realista que modifica o documento também reprova
                 pares += VerificarParafusos(v.ModeloAtual.Ligacoes, sb);   // C4
                 pares += VerificarApertadas(todos, sb);   // C4: a peça apertada (aba da barra) existe no mundo sob o parafuso
                 sb.AppendLine(col.Count + " sólidos · " + pares + " pares com interseção > 1 mm · " + sw.ElapsedMilliseconds + " ms");
@@ -1438,6 +1439,16 @@ namespace NovoFtool
                     CapturarPrincipal(w, "interf-" + nome);
                     if (nome is "viga-pilar" or "gusset") { v.Focar(pn, 0.7, -40, 22); CapturarPrincipal(w, "interf-" + nome + "-perto"); v.Focar(pn, 0.7, 140, 22); CapturarPrincipal(w, "interf-" + nome + "-perto-oposto"); }   // C4: parafusos de perto
                     sb.AppendLine("captura " + nome + ": nó " + no + " (" + Nf(pn.X) + ", " + Nf(pn.Y) + ", " + Nf(pn.Z) + ")");
+                }
+                {   // onda final (G6-b): abrir o modelo B depois do A — as propostas/avisos do gerenciador de B não vêm de A
+                    List<JsonObject> pa; lock (d.TrocasPropostas) pa = d.TrocasPropostas.ToList();
+                    Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo("galpao_aco"), "exemplo")); EsperarIdle();
+                    var dB = w.EspacialAtivo;
+                    Esperar(w.TarefaLigacoes3D); EsperarIdle();
+                    var gB = w.NovoGerenciadorLigacoes(dB);
+                    bool herdou = dB == d || gB.NPropostas > 0 && pa.Count > 0 && dB.TrocasPropostas.Any(p => pa.Any(q => (string)q["barra"] == (string)p["barra"] && (string)q["grupo"] == (string)p["grupo"]) && dB.Json["barras"]?[(string)p["barra"]] == null);
+                    sb.AppendLine("modelo B (galpão) depois do A: " + gB.NPropostas + " trocas propostas no gerenciador de B (A tinha " + pa.Count + ")" + (herdou ? " · FALHA: herdou do A" : ""));
+                    if (herdou) pares++;
                 }
             }
             catch (Exception ex) { sb.AppendLine("ERRO: " + ex); pares = -1; }

@@ -154,8 +154,7 @@ namespace NovoFtool
         public static string ConferirHash(string arquivo, string textoSha, string nomeZip)
         {
             if (string.IsNullOrWhiteSpace(textoSha)) return "o arquivo .sha256 da release está vazio ou não existe";
-            string linha = textoSha.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l != "");
-            var tok = linha.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            var tok = Tokens(textoSha);
             string esperado = tok[0].ToLowerInvariant();
             if (esperado.Length != 64 || !esperado.All(Uri.IsHexDigit)) return "o arquivo .sha256 não tem um SHA-256 válido";
             if (tok.Length > 1 && !string.Equals(tok[1].TrimStart('*'), nomeZip, StringComparison.OrdinalIgnoreCase)) return "o .sha256 é de outro arquivo (" + tok[1] + ")";
@@ -163,6 +162,11 @@ namespace NovoFtool
             using (var s = File.OpenRead(arquivo)) real = BitConverter.ToString(SHA256.HashData(s)).Replace("-", "").ToLowerInvariant();
             return real == esperado ? null : "SHA-256 do download não confere com o publicado; nada foi instalado";
         }
+
+        static string[] Tokens(string textoSha) => textoSha.Split('\n').Select(l => l.Trim()).First(l => l != "").Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+
+        /// <summary>SHA-256 publicado (hex minúsculo): vai no comando do script e é conferido de novo na pasta protegida.</summary>
+        public static string HashEsperado(string textoSha) => Tokens(textoSha)[0].ToLowerInvariant();
 
         /// <summary>Baixa url para destino (.part → renomeia), com progresso 0..1 (ou -1 se tamanho desconhecido).</summary>
         public static async Task BaixarAsync(string url, string destino, IProgress<double> prog, CancellationToken ct)
@@ -217,6 +221,8 @@ namespace NovoFtool
   [Parameter(Mandatory=$true)][string]$Exe,
   [string]$Limpar = '',
   [int]$EsperaMs = 120000,
+  [string]$Zip = '',
+  [string]$Sha = '',
   [switch]$Elevado,
   [switch]$DumpStub)
 $ErrorActionPreference = 'Stop'
@@ -237,7 +243,34 @@ function V([string]$s) { ""([Text.Encoding]::UTF8.GetString([Convert]::FromBase6
 function NovoStub {
   $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([IO.File]::ReadAllText($PSCommandPath)))
   $l = ''; if ($Limpar -ne '') { $l = ' -Limpar ' + (V $Limpar) }
-  ""`$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$b64')); & ([scriptblock]::Create(`$t)) -ProcessoPid $ProcessoPid -Origem $(V $Origem) -Destino $(V $Destino) -Exe $(V $Exe)$l -EsperaMs $EsperaMs -Elevado""
+  ""`$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$b64')); & ([scriptblock]::Create(`$t)) -ProcessoPid $ProcessoPid -Origem $(V $Origem) -Destino $(V $Destino) -Exe $(V $Exe)$l -EsperaMs $EsperaMs -Zip $(V $Zip) -Sha $(V $Sha) -Elevado""
+}
+# Elevado: nada vem da pasta do usuario (%TEMP% pode ser trocado antes de o admin ler). O zip vai para uma pasta nova criada ja
+# com ACL explicita (sem heranca; Administradores + SYSTEM), o SHA-256 e conferido LA contra o hash do comando e so entao o
+# pacote e extraido ali. Sem ser admin (simulacao dos testes) o usuario atual entra na ACL; a conferencia e a mesma.
+$segura = Join-Path $env:SystemRoot ('Temp\Estructto-update-' + [guid]::NewGuid().ToString('N'))
+function PastaSegura {
+  if ($Zip -eq '' -or $Sha -notmatch '^[0-9a-fA-F]{64}$') { throw 'elevacao sem zip e SHA-256 esperado: nada instalado' }
+  $seg = $segura
+  if (Test-Path -LiteralPath $seg) { throw 'pasta protegida ja existe: nada instalado' }
+  $ds = New-Object Security.AccessControl.DirectorySecurity
+  $ds.SetAccessRuleProtection($true, $false)
+  $sids = @('S-1-5-32-544', 'S-1-5-18')
+  $eu = [Security.Principal.WindowsIdentity]::GetCurrent()
+  if (-not (New-Object Security.Principal.WindowsPrincipal $eu).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { $sids += $eu.User.Value }
+  foreach ($s in $sids) { $ds.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $s), 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))) }
+  [IO.Directory]::CreateDirectory($seg, $ds) | Out-Null
+  $zs = Join-Path $seg 'pacote.zip'
+  Copy-Item -LiteralPath $Zip -Destination $zs
+  $h = (Get-FileHash -LiteralPath $zs -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($h -ne $Sha.ToLowerInvariant()) { throw 'SHA-256 do pacote na pasta protegida nao confere: nada instalado' }
+  Log 'SHA-256 conferido na pasta protegida'
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $ex = Join-Path $seg 'pacote'
+  [IO.Compression.ZipFile]::ExtractToDirectory($zs, $ex)
+  $r = $ex; if (Test-Path -LiteralPath (Join-Path $ex 'Estructto')) { $r = Join-Path $ex 'Estructto' }
+  if (-not (Test-Path -LiteralPath (Join-Path $r 'motor\estructto-motor.exe'))) { throw 'pacote sem motor\estructto-motor.exe' }
+  return $r
 }
 if ($DumpStub) { [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes((NovoStub))); exit 0 }
 $tocou = $false
@@ -256,6 +289,7 @@ try {
     Start-Process powershell -Verb RunAs -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-EncodedCommand',$enc) -WindowStyle Hidden -Wait
     exit 0
   }
+  if ($Elevado) { $Origem = PastaSegura }
   if (Test-Path -LiteralPath $bak) { Remove-Item -LiteralPath $bak -Recurse -Force }
   if (Test-Path -LiteralPath $falhou) { Remove-Item -LiteralPath $falhou -Recurse -Force }
   Copy-Item -LiteralPath $Destino -Destination $bak -Recurse -Force
@@ -265,11 +299,13 @@ try {
   Get-ChildItem -LiteralPath $Origem -Force | Copy-Item -Destination $Destino -Recurse -Force
   if (-not (Test-Path -LiteralPath (Join-Path $Destino 'motor\estructto-motor.exe'))) { throw 'copia incompleta (sem motor\estructto-motor.exe)' }
   Log 'atualizado'
+  if ($Elevado) { try { if (Test-Path -LiteralPath $segura) { Remove-Item -LiteralPath $segura -Recurse -Force } } catch {} }
   $tocou = $false
   if ($Limpar -ne '' -and $Limpar.StartsWith($logDir + '\', [StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $Limpar -Recurse -Force -ErrorAction SilentlyContinue }
   Reabrir
 } catch {
   Log ('ERRO: ' + $_.Exception.Message)
+  if ($Elevado) { try { if (Test-Path -LiteralPath $segura) { Remove-Item -LiteralPath $segura -Recurse -Force } } catch {} }
   if ($tocou) {
     try {
       if (Test-Path -LiteralPath $falhou) { Remove-Item -LiteralPath $falhou -Recurse -Force }
@@ -296,11 +332,11 @@ try {
             return script;
         }
 
-        public static Process IniciarScript(int pid, string origem, string destino, string exe, string limpar, string pastaScript = null, int esperaMs = 120000)
+        public static Process IniciarScript(int pid, string origem, string destino, string exe, string limpar, string pastaScript = null, int esperaMs = 120000, string zip = "", string sha = "")
         {
             string script = GravarScript(pastaScript ?? PastaTemp);
             var psi = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -ProcessoPid " + pid + " -Origem \"" + origem + "\" -Destino \"" + destino.TrimEnd('\\') + "\" -Exe \"" + exe + "\"" + (string.IsNullOrEmpty(limpar) ? "" : " -Limpar \"" + limpar + "\"") + " -EsperaMs " + esperaMs)
+                "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -ProcessoPid " + pid + " -Origem \"" + origem + "\" -Destino \"" + destino.TrimEnd('\\') + "\" -Exe \"" + exe + "\"" + (string.IsNullOrEmpty(limpar) ? "" : " -Limpar \"" + limpar + "\"") + " -EsperaMs " + esperaMs + (string.IsNullOrEmpty(zip) ? "" : " -Zip \"" + zip + "\" -Sha " + sha))
             { UseShellExecute = false, CreateNoWindow = true };
             return Process.Start(psi);
         }

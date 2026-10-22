@@ -91,8 +91,6 @@ namespace NovoFtool
         public static readonly HashSet<string> Curtas = new HashSet<string>();
         // G6 r4 (diagnóstico do --testes-interferencia): causa por barra curta — "recuos", "motor" (recusa x_max) ou "guarda" (AparaEm)
         public static readonly Dictionary<string, string> CurtasCausa = new Dictionary<string, string>();
-        // G6 r5: grupos que o motor trocou por solda direta ao desenhar (projeto do grupo gravado): "nome: motivo", para o gerenciador
-        public static readonly List<string> Trocadas = new List<string>();
         public static readonly HashSet<string> Locais = new HashSet<string>();   // G6: barras com chapa de proposta local (sem ligação do motor), para o gerenciador
         public static Dictionary<(Barra3D, bool), Corte> CortesColeta; public static Dictionary<(int, bool), Ligacao3D> LigsColeta;   // diagnóstico do teste
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
@@ -567,7 +565,7 @@ namespace NovoFtool
                     Point[] ct = ch.Contorno.Select(p => new Point(p.X / 1000, p.Y / 1000)).ToArray();
                     Point3D org = W(ch.Origem);
                     if (ch.Nome == "gusset" && l.ApoioDir == null) for (int it = 0; it < 3; it++) foreach (Barra3D sup in mod.Barras.Where(q => q != b && (q.Ni == l.No || q.Nj == l.No))) org += FolgaGusset(org, uu, ww, nn, ct, ch.Espessura / 1000, sup, x);   // cada peça do nó (3 voltas: um afastamento pode empurrar para outra)
-                    if (!l.Proposta && !string.IsNullOrEmpty(ch.Campo)) mallChapas.Marcar(new PecaLig { Lig = l, Tag = ch.Campo }); else mallChapas.Marcar(null);   // clique na chapa: vai ao campo (sem isso o picking dava a última barra)
+                    if (l.Proposta) mallChapas.Marcar(new PecaLig { Lig = l }); else if (!string.IsNullOrEmpty(ch.Campo)) mallChapas.Marcar(new PecaLig { Lig = l, Tag = ch.Campo }); else mallChapas.Marcar(null);   // proposta: clique abre o gerenciador no grupo (Aplicar troca / escolher padrão)   // clique na chapa: vai ao campo (sem isso o picking dava a última barra)
                     mallChapas.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false);
                     if (coleta != null) { var sc = new MalhaDx(); sc.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false); coleta.Add(new Peca3D { Nome = NomeLig(l) + " " + ch.Nome, Tipo = "chapa", M = sc, Lig = l, Excluir = l.Excluir }); }
                     arestas.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, true, false);
@@ -579,7 +577,7 @@ namespace NovoFtool
                     Vector3D ex = Wv(ca.Eixo), uu = Wv(ca.U); if (ex.Length < 0.5 || uu.Length < 0.5) continue;
                     Vector3D vv = Vector3D.CrossProduct(ex, uu);   // ponytail: triedro direito no mundo (a aba pode sair espelhada no referencial canhoto)
                     Point3D pa = W(ca.Origem), pb = pa + ex * (ca.Comprimento / 1000);
-                    if (!l.Proposta && !string.IsNullOrEmpty(ca.Campo)) mallChapas.Marcar(new PecaLig { Lig = l, Tag = ca.Campo }); else mallChapas.Marcar(null);
+                    if (l.Proposta) mallChapas.Marcar(new PecaLig { Lig = l }); else if (!string.IsNullOrEmpty(ca.Campo)) mallChapas.Marcar(new PecaLig { Lig = l, Tag = ca.Campo }); else mallChapas.Marcar(null);
                     Render3DGeometria.Extrudar(mallChapas, f, pa, pb, uu, vv, null, null, corChapa, false);
                     if (coleta != null) { var sc = new MalhaDx(); Render3DGeometria.Extrudar(sc, f, pa, pb, uu, vv, null, null, corChapa, false); coleta.Add(new Peca3D { Nome = NomeLig(l) + " cantoneira", Tipo = "cantoneira", M = sc, Lig = l, Excluir = l.Excluir }); }
                     Render3DGeometria.Extrudar(arestas, f, pa, pb, uu, vv, null, null, corChapa, true, false);

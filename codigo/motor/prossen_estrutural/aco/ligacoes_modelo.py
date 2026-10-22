@@ -16,6 +16,7 @@ Barras de concreto não entram (ligação monolítica).
 """
 from __future__ import annotations
 
+import copy
 import math
 
 from . import ligacoes as _lig
@@ -654,6 +655,8 @@ def dimensionar_grupo(modelo, calculo, grupo):
                              ok=bool(pior_r.get("ok")) and pior <= 1.0 + 1e-9, motivo=pior_r.get("motivo"))
                 if pior_r.get("excluir_interferencia"):
                     linha["excluir_interferencia"] = True
+                if pior_r.get("barra_curta"):   # onda final: não some — o nó fica "sem ligação válida" (gerenciador e memorial)
+                    linha.update(barra_curta=True, sem_ligacao_valida=True, ok=False)
                 if gov is None or pior > gov["taxa"]:
                     gov, gov_res = linha, pior_r
         saida.append(linha)
@@ -665,7 +668,49 @@ def dimensionar_grupo(modelo, calculo, grupo):
                 governante=chave(gov) if gov else None, taxa_max=gov["taxa"] if gov and tl else None,
                 ok=all(x.get("ok") for x in saida) if gov and tl else None,
                 resultado=gov_res, por_demanda=chave(por_dem) if por_dem else None,
-                erros=[f"{x['barra']}/{x['ponta']}: {x['erro']}" for x in saida if x["erro"]])
+                erros=[f"{x['barra']}/{x['ponta']}: {x['erro']}" for x in saida if x["erro"]]
+                + [f"{x['barra']}/{x['ponta']} (nó {x['no']}): sem ligação válida — {x.get('motivo') or 'barra curta'}"
+                   for x in saida if x.get("sem_ligacao_valida")])
+
+
+def _falha(r):
+    """Texto da verificação que reprova o dimensionamento do grupo (para a mensagem de troca recusada)."""
+    if r.get("erros"):
+        return "; ".join(r["erros"])
+    v = [x for x in (r.get("resultado") or {}).get("verificacoes") or [] if x.get("taxa") is not None]
+    v = [x for x in v if x.get("ok") is False or x["taxa"] > 1.0 + 1e-9] or v   # a que reprovou, não a maior taxa
+    pior = max(v, key=lambda x: x["taxa"], default=None)
+    return f"{pior['nome']} (taxa {pior['taxa']:.3f})".replace(".", ",") if pior else (r.get("resultado") or {}).get(
+        "motivo") or "não passa"
+
+
+def aplicar_troca(modelo, calculo, dados):
+    """Onda final (G6-a): aplica a troca proposta pelo Realista a UM membro {grupo, barra, no, tipo_ligacao, dados}.
+    O membro sai do grupo (dividir) se o grupo tem outros, o projeto vai para o grupo dele e o grupo é verificado com
+    os esforços reais (dimensionar_grupo: todas as combinações ELU). Não passa → nada muda e ValueError cita a
+    verificação que reprovou. → {grupo, ok, taxa_max, combinacao}"""
+    if calculo is None:
+        raise ValueError("calcule o modelo antes: a troca é verificada com os esforços reais das combinações ELU")
+    d = dict(dados or {})
+    gid, tl = d.get("grupo"), d.get("tipo_ligacao")
+    if not tl or verificador(tl) is None:
+        raise ValueError(f"tipo_ligacao '{tl}' desconhecido")
+    g = _grupo(modelo, gid)
+    mb = next((x for x in g["membros"] if x["barra"] == d.get("barra") and x["no"] == d.get("no")), None)
+    if mb is None:
+        raise ValueError(f"barra {d.get('barra')} no nó {d.get('no')} não é membro do grupo {gid}")
+    antes = copy.deepcopy(modelo.ligacoes)
+    try:
+        alvo = gid if len(g["membros"]) == 1 else editar(modelo, dict(acao="dividir", grupo=gid, membros=[mb]))["grupo"]
+        editar(modelo, dict(acao="projeto", grupo=alvo, tipo_ligacao=tl, dados=d.get("dados") or {}))
+        r = dimensionar_grupo(modelo, calculo, alvo)
+        if not r["ok"]:
+            raise ValueError(f"troca não aplicada ({tl} em {mb['barra']}, nó {mb['no']}): {_falha(r)}")
+    except Exception:
+        modelo.ligacoes = antes
+        raise
+    gov = next((x for x in r["membros"] if x["barra"] == mb["barra"] and x["no"] == mb["no"]), {})
+    return dict(grupo=alvo, ok=True, taxa_max=r["taxa_max"], combinacao=gov.get("combinacao"))
 
 
 def resumo_grupos(modelo, calculo=None):

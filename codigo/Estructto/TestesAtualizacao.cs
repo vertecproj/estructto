@@ -110,7 +110,8 @@ namespace NovoFtool
                 Ok(sc.Contains("$Destino + '.bak'") && sc.Contains("Copy-Item -LiteralPath $Destino -Destination $bak"), "script faz backup <pasta>.bak");
                 Ok(sc.Contains("restaurado do backup") && sc.Contains("Move-Item -LiteralPath $bak -Destination $Destino"), "script restaura o backup em erro");
                 Ok(sc.Contains("-Verb RunAs") && sc.Contains("PodeEscrever"), "script pede elevação só sem permissão de escrita");
-                Ok(!sc.Contains("ProgramData") && !sc.Contains("icacls") && sc.Contains("[scriptblock]::Create") && sc.Contains("-EncodedCommand"), "elevação sem arquivo de script nem pasta em %ProgramData% (script vai no -EncodedCommand)");
+                Ok(!sc.Contains("icacls") && sc.Contains("[scriptblock]::Create") && sc.Contains("-EncodedCommand"), "elevação sem arquivo de script (script vai no -EncodedCommand)");
+                Ok(sc.Contains("SetAccessRuleProtection($true, $false)") && sc.Contains("'S-1-5-32-544', 'S-1-5-18'") && sc.Contains("if ($Elevado) { $Origem = PastaSegura }"), "elevado: copia e confere o zip numa pasta com ACL explícita (sem herança; Administradores + SYSTEM), não usa a origem do %TEMP%");
                 // script: execução real, pasta temporária, sem rede
                 RodaScript(tmp, true, Ok, "instalação");
                 RodaScript(tmp, false, Ok, "pacote incompleto → restauração");
@@ -124,7 +125,20 @@ namespace NovoFtool
                     string script = Atualizador.GravarScript(b);
                     string who = Path.Combine(Environment.SystemDirectory, "whoami.exe");
                     string Roda(string args) { var p = Process.Start(new ProcessStartInfo("powershell.exe", "-NoProfile -ExecutionPolicy Bypass " + args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, StandardOutputEncoding = Encoding.UTF8 }); string o = p.StandardOutput.ReadToEnd(); p.WaitForExit(90000); return o.Trim(); }
-                    string comum = "-File \"" + script + "\" -ProcessoPid " + morto.Id + " -Origem \"" + pk + "\" -Destino \"" + inst + "\" -Exe \"" + who + "\"";
+                    // o zip verificado (o elevado ignora -Origem: extrai o zip na pasta protegida depois de conferir o SHA-256 lá)
+                    string zipStub = ZipDe(b, "pacote.zip", ("Estructto/Estructto.exe", "novo"), ("Estructto/motor/estructto-motor.exe", "novo"));
+                    string hexStub; using (var fs = File.OpenRead(zipStub)) hexStub = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fs)).ToLowerInvariant();
+                    string semZip = "-File \"" + script + "\" -ProcessoPid " + morto.Id + " -Origem \"" + pk + "\" -Destino \"" + inst + "\" -Exe \"" + who + "\"";
+                    string comum = semZip + " -Zip \"" + zipStub + "\" -Sha " + hexStub;
+                    File.WriteAllText(Path.Combine(pk, "Estructto.exe"), "do temp"); File.WriteAllText(Path.Combine(pk, "motor", "estructto-motor.exe"), "do temp");   // o elevado não pode usar isto
+                    {   // hash diferente na pasta protegida (zip trocado depois da conferência no %TEMP%): aborta, nada muda
+                        string log = Path.Combine(Atualizador.PastaTemp, "atualizador.log"); long antes = File.Exists(log) ? new FileInfo(log).Length : 0;
+                        Roda("-EncodedCommand " + Roda(semZip + " -Zip \"" + zipStub + "\" -Sha " + new string('0', 64) + " -DumpStub"));
+                        string novoLog = File.Exists(log) ? File.ReadAllText(log).Substring((int)antes) : "";
+                        Ok(File.ReadAllText(Path.Combine(inst, "Estructto.exe")) == "velho" && !Directory.Exists(inst + ".bak") && novoLog.Contains("nao confere") && !novoLog.Contains("atualizado"), "elevado: SHA-256 diferente na pasta protegida aborta sem tocar na instalação");
+                        Roda("-EncodedCommand " + Roda(semZip + " -DumpStub"));
+                        Ok(File.ReadAllText(Path.Combine(inst, "Estructto.exe")) == "velho", "elevado sem zip/SHA-256 no comando não instala a partir do %TEMP%");
+                    }
                     string enc = Roda(comum + " -DumpStub");
                     string stub = Encoding.Unicode.GetString(Convert.FromBase64String(enc));
                     Ok(!stub.Contains("-File") && !stub.Contains("ProgramData") && !stub.Contains("-Limpar") && stub.Contains("[scriptblock]::Create") && stub.Contains("-Elevado") && !stub.Contains(nomeEstranho) && enc.Length < 30000, "stub elevado: sem arquivo, sem -Limpar vazio, valores só em base64, cabe na linha de comando (" + enc.Length + " car.)");

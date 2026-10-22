@@ -2577,10 +2577,12 @@ def geometrias_ligacoes(itens):
             r = verificar_ligacao(tipo, dados, nulos)
             mot = r.get("motivo") or mot_sug
             cab = next((v for v in r.get("verificacoes") or [] if v.get("nome", "").startswith("geometria: comprimento disponível")), None)
-            if cab and not cab["ok"]:   # G6 r3: não cabe no x_max → o WPF trata como barra curta, com o motivo
+            curta = bool(r.get("barra_curta")) or bool(cab and not cab["ok"])
+            if cab and not cab["ok"]:   # G6 r3: não cabe no x_max → sem ligação válida nesta ponta, com o motivo
                 mot = (f"barra curta demais para a ligação: precisa {cab['solicitante']:.0f} mm, "
                        f"disponível {cab['resistente']:.0f} mm")
-            saida.append(dict(geometria=r.get("geometria"), motivo=mot, avisos=r.get("avisos") or [],
+            saida.append(dict(geometria=r.get("geometria"), motivo=mot, avisos=r.get("avisos") or [], ok=bool(r.get("ok")),
+                              **({"barra_curta": True, "excluir_interferencia": True} if curta else {}),
                               **({"troca": troca} if troca else {})))
         except Exception as e:   # noqa: BLE001 - o lote continua; o WPF cai na proposta local
             saida.append(dict(erro=str(e)))
@@ -2627,6 +2629,12 @@ def ligacoes_grupos(modelo, calculo=None):
 def ligacoes_editar(modelo, dados):
     """Edição dos grupos: {acao: renomear|travar|projeto|mover|dividir|unir, ...} (ver ligacoes_modelo.editar)."""
     return _lm("editar", modelo, dados)
+
+
+def ligacoes_aplicar_troca(modelo, calculo, dados):
+    """Aplica a troca proposta pelo Realista a um membro {grupo, barra, no, tipo_ligacao, dados}: divide o grupo se
+    preciso, grava o projeto e re-verifica com os esforços reais; não passa → nada muda e o erro cita a verificação."""
+    return _lm("aplicar_troca", modelo, calculo, dados)
 
 
 def ligacoes_dimensionar(modelo, calculo, grupo):

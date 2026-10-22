@@ -133,3 +133,11 @@ viga–pilar com chapa simples). Também entram na rodada completa.
 - Emenda com o mesmo projeto `parafuso` (um parafuso) é só uma sugestão; emendas de verdade esperam os tipos novos (L1).
 - Purlins/terças rotuladas que chegam no topo do pilar viram `viga_pilar_*` (o apoio real é a viga de cobertura); o usuário move.
 - Gusset em compressão usa a verificação de tração da chapa (sem flambagem da chapa).
+
+## Aplicar troca (onda final v0.5)
+
+`POST /api/ligacoes/grupos/aplicar_troca` {grupo, barra, no, tipo_ligacao, dados} (`ligacoes_modelo.aplicar_troca`): exige
+cálculo; divide o grupo quando ele tem outros membros, grava o projeto só no grupo do membro e roda `dimensionar_grupo` (esforços
+reais, todas as combinações ELU). Não passa → `modelo.ligacoes` volta como estava e o erro diz "troca não aplicada (...): <verificação
+que reprova> (taxa ...)". Membro com `barra_curta` no verificador sai com `ok = False`, `sem_ligacao_valida = True` e uma linha
+"sem ligação válida" em `erros` (gerenciador e memorial).

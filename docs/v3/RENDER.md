@@ -205,6 +205,15 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
 - Rodada 5: o lote devolve `troca` {tipo, dados, motivo} quando o sugerir troca o tipo (solda direta). O WPF grava no projeto do
   grupo (proposta) via `grupos/editar` (`acao: projeto`), para que cálculo, desenho e memorial usem o mesmo tipo. O gerenciador
   mostra "Trocada por solda direta: grupo: motivo". PLATAFORMA: 21 grupos trocados; galpão: 2.
+- Onda final (substitui a rodada 5): abrir o Realista **não grava nada** no documento. A troca do motor vira PROPOSTA por
+  membro (barra + nó) em `DocumentoEspacial.TrocasPropostas` (por documento: outro modelo não herda), desenhada como proposta
+  (" · troca proposta") e listada no gerenciador com o motivo. "Aplicar troca" (cartão do grupo) chama
+  `POST /api/ligacoes/grupos/aplicar_troca`: o motor divide o grupo se ele tem outros membros, grava o projeto só deste membro e
+  re-verifica com os esforços reais (`dimensionar_grupo`, todas as combinações ELU); se não passar, nada muda e o erro cita a
+  verificação que reprovou. Barra curta / não cabe no `x_max` vem como campo (`barra_curta`, `excluir_interferencia`), não pelo
+  texto; o nó vira "sem ligação válida" no gerenciador (`AvisosLigacoes`) e no dimensionamento (`erros`, `sem_ligacao_valida`).
+  Erros do motor na carga do Realista também vão para `AvisosLigacoes` (sem `catch { continue; }`). Peça de proposta clicada na
+  Vista3D abre o gerenciador no grupo. Interferência: PLATAFORMA 0 pares (60 trocas propostas, documento inalterado), galpão 0.
 - Resultado (21/10/2026, r1): PLATAFORMA 0 pares; fora do teste só barras curtas (nós a < 200 mm): B1091 (101 mm), B1110 (12,5),
   B1125 (97,5), B1452 (15). Galpão 0 pares, nada fora. Lote ≤ 500 itens por POST (`MAX_LOTE_LIGACOES`).
 

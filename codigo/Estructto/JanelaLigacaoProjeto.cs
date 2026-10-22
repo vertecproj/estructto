@@ -1202,6 +1202,7 @@ namespace NovoFtool
         internal async void AbrirLigacaoDaPeca(Ligacao3D l, string tag)
         {
             var d = Esp; if (d == null || l == null) return;
+            if (l.Proposta) { await AbrirGerenciadorNoGrupo(d, l.Grupo); return; }   // C3: peça de proposta → gerenciador no grupo (Aplicar troca / escolher padrão)
             try
             {
                 var gs = await d.Ligacoes("GET", "/api/ligacoes/grupos");
@@ -1214,6 +1215,13 @@ namespace NovoFtool
                 else MostrarToast("O grupo " + S(g, "nome") + " ainda não tem projeto: escolha o padrão na biblioteca.", false);
             }
             catch (Exception ex) { MostrarToast("Ligação: " + ComandosAnalise.MensagemMotor(ex), true); }
+        }
+
+        internal async Task AbrirGerenciadorNoGrupo(DocumentoEspacial d, string grupo)
+        {
+            if (janLig == null || !janLig.IsVisible) { janLig = NovoGerenciadorLigacoes(d); await janLig.Carregar(false); janLig.Show(); }
+            else janLig.Activate();
+            if (!string.IsNullOrEmpty(grupo)) janLig.Escolher(grupo);
         }
 
         // gerenciador › Projetar: esforços do pior membro do grupo (dimensionar), projeto gravado no grupo ao aplicar

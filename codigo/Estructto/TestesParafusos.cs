@@ -68,17 +68,21 @@ namespace NovoFtool
         }
 
         // C4: cada ponto de `Apertadas` (meio da aba da barra ligada, no mundo) tem de estar dentro de algum sólido de barra desenhado
-        // (a diagonal tem de chegar e lapear o gusset); senão o parafuso aperta o ar.
+        // (a diagonal tem de chegar e lapear o gusset); senão o parafuso aperta o ar. Só valem as barras ligadas no nó da ligação
+        // (a barra da ligação e o apoio): uma barra vizinha qualquer que passe ali não conta (onda final, C4).
         internal static int VerificarApertadas(IList<Render3D.Peca3D> todos, StringBuilder sb)
         {
-            var barras = todos.Where(x => x.Tipo == "barra" && x.M != null).Select(x => x.M).ToList(); int n = 0, falhas = 0;
+            int n = 0, falhas = 0;
             foreach (var pc in todos.Where(x => x.Apertadas != null && x.Apertadas.Length > 0))
+            {
+                var barras = todos.Where(x => x.Tipo == "barra" && x.M != null && x.Barra != null && pc.Lig != null && (x.Barra.Ni == pc.Lig.No || x.Barra.Nj == pc.Lig.No)).Select(x => x.M).ToList();
                 foreach (var q in pc.Apertadas)
                 {
                     n++; var p = new System.Numerics.Vector3((float)q.X, (float)q.Y, (float)q.Z);
                     if (barras.Any(m => Render3DGeometria.Dentro(m, p))) continue;
                     falhas++; if (falhas <= 6) sb.AppendLine("  parafuso sem barra sob a cabeça: " + pc.Nome + " [x local do parafuso " + pc.Lig.Parafusos.Min(x => x.Origem.X).ToString("0") + ".." + pc.Lig.Parafusos.Max(x => x.Origem.X).ToString("0") + " mm; ponta " + (pc.Lig.Ponta == null ? "nenhuma" : "P.x " + (pc.Lig.Ponta.P.X * 1000).ToString("0") + " N.x " + pc.Lig.Ponta.N.X.ToString("0.00")) + " recuo_barra " + pc.Lig.RecuoDe("diagonal").ToString("0.000") + "/" + pc.Lig.RecuoDe("viga").ToString("0.000") + " xmax " + pc.Lig.XMax + "] mais perto: " + todos.Where(x => x.Tipo == "barra" && x.M != null).Select(x => (x.Nome, Render3DGeometria.Distancia(x.M, p) * 1000)).OrderBy(x => x.Item2).Select(x => x.Nome + " " + x.Item2.ToString("0.0") + " mm").First() + " em (" + q.X.ToString("0.000", CultureInfo.InvariantCulture) + ", " + q.Y.ToString("0.000", CultureInfo.InvariantCulture) + ", " + q.Z.ToString("0.000", CultureInfo.InvariantCulture) + ")");
                 }
+            }
             sb.AppendLine("peças apertadas (aba da barra): " + n + " pontos · " + falhas + " fora de qualquer barra");
             return falhas;
         }

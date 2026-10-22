@@ -714,7 +714,7 @@ def com_pontas(tipo, verificar):
         if aprox:
             r.setdefault("avisos", []).append(APOIO_SEM_PERFIL)
         if motivo:
-            r["ok"], r["motivo"], r["excluir_interferencia"] = False, motivo, True   # G5: WPF não conta
+            r["ok"], r["motivo"], r["excluir_interferencia"], r["barra_curta"] = False, motivo, True, True   # G5: WPF não conta
             r.setdefault("avisos", []).append(f"{motivo}: recuo + recorte alcançam o comprimento da barra "
                                               "(barra mantida; revise o detalhe ou a modelagem)")
         return r

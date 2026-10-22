@@ -119,7 +119,7 @@ namespace NovoFtool
                 string raiz = await System.Threading.Tasks.Task.Run(() => Atualizador.Extrair(zip, Path.Combine(stage, "pacote")));
                 if (!PodeFecharTudo()) { MontarFaixaAtualiza("Atualização adiada: há documento não salvo. Salve e clique em Instalar de novo.", true); return; }
                 fechandoParaAtualizar = true;
-                var script = Atualizador.IniciarScript(System.Diagnostics.Process.GetCurrentProcess().Id, raiz, baseDir, Environment.ProcessPath, stage);
+                var script = Atualizador.IniciarScript(System.Diagnostics.Process.GetCurrentProcess().Id, raiz, baseDir, Environment.ProcessPath, stage, zip: zip, sha: Atualizador.HashEsperado(sha));
                 LogAtualiza("instalando v" + r.Versao + " de " + raiz);
                 bool fechou = false; Closed += (s2, e2) => fechou = true;
                 Close();

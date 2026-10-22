@@ -21,6 +21,12 @@ Código: `codigo/Estructto/Atualizador.cs` (lógica), `AtualizadorUi.cs` (faixa 
    Configurações do usuário (`%AppData%\NovoFtool`) ficam fora da pasta de instalação e nunca são tocadas; arquivos extras do usuário na pasta são mantidos.
 6. **Sem permissão de escrita** (ex.: Program Files): o script se reabre com `Start-Process -Verb RunAs` (UAC) só nesse caso, sem nenhum arquivo de script: o script inteiro vai dentro do `-EncodedCommand` (`& ([scriptblock]::Create($texto)) -ProcessoPid … -Elevado`), com os valores em base64 (aspas Unicode e apóstrofos não quebram) e `-Limpar` só quando não vazio. Não se usa pasta em `%ProgramData%` nem `%TEMP%` para o código elevado (um usuário comum poderia pré-criar a pasta e trocar o script, ou plantar uma junção); elevado, reabre o programa
    pelo `explorer.exe` para ele não rodar como administrador. Se o UAC for recusado, nada muda e a versão antiga reabre.
+   **Elevado não copia do `%TEMP%`** (onda final): o comando leva `-Zip` (o zip baixado) e `-Sha` (o SHA-256 publicado). O script
+   elevado cria uma pasta nova `%SystemRoot%\Temp\Estructto-update-<guid>` já com ACL explícita (sem herança; só Administradores e
+   SYSTEM; `[IO.Directory]::CreateDirectory(caminho, acl)`, sem janela), copia o zip para lá, confere o SHA-256 **lá** contra o
+   `-Sha` e só então extrai e instala dessa pasta; hash diferente ou zip/hash ausentes = aborta sem tocar na instalação. A pasta é
+   apagada no fim. Rodando sem ser admin (simulação do teste) o usuário atual entra na ACL. Teste: `--testes-atualizacao` (hash
+   trocado na pasta protegida aborta; sem zip/hash não instala do `%TEMP%`).
 
 O `.bak` fica ao lado da pasta até a próxima atualização (permite voltar à versão anterior à mão).
 

@@ -28,6 +28,47 @@ namespace NovoFtool
         public Func<JsonNode, JsonNode, JsonObject> AbrirPlaca;          // (grupo, dimensionamento) → dados novos da placa ou null
         public Action Mudou;                                             // o documento mudou (ligacoes no JSON)
         public Func<JanelaLigacoesGrupos, JsonNode, Task> Projetar;                          // abre o projetista de ligações com o grupo (JanelaLigacaoProjeto)
+        public List<JsonObject> Propostas;   // do documento (DocumentoEspacial.TrocasPropostas): trocas do Realista, por membro, ainda não gravadas
+        public List<string> AvisosVista;     // do documento (AvisosLigacoes): pontas sem ligação válida e erros do motor na última carga do Realista
+        List<JsonObject> CopiaPropostas() { if (Propostas == null) return new List<JsonObject>(); lock (Propostas) return Propostas.ToList(); }
+        List<string> CopiaAvisos() { if (AvisosVista == null || Propostas == null) return new List<string>(); lock (Propostas) return AvisosVista.ToList(); }
+        public int NPropostas => CopiaPropostas().Count;
+
+        // Aplicar troca (onda final): o motor divide o grupo se preciso, grava o projeto só deste membro e re-verifica com os esforços
+        // reais (todas as combinações ELU). Não passa: nada muda e o erro (com a verificação que reprova) fica no cabeçalho.
+        public async Task<bool> AplicarTroca(JsonObject p)
+        {
+            string novo = null;
+            await Rodar(async () =>
+            {
+                novo = S(await Api("POST", "/api/ligacoes/grupos/aplicar_troca", DocumentoEspacial.PedidoAplicarTroca(p)), "grupo");
+                lock (Propostas) Propostas.Remove(p);
+                Mudou?.Invoke();
+            });
+            if (erro != null) { Montar(); return false; }
+            await Carregar(false);
+            if (!string.IsNullOrEmpty(novo) && Grupo(novo) != null) Escolher(novo);
+            return true;
+        }
+        public string Erro => erro;
+
+        FrameworkElement CartaoTrocas(JsonNode g)
+        {
+            var ps = CopiaPropostas().Where(p => (string)p["grupo"] == S(g, "id")).ToList();
+            if (ps.Count == 0) return null;
+            var sp = new StackPanel();
+            sp.Children.Add(Tx("O Realista desenhou estas pontas com outro tipo (proposta, nada gravado). Aplicar troca grava só a ligação da barra no nó e a verifica com os esforços do cálculo; se não passar, nada muda.", 11.5, TemaPlant.BTexto3, null, true));
+            foreach (var p in ps.Take(12))
+            {
+                var lin = new DockPanel { Margin = new Thickness(0, 8, 0, 0) };
+                var pp = p;
+                var bt = Botao("Aplicar troca", "calc", async () => await AplicarTroca(pp), "Grava " + (string)p["tipo"] + " nesta ponta (o grupo é dividido se tiver outras) e verifica com os esforços reais.", 26);
+                bt.IsEnabled = !ocupado; DockPanel.SetDock(bt, Dock.Right); lin.Children.Add(bt);
+                lin.Children.Add(Tx("Barra " + (string)p["barra"] + " no nó " + (string)p["no"] + " → " + (string)p["tipo"] + "\n" + (string)p["motivo"], 11.5, TemaPlant.BTexto1, null, true));
+                sp.Children.Add(lin);
+            }
+            return Cartao("Troca proposta (" + ps.Count + ")", sp);
+        }
 
         static readonly Dictionary<string, string> NomesLig = new Dictionary<string, string>
         { [""] = "Sem projeto", ["placa_base"] = "Placa de base", ["parafuso"] = "Parafuso", ["solda_filete"] = "Filete de solda", ["chapa_simples"] = "Chapa simples", ["ligacao_tracao"] = "Ligação de tração" };
@@ -201,8 +242,12 @@ namespace NovoFtool
             var nv = erro != null ? Nivel.Erro : pior == null ? Nivel.Neutro : NivelAp(Taxa(pior), grupos.All(g => g["ok"] == null || Bool(g, "ok")));
             lock (Render3D.Curtas) if (Render3D.Curtas.Count > 0)   // vindas da última cena do Realista (recuos das duas pontas ≥ comprimento)
                 sub += " · Barra curta demais para a ligação: " + string.Join(", ", Render3D.Curtas.Take(8)) + (Render3D.Curtas.Count > 8 ? "…" : "");
-            lock (Render3D.Trocadas) if (Render3D.Trocadas.Count > 0)   // G6 r5: o projeto do grupo já foi gravado com a solda direta
-                sub += " · Trocada por solda direta: " + string.Join("; ", Render3D.Trocadas.Take(4)) + (Render3D.Trocadas.Count > 4 ? "…" : "");
+            var prs = CopiaPropostas(); var avs = CopiaAvisos();
+            avs.AddRange(grupos.SelectMany(g => Lista(g["erros"])).Select(e => (string)e).Where(e => e != null && e.Contains("sem ligação válida")));   // do cálculo (dimensionar_grupo)
+            if (prs.Count > 0)   // onda final: propostas do Realista, nada gravado; o cartão do grupo tem "Aplicar troca"
+                sub += " · Troca proposta (não aplicada): " + string.Join("; ", prs.Take(4).Select(p => (string)p["nome"] + " barra " + (string)p["barra"])) + (prs.Count > 4 ? "…" : "");
+            if (avs.Count > 0)   // pontas sem ligação válida (não cabe no x_max / barra curta) e erros do motor: visíveis, nunca escondidos
+                sub += " · " + string.Join("; ", avs.Take(4)) + (avs.Count > 4 ? "…" : "");
             lock (Render3D.Locais) if (Render3D.Locais.Count > 0)   // G6: o motor não desenha essas pontas; o Realista mostra uma proposta indicativa
                 sub += " · Sem ligação do motor (proposta local, pode interferir): " + string.Join(", ", Render3D.Locais.OrderBy(x => x).Take(8)) + (Render3D.Locais.Count > 8 ? "…" : "");
             hostCab.Child = Cabecalho(nv, nv == Nivel.Erro ? "✕" : nv == Nivel.Neutro ? "≡" : nv == Nivel.Alerta ? "!" : "✓", titulo, sub, acoes);
@@ -579,6 +624,7 @@ namespace NovoFtool
                 bProj.Margin = new Thickness(0, -2, 0, 10); bProj.HorizontalAlignment = HorizontalAlignment.Stretch;
                 sp.Children.Add(bProj);
             }
+            if (CartaoTrocas(g) is FrameworkElement ct) sp.Children.Add(ct);
             sp.Children.Add(Resultado(g));
             if (campos != null) sp.Children.Add(Cartao("Dados da ligação (" + (NomesLig.TryGetValue(tipoEdit, out var nl) ? nl : tipoEdit) + ")", campos));
             hostProjeto.Child = sp;
@@ -667,7 +713,7 @@ namespace NovoFtool
         {
             await Garantir();
             bool le = metodo == "GET" || rota.EndsWith("/dimensionar");
-            if (le && Calculado && await Motor.Get("/api/calculo") == null) await Motor.Post("/api/calcular", new JsonObject());
+            if ((le || rota.EndsWith("/aplicar_troca")) && Calculado && await Motor.Get("/api/calculo") == null) await Motor.Post("/api/calcular", new JsonObject());
             var r = await Motor.Chamar(metodo, rota, corpo);
             if (!le) { Json = (JsonObject)await Motor.Get("/api/modelo"); TemHistorico = true; }
             return r;
@@ -697,6 +743,7 @@ namespace NovoFtool
             Calcular = async () => { if (Esp == d) await CalcularEspacial(); },
             Mudou = () => { if (Esp == d) { alterado = true; AtualizarTitulo(); } },
             Projetar = (ger, g) => AbrirProjetistaGrupo(d, g, ger),
+            Propostas = d.TrocasPropostas, AvisosVista = d.AvisosLigacoes,
             AbrirPlaca = (g, dim) =>
             {
                 var j = PlacaDoGrupo(d, g, dim, out No nb);

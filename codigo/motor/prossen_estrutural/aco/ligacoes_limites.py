@@ -60,13 +60,14 @@ def _placa_base(ap, dados):
 
 
 def _gusset_minimo(dados):
-    """Lh, Lv automáticos (mm) = mínimo geométrico de _auto_gusset, lido do resultado com Lh = Lv = 0."""
+    """(Lh, Lv, aviso): automáticos (mm) = mínimo geométrico de _auto_gusset, lido do resultado com Lh = Lv = 0.
+    Dados que o verificador recusa → piso do cálculo automático (50 mm) com `aviso` citando a causa (sem engolir erro)."""
     from . import ligacoes_contraventamento as C
     try:
         g = C.verificar("gusset_contraventamento", dict(dados, Lh=0.0, Lv=0.0), {"N": 100.0})["geometria"]
-        return g["Lh"], g["Lv"]
-    except Exception:   # dados incompletos: piso do cálculo automático (0,05 m)
-        return 50.0, 50.0
+        return g["Lh"], g["Lv"], None
+    except (ValueError, KeyError, TypeError) as e:
+        return 50.0, 50.0, f"Lh/Lv mínimos não calculados ({type(e).__name__}: {e}); usado o piso de 50 mm"
 
 
 def limites(tipo, membro, dados=None):
@@ -106,10 +107,13 @@ def limites(tipo, membro, dados=None):
         elif b in _ATE_BF_BARRA and bf_br:
             out[k] = _f(2 * _borda_min_mm(d_atual), bf_br)
         elif tipo == "gusset_contraventamento" and k in ("Lh", "Lv"):
-            mn = _gusset_minimo(dados)[0 if k == "Lh" else 1]
+            gm = _gusset_minimo(dados)
+            mn = gm[0 if k == "Lh" else 1]
             comp = membro.get("comp_viga" if k == "Lh" else "comp_pilar")   # ao longo da viga / do pilar
             mx = comp * 1000 if comp else 3000.0
             if dados.get("gusset_na_alma") and ap:   # soldado na alma entre as mesas do apoio
                 mx = min(mx, (ap["h"] - 2 * ap["tf"]) * 1000 - 2 * FOLGA)
             out[k] = _f(mn, max(mx, mn))
+            if gm[2]:
+                out[k]["aviso"] = gm[2]
     return out

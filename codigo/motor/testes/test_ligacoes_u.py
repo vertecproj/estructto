@@ -308,7 +308,7 @@ class TestChapaFaceContrato(unittest.TestCase):
         self.assertEqual(s["tipo_ligacao"], "solda_direta_alma")
         self.assertIn("governa", s["motivo"])
         self.assertIn("parafuso", s["motivo"])            # o que reprovou a chapa simples (cisalhamento dos parafusos)
-        self.assertRegex(s["motivo"], r"governa: (solda|alma|metal base)[^;]*taxa \d")
+        self.assertRegex(s["motivo"], r"governa: (solda|alma|metal base).*taxa \d")
 
     def test_solda_direta_contorna_extremidade(self):
         """G6: o desenho da solda direta é um filete fechado em volta da ponta da alma (as duas faces e os retornos)."""

@@ -1288,9 +1288,11 @@ def _sug_sd(perfis, esforcos):
 
 
 def _governa(res):
-    """Verificação de maior taxa de um resultado: "nome (taxa 0,96)" (G6: o motivo da troca cita o que governa)."""
-    v = max((x for x in (res or {}).get("verificacoes") or [] if x.get("taxa") is not None), key=lambda x: x["taxa"],
-            default=None)
+    """Verificação de maior taxa de um resultado: "nome (taxa 0,96)" (G6: o motivo da troca cita o que governa).
+    Onda final: resistências primeiro (kN, kN/m...); as disposições geométricas (mm: dimensão mínima da solda = 1,00 por
+    definição) só se não houver resistência."""
+    vs = [x for x in (res or {}).get("verificacoes") or [] if x.get("taxa") is not None]
+    v = max([x for x in vs if x.get("unidade") not in ("mm", "m", "-")] or vs, key=lambda x: x["taxa"], default=None)
     return f"{v['nome']} (taxa {v['taxa']:.2f})".replace(".", ",") if v else "—"
 
 
@@ -1315,7 +1317,14 @@ def _com_solda_direta(tipo, sug):
         except ValueError as ex:
             if "baixo demais" not in str(ex):
                 raise
-            return solda(perfis, esforcos, str(ex))
+            alt = solda(perfis, esforcos, "")
+            dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
+            try:   # o motivo cita a verificação que governa a solda direta (ex.: a solda, taxa 0,98), não só o perfil baixo
+                gv = _governa(TIPOS["solda_direta_alma"]["verificar"](dd, esforcos))
+            except ValueError:
+                gv = "—"
+            alt["motivo"] = f"{ex}: solda direta da alma; governa: {gv}"
+            return alt
         try:
             r1 = TIPOS[tipo]["verificar"](c, esforcos)
         except ValueError as ex:   # G6 r4: dados impossíveis (ex.: UPN 50: resistência ≤ 0) → solda direta

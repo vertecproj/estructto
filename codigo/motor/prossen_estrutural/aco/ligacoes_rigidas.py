@@ -617,6 +617,10 @@ def _chapa_topo(d, e, estendida_padrao):
                     leff = leff_junto_enrijecedor(m_en, m2_en, e_en)
                     if leff:
                         ops.append(("en", leff, m_en, e_en))
+                        aviso = (f"solda do enrijecedor do pilar: garganta {A_SOLDA_ENR / MM:.0f} mm assumida no T-stub "
+                                 "(EN fig. 6.11), não dimensionada — confira a solda do enrijecedor")
+                        if aviso not in av:
+                            av.append(aviso)
             cands = [((tstub_en(0.0, o[1], pil["tf"], o[2], o[3], fyc, FtRd) if o[0] == "en"
                        else tstub(0.0, o[0], pil["tf"], o[1], o[2], db, dh, fyc, FtRd)), o) for o in ops]
             L["pilar"], L["pc"] = max(cands, key=lambda c: c[0]["Tcap"])
