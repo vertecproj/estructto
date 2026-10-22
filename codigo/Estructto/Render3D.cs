@@ -583,9 +583,9 @@ namespace NovoFtool
                     }
                     return !Teia(yy) && Teia(-yy) ? -yy : yy;
                 }
-                if (l.Ponta != null && gus != null && kl?.Contra != null && l.ApoioDir == null)   // com apoio_dir (G5) o referencial do motor vale como veio
+                if (gus != null && kl?.Contra != null && l.ApoioDir == null)   // com apoio_dir (G5) o referencial do motor vale como veio
                 {
-                    // gusset do motor: o contrato põe o apoio no plano xz local (ângulo θ) e a peça encostada na chapa pelo lado +y.
+                    // gusset do motor ou da proposta (sem Ponta: antes ficava no referencial da diagonal, girado e no eixo do pilar): o contrato põe o apoio no plano xz local (ângulo θ) e a peça encostada na chapa pelo lado +y.
                     // No mundo: z' = direção do apoio sem a componente em x (apoio "para a frente"), y' = x × z', e a origem anda em y'
                     // até a face da diagonal do lado −y' encostar na face +y da chapa.
                     var (sa, sd) = c.Pontos(kl.Contra); Vector3D ds = sd - sa;
@@ -614,6 +614,18 @@ namespace NovoFtool
                     Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
                     double ymin = forma(b).Lacos.SelectMany(z => z).Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y));
                     o += y * (ymin - gus.Espessura / 2000);
+                }
+                if (gus != null && l.Ponta == null && l.ApoioDir == null && kl?.Contra != null && gus.Contorno.Length == 4 && gus.Contorno[0].X == gus.Contorno[3].X)
+                {   // gusset proposto (LigacoesAmostra.Gusset): a borda soldada (pontos 0 e 3, u = xb) era ⟂ à diagonal e tocava o pilar por um
+                    // canto; inclina para ficar ∥ ao eixo do apoio (x local = xb − w·sx/sz, z local = −w). Pontos 0 e 3 iguais = ainda não feito.
+                    var (sa, sd) = c.Pontos(kl.Contra); Vector3D ds = sd - sa; ds.Normalize();
+                    double sx = Vector3D.DotProduct(ds, x), sz = Vector3D.DotProduct(ds, z), sg = Math.Sign(gus.U.X);
+                    if (Math.Abs(sz) > 0.2)
+                    {
+                        foreach (int k in new[] { 0, 3 }) { Point q = gus.Contorno[k]; gus.Contorno[k] = new Point(sg * (sg * q.X - q.Y * sx / sz), q.Y); }
+                        foreach (var s in l.Soldas.Where(s => s.Pontos?.Length == 2 && s.Pontos[0].X == s.Pontos[1].X))   // filetes da borda, no mesmo plano
+                            s.Pontos = s.Pontos.Select(p => new Vector3D(p.X + p.Z * sx / sz, p.Y, p.Z)).ToArray();
+                    }
                 }
                 Point3D W(Vector3D p) => o + (x * p.X + y * p.Y + z * p.Z) / 1000;
                 Vector3D Wv(Vector3D p) { Vector3D r = x * p.X + y * p.Y + z * p.Z; if (r.Length > 1e-12) r.Normalize(); return r; }

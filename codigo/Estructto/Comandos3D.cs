@@ -67,7 +67,7 @@ namespace NovoFtool
             C("VERIFICAR", "Verificação detalhada de uma barra (escolha antes ou depois)", w => CmdVerificar(), "VB", "COMPARAR"),
             C("MEDIR", "Medir distância entre dois pontos (ΔX, ΔY, ΔZ)", w => CmdMedir(), "DI", "DIST", "ME", "MED", "MEA"),
             C("ID", "Coordenadas de um ponto", w => CmdId()),
-            C("ZOOM", "Z = enquadrar tudo; Z O = a seleção", w => { if (w.Length > 1 && w[1].ToUpperInvariant().StartsWith("O")) vista3D?.EnquadrarSelecao(); else vista3D?.Enquadrar(); }, "Z", "ZE"),
+            C("ZOOM", "ZOOM = enquadrar tudo; ZOOM O = a seleção (Z é a trava vertical, TRAVAZ)", w => { if (w.Length > 1 && w[1].ToUpperInvariant().StartsWith("O")) vista3D?.EnquadrarSelecao(); else vista3D?.Enquadrar(); }, "ZE"),
             C("ZO", "Zoom na seleção", w => vista3D?.EnquadrarSelecao()),
             C("GRADE", "Grade estrutural: eixos, filas e níveis (0,@6,@6)", w => CmdGrade(), "GR", "GRID"),
             C("PLACA", "Placa de base no nó do pé do pilar (escolha antes ou depois)", w => CmdPlaca()),
