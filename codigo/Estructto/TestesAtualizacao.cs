@@ -15,11 +15,14 @@ namespace NovoFtool
     {
         const string FixtureReleases = @"[
  {""tag_name"":""v0.99"",""draft"":true,""prerelease"":false,""html_url"":""https://github.com/vertecproj/estructto/releases/tag/v0.99"",""assets"":[{""name"":""Estructto-0.99-win-x64.zip"",""browser_download_url"":""https://github.com/x/y.zip""}]},
- {""tag_name"":""v0.11-beta.1"",""draft"":false,""prerelease"":true,""html_url"":""https://github.com/vertecproj/estructto/releases/tag/v0.11-beta.1"",""assets"":[{""name"":""Estructto-0.11-beta.1-win-x64.zip"",""browser_download_url"":""https://github.com/a/b.zip""}]},
+ {""tag_name"":""v0.11-beta.1"",""draft"":false,""prerelease"":true,""html_url"":""https://github.com/vertecproj/estructto/releases/tag/v0.11-beta.1"",""assets"":[{""name"":""Estructto-0.11-beta.1-win-x64.zip"",""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v0.11-beta.1/b.zip""}]},
  {""tag_name"":""v0.10"",""draft"":false,""prerelease"":false,""body"":""Notas da 0.10"",""html_url"":""https://github.com/vertecproj/estructto/releases/tag/v0.10"",""assets"":[
    {""name"":""Estructto-0.10-win-x64.zip"",""size"":70000000,""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v0.10/Estructto-0.10-win-x64.zip""},
    {""name"":""Estructto-0.10-win-x64.zip.sha256"",""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v0.10/Estructto-0.10-win-x64.zip.sha256""}]},
- {""tag_name"":""v0.6"",""draft"":false,""prerelease"":false,""assets"":[{""name"":""Estructto-0.6-win-x64.zip"",""browser_download_url"":""https://github.com/q/r.zip""}]},
+ {""tag_name"":""v0.12"",""draft"":false,""prerelease"":true,""assets"":[{""name"":""Estructto-0.12-win-x64.zip"",""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v0.12/Estructto-0.12-win-x64.zip""}]},
+ {""tag_name"":""v0.7"",""draft"":false,""prerelease"":false,""assets"":[{""name"":""Estructto-0.7-win-x64.zip"",""browser_download_url"":""https://evil.example.com/vertecproj/estructto/releases/download/v0.7/Estructto-0.7-win-x64.zip""}]},
+ {""tag_name"":""v0.8"",""draft"":false,""prerelease"":false,""assets"":[{""name"":""Estructto-0.8-win-x64.zip"",""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v0.8/Estructto-0.8-win-x64.zip""},{""name"":""Estructto-0.8-win-x64.zip.sha256"",""browser_download_url"":""https://evil.example.com/x.sha256""}]},
+ {""tag_name"":""v0.6"",""draft"":false,""prerelease"":false,""assets"":[{""name"":""Estructto-0.6-win-x64.zip"",""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v0.6/r.zip""}]},
  {""tag_name"":""v0.5"",""draft"":false,""prerelease"":false,""assets"":[]},
  {""tag_name"":""nao-e-versao"",""draft"":false,""prerelease"":false,""assets"":[]}
 ]";
@@ -69,13 +72,14 @@ namespace NovoFtool
                 Ok(!Ver.TryParse("abc", out _) && !Ver.TryParse("", out _) && !Ver.TryParse("1.x", out _), "versão inválida recusada");
                 // JSON de release
                 var lista = Atualizador.ParseReleases(FixtureReleases);
-                Ok(lista.Count == 3, "parse: rascunho e tag sem versão ignorados, release sem zip ignorada (" + lista.Count + " de 3 esperadas)");
+                Ok(lista.Count == 5, "parse: rascunho, tag sem versão, sem zip e zip de URL estranha ignorados (" + lista.Count + " de 5 esperadas)");
                 var r10 = lista.First(r => r.Tag == "v0.10");
                 Ok(r10.ZipNome == "Estructto-0.10-win-x64.zip" && r10.ShaUrl != null && r10.ShaUrl.EndsWith(".zip.sha256") && r10.ZipBytes == 70000000 && r10.Notas == "Notas da 0.10", "parse: zip, sha256, tamanho e notas da v0.10");
                 Ok(lista.First(r => r.Tag == "v0.6").ShaUrl == null, "parse: release sem .sha256 fica com ShaUrl nulo");
-                Ok(Atualizador.MaisNova(FixtureReleases, "0.4")?.Tag == "v0.10", "0.4 → v0.10 (maior semântica, sem pré-release)");
+                Ok(Atualizador.MaisNova(FixtureReleases, "0.4")?.Tag == "v0.10", "0.4 → v0.10 (v0.12 marcada prerelease no GitHub não vale para estável)");
+                Ok(!lista.Any(r => r.Tag == "v0.7") && lista.First(r => r.Tag == "v0.8").ShaUrl == null, "URL de asset fora de github.com/vertecproj/estructto/releases/download/ rejeitada (zip: release ignorada; sha: nulo)");
                 Ok(Atualizador.MaisNova(FixtureReleases, "0.10") == null, "0.10 → nada");
-                Ok(Atualizador.MaisNova(FixtureReleases, "0.5-beta.1")?.Tag == "v0.11-beta.1", "build pré-release vê pré-release");
+                Ok(Atualizador.MaisNova(FixtureReleases, "0.5-beta.1")?.Tag == "v0.12", "build pré-release vê pré-release (flag do GitHub)");
                 Ok(Atualizador.MaisNova("[]", "0.4") == null, "lista vazia → nada");
                 Ok(Atualizador.HostPermitido(new Uri("https://github.com/a")) && Atualizador.HostPermitido(new Uri("https://objects.githubusercontent.com/a")) && !Atualizador.HostPermitido(new Uri("http://github.com/a")) && !Atualizador.HostPermitido(new Uri("https://github.com.evil.com/a")) && !Atualizador.HostPermitido(new Uri("https://evil.com/a")), "hosts de download permitidos / recusados");
                 // SHA-256
@@ -104,11 +108,29 @@ namespace NovoFtool
                 string sc = Atualizador.ScriptAtualizador;
                 Ok(sc.Contains("WaitForExit") && sc.Contains("$ProcessoPid"), "script espera o processo (PID) terminar");
                 Ok(sc.Contains("$Destino + '.bak'") && sc.Contains("Copy-Item -LiteralPath $Destino -Destination $bak"), "script faz backup <pasta>.bak");
-                Ok(sc.Contains("restaurado do backup") && sc.Contains("Get-ChildItem -LiteralPath $bak"), "script restaura o backup em erro");
+                Ok(sc.Contains("restaurado do backup") && sc.Contains("Move-Item -LiteralPath $bak -Destination $Destino"), "script restaura o backup em erro");
                 Ok(sc.Contains("-Verb RunAs") && sc.Contains("PodeEscrever"), "script pede elevação só sem permissão de escrita");
+                Ok(sc.Contains("ProgramData") && sc.Contains("S-1-5-32-544") && sc.Contains("-EncodedCommand"), "script elevado roda de pasta protegida (%ProgramData%, só administradores)");
                 // script: execução real, pasta temporária, sem rede
                 RodaScript(tmp, true, Ok, "instalação");
                 RodaScript(tmp, false, Ok, "pacote incompleto → restauração");
+                // processo que não fecha: nada muda e não reabre (sem segunda cópia)
+                {
+                    string b = Path.Combine(tmp, "run-espera"), inst = Path.Combine(b, "inst", "Estructto"), pk = Path.Combine(b, "pacote");
+                    Directory.CreateDirectory(Path.Combine(inst, "motor")); Directory.CreateDirectory(Path.Combine(pk, "motor"));
+                    File.WriteAllText(Path.Combine(inst, "Estructto.exe"), "velho"); File.WriteAllText(Path.Combine(pk, "Estructto.exe"), "novo"); File.WriteAllText(Path.Combine(pk, "motor", "estructto-motor.exe"), "novo");
+                    var preso = Process.Start(new ProcessStartInfo("ping.exe", "-n 30 127.0.0.1") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true });
+                    string log = Path.Combine(Atualizador.PastaTemp, "atualizador.log"); long antes = File.Exists(log) ? new FileInfo(log).Length : 0;
+                    var ps = Atualizador.IniciarScript(preso.Id, pk, inst, Path.Combine(Environment.SystemDirectory, "whoami.exe"), "", b, 1500);
+                    bool fim = ps.WaitForExit(60000);
+                    string novoLog = File.ReadAllText(log).Substring((int)antes);
+                    Ok(fim && ps.ExitCode == 2 && File.ReadAllText(Path.Combine(inst, "Estructto.exe")) == "velho" && !Directory.Exists(inst + ".bak") && novoLog.Contains("nao reabre") && !novoLog.Contains("atualizado"), "processo não fecha: script desiste (saída 2), não altera nem reabre");
+                    // Close cancelado: o programa encerra o script pendente
+                    var pend = Atualizador.IniciarScript(preso.Id, pk, inst, Path.Combine(Environment.SystemDirectory, "whoami.exe"), "", b, 60000);
+                    System.Threading.Thread.Sleep(1500); Atualizador.CancelarScript(pend);
+                    Ok(pend.WaitForExit(10000), "Close cancelado: CancelarScript encerra o script pendente");
+                    try { preso.Kill(); } catch { }
+                }
                 // faixa
                 w.EsconderFaixaAtualiza();
                 var nova = Atualizador.MaisNova(FixtureReleases, "0.4"); if (nova != null) w.AplicarAtualizacao(nova, false);
@@ -162,7 +184,7 @@ namespace NovoFtool
             ok(terminou, rotulo + ": script terminou");
             ok(sw.ElapsedMilliseconds >= 1500, rotulo + ": esperou o processo fechar (" + sw.ElapsedMilliseconds + " ms)");
             string L(string rel) { string p = Path.Combine(inst, rel); return File.Exists(p) ? File.ReadAllText(p) : null; }
-            ok(File.Exists(Path.Combine(baseDir, "inst", "Estructto.bak", "Estructto.exe")), rotulo + ": backup .bak criado");
+            if (sucesso) ok(File.Exists(Path.Combine(baseDir, "inst", "Estructto.bak", "Estructto.exe")), rotulo + ": backup .bak criado");
             if (sucesso)
             {
                 ok(ps.ExitCode == 0 && L("Estructto.exe") == "novo" && L("motor/estructto-motor.exe") == "novo" && L("motor/nova.dll") == "novo", rotulo + ": arquivos novos no lugar");

@@ -56,7 +56,7 @@ namespace NovoFtool
 
     public sealed class ReleaseInfo
     {
-        public string Tag, Notas, PaginaUrl, ZipNome, ZipUrl, ShaUrl; public Ver Versao; public long ZipBytes;
+        public string Tag, Notas, PaginaUrl, ZipNome, ZipUrl, ShaUrl; public Ver Versao; public long ZipBytes; public bool Pre;   // Pre = flag "prerelease" do GitHub
     }
 
     public static class Atualizador
@@ -90,7 +90,7 @@ namespace NovoFtool
             ReleaseInfo melhor = null;
             foreach (var r in ParseReleases(json))
             {
-                if (r.Versao.PreRelease && !va.PreRelease) continue;   // pré-release só para quem já está em pré-release
+                if ((r.Versao.PreRelease || r.Pre) && !va.PreRelease) continue;   // pré-release só para quem já está em pré-release
                 if (r.Versao.CompareTo(va) <= 0) continue;
                 if (melhor == null || r.Versao.CompareTo(melhor.Versao) > 0) melhor = r;
             }
@@ -108,23 +108,26 @@ namespace NovoFtool
                     if (Bool(e, "draft")) continue;
                     string tag = Str(e, "tag_name");
                     if (!Ver.TryParse(tag, out Ver v)) continue;
-                    var r = new ReleaseInfo { Tag = tag, Versao = v, Notas = Str(e, "body"), PaginaUrl = Str(e, "html_url") };
+                    var r = new ReleaseInfo { Tag = tag, Versao = v, Notas = Str(e, "body"), PaginaUrl = Str(e, "html_url"), Pre = Bool(e, "prerelease") };
                     if (e.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
                         foreach (var a in assets.EnumerateArray())
                         {
                             string nome = Str(a, "name"), url = Str(a, "browser_download_url");
-                            if (nome.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && r.ZipNome == null)
+                            if (nome.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && r.ZipNome == null && UrlDaRelease(url))
                             { r.ZipNome = nome; r.ZipUrl = url; r.ZipBytes = a.TryGetProperty("size", out var sz) && sz.TryGetInt64(out long b) ? b : 0; }
                         }
                     if (r.ZipNome == null) continue;
                     if (e.TryGetProperty("assets", out assets))
                         foreach (var a in assets.EnumerateArray())
-                            if (string.Equals(Str(a, "name"), r.ZipNome + ".sha256", StringComparison.OrdinalIgnoreCase)) r.ShaUrl = Str(a, "browser_download_url");
+                            if (string.Equals(Str(a, "name"), r.ZipNome + ".sha256", StringComparison.OrdinalIgnoreCase) && UrlDaRelease(Str(a, "browser_download_url"))) r.ShaUrl = Str(a, "browser_download_url");
                     lista.Add(r);
                 }
             }
             return lista;
         }
+        // O JSON só vale se os assets forem do repositório oficial; outros hosts só entram como redirecionamento do próprio GitHub.
+        const string PrefixoDownload = "https://github.com/vertecproj/estructto/releases/download/";
+        public static bool UrlDaRelease(string url) { return url != null && url.StartsWith(PrefixoDownload, StringComparison.Ordinal); }
         static string Str(JsonElement e, string k) { return e.TryGetProperty(k, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : ""; }
         static bool Bool(JsonElement e, string k) { return e.TryGetProperty(k, out var p) && p.ValueKind == JsonValueKind.True; }
 
@@ -157,14 +160,14 @@ namespace NovoFtool
             if (esperado.Length != 64 || !esperado.All(Uri.IsHexDigit)) return "o arquivo .sha256 não tem um SHA-256 válido";
             if (tok.Length > 1 && !string.Equals(tok[1].TrimStart('*'), nomeZip, StringComparison.OrdinalIgnoreCase)) return "o .sha256 é de outro arquivo (" + tok[1] + ")";
             string real;
-            using (var s = File.OpenRead(arquivo)) real = BitConverter.ToString(SHA256.Create().ComputeHash(s)).Replace("-", "").ToLowerInvariant();
+            using (var s = File.OpenRead(arquivo)) real = BitConverter.ToString(SHA256.HashData(s)).Replace("-", "").ToLowerInvariant();
             return real == esperado ? null : "SHA-256 do download não confere com o publicado; nada foi instalado";
         }
 
         /// <summary>Baixa url para destino (.part → renomeia), com progresso 0..1 (ou -1 se tamanho desconhecido).</summary>
         public static async Task BaixarAsync(string url, string destino, IProgress<double> prog, CancellationToken ct)
         {
-            if (!HostPermitido(new Uri(url))) throw new InvalidOperationException("endereço de download não permitido: " + url);
+            if (!UrlDaRelease(url)) throw new InvalidOperationException("endereço de download não permitido: " + url);
             Directory.CreateDirectory(Path.GetDirectoryName(destino));
             string part = destino + ".part";
             using (var c = Cliente())
@@ -190,7 +193,7 @@ namespace NovoFtool
 
         public static async Task<string> BaixarTextoAsync(string url, CancellationToken ct)
         {
-            if (!HostPermitido(new Uri(url))) throw new InvalidOperationException("endereço não permitido: " + url);
+            if (!UrlDaRelease(url)) throw new InvalidOperationException("endereço não permitido: " + url);
             using (var c = Cliente()) return await c.GetStringAsync(url, ct).ConfigureAwait(false);
         }
 
@@ -213,6 +216,7 @@ namespace NovoFtool
   [Parameter(Mandatory=$true)][string]$Destino,
   [Parameter(Mandatory=$true)][string]$Exe,
   [string]$Limpar = '',
+  [int]$EsperaMs = 120000,
   [switch]$Elevado)
 $ErrorActionPreference = 'Stop'
 $logDir = Join-Path $env:TEMP 'Estructto-update'
@@ -221,6 +225,7 @@ $log = Join-Path $logDir 'atualizador.log'
 function Log([string]$m) { try { Add-Content -LiteralPath $log -Value ('{0:s} {1}' -f (Get-Date), $m) } catch {} }
 $Destino = $Destino.TrimEnd('\')
 $bak = $Destino + '.bak'
+$falhou = $Destino + '.failed'
 function Reabrir { if ($Elevado) { Start-Process explorer.exe -ArgumentList ('""' + $Exe + '""') } else { Start-Process -FilePath $Exe -WorkingDirectory $Destino } }
 function PodeEscrever([string]$pasta) {
   $t = Join-Path $pasta ('.escrita-' + [guid]::NewGuid().ToString('N'))
@@ -230,17 +235,24 @@ $tocou = $false
 try {
   Log ('inicio pid=' + $ProcessoPid + ' destino=' + $Destino + ' elevado=' + $Elevado)
   $p = Get-Process -Id $ProcessoPid -ErrorAction SilentlyContinue
-  if ($p -and -not $p.WaitForExit(120000)) { throw 'o Estructto nao fechou em 120 s' }
+  if ($p -and -not $p.WaitForExit($EsperaMs)) { Log 'o Estructto nao fechou a tempo: nada alterado, nao reabre'; exit 2 }
   Get-Process estructto-motor -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Destino + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force
   Start-Sleep -Milliseconds 500
   if (-not ((PodeEscrever $Destino) -and (PodeEscrever (Split-Path -Parent $Destino)))) {
     if ($Elevado) { throw 'sem permissao de escrita mesmo como administrador' }
     Log 'sem permissao de escrita: pedindo elevacao'
-    $a = @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',('""' + $PSCommandPath + '""'),'-ProcessoPid',$ProcessoPid,'-Origem',('""' + $Origem + '""'),'-Destino',('""' + $Destino + '""'),'-Exe',('""' + $Exe + '""'),'-Limpar',('""' + $Limpar + '""'),'-Elevado')
-    Start-Process powershell -Verb RunAs -ArgumentList $a -WindowStyle Hidden -Wait
+    # o script elevado nao roda de %TEMP% (gravavel pelo usuario): um stub elevado grava o script em %ProgramData%\Estructto\update (so administradores) e executa de la
+    function Q([string]$s) { ""'"" + $s.Replace(""'"", ""''"") + ""'"" }
+    $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($PSCommandPath))
+    $stub = ""`$d = Join-Path `$env:ProgramData 'Estructto\update'; if (Test-Path -LiteralPath `$d) { Remove-Item -LiteralPath `$d -Recurse -Force }; New-Item -ItemType Directory -Force -Path `$d | Out-Null; "" +
+      ""icacls `$d /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null; `$f = Join-Path `$d 'atualizar.ps1'; [IO.File]::WriteAllBytes(`$f, [Convert]::FromBase64String('$b64')); "" +
+      ""& powershell -NoProfile -ExecutionPolicy Bypass -File `$f -ProcessoPid $ProcessoPid -Origem $(Q $Origem) -Destino $(Q $Destino) -Exe $(Q $Exe) -Limpar $(Q $Limpar) -EsperaMs $EsperaMs -Elevado""
+    $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($stub))
+    Start-Process powershell -Verb RunAs -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-EncodedCommand',$enc) -WindowStyle Hidden -Wait
     exit 0
   }
   if (Test-Path -LiteralPath $bak) { Remove-Item -LiteralPath $bak -Recurse -Force }
+  if (Test-Path -LiteralPath $falhou) { Remove-Item -LiteralPath $falhou -Recurse -Force }
   Copy-Item -LiteralPath $Destino -Destination $bak -Recurse -Force
   Log ('backup em ' + $bak)
   $tocou = $true
@@ -255,9 +267,11 @@ try {
   Log ('ERRO: ' + $_.Exception.Message)
   if ($tocou) {
     try {
-      Get-ChildItem -LiteralPath $Destino -Force | Remove-Item -Recurse -Force
-      Get-ChildItem -LiteralPath $bak -Force | Copy-Item -Destination $Destino -Recurse -Force
-      Log 'restaurado do backup'
+      if (Test-Path -LiteralPath $falhou) { Remove-Item -LiteralPath $falhou -Recurse -Force }
+      Move-Item -LiteralPath $Destino -Destination $falhou
+      Move-Item -LiteralPath $bak -Destination $Destino
+      Log 'restaurado do backup (pasta com falha em .failed)'
+      Remove-Item -LiteralPath $falhou -Recurse -Force -ErrorAction SilentlyContinue
     } catch { Log ('FALHA ao restaurar: ' + $_.Exception.Message) }
   }
   try { Reabrir } catch { Log ('nao reabriu: ' + $_.Exception.Message) }
@@ -265,14 +279,17 @@ try {
 }
 ";
 
+        // Close() cancelado depois de o script iniciar: o script não pode atualizar nem reabrir uma segunda cópia.
+        public static void CancelarScript(Process p) { try { if (p != null && !p.HasExited) p.Kill(); } catch { } }
+
         /// <summary>Grava o script (UTF-8 com BOM, para o PowerShell 5.1) e o dispara oculto. Devolve o processo.</summary>
-        public static Process IniciarScript(int pid, string origem, string destino, string exe, string limpar, string pastaScript = null)
+        public static Process IniciarScript(int pid, string origem, string destino, string exe, string limpar, string pastaScript = null, int esperaMs = 120000)
         {
             pastaScript = pastaScript ?? PastaTemp; Directory.CreateDirectory(pastaScript);
             string script = Path.Combine(pastaScript, "atualizar-" + Guid.NewGuid().ToString("N") + ".ps1");
             File.WriteAllText(script, ScriptAtualizador, new UTF8Encoding(true));
             var psi = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -ProcessoPid " + pid + " -Origem \"" + origem + "\" -Destino \"" + destino.TrimEnd('\\') + "\" -Exe \"" + exe + "\" -Limpar \"" + (limpar ?? "") + "\"")
+                "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -ProcessoPid " + pid + " -Origem \"" + origem + "\" -Destino \"" + destino.TrimEnd('\\') + "\" -Exe \"" + exe + "\" -Limpar \"" + (limpar ?? "") + "\" -EsperaMs " + esperaMs)
             { UseShellExecute = false, CreateNoWindow = true };
             return Process.Start(psi);
         }
