@@ -556,7 +556,7 @@ def _geo_membro(info, recuo, dirv, perp, dir1, perp1, tg, d_mm):
     for p in info["parafusos"]:
         X, Z = loc(p["x"], p["z"])
         y0 = tg / 2 + info["t"] + 0.004   # cabeça sobre a aba (2L: aba do lado +y)
-        par.append(dict(d=d_mm, comprimento=round((p["pega"] + 0.025) / MM, 1),
+        par.append(dict(d=d_mm, comprimento=round((p["pega"] + 0.025) / MM, 1), pega=round((p["pega"] + 0.004) / MM, 1),   # pega: cabeça (4 mm sob a aba) → fim das chapas apertadas
                         origem=[X / MM, y0 / MM, Z / MM], eixo=[0.0, -1.0, 0.0]))
     for s_ in info["soldas"]:
         a_, b_ = loc(s_["x0"], s_["z"]), loc(s_["x1"], s_["z"])

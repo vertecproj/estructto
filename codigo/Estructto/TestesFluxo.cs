@@ -1398,6 +1398,7 @@ namespace NovoFtool
                 var sw = Stopwatch.StartNew();
                 var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList()).Where(x => col[x.A].Barra == null || col[x.A].Barra != col[x.B].Barra).ToList();   // trechos do cope da mesma barra encostam
                 pares = r.Count + (trocaFalhou ? 1 : 0);   // G6 r5: troca não gravada também reprova
+                pares += VerificarParafusos(v.ModeloAtual.Ligacoes, sb);   // C4
                 sb.AppendLine(col.Count + " sólidos · " + pares + " pares com interseção > 1 mm · " + sw.ElapsedMilliseconds + " ms");
                 string Ponta(Barra3D b, int no)   // diagnóstico: corte e ligação da ponta de b no nó
                 {
@@ -1434,6 +1435,7 @@ namespace NovoFtool
                     var pn = Pos((JsonObject)json, no);
                     v.Focar(pn, nome == "placa-base" ? 1.4 : 2.0, -40, 22);
                     CapturarPrincipal(w, "interf-" + nome);
+                    if (nome is "viga-pilar" or "gusset") { v.Focar(pn, 0.7, -40, 22); CapturarPrincipal(w, "interf-" + nome + "-perto"); }   // C4: parafusos de perto
                     sb.AppendLine("captura " + nome + ": nó " + no + " (" + Nf(pn.X) + ", " + Nf(pn.Y) + ", " + Nf(pn.Z) + ")");
                 }
             }

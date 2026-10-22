@@ -568,8 +568,10 @@ namespace NovoFtool
                 }
                 foreach (var pf in l.Parafusos)
                 {
-                    Render3DGeometria.Parafuso(mallP, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000);
-                    if (coleta != null) { var sp = new MalhaDx(); Render3DGeometria.Parafuso(sp, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000); coleta.Add(new Peca3D { Nome = "parafuso · " + NomeLig(l), Tipo = "parafuso", M = sp, Lig = l, Excluir = true }); }
+                    Vector3D ep = Wv(pf.Eixo); Vector3D? refU = null;   // hexágono alinhado a uma aresta da chapa que o parafuso atravessa (normal ∥ eixo)
+                    foreach (var ch in l.Chapas) { Vector3D cn = Wv(ch.Normal); if (cn.Length > 0.5 && Math.Abs(Vector3D.DotProduct(cn, ep)) > 0.99 && Wv(ch.U).Length > 0.5) { refU = Wv(ch.U); break; } }
+                    Render3DGeometria.Parafuso(mallP, W(pf.Origem), ep, pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000, refU);
+                    if (coleta != null) { var sp = new MalhaDx(); Render3DGeometria.Parafuso(sp, W(pf.Origem), ep, pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000, refU); coleta.Add(new Peca3D { Nome = "parafuso · " + NomeLig(l), Tipo = "parafuso", M = sp, Lig = l, Excluir = true }); }
                 }
                 foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallS, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, x);
             }

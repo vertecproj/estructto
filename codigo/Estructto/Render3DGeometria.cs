@@ -75,10 +75,13 @@ namespace NovoFtool
         }
 
         // Tubo de a até b: n lados, normais suaves (liso) ou planas; tampas opcionais. r = raio (hexágono: raio do círculo circunscrito).
-        public void Tubo(Point3D a, Point3D b, double r, int n, bool liso, Color4 cor, bool tampas = true, double fase = 0)
+        public void Tubo(Point3D a, Point3D b, double r, int n, bool liso, Color4 cor, bool tampas = true, double fase = 0, Vector3D? ref0 = null)
         {
             Vector3D e = b - a; if (e.Length < 1e-12) return; e.Normalize();
-            Vector3D u = Vector3D.CrossProduct(e, Math.Abs(e.Z) > 0.9 ? new Vector3D(1, 0, 0) : new Vector3D(0, 0, 1)); u.Normalize();
+            // base u: a referência (aresta da chapa) projetada no plano ⊥ e, para os hexágonos de um parafuso e de parafusos vizinhos ficarem alinhados
+            Vector3D u = Vector3D.CrossProduct(e, Math.Abs(e.Z) > 0.9 ? new Vector3D(1, 0, 0) : new Vector3D(0, 0, 1));
+            if (ref0 is Vector3D r0) { Vector3D pr = r0 - Vector3D.DotProduct(r0, e) * e; if (pr.Length > 1e-6) u = pr; }
+            u.Normalize();
             Vector3D w = Vector3D.CrossProduct(e, u);
             var rad = new Vector3D[n];
             for (int k = 0; k < n; k++) { double t = 2 * Math.PI * k / n + fase; rad[k] = u * Math.Cos(t) + w * Math.Sin(t); }
@@ -336,7 +339,7 @@ namespace NovoFtool
         // porca encosta nela); sem pega (NaN), a do comprimento do motor (pega + porca + arruela + fios: ligacoes_rigidas
         // _comprimento_parafuso). As arruelas ficam a Folga da chapa: sem faces no mesmo plano (z-fighting).
         public const double FolgaParafuso = 0.03;   // × d (0,6 mm no M20)
-        public static void Parafuso(MalhaDx m, Point3D cabeca, Vector3D eixo, double d, double comp, Color4 cor, double pega = double.NaN)
+        public static void Parafuso(MalhaDx m, Point3D cabeca, Vector3D eixo, double d, double comp, Color4 cor, double pega = double.NaN, Vector3D? refU = null)
         {
             if (eixo.Length < 1e-12 || d <= 0 || comp <= 0) return;
             eixo.Normalize();
@@ -344,12 +347,12 @@ namespace NovoFtool
             if (double.IsNaN(pega) || pega <= 0) pega = comp - 0.9 * d - 0.014;
             pega = Math.Max(Math.Min(pega, comp - hp - ha), 0.3 * comp);
             Point3D Em(double x) => cabeca + eixo * x;
-            m.Tubo(Em(-f - ha - hc), Em(-f - ha), rc, 6, false, cor);                     // cabeça
+            m.Tubo(Em(-f - ha - hc), Em(-f - ha), rc, 6, false, cor, true, 0, refU);            // cabeça
             m.Tubo(Em(-f - ha), Em(-f), ra, 12, true, cor);                               // arruela
             double ponta = Math.Max(comp, pega + f + ha + hp + 0.25 * d);
             m.Tubo(Em(-f - ha * 0.5), Em(ponta), d / 2, 10, true, cor);                    // fuste, da arruela até passar da porca
             m.Tubo(Em(pega + f), Em(pega + f + ha), ra, 12, true, cor);                   // arruela da porca
-            m.Tubo(Em(pega + f + ha), Em(pega + f + ha + hp), rp, 6, false, cor, true, Math.PI / 6);   // porca
+            m.Tubo(Em(pega + f + ha), Em(pega + f + ha + hp), rp, 6, false, cor, true, 0, refU);      // porca (mesma fase da cabeça: hexágonos alinhados)
         }
 
         // Cordão de filete: prisma triangular (pernas iguais) ao longo da polilinha. ax = direção da peça que chega (x local do

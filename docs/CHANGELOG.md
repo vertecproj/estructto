@@ -344,3 +344,4 @@ genérico dos tipos do contrato nos grupos. `JanelaLigacao.cs` retirada. Detalhe
 - Padrão do memorial: [PADRAO-MEMORIAL.md](PADRAO-MEMORIAL.md). Prompt de correção da planilha: [historico/2026-10-18-PROMPT-memorial-excel.md](historico/2026-10-18-PROMPT-memorial-excel.md).
 - Análise do catálogo Walsywa (coeficiente baixo/alto risco, cones sobrepostos): [CHUMBADORES.md](CHUMBADORES.md).
 - C1: limites de projeto das ligações (docs/v3/LIGACOES-LIMITES.md, aco/ligacoes_limites.py)
+- C4: parafusos 3D corretos: motor manda pega no contraventamento, hexágonos alinhados à chapa, auto-teste na interferência (docs/v3/PARAFUSOS-3D.md)
