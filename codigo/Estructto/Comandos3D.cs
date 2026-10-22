@@ -47,6 +47,7 @@ namespace NovoFtool
             C("ESTENDER", "Estender: barras limite, Enter, e as barras (a ponta perto do clique)", w => CmdApararEstender(false), "EX", "EXTEND"),
             C("DIVIDIR", "Dividir barras: escolha as barras, depois o painel", w => ComEscolha("DIVIDIR", "barra", (n, b) => AbrirEdicaoEsp("dividir")), "DIV"),
             C("JUNTARBARRAS", "Juntar barras: escolha 2 ou mais barras colineares em cadeia; viram uma só de ponta a ponta", w => ComEscolha("JUNTAR BARRAS", "barra", (n, b) => { vista3D.LimparSelecao(); _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Juntar(m, b)), "Barras juntadas em uma só."); }), "JB", "JUNTAR", "MERGE"),
+            C("TRAVAZ", "Trava a medida digitada na vertical (Z) na barra em andamento; de novo destrava", w => vista3D?.AlternarTravaZ(), "Z"),
             C("UNIR", "Unir nós coincidentes: escolha os nós (Enter sem nada = todos), depois o painel", w => ComEscolha("UNIR", "no", (n, b) => AbrirEdicaoEsp("unir"), null, true), "J", "JOIN"),
             C("APAGAR", "Apagar (escolha antes ou depois)", w => CmdApagar(), "E", "ERASE", "DEL"),
             C("PROPRIEDADES", "Propriedades da escolha (com várias: em lote)", w => CmdPropriedades(), "PR", "PROPS"),

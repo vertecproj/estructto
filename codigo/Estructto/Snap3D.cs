@@ -478,9 +478,9 @@ namespace NovoFtool
         // Vertical (+Z/-Z) só pelo rastreio em Z: cursor a até 10 px da vertical que passa pelo 1º ponto (linha tracejada + "Z"),
         // ou plano de trabalho de perfil na vista (cursor3 null). Chão visto de longe/de cima continua horizontal.
         // telaA/telaZ: tela do 1º ponto e de 1º ponto + 1 m em Z. null = sem direção.
-        public static Vector3D? DirecaoDigitada(Point3D a, Point3D? cursor3, Point telaA, Point telaZ, Point telaMouse, bool travaZ = false)
+        public static Vector3D? DirecaoDigitada(Point3D a, Point3D? cursor3, Point telaA, Point telaZ, Point telaMouse, bool travaZ = false, bool chaoVence = false)
         {
-            int z = TrilhaZ(telaA, telaZ, telaMouse, travaZ);
+            int z = TrilhaZ(telaA, telaZ, telaMouse, travaZ, chaoVence);
             if (z != 0) return new Vector3D(0, 0, z);
             if (cursor3 == null) return null;
             Vector3D d = cursor3.Value - a;
@@ -490,15 +490,15 @@ namespace NovoFtool
 
         // Rastreio em Z: +1/-1 se o mouse está a ≤ 10 px da reta vertical (na tela) que passa pelo 1º ponto, para cima/baixo; 0 = fora.
         // travaZ (tecla Z): vertical sempre, para cima/baixo conforme o mouse. Sem a trava: se o chão (direção do cursor na tela) e Z
-        // caem quase na mesma linha da tela (< 5°, vista de frente), o chão vence e a trilha não vale.
-        public static int TrilhaZ(Point telaA, Point telaZ, Point telaMouse, bool travaZ = false)
+        // caem quase na mesma linha da tela (< 5°, vista de frente) e o plano de trabalho é horizontal com o cursor no chão (chaoVence), o chão vence e a trilha não vale.
+        public static int TrilhaZ(Point telaA, Point telaZ, Point telaMouse, bool travaZ = false, bool chaoVence = false)
         {
             Vector z = telaZ - telaA, m = telaMouse - telaA;
             if (z.Length < 4) return 0;   // Z de ponta (vista de topo)
             z.Normalize();
             if (travaZ) return m.Length < 1 || Vector.Multiply(m, z) >= 0 ? 1 : -1;
             if (m.Length < 6) return 0;   // mouse em cima do ponto
-            double ang = Math.Abs(Vector.AngleBetween(z, m)); if (ang < 5 || ang > 175) return 0;
+            double ang = Math.Abs(Vector.AngleBetween(z, m)); if (chaoVence && (ang < 5 || ang > 175)) return 0;   // só com plano horizontal e cursor no chão; em plano vertical/ponto fora do chão o cursor vale
             double perp = Math.Abs(m.X * z.Y - m.Y * z.X);
             return perp <= 10 ? (Vector.Multiply(m, z) >= 0 ? 1 : -1) : 0;
         }
@@ -717,7 +717,8 @@ namespace NovoFtool
             Ok("C1 Polar 30° (cursor já atraído): a medida sai a 30°", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(4 * Math.Cos(Math.PI / 6), 4 * Math.Sin(Math.PI / 6), 0), tA, tZ, new Point(380, 360)), Math.Cos(Math.PI / 6), Math.Sin(Math.PI / 6), 0));
             Ok("C1 Orto (cursor no eixo X) + rastreio Z: vertical ainda possível", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(306, 380)), 0, 0, 1) && Igual(Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(380, 400)), 1, 0, 0));
             Ok("C1 plano de perfil (cursor3 nulo) fora da trilha: sem direção", Snap3D.DirecaoDigitada(A0, null, tA, tZ, new Point(380, 400)) == null);
-            Ok("C1 vista de frente: chão e Z na mesma linha da tela (<5°): horizontal", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(300, 300)), 0, 1, 0));
+            Ok("C1 vista de frente: chão e Z na mesma linha da tela (<5°): horizontal", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(300, 300), false, true), 0, 1, 0));
+            Ok("C1 plano vertical (pilar para baixo + digitar): cursor na linha de Z segue o cursor (vertical)", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 0, -4), tA, tZ, new Point(300, 480), false, false), 0, 0, -1));
             Ok("C1 vista de frente + trava Z (tecla Z): vertical +Z, e -Z com o mouse abaixo", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(300, 300), true), 0, 0, 1) && Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(300, 480), true), 0, 0, -1));
             Ok("C1 vista de topo (Z de ponta): nunca vertical", Snap3D.TrilhaZ(tA, tA, new Point(300, 300)) == 0);
             Ok("C2 5 px de arrasto ainda é clique no grip", Snap3D.CliqueNoGrip(new Vector(3, 4)));

@@ -45,6 +45,12 @@ namespace NovoFtool
             string h = w.Historico.Text;
             string relatorio = "tratou=" + tratou + " texto=[" + w.Comando.Text + "] candidatos 'en': " + string.Join(",", c1) + " · 'e': " + string.Join(",", c2) + " · histórico após 'en'+Espaço: " + h.Replace("\n", " | ");
             File.WriteAllText(Path.Combine(pastaSaida, "C5-autoteste.txt"), (ok2 && h.Contains("» ENGASTE") ? "OK " : "FALHA ") + relatorio);
+            // autoteste C1/C3: "Z" é comando (Z + Espaço alterna a trava); a letra Z solta não é engolida pela vista
+            var vz = w.vista3D; w.UsarFerramenta3D(Ferramenta3D.Barra); vz.MoverTela(new Point(500, 400)); Esperar(vz.ClicarTela(new Point(500, 400))); EsperarIdle();
+            w.Comando.Text = ""; foreach (char ch in "zoom") vz.Digitar(ch.ToString()); bool soltaZ = w.Comando.Text.ToLowerInvariant() == "zoom" && !vz.TravaZ;   // letras vão inteiras para a linha de comando
+            digitar("z", Key.Space);
+            bool lig = vz.TravaZ; digitar("z", Key.Space); bool desl = !vz.TravaZ;
+            File.AppendAllText(Path.Combine(pastaSaida, "C5-autoteste.txt"), "\n" + (soltaZ && lig && desl ? "OK" : "FALHA") + " Z: ZOOM digitado inteiro na linha=" + soltaZ + " Z+Espaço liga=" + lig + " desliga=" + desl);
             w.Comando.Text = "";
         }
     }

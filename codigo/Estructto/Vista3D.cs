@@ -938,7 +938,7 @@ namespace NovoFtool
             bool tl = Ler(din[0], out double l), tg = Ler(din[1], out double g);
             if (tl && !tg && ferr == Ferramenta3D.Barra)   // C1: só o comprimento digitado: segue a direção apontada em 3D (vertical/inclinada)
             {
-                var dir = Snap3D.DirecaoDigitada(a, cursor3, Tela(a), Tela(a + new Vector3D(0, 0, 1)), mouseDentro ? mouseTela : Tela(a), TravaZ);
+                var dir = Snap3D.DirecaoDigitada(a, cursor3, Tela(a), Tela(a + new Vector3D(0, 0, 1)), mouseDentro ? mouseTela : Tela(a), TravaZ, plano.Normal == 'Z' && cursor3 != null && Math.Abs(cursor3.Value.Z - a.Z) < 1e-6);
                 if (dir != null) return a + dir.Value * l;
             }
             double ang = tg ? g * Math.PI / 180 : angM, len = tl ? l : dm * Math.Max(0, Math.Cos(angM - ang));
@@ -1051,10 +1051,14 @@ namespace NovoFtool
         }
 
         // Dígitos: comprimento/ângulo da entrada dinâmica; vírgula, ';' ou '@' passam a coordenada.
+        public void AlternarTravaZ()
+        {
+            if (ferr != Ferramenta3D.Barra || inicio == null) { Aviso = "Z: trava a vertical na barra em andamento (comece uma barra com L)."; sobre.InvalidateVisual(); return; }
+            TravaZ = !TravaZ; Aviso = TravaZ ? "Z travado: a medida digitada vai na vertical (Z de novo destrava)." : null; AtualizarCursor();
+        }
         public bool TravaZ;   // tecla Z na barra em andamento: a medida digitada vai na vertical (rastreio Z fixo)
         public bool Digitar(string texto)
         {
-            if (texto == "z" || texto == "Z") { if (ferr == Ferramenta3D.Barra && inicio != null && coord == "") { TravaZ = !TravaZ; Aviso = TravaZ ? "Z travado: a medida digitada vai na vertical (Z de novo destrava)." : null; AtualizarCursor(); return true; } }
             if (DigitarSnap(texto)) return true;   // letras: linha de comando (END, MID, ME...)
             if (!Desenhando || string.IsNullOrEmpty(texto)) return false;
             char c = texto[0];
@@ -1168,7 +1172,7 @@ namespace NovoFtool
                 {
                     Point a = Tela(inicio.Value);
                     if (cursor3 != null && DinTravado) dc.DrawLine(PGuia3, a, Tela(cursor3.Value));
-                    if (ferr == Ferramenta3D.Barra && (TravaZ || Snap3D.TrilhaZ(a, Tela(inicio.Value + new Vector3D(0, 0, 1)), mouseTela) != 0))   // C1: rastreio em Z (vertical), como o polar do CAD
+                    if (ferr == Ferramenta3D.Barra && (TravaZ || Snap3D.TrilhaZ(a, Tela(inicio.Value + new Vector3D(0, 0, 1)), mouseTela, false, plano.Normal == 'Z' && cursor3 != null && Math.Abs(cursor3.Value.Z - inicio.Value.Z) < 1e-6) != 0))   // C1: rastreio em Z (vertical), como o polar do CAD
                     {
                         Vector vz = Tela(inicio.Value + new Vector3D(0, 0, 1)) - a; vz.Normalize();
                         dc.DrawLine(PGuia3, a - vz * 4000, a + vz * 4000);
