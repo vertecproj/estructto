@@ -106,6 +106,16 @@ namespace NovoFtool
             return f;
         }
 
+        // Seção espelhada em torno do eixo v (u → −u), laços reordenados para continuarem anti-horários. Cache por contorno.
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Contorno, Contorno> espelhos = new System.Runtime.CompilerServices.ConditionalWeakTable<Contorno, Contorno>();
+        public static Contorno Espelhar(Contorno f) => f == null ? null : espelhos.GetValue(f, o =>
+        {
+            var e = new Contorno { Concreto = o.Concreto, H = o.H, B = o.B, Tw = o.Tw, Tf = o.Tf, Forma = o.Forma };
+            for (int i = 0; i < o.Lacos.Count; i++) e.Laco(o.Lacos[i].Select(p => new Point(-p.X, p.Y)).Reverse().ToArray(), o.Liso[i]);
+            for (int t = 0; t + 2 < o.Tampa.Count; t += 3) { e.Tampa.Add(new Point(-o.Tampa[t].X, o.Tampa[t].Y)); e.Tampa.Add(new Point(-o.Tampa[t + 2].X, o.Tampa[t + 2].Y)); e.Tampa.Add(new Point(-o.Tampa[t + 1].X, o.Tampa[t + 1].Y)); }
+            return e;
+        });
+
         // Contorno anti-horário de um perfil aberto centrado na própria caixa (mesmo desenho dos casos I/U/L acima).
         static Point[] Base(string forma, double h, double b, double tw, double tf)
         {

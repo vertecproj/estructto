@@ -681,6 +681,14 @@ namespace NovoFtool
                 var (fs, vs) = Fechada(ms);
                 afirmar(fs && Math.Abs(vs / (2 * 0.2 * 0.008 * 0.008 / 2) - 1) < 1e-3, "cordão de solda (dois lados): prismas fechados, volume 2 × L × p²/2");
             }
+            {   // espelho (params.espelho): L 100×50 refletido em u ≠ L girado 180°; área igual, anti-horário mantido
+                Contorno fl = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "L", H = 0.1, B = 0.05, Tw = 0.008, Tf = 0.008 }, 0.1), fe = GeometriaPerfis.Espelhar(fl);
+                var esp = new HashSet<(double, double)>(fe.Lacos[0].Select(p => (Math.Round(p.X, 6), Math.Round(p.Y, 6))));
+                var gir = new HashSet<(double, double)>(fl.Lacos[0].Select(p => (Math.Round(-p.X, 6), Math.Round(-p.Y, 6))));
+                double sa = 0; Point[] q = fe.Lacos[0]; for (int k = 0; k < q.Length; k++) sa += q[k].X * q[(k + 1) % q.Length].Y - q[(k + 1) % q.Length].X * q[k].Y;
+                afirmar(!esp.SetEquals(gir) && sa > 0 && Math.Abs(AreaSecao(fe) - AreaSecao(fl)) < 1e-12 && fe.Lacos[0].Min(p => p.X) > -0.025 - 1e-9 && fe.Lacos[0].Any(p => Math.Abs(p.X - 0.025) < 1e-9 && p.Y > 0.04),
+                        "espelho: L refletido (aba vertical em +u) ≠ L girado 180°, anti-horário, mesma área");
+            }
             {   // compostas (v0.6 D): 2 UPN 200 caixão s = 0 e costas s = 10; 2L 2" cruz s = 6,3; I + chapa — um laço por perfil, área = soma
                 var pu = new Perfil3D { Forma = "U", H = 0.2, B = 0.075, Tw = 0.0085, Tf = 0.0115 };
                 var pl = new Perfil3D { Forma = "L", H = 0.0508, B = 0.0508, Tw = 0.00635, Tf = 0.00635 };

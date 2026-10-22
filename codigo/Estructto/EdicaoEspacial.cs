@@ -269,6 +269,19 @@ namespace NovoFtool
             return m;
         }
 
+        // params.espelho: seção refletida em torno do eixo local v (só desenho/exportação; a análise não muda — ver docs/v3/PERFIS-COMPOSTOS.md).
+        public static JsonObject Espelho(JsonObject m, IEnumerable<string> barras, bool espelho)
+        {
+            var B = Col(m, "barras");
+            foreach (string id in (barras ?? new string[0]).Where(B.ContainsKey))
+            {
+                var b = B[id].AsObject();
+                var p = b["params"] as JsonObject ?? (JsonObject)(b["params"] = new JsonObject());
+                if (espelho) p["espelho"] = true; else p.Remove("espelho");
+            }
+            return m;
+        }
+
         // ---------- giro da seção (rot) e ponto cardinal sob a transformação ----------
 
         static double[] Cr(double[] a, double[] b) => new[] { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };

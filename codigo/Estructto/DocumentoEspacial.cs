@@ -420,7 +420,7 @@ namespace NovoFtool
                 var b = kv.Value;
                 if (!ids.TryGetValue((string)b["ni"], out int ni) || !ids.TryGetValue((string)b["nj"], out int nj)) continue;
                 var b3 = new Barra3D { Id = ++ib, Ni = ni, Nj = nj, Secao = (string)b["secao"] ?? "", Rot = (double)(b["rot"] ?? 0.0) * 180 / Math.PI, Origem = Ref("barra", kv.Key),
-                                   Cardinal = CardinalDe(b) };
+                                   Cardinal = CardinalDe(b), Espelho = b["params"]?["espelho"] is JsonValue ev && ev.TryGetValue(out bool eb) && eb };
                 var e = esforcos?[kv.Key];
                 if (e != null) { b3.N = Vetor(e["N"]); b3.V = Vetor(e["Vz"]); b3.M = Vetor(e["My"]); }
                 if (PiorPorBarra.TryGetValue(kv.Key, out var l) && Taxa(l) >= 0) b3.Aprov = Taxa(l);

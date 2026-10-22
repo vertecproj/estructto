@@ -312,7 +312,7 @@ namespace NovoFtool
             var nos = new Dictionary<int, No3D>();
             foreach (No3D n in mod.Nos) if (!nos.ContainsKey(n.Id)) nos[n.Id] = n;
             var barras = mod.Barras.ToDictionary(b => b.Id, b => b);
-            Func<Barra3D, Contorno> forma = b => c.Forma(b.Secao);
+            Func<Barra3D, Contorno> forma = b => b.Espelho ? GeometriaPerfis.Espelhar(c.Forma(b.Secao)) : c.Forma(b.Secao);
             double FolgaPadrao(Barra3D b, bool emI)
             {
                 if (forma(b).Concreto) return 0;

@@ -35,7 +35,8 @@ namespace NovoFtool
 
     public sealed class Barra3D
     {
-        public int Id, Ni, Nj; public string Secao = ""; public double Rot;   // rot (graus) gira o eixo local y em torno da barra
+        public int Id, Ni, Nj; public string Secao = ""; public double Rot;
+        public bool Espelho;       // params.espelho: seção refletida em torno do eixo local v (u → −u); GeometriaPerfis.Espelhar   // rot (graus) gira o eixo local y em torno da barra
         public double[] N, V, M;   // valores em estações igualmente espaçadas de ni a nj (kN, kN·m); null = sem diagrama
         public double? Aprov;      // aproveitamento (1 = no limite); null = sem verificação
         public double RotPerfil;   // giro extra (graus) só do desenho do perfil no modo Realista (2D: perfil deitado = 90)

@@ -444,6 +444,20 @@ def secao_I_chapa(comp, bp, tp, nome=None):
     return sec
 
 
+def espelhar(sec):
+    """Seção refletida em torno do eixo y (x → −x), params.espelho da barra. A, Ix, Iy, J, Cw, W, Z e os momentos
+    principais não mudam; trocam de sinal Ixy, x0, u0 e o ângulo dos eixos principais (cantoneira/2L). Como a NBR 8800
+    usa |x0|, |y0| (E.1.3: (x0/r0)²) e Iu/Iv, as resistências são as mesmas: o espelho só muda desenho e orientação."""
+    p = dict(sec.props)
+    for k in ("Ixy", "x0", "alfa_principal"):
+        if k in p:
+            p[k] = -p[k]
+    if "alfa_principal" in p:  # (u0, v0) do CC nos eixos principais refletidos
+        c, s_ = math.cos(p["alfa_principal"]), math.sin(p["alfa_principal"])
+        p["u0"], p["v0"] = p["x0"] * c + p["y0"] * s_, -p["x0"] * s_ + p["y0"] * c
+    return Secao(sec.nome, sec.A, sec.Iy, sec.Iz, sec.J, p)
+
+
 def _caixao_soldado(h, B, tw, tf, nome):
     """Caixão fechado h × B com almas tw e mesas tf (2U soldados pelas pontas das mesas). Props no formato de
     tubo retangular para a NBR 8800 (t = min(tw, tf): espessura a favor da segurança em cortante e torção;

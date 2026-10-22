@@ -194,6 +194,22 @@ class TestCompostasV06(unittest.TestCase):
         self.chk(s.props["Zx"], 2 * i.props["Zx"])
         self.chk(nbr8800.flexao_x(s, A36, 2.0)["MRd"], 2 * nbr8800.flexao_x(i, A36, 2.0)["MRd"])
 
+    def test_2I_lado_a_lado_Zy_a_mao(self):
+        """I 200×100×6×10, s = 50: d = 75; cada I fica inteiro de um lado da LN plástica (x de 25 a 125 mm), então
+        Zy = Σ|x|·dA = 2·A1·d = 2·3080·75 = 462 000 mm³. Somar 2·Zy1 (= 103 240) contaria de novo o momento estático
+        de cada I em torno do próprio eixo, que já está dentro de A1·d (Σ(x−d)dA = 0) — a revisão pedia 565 240, recusado."""
+        s = secoes.secao_dupla(secoes.secao_I(0.2, 0.1, 0.006, 0.010), "lado_a_lado", "soldada", s=0.05)
+        self.chk(s.props["Zy"] * 1e9, 462_000)
+
+    def test_espelho_L(self):
+        L = secoes.secao_cantoneira(0.1, 0.05, 0.008)
+        e = secoes.espelhar(L)
+        self.assertAlmostEqual(e.props["Ixy"], -L.props["Ixy"])
+        self.assertAlmostEqual(e.props["Iu"], L.props["Iu"])
+        self.assertAlmostEqual(e.props["alfa_principal"], -L.props["alfa_principal"])
+        r1, r2 = nbr8800.compressao(L, A36, 2.0, 2.0), nbr8800.compressao(e, A36, 2.0, 2.0)
+        self.assertAlmostEqual(r1["NcRd"], r2["NcRd"], places=6)   # resistência invariante ao espelho
+
     def test_I_chapa(self):
         s = secoes.secao_de_spec({"forma": "dupla", "arranjo": "I_chapa",
                                   "base": {"forma": "I", "h": 0.2, "b": 0.1, "tw": 0.006, "tf": 0.010},

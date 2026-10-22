@@ -20,10 +20,11 @@ namespace NovoFtool
     public static class DesenhoSecao
     {
         // Seção girada de giro (°) com o ponto cardinal sobre o eixo (cruz vermelha no centro do quadro).
-        public static Canvas Desenhar(Perfil3D p, double giroGraus, int cardinal, double tam = 220)
+        public static Canvas Desenhar(Perfil3D p, double giroGraus, int cardinal, double tam = 220, bool espelho = false)
         {
             var cv = new Canvas { Width = tam, Height = tam, Background = TemaPlant.BSup2, ClipToBounds = true };
             var f = GeometriaPerfis.CriarContorno(p, 0.1);
+            if (espelho) f = GeometriaPerfis.Espelhar(f);
             Point dc = GeometriaPerfis.Cardinal(f, cardinal);
             double a = giroGraus * Math.PI / 180, c = Math.Cos(a), s = Math.Sin(a);
             double esc = 0.36 * tam / Math.Max(Math.Max(f.B, f.H), 1e-6);
@@ -106,23 +107,25 @@ namespace NovoFtool
 
     public class JanelaDisposicao : JanelaEscura
     {
-        public event Action<double, int> Aplicar;   // giro (°) e cardinal (1..10)
-        public double Giro; public int Cardinal;
+        public event Action<double, int, bool> Aplicar;   // giro (°), cardinal (1..10) e espelho
+        public double Giro; public int Cardinal; public bool Espelho;
 
-        public JanelaDisposicao(Perfil3D p, double giro, int cardinal, int nBarras)
+        public JanelaDisposicao(Perfil3D p, double giro, int cardinal, int nBarras, bool espelho = false)
         {
-            Giro = giro; Cardinal = cardinal;
+            Giro = giro; Cardinal = cardinal; Espelho = espelho;
             Moldar(this, "Disposição do perfil", 560, 440);
             var cab = Cabecalho(Nivel.Info, "⊕", "Disposição do perfil · " + nBarras + (nBarras == 1 ? " barra" : " barras"),
                 "Giro em torno do eixo, espelho e ponto cardinal (cruz vermelha = eixo da barra). A análise usa o eixo; o desenho desloca o perfil.");
             var host = new Border();
-            void Prever() => host.Child = DesenhoSecao.Desenhar(p, Giro, Cardinal, 240);
+            void Prever() => host.Child = DesenhoSecao.Desenhar(p, Giro, Cardinal, 240, Espelho);
             var tbG = Campo(Num.Fmt(giro, 1), 70, "Giro livre (°)");
             tbG.TextChanged += (s, e) => { if (Num.Ler(tbG.Text, out double g)) { Giro = g; Prever(); } };
             var giros = new WrapPanel();
             foreach (int g in new[] { 0, 90, 180, 270 }) giros.Children.Add(B(g + "°", () => tbG.Text = g.ToString()));
-            // ponytail: espelhar = +180° (exato para I, U, tubos e compostas simétricas; cantoneira simples gira em vez de espelhar)
-            giros.Children.Add(B("Espelhar", () => tbG.Text = Num.Fmt((Giro + 180) % 360, 1), false, "Espelha o perfil (giro + 180°)."));
+            var ckE = new CheckBox { Content = "Espelhar", IsChecked = espelho, Foreground = TemaPlant.BTexto1, Margin = new Thickness(6, 6, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                                     ToolTip = "Reflete a seção em torno do eixo vertical local (L, U, Ue, T assimétricos); não é giro de 180°." };
+            ckE.Click += (s, e) => { Espelho = ckE.IsChecked == true; Prever(); };
+            giros.Children.Add(ckE);
             var grade = new UniformGrid { Rows = 3, Columns = 3, Width = 180, Margin = new Thickness(0, 8, 0, 0) };
             foreach (int c in new[] { 7, 8, 9, 4, 5, 6, 1, 2, 3 }) { int cc = c; grade.Children.Add(B(c.ToString(), () => { Cardinal = cc; Prever(); })); }
             var esq = new StackPanel { Width = 270 };
@@ -134,7 +137,7 @@ namespace NovoFtool
             var corpo = new DockPanel { Margin = new Thickness(12) };
             DockPanel.SetDock(esq, Dock.Left); corpo.Children.Add(esq); corpo.Children.Add(host);
             Content = Raiz(cab, corpo, Rodape(Tx("Um Ctrl+Z desfaz.", 11.5, TemaPlant.BTexto3), B("Cancelar", Close),
-                B("Aplicar", () => { Aplicar?.Invoke(Giro, Cardinal); Close(); }, true)));
+                B("Aplicar", () => { Aplicar?.Invoke(Giro, Cardinal, Espelho); Close(); }, true)));
             Prever();
         }
     }

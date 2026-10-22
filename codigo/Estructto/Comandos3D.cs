@@ -569,9 +569,10 @@ namespace NovoFtool
             if (b0 == null) return;
             double g0 = (double)(b0["rot"] ?? 0.0) * 180 / Math.PI;
             int c0 = b0["params"]?["cardinal"] is JsonValue cv && cv.TryGetValue(out int ci) ? ci : 5;
-            var j = new JanelaDisposicao(PerfilDaSecao((string)b0["secao"]), g0, c0, bs.Count) { Owner = this };
-            j.Aplicar += (g, c) => _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, bs, null, null, g, null), bs, c)),
-                                                "Disposição em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + "): giro " + Num.Fmt(g, 1) + "°, cardinal " + c + ".");
+            bool e0 = b0["params"]?["espelho"] is JsonValue ev && ev.TryGetValue(out bool eb) && eb;
+            var j = new JanelaDisposicao(PerfilDaSecao((string)b0["secao"]), g0, c0, bs.Count, e0) { Owner = this };
+            j.Aplicar += (g, c, es) => _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Espelho(GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, bs, null, null, g, null), bs, c), bs, es)),
+                                                "Disposição em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + "): giro " + Num.Fmt(g, 1) + "°, cardinal " + c + (es ? ", espelhado." : "."));
             j.ShowDialog();
         }
 
