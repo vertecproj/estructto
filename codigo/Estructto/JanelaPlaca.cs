@@ -887,6 +887,11 @@ namespace NovoFtool
             cbPerfil.Unchecked += (s, e) => { edit.PeloPerfil = false; edit.H = r.H; edit.B = r.B; Recalcular(); };
             Dica(cbPerfil, "Marcado: a chapa acompanha o perfil do pilar + a sobra (arredonda de 10 em 10 mm). Desmarcado: medidas digitadas.");
             sp.Children.Add(cbPerfil);
+            var cbDeitada = new CheckBox { Content = Tx("Placa deitada (girada 90°: H na largura do perfil)", 12, TemaPlant.BTexto1), IsChecked = edit.EixoFraco, Cursor = Cursors.Hand, Margin = new Thickness(0, 4, 0, 0) };
+            cbDeitada.Checked += (s, e) => { edit.EixoFraco = true; Recalcular(); };
+            cbDeitada.Unchecked += (s, e) => { edit.EixoFraco = false; Recalcular(); };
+            Dica(cbDeitada, "Marcado: a placa, os chumbadores e a solda giram 90° em relação ao pilar (eixo fraco no plano H). Vale no cálculo do motor (eixo_fraco), no desenho e no 3D.");
+            sp.Children.Add(cbDeitada);
             if (edit.PeloPerfil)
                 sp.Children.Add(Linha("Sobra", CaixaNum(Num.Fmt(edit.Sobra, 0), "mm", 78, v => { edit.Sobra = v; Recalcular(); }, "Folga da placa além do perfil, em cada lado.", v => v >= 0), 6));
             sp.Children.Add(Linha("Borda", Horiz(CaixaNum(Num.Fmt(edit.Borda, 0), "mm", 78, v => { edit.Borda = v; Recalcular(); }, "Do centro dos furos externos até a borda da chapa.", v => v > 0 && 2 * v < r.H && 2 * v < r.B),

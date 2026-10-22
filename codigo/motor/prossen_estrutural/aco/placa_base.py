@@ -474,8 +474,22 @@ def _solda(secao, dados, esforcos, h):
     if dados.get('eixo_fraco', False):
         b, d = d, b
     circular = s['tipo'] in ('TC', 'CIRC', 'tubo_circular', 'circular')
+    # Só conta a solda que assenta na chapa (docs/v3/GEOMETRIA-LIGACOES.md §1): com H/B informados (pelo_perfil falso) a
+    # chapa pode ser menor que o perfil; o contorno soldado fica limitado a min(perfil, chapa) em cada direção (d ao longo
+    # de H, b ao longo de B). Tubo circular maior que a chapa: círculo inscrito na chapa (a favor da segurança).
+    recortada = False
+    if not dados.get('pelo_perfil', False):
+        Hc, Bc = dados.get('H', 0)*1000, dados.get('B', 0)*1000
+        if Hc > 0 and Bc > 0:
+            if circular:
+                recortada = s['h']*1000 > min(Hc, Bc) + 1e-9
+            else:
+                recortada = d > Hc + 1e-9 or b > Bc + 1e-9
+                d, b = min(d, Hc), min(b, Bc)
     if circular:
         raio = s['h']*500
+        if recortada:
+            raio = min(Hc, Bc)/2
         area, iu, c = 1.414*math.pi*h*raio, math.pi*raio**3, raio
     else:
         area, iu, c = 1.414*h*(b+d), d*d*(3*b+d)/6, d/2
@@ -497,7 +511,7 @@ def _solda(secao, dados, esforcos, h):
                 espessura=t, t_chapa=chapa, h_min_norma=hn, abaixo_minimo=abaixo,
                 maior_que_parede=maior, NEquiv=_seg(.577*(adm/.30), tau, 1e-12),
                 seguranca=seguranca_solda(tau, adm),
-                passa=tau/adm <= 1 and not abaixo and not maior, eletrodo=el,
+                passa=tau/adm <= 1 and not abaixo and not maior, eletrodo=el, recortada=recortada,
                 intermediarios=dict(b=b/1000, d=d/1000, c=c/1000, Iu=iu*1e-9))
 
 
@@ -533,6 +547,9 @@ def verificar_solda_contorno(secao, dados, esforcos):
     if r['espessura'] > 0:
         v.append(_v('solda: limite prático da parede', r['h'], r['espessura'], 'm'))
     r.update(_resultado(v))
+    if r['recortada']:
+        r.setdefault('avisos', []).append('Chapa menor que o perfil: a solda considerada é só o trecho do contorno sobre a '
+                                          'chapa (min(perfil, chapa) em cada direção).')
     r['h_min'] = perna_minima_contorno(secao, d, esforcos)
     r['ok'] = r['passa']
     return r

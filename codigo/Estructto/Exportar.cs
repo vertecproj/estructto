@@ -309,12 +309,14 @@ namespace NovoFtool
                 m.Ligacoes.Add(lg);
                 var col = new List<Render3D.Peca3D>(); Render3D.Construir(Cena(m, Pf), col);
                 Png(Path.Combine(pasta, "v06-A1-joelho.png"), col, new Point3D(0.1, 0, 3.05), 0.4, new Vector3D(0.2, 1, -0.3));
-                double ztop = Vs(col.First(p => p.Barra == pil).M).Max(p => p.Z), esperado = 3 + 0.1 * Math.Tan(al) + 0.15 / Math.Cos(al);
+                // GEOMETRIA-LIGACOES (22/10/2026): o pilar vai até o topo da chapa de topo (folga_topo 0), não só até o canto da viga —
+                // a chapa (aqui 60 mm acima da viga) não sobra solta acima do pilar; continua cobrindo o canto da viga
                 var vc = Vs(col.First(p => p.Tipo == "chapa").M).ToList(); double xs = vc.Max(p => p.X) - vc.Min(p => p.X);
+                double ztop = Vs(col.First(p => p.Barra == pil).M).Max(p => p.Z), canto = 3 + 0.1 * Math.Tan(al) + 0.15 / Math.Cos(al), esperado = vc.Max(p => p.Z);
                 int ip = Render3DGeometria.Interferencias(col.Where(p => p.Tipo == "barra" || p.Tipo == "chapa").Select(p => p.M).ToList()).Count;
                 double xv = Vs(col.First(p => p.Barra == vg).M).Min(p => p.X);
-                Ok("v0.6 A1: joelho a 10°: pilar até " + F(ztop * 1000) + " mm (canto da viga na face " + F(esperado * 1000) + "), chapa vertical (espessura em x " + F(xs * 1000) + " mm), viga começa em x " + F(xv * 1000) + " mm, " + ip + " pares",
-                   Math.Abs(ztop - esperado) < 1e-6 && Math.Abs(xs - 0.016) < 1e-6 && Math.Abs(xv - 0.116) < 1e-6 && ip == 0);
+                Ok("v0.6 A1: joelho a 10°: pilar até " + F(ztop * 1000) + " mm (topo da chapa " + F(esperado * 1000) + ", canto da viga na face " + F(canto * 1000) + "), chapa vertical (espessura em x " + F(xs * 1000) + " mm), viga começa em x " + F(xv * 1000) + " mm, " + ip + " pares",
+                   Math.Abs(ztop - esperado) < 1e-6 && ztop > canto && Math.Abs(xs - 0.016) < 1e-6 && Math.Abs(xv - 0.116) < 1e-6 && ip == 0);
             }
             {   // sem v5 (modelo sem pontas do motor): também (decisão v0.6: a v0.4 registrava o defeito)
                 var m = new Modelo3D(); m.Nos.Add(new No3D { Id = 1 }); m.Nos.Add(new No3D { Id = 2, Z = 3 }); m.Nos.Add(new No3D { Id = 3, X = 4, Z = 3 });

@@ -25,7 +25,61 @@ namespace NovoFtool
         // Proposta: o grupo não tem projeto; é a geometria padrão sugerida (desenhada esmaecida, com o chip "Proposta" na vista).
         // Pendente: proposta sem geometria do motor; o Render3D faz a do tipo de nó (LigacoesAmostra.Proposta) com as juntas.
         public bool Proposta; public string Pendente;
-        public sealed class Chapa { public string Nome, Campo; public Point[] Contorno; public Vector3D Origem, Normal, U; public double Espessura; }
+        public sealed class Chapa
+        {
+            public string Nome, Campo; public Point[] Contorno; public Vector3D Origem, Normal, U; public double Espessura;
+            public Vector3D N1 { get { Vector3D n = Normal; n.Normalize(); return n; } }
+            public Vector3D U1 { get { Vector3D u = U; u.Normalize(); return u; } }
+            public Point Q(Vector3D p) => new Point(Vector3D.DotProduct(p - Origem, U1), Vector3D.DotProduct(p - Origem, Vector3D.CrossProduct(N1, U1)));   // (u, w) do contorno
+            public double H(Vector3D p) => Vector3D.DotProduct(p - Origem, N1);   // altura sobre a face de origem (0 .. Espessura = dentro)
+            public double Borda(Point q)   // distância (mm) ao contorno
+            {
+                double m = double.MaxValue;
+                for (int k = 0; k < Contorno.Length; k++)
+                {
+                    Point a = Contorno[k], b = Contorno[(k + 1) % Contorno.Length]; double dx = b.X - a.X, dy = b.Y - a.Y, L2 = dx * dx + dy * dy; if (L2 < 1e-9) continue;
+                    double t = Math.Max(0, Math.Min(1, ((q.X - a.X) * dx + (q.Y - a.Y) * dy) / L2));
+                    m = Math.Min(m, Math.Sqrt(Math.Pow(a.X + t * dx - q.X, 2) + Math.Pow(a.Y + t * dy - q.Y, 2)));
+                }
+                return m;
+            }
+        }
+        // Onde a solda assenta (docs/v3/GEOMETRIA-LIGACOES.md), no referencial local (mm):
+        // (1) borda de uma chapa (enrijecedor, nervura; pontas e meio do cordão no contorno, dentro da espessura): ax = para dentro
+        //     da chapa, no plano dela; lados = ±normal (perna que assenta na peça de apoio) com o deslocamento da raiz até a face
+        //     (o motor manda o cordão no plano médio: a solda ficava dentro da chapa, e o cordão ∥ à barra nem era desenhado);
+        // (2) face de uma chapa não paralela à barra (placa de base, chapa de topo): face = essa chapa (o Render3D recorta o cordão
+        //     pelo contorno dela: solda não fica no ar além da borda); (3) nenhum: (null, null, null), como antes.
+        public static (Vector3D? ax, List<(Vector3D n, double desl)> lados, Chapa face) Apoio(Ligacao3D l, Solda sd)
+        {
+            var pts = sd.Pontos; const double tol = 1.0;
+            if (pts == null || pts.Length < 2) return (null, null, null);
+            Vector3D meio = (pts[0] + pts[pts.Length - 1]) / 2;
+            foreach (bool borda in new[] { true, false })   // borda antes: o enrijecedor encostado na face da chapa de topo é borda dele
+                foreach (var ch in l.Chapas)
+                {
+                    if (ch.Contorno == null || ch.Contorno.Length < 3 || ch.Normal.Length < 0.5 || ch.U.Length < 0.5) continue;
+                    double esp = ch.Espessura;
+                    if (!pts.All(p => ch.H(p) > -tol && ch.H(p) < esp + tol)) continue;
+                    if (!borda)
+                    {
+                        bool naFace = pts.All(p => Math.Abs(ch.H(p)) < tol) || pts.All(p => Math.Abs(ch.H(p) - esp) < tol);
+                        if (naFace && Math.Abs(ch.N1.X) > 0.2) return (null, null, ch);
+                        continue;
+                    }
+                    if (!pts.All(p => ch.Borda(ch.Q(p)) < tol) || ch.Borda(ch.Q(meio)) >= tol) continue;
+                    Vector3D sg = pts[1] - pts[0]; if (sg.Length < 1e-6) continue; sg.Normalize();
+                    Vector3D n = ch.N1, ax = Vector3D.CrossProduct(n, sg); if (ax.Length < 1e-6) continue; ax.Normalize();
+                    Vector3D cw = Vector3D.CrossProduct(n, ch.U1);
+                    double cx = ch.Contorno.Average(q => q.X), cy = ch.Contorno.Average(q => q.Y);
+                    if (Vector3D.DotProduct(ch.Origem + ch.U1 * cx + cw * cy - pts[0], ax) < 0) ax = -ax;   // para dentro da chapa
+                    double h = pts.Average(p => ch.H(p));
+                    var lados = Math.Abs(h) < tol ? new List<(Vector3D, double)> { (-n, 0.0) } : Math.Abs(h - esp) < tol ? new List<(Vector3D, double)> { (n, 0.0) }
+                              : new List<(Vector3D, double)> { (n, esp - h), (-n, h) };
+                    return (ax, lados, null);
+                }
+            return (null, null, null);
+        }
         public sealed class Cantoneira { public string Perfil, Campo; public Vector3D Origem, Eixo, U; public double Comprimento; }
         public sealed class Parafuso { public string Campo; public double D, Comprimento, Pega = double.NaN; public Vector3D Origem, Eixo; public double[][] Pilha = new double[0][]; }   // Pilha: [t0, t1] (mm ao longo do eixo) das peças apertadas fora de `chapas` (aba da barra, cantoneira); pega: espessura apertada (NaN = estimada do comprimento)
         public sealed class Solda { public string Tipo = "filete"; public double Perna; public Vector3D[] Pontos; }
@@ -65,6 +119,9 @@ namespace NovoFtool
         // apoio_dir o Render3D usa o referencial do motor como veio, sem adivinhar.
         public bool Excluir; public Vector3D? ApoioDir; public double Lado = double.NaN;
         public Vector3D? ApoioMundo; public double DeslU;
+        // Folga no topo do pilar (mm): quanto o pilar fica abaixo do topo da chapa de topo da viga que chega no topo dele
+        // (geometria.folga_topo, opcional). NaN/0 = pilar até o topo da chapa (padrão; docs/v3/GEOMETRIA-LIGACOES.md).
+        public double FolgaTopo = double.NaN;
         public double XMax = double.NaN;   // G6 r4: x_max (mm) que o motor recebeu; a guarda AparaEm usa o mesmo limite
         // G6 r3: guarda. Corta as chapas em x = xMax (mm, local ao longo da barra; Sutherland–Hodgman) só se nenhum parafuso
         // passa de xMax − 1,5·d (borda mínima ~Tab. 14); senão não mexe e devolve false (a ligação fica pendente, com motivo).
@@ -131,6 +188,7 @@ namespace NovoFtool
             bool B(JsonNode n, string k) { try { return n?[k] is JsonValue v && v.TryGetValue(out bool x) && x; } catch { return false; } }
             var gus = (g["chapas"] as JsonArray)?.FirstOrDefault(c => (string)c?["nome"] == "gusset");
             l.Excluir = B(g, "excluir_interferencia") || B(pm, "excluir_interferencia");
+            l.FolgaTopo = D(g, "folga_topo", double.NaN);
             foreach (var n in new[] { g, gus, pm })
             {
                 if (n?["apoio_dir"] is JsonArray ad && ad.Count >= 3) l.ApoioDir = V3(ad);
@@ -359,18 +417,21 @@ namespace NovoFtool
         // Chapas de topo de cumeeira/joelho (emenda em ângulo, dois banzos em esquadria): uma chapa no plano da esquadria
         // (nLocal = normal do plano no referencial local da barra, apontando para dentro dela) e, com parafusos, 4 linhas de 2
         // atravessando as duas chapas (a outra barra chama sem parafusos).
+        public static double SobraCumeeira = 10;   // mm além do perfil, em cima e embaixo (parâmetro; 0 = rente ao perfil)
         public static Ligacao3D Cumeeira(int no, Barra3D b, Contorno f, Vector3D nLocal, bool parafusos)
         {
             nLocal.Normalize(); if (nLocal.X < 0) nLocal = -nLocal;
             Vector3D U = new Vector3D(0, 1, 0) - nLocal * nLocal.Y; if (U.Length < 1e-6) return null; U.Normalize();
             Vector3D W = Vector3D.CrossProduct(nLocal, U);
-            double H = f.H * 1000, B = f.B * 1000, esp = H < 300 ? 16 : 20, d = H < 300 ? 16 : 20, ext = H < 400 ? 60 : 80;
+            // GEOMETRIA-LIGACOES: proposta ajustada (flush) — a chapa termina no perfil + SobraCumeeira (antes estendida 60–80 mm
+            // acima e abaixo, com parafusos fora das mesas: chapa sobrando além do perfil); parafusos só entre as mesas.
+            double H = f.H * 1000, B = f.B * 1000, esp = H < 300 ? 16 : 20, d = H < 300 ? 16 : 20, ext = SobraCumeeira;
             double hc = H / Math.Max(0.3, Math.Abs(W.Z)), bp = Math.Max(B, 150), hp = hc + 2 * ext, g = bp - 70;
             var l = new Ligacao3D { No = no, Barra = b.Id, Nome = "Chapa de topo (cumeeira)" };
             l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "recuo", XPonta = esp });   // a barra termina na face da chapa (Juntas recua o plano da esquadria)
             l.Chapas.Add(new Ligacao3D.Chapa { Nome = "chapa de topo", Origem = U * (-bp / 2) + W * (-hp / 2), Normal = nLocal, U = U, Espessura = esp, Contorno = Ret(0, 0, bp, hp) });
             if (parafusos)
-                foreach (double w in new[] { hc / 2 + ext / 2, hc / 2 - 45, -(hc / 2 - 45), -(hc / 2 + ext / 2) })
+                foreach (double w in new[] { hc / 2 - 45, -(hc / 2 - 45) })
                     foreach (double u in new[] { -g / 2, g / 2 })
                         l.Parafusos.Add(new Ligacao3D.Parafuso { D = d, Comprimento = 2 * esp + 0.9 * d + 12, Pega = 2 * esp, Origem = U * u + W * w + nLocal * esp, Eixo = -nLocal });
             return l;
@@ -434,6 +495,23 @@ namespace NovoFtool
             afirmar(v.Chapas.Count == l.Chapas.Count && v.Parafusos.Count == l.Parafusos.Count && v.Soldas[0].Pontos.Length == l.Soldas[0].Pontos.Length && Math.Abs(v.RecuoDe("viga") - l.RecuoDe("viga")) < 1e-12
                     && v.Chapas[0].Contorno.SequenceEqual(l.Chapas[0].Contorno), "ida e volta pelo JSON do contrato");
             Ligacao3D pb = PlacaDeBase(1, new Barra3D { Id = 1, Ni = 1, Nj = 2 }, true, f, 400, 300, 25, 20, new[] { (-150.0, -100.0), (150.0, 100.0) }, 8);
+            {   // solda: borda do enrijecedor (plano médio) e face da placa de base (docs/v3/GEOMETRIA-LIGACOES.md)
+                var le = new Ligacao3D();
+                le.Chapas.Add(new Ligacao3D.Chapa { Nome = "enrijecedor do pilar", Origem = new Vector3D(0, 0, -5), Normal = new Vector3D(0, 0, 1), U = new Vector3D(1, 0, 0), Espessura = 10, Contorno = new[] { new Point(-100, 3), new Point(100, 3), new Point(100, 75), new Point(-100, 75) } });
+                var se = new Ligacao3D.Solda { Perna = 5, Pontos = new[] { new Vector3D(-100, 3, 0), new Vector3D(100, 3, 0) } };   // ∥ à barra (x): antes nem era desenhado
+                le.Soldas.Add(se);
+                var (ax, lados, face) = Ligacao3D.Apoio(le, se);
+                afirmar(face == null && ax is Vector3D a1 && Math.Abs(a1.Y - 1) < 1e-9 && lados.Count == 2 && lados.All(q => Math.Abs(q.desl - 5) < 1e-9 && Math.Abs(Math.Abs(q.n.Z) - 1) < 1e-9),
+                        "solda de enrijecedor: pernas na chapa (para dentro) e no apoio (±normal), raiz a meia espessura do plano médio");
+                Ligacao3D pp = PlacaDeBase(1, new Barra3D { Id = 1, Ni = 1, Nj = 2 }, true, f, 200, 120, 19, 16, new[] { (-60.0, -35.0) }, 6);
+                var (ax2, l2, f2) = Ligacao3D.Apoio(pp, pp.Soldas[0]);
+                var dentro = Render3DGeometria.Intervalos(f2.Q(new Vector3D(19, -100, 0)), f2.Q(new Vector3D(19, 100, 0)), f2.Contorno);
+                afirmar(f2 != null && f2.Nome == "placa de base" && ax2 == null && dentro.Count == 1 && Math.Abs((dentro[0].Item2 - dentro[0].Item1) * 200 - 120) < 1e-6,
+                        "solda da placa de base menor que o perfil: assenta na face da placa e é recortada nos 120 mm da chapa");
+                Ligacao3D pd = PlacaDeBase(1, new Barra3D { Id = 1, Ni = 1, Nj = 2 }, true, f, 400, 300, 19, 16, new[] { (-150.0, -100.0) }, 6, true);
+                afirmar(pd.Chapas[0].Contorno.Max(q => q.X) == 400 && pd.Chapas[0].Contorno.Max(q => q.Y) == 300 && pd.Parafusos[0].Origem.Y == -150 && pd.Parafusos[0].Origem.Z == -100,
+                        "placa deitada (eixo fraco): H no eixo y local (largura do perfil), furos girados junto");
+            }
             afirmar(pb.Parafusos.Count == 2 && pb.Parafusos[0].Origem.Z == -150 && pb.Parafusos[0].Origem.Y == -100 && Math.Abs(pb.RecuoDe("pilar") - 0.025) < 1e-12 && double.IsNaN(pb.RecuoDe("viga")), "placa de base: H no eixo z local, chumbadores verticais, pilar recua a espessura");
         }
     }

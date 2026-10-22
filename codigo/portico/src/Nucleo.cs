@@ -1039,6 +1039,7 @@ namespace Portico
         public double Graute { get; set; }       // mm
         public bool ArruelaSoldada { get; set; } // todos os chumbadores ao corte (senao, furo alargado: 2 efetivos)
 
+        public bool EixoFraco { get; set; }      // placa deitada: gira 90° em relação ao pilar (H na largura do perfil); motor: eixo_fraco (docs/v3/GEOMETRIA-LIGACOES.md)
         public PlacaBase Copiar() { return (PlacaBase)MemberwiseClone(); }
     }
 
@@ -1108,7 +1109,8 @@ namespace Portico
             if (p == null) { r.Erro = "Este nó não tem placa de base."; return r; }
             Barra pilar = Pilar(m, n, out r.Sec, out r.RefIn, out r.RefOut, out r.Erro);
             if (pilar == null) return r;
-            r.Deitado = pilar.EixoFraco;
+            r.Deitado = pilar.EixoFraco != p.EixoFraco;   // placa deitada (opção da placa) gira em relação ao pilar; padrão falso = como antes
+            if (p.EixoFraco) { double t = r.RefIn; r.RefIn = r.RefOut; r.RefOut = t; }
             No n1 = m.NoPorId(pilar.N1), n2 = m.NoPorId(pilar.N2);
             // Eixos da PLACA: a placa fica no plano do apoio (piso, teto ou parede), com a normal no eixo global (Y ou X)
             // mais proximo da barra, apontando para a barra. y da placa = normal girada +90 graus (no piso: -X global,

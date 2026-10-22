@@ -732,6 +732,11 @@ def _chapa_topo(d, e, estendida_padrao):
             geo["chapas"].append(_chapa("enrijecedor da chapa de topo",
                                         [[0, s * H / 2], [Ls, s * H / 2], [0, s * (H / 2 + hs)]],
                                         [xs, ts / 2, 0], [0, -1, 0], [1, 0, 0], ts))
+            # soldas do enrijecedor (só geometria/desenho, não dimensionadas: filete mínimo como no enrijecedor do pilar):
+            # na chapa de topo (x = xs) e na mesa da viga (z = ±H/2), no plano médio do enrijecedor (y = 0)
+            bw_e = max(lg.filete_minimo(min(ts, tp)), 0.005)
+            geo["soldas"] += [_solda("filete", bw_e, [[xs, 0.0, s * H / 2], [xs, 0.0, s * (H / 2 + hs)]]),
+                              _solda("filete", bw_e, [[xs, 0.0, s * H / 2], [xs + Ls, 0.0, s * H / 2]])]
     R.avisos.append("modelo: T-stub de Struik–de Back (Kulak cap. 17) por linha, distribuição plástica "
                     "(Σ n·T·h); linhas internas junto à mesa comprimida só ao cortante")
     geo["pontas"] = [ponta]

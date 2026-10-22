@@ -177,6 +177,12 @@ namespace Portico
             rp = PlacaCalc.Calcular(m, m.Nos[0]);
             Conf("placa pelo perfil: comprimento = d + 2 x sobra (arredondado)", rp.H, 410);
             Conf("placa pelo perfil: largura = bf + 2 x sobra (arredondado)", rp.B, 410);
+            {   // placa deitada (PlacaBase.EixoFraco, docs/v3/GEOMETRIA-LIGACOES.md): gira 90° em relação ao pilar
+                ResPlaca ep = rp;
+                m.Nos[0].Placa = m.Nos[0].Placa.Copiar(); m.Nos[0].Placa.EixoFraco = true;
+                ResPlaca dp = PlacaCalc.Calcular(m, m.Nos[0]);
+                Conf("placa deitada: Deitado invertido e RefIn/RefOut trocados", dp.Deitado != ep.Deitado && dp.RefIn == ep.RefOut && dp.RefOut == ep.RefIn ? 1 : 0, 1);
+            }
 
             Console.WriteLine("-- espessura da chapa e verificacao simplificada da barra");
             m = Novo(0, 0, 0, 3); b = B(m, 0, 1); b.Secao = "W 200 x 46,1"; b.Material = "Aço ASTM A572 Gr.50"; Engaste(m.Nos[0]); m.Nos[1].Fx = 10;
