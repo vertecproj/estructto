@@ -217,7 +217,8 @@ namespace NovoFtool
   [Parameter(Mandatory=$true)][string]$Exe,
   [string]$Limpar = '',
   [int]$EsperaMs = 120000,
-  [switch]$Elevado)
+  [switch]$Elevado,
+  [switch]$DumpStub)
 $ErrorActionPreference = 'Stop'
 $logDir = Join-Path $env:TEMP 'Estructto-update'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -231,6 +232,14 @@ function PodeEscrever([string]$pasta) {
   $t = Join-Path $pasta ('.escrita-' + [guid]::NewGuid().ToString('N'))
   try { [IO.File]::WriteAllText($t, 'x'); Remove-Item -LiteralPath $t -Force; return $true } catch { return $false }
 }
+# valores vao em base64 (sem escape de aspas, inclusive aspas Unicode); -Limpar so entra se nao vazio
+function V([string]$s) { ""([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"" + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s)) + ""')))"" }
+function NovoStub {
+  $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([IO.File]::ReadAllText($PSCommandPath)))
+  $l = ''; if ($Limpar -ne '') { $l = ' -Limpar ' + (V $Limpar) }
+  ""`$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$b64')); & ([scriptblock]::Create(`$t)) -ProcessoPid $ProcessoPid -Origem $(V $Origem) -Destino $(V $Destino) -Exe $(V $Exe)$l -EsperaMs $EsperaMs -Elevado""
+}
+if ($DumpStub) { [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes((NovoStub))); exit 0 }
 $tocou = $false
 try {
   Log ('inicio pid=' + $ProcessoPid + ' destino=' + $Destino + ' elevado=' + $Elevado)
@@ -241,12 +250,8 @@ try {
   if (-not ((PodeEscrever $Destino) -and (PodeEscrever (Split-Path -Parent $Destino)))) {
     if ($Elevado) { throw 'sem permissao de escrita mesmo como administrador' }
     Log 'sem permissao de escrita: pedindo elevacao'
-    # o script elevado nao roda de %TEMP% (gravavel pelo usuario): um stub elevado grava o script em %ProgramData%\Estructto\update (so administradores) e executa de la
-    function Q([string]$s) { ""'"" + $s.Replace(""'"", ""''"") + ""'"" }
-    $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($PSCommandPath))
-    $stub = ""`$d = Join-Path `$env:ProgramData 'Estructto\update'; if (Test-Path -LiteralPath `$d) { Remove-Item -LiteralPath `$d -Recurse -Force }; New-Item -ItemType Directory -Force -Path `$d | Out-Null; "" +
-      ""icacls `$d /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null; `$f = Join-Path `$d 'atualizar.ps1'; [IO.File]::WriteAllBytes(`$f, [Convert]::FromBase64String('$b64')); "" +
-      ""& powershell -NoProfile -ExecutionPolicy Bypass -File `$f -ProcessoPid $ProcessoPid -Origem $(Q $Origem) -Destino $(Q $Destino) -Exe $(Q $Exe) -Limpar $(Q $Limpar) -EsperaMs $EsperaMs -Elevado""
+    # nenhum arquivo de script na elevacao (pasta gravavel pelo usuario = troca antes de rodar como admin): o script inteiro vai dentro do -EncodedCommand
+    $stub = NovoStub
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($stub))
     Start-Process powershell -Verb RunAs -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-EncodedCommand',$enc) -WindowStyle Hidden -Wait
     exit 0
@@ -283,13 +288,19 @@ try {
         public static void CancelarScript(Process p) { try { if (p != null && !p.HasExited) p.Kill(); } catch { } }
 
         /// <summary>Grava o script (UTF-8 com BOM, para o PowerShell 5.1) e o dispara oculto. Devolve o processo.</summary>
-        public static Process IniciarScript(int pid, string origem, string destino, string exe, string limpar, string pastaScript = null, int esperaMs = 120000)
+        public static string GravarScript(string pastaScript)
         {
-            pastaScript = pastaScript ?? PastaTemp; Directory.CreateDirectory(pastaScript);
+            Directory.CreateDirectory(pastaScript);
             string script = Path.Combine(pastaScript, "atualizar-" + Guid.NewGuid().ToString("N") + ".ps1");
             File.WriteAllText(script, ScriptAtualizador, new UTF8Encoding(true));
+            return script;
+        }
+
+        public static Process IniciarScript(int pid, string origem, string destino, string exe, string limpar, string pastaScript = null, int esperaMs = 120000)
+        {
+            string script = GravarScript(pastaScript ?? PastaTemp);
             var psi = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -ProcessoPid " + pid + " -Origem \"" + origem + "\" -Destino \"" + destino.TrimEnd('\\') + "\" -Exe \"" + exe + "\" -Limpar \"" + (limpar ?? "") + "\" -EsperaMs " + esperaMs)
+                "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -ProcessoPid " + pid + " -Origem \"" + origem + "\" -Destino \"" + destino.TrimEnd('\\') + "\" -Exe \"" + exe + "\"" + (string.IsNullOrEmpty(limpar) ? "" : " -Limpar \"" + limpar + "\"") + " -EsperaMs " + esperaMs)
             { UseShellExecute = false, CreateNoWindow = true };
             return Process.Start(psi);
         }

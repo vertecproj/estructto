@@ -110,10 +110,29 @@ namespace NovoFtool
                 Ok(sc.Contains("$Destino + '.bak'") && sc.Contains("Copy-Item -LiteralPath $Destino -Destination $bak"), "script faz backup <pasta>.bak");
                 Ok(sc.Contains("restaurado do backup") && sc.Contains("Move-Item -LiteralPath $bak -Destination $Destino"), "script restaura o backup em erro");
                 Ok(sc.Contains("-Verb RunAs") && sc.Contains("PodeEscrever"), "script pede elevação só sem permissão de escrita");
-                Ok(sc.Contains("ProgramData") && sc.Contains("S-1-5-32-544") && sc.Contains("-EncodedCommand"), "script elevado roda de pasta protegida (%ProgramData%, só administradores)");
+                Ok(!sc.Contains("ProgramData") && !sc.Contains("icacls") && sc.Contains("[scriptblock]::Create") && sc.Contains("-EncodedCommand"), "elevação sem arquivo de script nem pasta em %ProgramData% (script vai no -EncodedCommand)");
                 // script: execução real, pasta temporária, sem rede
                 RodaScript(tmp, true, Ok, "instalação");
                 RodaScript(tmp, false, Ok, "pacote incompleto → restauração");
+                // caminho elevado sem UAC: o stub gerado (-DumpStub) roda como processo comum e instala numa pasta com aspas Unicode e apóstrofo
+                {
+                    string b = Path.Combine(tmp, "run-stub"), nomeEstranho = "Estructto \u2018x\u2019 d'a \u201cy\u201d";
+                    string inst = Path.Combine(b, "inst", nomeEstranho), pk = Path.Combine(b, "pacote");
+                    Directory.CreateDirectory(Path.Combine(inst, "motor")); Directory.CreateDirectory(Path.Combine(pk, "motor"));
+                    File.WriteAllText(Path.Combine(inst, "Estructto.exe"), "velho"); File.WriteAllText(Path.Combine(pk, "Estructto.exe"), "novo"); File.WriteAllText(Path.Combine(pk, "motor", "estructto-motor.exe"), "novo");
+                    var morto = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit") { UseShellExecute = false, CreateNoWindow = true }); morto.WaitForExit();
+                    string script = Atualizador.GravarScript(b);
+                    string who = Path.Combine(Environment.SystemDirectory, "whoami.exe");
+                    string Roda(string args) { var p = Process.Start(new ProcessStartInfo("powershell.exe", "-NoProfile -ExecutionPolicy Bypass " + args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, StandardOutputEncoding = Encoding.UTF8 }); string o = p.StandardOutput.ReadToEnd(); p.WaitForExit(90000); return o.Trim(); }
+                    string comum = "-File \"" + script + "\" -ProcessoPid " + morto.Id + " -Origem \"" + pk + "\" -Destino \"" + inst + "\" -Exe \"" + who + "\"";
+                    string enc = Roda(comum + " -DumpStub");
+                    string stub = Encoding.Unicode.GetString(Convert.FromBase64String(enc));
+                    Ok(!stub.Contains("-File") && !stub.Contains("ProgramData") && !stub.Contains("-Limpar") && stub.Contains("[scriptblock]::Create") && stub.Contains("-Elevado") && !stub.Contains(nomeEstranho) && enc.Length < 30000, "stub elevado: sem arquivo, sem -Limpar vazio, valores só em base64, cabe na linha de comando (" + enc.Length + " car.)");
+                    string enc2 = Roda(comum + " -Limpar \"" + Path.Combine(b, "stage") + "\" -DumpStub");
+                    Ok(Encoding.Unicode.GetString(Convert.FromBase64String(enc2)).Contains("-Limpar "), "stub elevado leva -Limpar quando não vazio");
+                    Roda("-EncodedCommand " + enc);
+                    Ok(File.Exists(Path.Combine(inst, "Estructto.exe")) && File.ReadAllText(Path.Combine(inst, "Estructto.exe")) == "novo" && File.ReadAllText(Path.Combine(inst, "motor", "estructto-motor.exe")) == "novo" && Directory.Exists(inst + ".bak"), "stub executado (como o RunAs faria): instala em pasta com aspas Unicode e apóstrofo");
+                }
                 // processo que não fecha: nada muda e não reabre (sem segunda cópia)
                 {
                     string b = Path.Combine(tmp, "run-espera"), inst = Path.Combine(b, "inst", "Estructto"), pk = Path.Combine(b, "pacote");
