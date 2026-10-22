@@ -48,6 +48,7 @@ namespace NovoFtool
     public sealed class Perfil3D
     {
         public string Forma = "RET"; public double H, B, Tw, Tf;
+        public string Arranjo; public double S, ChapaB, ChapaT; public Perfil3D Comp;   // Forma DUPLA: perfil base, arranjo e afastamento s (m)
         public bool Concreto;   // ponytail: seção maciça (RET/CIRC) = concreto; ler o material da barra se aparecer aço maciço
 
         static Perfil3D DeAI(double a, double i)   // caixa equivalente: mesma área e mesma inércia forte
@@ -63,6 +64,14 @@ namespace NovoFtool
             var p = s?["props"] as JsonObject;
             double V(JsonObject o, string k) { try { return o?[k] is JsonValue v && v.TryGetValue(out double d) ? d : 0; } catch { return 0; } }
             double h = V(p, "h"), b = V(p, "b"), tw = V(p, "tw"), tf = V(p, "tf"), t = V(p, "t");
+            if (p?["composicao"]?["componente"] is JsonObject cp)   // composta: os dois perfis (GeometriaPerfis.Dupla)
+            {
+                var co = p["composicao"] as JsonObject; var ch = co["chapa"] as JsonObject;
+                string fc = (string)cp["forma"] == "cantoneira" ? "L" : (string)cp["forma"];
+                double ct = V(cp, "t");
+                return new Perfil3D { Forma = "DUPLA", H = h, B = b, Arranjo = (string)co["arranjo"], S = V(co, "s"), ChapaB = V(ch, "b"), ChapaT = V(ch, "t"),
+                                      Comp = new Perfil3D { Forma = fc, H = V(cp, "h"), B = V(cp, "b"), Tw = ct > 0 ? ct : V(cp, "tw"), Tf = ct > 0 ? ct : V(cp, "tf") } };
+            }
             switch ((string)p?["tipo"])
             {
                 case "I": return new Perfil3D { Forma = "I", H = h, B = b, Tw = tw, Tf = tf };

@@ -681,6 +681,23 @@ namespace NovoFtool
                 var (fs, vs) = Fechada(ms);
                 afirmar(fs && Math.Abs(vs / (2 * 0.2 * 0.008 * 0.008 / 2) - 1) < 1e-3, "cordão de solda (dois lados): prismas fechados, volume 2 × L × p²/2");
             }
+            {   // compostas (v0.6 D): 2 UPN 200 caixão s = 0 e costas s = 10; 2L 2" cruz s = 6,3; I + chapa — um laço por perfil, área = soma
+                var pu = new Perfil3D { Forma = "U", H = 0.2, B = 0.075, Tw = 0.0085, Tf = 0.0115 };
+                var pl = new Perfil3D { Forma = "L", H = 0.0508, B = 0.0508, Tw = 0.00635, Tf = 0.00635 };
+                double Au = 2 * 0.075 * 0.0115 + 0.177 * 0.0085, Al = 0.0508 * 0.00635 + 0.04445 * 0.00635, Ai = 2 * 0.1 * 0.01 + 0.18 * 0.006;
+                foreach (var (p, Aesp, Besp, Hesp) in new[] {
+                    (new Perfil3D { Forma = "DUPLA", Arranjo = "caixao", Comp = pu }, 2 * Au, 0.150, 0.2),
+                    (new Perfil3D { Forma = "DUPLA", Arranjo = "I", S = 0.010, Comp = pu }, 2 * Au, 0.160, 0.2),
+                    (new Perfil3D { Forma = "DUPLA", Arranjo = "cruz", S = 0.0063, Comp = pl }, 2 * Al, 0.1079, 0.1079),
+                    (new Perfil3D { Forma = "DUPLA", Arranjo = "I_chapa", ChapaB = 0.1, ChapaT = 0.01, Comp = new Perfil3D { Forma = "I", H = 0.2, B = 0.1, Tw = 0.006, Tf = 0.01 } }, Ai + 0.001, 0.1, 0.21) })
+                {
+                    Contorno fd = GeometriaPerfis.CriarContorno(p, 0.1);
+                    double At = 0; for (int t = 0; t + 2 < fd.Tampa.Count; t += 3) { Point a = fd.Tampa[t], q = fd.Tampa[t + 1], r = fd.Tampa[t + 2]; At += Math.Abs((q.X - a.X) * (r.Y - a.Y) - (r.X - a.X) * (q.Y - a.Y)) / 2; }
+                    double umax = fd.Lacos.SelectMany(z => z).Max(z => z.X), vmax = fd.Lacos.SelectMany(z => z).Max(z => z.Y), vmin = fd.Lacos.SelectMany(z => z).Min(z => z.Y);
+                    afirmar(fd.Lacos.Count == 2 && Math.Abs(At - Aesp) < 1e-8 && Math.Abs(2 * umax - Besp) < 1e-6 && Math.Abs(vmax - vmin - Hesp) < 1e-6 && Math.Abs(vmax + vmin) < 1e-9,
+                            $"composta {p.Arranjo}: 2 laços, área {At * 1e4:0.00} cm² (esperado {Aesp * 1e4:0.00}), caixa {2 * umax * 1e3:0.#}×{(vmax - vmin) * 1e3:0.#} mm");
+                }
+            }
             {   // cope de 40 mm no topo de um I 300×150 (mesa 10): some a mesa de cima, a tampa fecha com a área do resto
                 Contorno fi = GeometriaPerfis.CriarContorno(new Perfil3D { Forma = "I", H = 0.3, B = 0.15, Tw = 0.006, Tf = 0.01 }, 0.1);
                 Contorno fc = Recortar(fi, -0.15, 0.15 - 0.04);

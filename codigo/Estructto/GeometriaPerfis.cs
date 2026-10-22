@@ -60,6 +60,7 @@ namespace NovoFtool
             double hb = b / 2, hh = h / 2;
             switch (p?.Forma)
             {
+                case "DUPLA": Dupla(f, p); return f;
                 case "I":
                     f.Laco(Poli(-hb, -hh, hb, -hh, hb, -hh + tf, tw / 2, -hh + tf, tw / 2, hh - tf, hb, hh - tf, hb, hh, -hb, hh, -hb, hh - tf, -tw / 2, hh - tf, -tw / 2, -hh + tf, -hb, -hh + tf));
                     Ret(f, -hb, -hh, hb, -hh + tf); Ret(f, -tw / 2, -hh + tf, tw / 2, hh - tf); Ret(f, -hb, hh - tf, hb, hh);
@@ -103,6 +104,50 @@ namespace NovoFtool
                 foreach (int[] t in Render3DGeometria.Triangular(l)) { f.Tampa.Add(l[t[0]]); f.Tampa.Add(l[t[1]]); f.Tampa.Add(l[t[2]]); }
             }
             return f;
+        }
+
+        // Contorno anti-horário de um perfil aberto centrado na própria caixa (mesmo desenho dos casos I/U/L acima).
+        static Point[] Base(string forma, double h, double b, double tw, double tf)
+        {
+            double hb = b / 2, hh = h / 2;
+            switch (forma)
+            {
+                case "I": return Poli(-hb, -hh, hb, -hh, hb, -hh + tf, tw / 2, -hh + tf, tw / 2, hh - tf, hb, hh - tf, hb, hh, -hb, hh, -hb, hh - tf, -tw / 2, hh - tf, -tw / 2, -hh + tf, -hb, -hh + tf);
+                case "U": return Poli(-hb, -hh, hb, -hh, hb, -hh + tf, -hb + tw, -hh + tf, -hb + tw, hh - tf, hb, hh - tf, hb, hh, -hb, hh);
+                case "L": return Poli(-hb, -hh, hb, -hh, hb, -hh + tw, -hb + tw, -hh + tw, -hb + tw, hh, -hb, hh);
+                default: return Poli(-hb, -hh, hb, -hh, hb, hh, -hb, hh);
+            }
+        }
+
+        // Barra composta (secoes.secao_dupla / secao_I_chapa): cada perfil vira um laço próprio, desenhado e exportado
+        // separado. Arranjos: caixao (abas para dentro), I (costas com costas), cruz (2L), lado_a_lado (2I), I_chapa.
+        static void Dupla(Contorno f, Perfil3D p)
+        {
+            var c = p.Comp ?? new Perfil3D { Forma = "U", H = p.H, B = p.B / 2, Tw = p.Tw, Tf = p.Tf };
+            double h = c.H, b = c.B, s = Math.Max(p.S, 0), tw = c.Tw, tf = c.Forma == "L" ? c.Tw : c.Tf;
+            Point[] bas = Base(c.Forma, h, b, tw, tf);
+            void Poe(Point[] q, double su, double sv, double du, double dv)
+            {
+                var r = q.Select(t => new Point(su * t.X + du, sv * t.Y + dv)).ToArray();
+                if (su * sv < 0) Array.Reverse(r);   // espelho inverte o sentido: mantém anti-horário
+                f.Laco(r);
+                foreach (int[] t in Render3DGeometria.Triangular(r)) { f.Tampa.Add(r[t[0]]); f.Tampa.Add(r[t[1]]); f.Tampa.Add(r[t[2]]); }
+            }
+            double B = 2 * b + s, H = h, d = (b + s) / 2;
+            switch (p.Arranjo)
+            {
+                case "caixao": Poe(bas, 1, 1, -d, 0); Poe(bas, -1, 1, d, 0); break;                // almas por fora, abas para dentro
+                case "cruz": H = 2 * h + s; Poe(bas, 1, 1, d, (h + s) / 2); Poe(bas, -1, -1, -d, -(h + s) / 2); break;   // 2L em estrela (giro 180°)
+                case "I_chapa":
+                {
+                    double tp = p.ChapaT, bp = p.ChapaB > 0 ? p.ChapaB : b;
+                    H = h + tp; B = Math.Max(b, bp);
+                    Poe(bas, 1, 1, 0, -tp / 2); Poe(Base("RET", tp, bp, 0, 0), 1, 1, 0, h / 2);
+                    break;
+                }
+                default: Poe(bas, -1, 1, -d, 0); Poe(bas, 1, 1, d, 0); break;                      // I (costas) e lado_a_lado
+            }
+            f.H = H; f.B = B; f.Tw = tw; f.Tf = tf; f.Forma = "DUPLA";
         }
 
         // Ponto cardinal (docs/MODELO-ESPACIAL.md, Plant 3D): 1..9 como o teclado numérico olhando a seção com v para cima
