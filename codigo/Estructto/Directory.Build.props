@@ -1,9 +1,11 @@
 ﻿<Project>
   <!-- bin/obj fora do Google Drive: o Drive trava arquivos durante a sincronizacao e quebra o build. -->
+  <!-- Por worktree: o checkout principal (pasta "estructto" ou "ftool") continua em EstructtoV2; cada worktree usa EstructtoV2-<nome da pasta raiz>, para builds paralelos nao se pisarem. -->
   <PropertyGroup>
-    <BaseIntermediateOutputPath>C:\dev\build\EstructtoV2\obj\</BaseIntermediateOutputPath>
-    <BaseOutputPath>C:\dev\build\EstructtoV2\bin\</BaseOutputPath>
+    <RaizWt>$([System.IO.Path]::GetFileName($([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\').TrimEnd('\'))))</RaizWt>
+    <PastaBuild>C:\dev\build\EstructtoV2</PastaBuild>
+    <PastaBuild Condition="'$(RaizWt)' != 'estructto' And '$(RaizWt)' != 'ftool' And '$(RaizWt)' != ''">C:\dev\build\EstructtoV2-$(RaizWt)</PastaBuild>
+    <BaseIntermediateOutputPath>$(PastaBuild)\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(PastaBuild)\bin\</BaseOutputPath>
   </PropertyGroup>
 </Project>
-
-
