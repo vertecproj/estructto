@@ -56,6 +56,34 @@ namespace NovoFtool
                 h.Close();
             }
 
+            // Seção no painel Propriedades: campo no tema (igual Material/Giro) + lista aberta que rola com a roda
+            {
+                var bs = new BotaoSecao(() => noModelo, "Tubo 50x50x3,00", _ => { });
+                var cbM = new ComboBox { Height = 28, Margin = new Thickness(0, 6, 0, 0) }; cbM.Items.Add("A-572 GR.50"); cbM.SelectedIndex = 0;
+                var tbG = new TextBox { Text = "0,000", Height = 28, Margin = new Thickness(0, 6, 0, 0) };
+                var pp = new StackPanel { Margin = new Thickness(12) }; pp.Children.Add(bs); pp.Children.Add(cbM); pp.Children.Add(tbG);
+                var hp = new Window { Content = pp, Width = 300, Height = 140, Background = TemaPlant.BSup1, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize };
+                PrepararDialogoForaDaTela(hp); hp.Show(); EsperarIdle();
+                CapturarDialogo(hp, "47-propriedades-secao-campo.png");
+                hp.Close();
+
+                var sel = bs.Seletor; sel.Montar();
+                var hs = new Window { Content = sel, Width = 360, Height = 450, Background = TemaPlant.BSup1, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize };
+                PrepararDialogoForaDaTela(hs); hs.Show(); EsperarIdle();
+                var tv = FindTree(sel);
+                var raiz = (TreeViewItem)tv.Items[0]; raiz.IsExpanded = true;
+                foreach (var n1 in raiz.Items.OfType<TreeViewItem>()) { n1.IsExpanded = true; foreach (var f in n1.Items.OfType<TreeViewItem>()) f.IsExpanded = true; }
+                EsperarIdle();
+                var sv = (ScrollViewer)((DockPanel)sel.Child).Children.OfType<ScrollViewer>().First();
+                if (sv.ScrollableHeight < 50) throw new InvalidOperationException("seletor de seção: lista não ficou rolável (" + sv.ScrollableHeight + ")");
+                var alvo = (UIElement)raiz.Items.OfType<TreeViewItem>().First().Items.OfType<TreeViewItem>().First();
+                alvo.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, -120) { RoutedEvent = UIElement.PreviewMouseWheelEvent, Source = alvo });
+                EsperarIdle();
+                if (sv.VerticalOffset <= 0) throw new InvalidOperationException("seletor de seção: a roda do mouse não rolou a lista");
+                CapturarDialogo(hs, "47-propriedades-secao-popup-rolado.png");
+                hs.Close();
+            }
+
             // B3/B1: projeto em branco, sem grade, barras nem mensagem de "modelo vazio"
             Esperar(w.AbrirEspacial(() => DocumentoEspacial.Vazio("Em branco"), "abrindo"));
             w.Faixa.SelectedTabItem = w.abaDesenhar; EsperarIdle();

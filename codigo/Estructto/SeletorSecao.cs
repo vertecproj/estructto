@@ -80,6 +80,7 @@ namespace NovoFtool
         string atual;
         readonly StackPanel corpo = new StackPanel();
         readonly TextBox busca;
+        readonly ScrollViewer rolagem;
         string termo = "";
 
         public static List<string> Recentes() => Config.Opcoes.Get(ChaveRecentes).Split('|', StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -100,11 +101,25 @@ namespace NovoFtool
         public SeletorSecao(Func<IEnumerable<string>> noModelo, string atual, Action<string> escolher)
         {
             this.noModelo = noModelo; this.atual = atual; this.escolher = escolher;
-            Width = 330; Height = 420; Background = TemaPlant.BSup1; BorderBrush = TemaPlant.BBorda; BorderThickness = new Thickness(1); CornerRadius = new CornerRadius(6);
+            Width = 330; Height = Math.Min(420, SystemParameters.WorkArea.Height * 0.6); Background = TemaPlant.BSup1; BorderBrush = TemaPlant.BBorda; BorderThickness = new Thickness(1); CornerRadius = new CornerRadius(6);
             var dp = new DockPanel { Margin = new Thickness(8) };
             var cx = CaixaBusca("Buscar perfil (ex.: W250, Tubo 50)", 300, t => { termo = t.Trim(); Montar(); }, out busca);
             DockPanel.SetDock(cx, Dock.Top); cx.Margin = new Thickness(0, 0, 0, 6); dp.Children.Add(cx);
-            dp.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = corpo });
+            rolagem = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = corpo, Focusable = false };
+            dp.Children.Add(rolagem);
+            // o TreeView (template padrao) tem ScrollViewer proprio que engole a roda sem rolar; a rolagem externa assume antes dele
+            PreviewMouseWheel += (s, e) => { rolagem.ScrollToVerticalOffset(rolagem.VerticalOffset - e.Delta / 3.0); e.Handled = true; };
+            PreviewKeyDown += (s, e) =>
+            {
+                if (e.OriginalSource is TextBox) { if (e.Key != Key.PageDown && e.Key != Key.PageUp) return; }
+                switch (e.Key)
+                {
+                    case Key.PageDown: rolagem.PageDown(); e.Handled = true; break;
+                    case Key.PageUp: rolagem.PageUp(); e.Handled = true; break;
+                    case Key.Home when !(e.OriginalSource is TextBox): rolagem.ScrollToTop(); e.Handled = true; break;
+                    case Key.End when !(e.OriginalSource is TextBox): rolagem.ScrollToBottom(); e.Handled = true; break;
+                }
+            };
             Child = dp;
             Loaded += (s, e) => busca.Focus();
             Montar();
@@ -165,12 +180,24 @@ namespace NovoFtool
         public readonly SeletorSecao Seletor;
         public BotaoSecao(Func<IEnumerable<string>> noModelo, string atual, Action<string> aoEscolher)
         {
-            Content = Tx(atual ?? "(escolher)", 12, TemaPlant.BTexto1); HorizontalContentAlignment = HorizontalAlignment.Left; Padding = new Thickness(8, 4, 8, 4);
+            // estilo implicito de Button nao vale para subclasse: aplica o do tema e o visual dos campos (Giro/Material)
+            Style = (Style)Application.Current.FindResource(typeof(Button));
+            Background = TemaPlant.BSup3; BorderBrush = TemaPlant.BBordaSutil; Height = 28; HorizontalContentAlignment = HorizontalAlignment.Stretch; Padding = new Thickness(8, 2, 8, 2);
+            Rotular(atual);
             ToolTip = "Escolha o perfil: busca, seções do modelo, recentes e a árvore do catálogo.";
             pop.PlacementTarget = this;
-            Seletor = new SeletorSecao(noModelo, atual, n => { pop.IsOpen = false; Content = Tx(n, 12, TemaPlant.BTexto1); aoEscolher(n); });
+            Seletor = new SeletorSecao(noModelo, atual, n => { pop.IsOpen = false; Rotular(n); aoEscolher(n); });
             pop.Child = Seletor;
             Click += (s, e) => { Seletor.Montar(); pop.IsOpen = true; };
+        }
+        void Rotular(string nome)
+        {
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition()); g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var t = Tx(nome ?? "(escolher)", 12, TemaPlant.BTexto1); t.TextTrimming = TextTrimming.CharacterEllipsis; t.VerticalAlignment = VerticalAlignment.Center;
+            var seta = new System.Windows.Shapes.Path { Data = Geometry.Parse("M0,0 L4,4 L8,0"), Stroke = TemaPlant.BTexto2, StrokeThickness = 1.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            Grid.SetColumn(seta, 1); g.Children.Add(t); g.Children.Add(seta);
+            Content = g;
         }
         public void Abrir() { Seletor.Montar(); pop.IsOpen = true; }
     }
