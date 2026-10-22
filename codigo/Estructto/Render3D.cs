@@ -405,6 +405,39 @@ namespace NovoFtool
                         return k;
                     }, v5);
             }
+            // Topo do pilar com ligação de chapa de topo (viga chegando no topo, joelho do pórtico): o pilar sobe até o topo da
+            // chapa menos a folga da ligação (Ligacao3D.FolgaTopo, padrão 0) — a chapa termina alinhada ao pilar e os enrijecedores
+            // do pilar no nível da mesa de cima ficam dentro dele (antes o pilar parava no nó, no eixo da viga, e metade da chapa e o
+            // enrijecedor de cima ficavam soltos acima do pilar). Só pilar vertical que termina no nó e fica abaixo dele.
+            foreach (Ligacao3D l in ligs)
+            {
+                if (!l.Chapas.Any(ch => (ch.Nome ?? "").StartsWith("chapa de topo")) || !barras.TryGetValue(l.Barra, out Barra3D bv)) continue;
+                bool ei = l.No == bv.Ni;
+                if (!cortes.TryGetValue((bv, ei), out Corte kv) || kv.Contra == null) continue;
+                Barra3D pl = kv.Contra; var (qa, qd) = c.Pontos(pl); Vector3D ep = qd - qa;
+                if (ep.Length < 1e-9 || Math.Abs(ep.Z) < 0.95 * ep.Length || (pl.Ni != l.No && pl.Nj != l.No)) continue;
+                bool topoI = pl.Ni == l.No; Point3D topo = topoI ? qa : qd, baixo = topoI ? qd : qa;
+                if (baixo.Z >= topo.Z) continue;
+                if (cortes.TryGetValue((pl, topoI), out Corte kp) && (kp.Esquadria || kp.Motor)) continue;
+                var (av, dv) = c.Pontos(bv); Vector3D e = dv - av; if (e.Length < 1e-9) continue; e.Normalize();
+                Vector3D vz = Modelo3D.EixoY(e, bv.Rot + bv.RotPerfil); Point dcv = GeometriaPerfis.Cardinal(forma(bv), bv.Cardinal);
+                var (o, x, y, z) = LigacoesAmostra.Referencial((ei ? av : dv) + Vector3D.CrossProduct(vz, e) * dcv.X + vz * dcv.Y, ei ? e : -e, vz, kv);
+                if (l.DeslU != 0) o += Vector3D.CrossProduct(vz, e) * l.DeslU;
+                double zmax = double.NegativeInfinity;
+                foreach (var ch in l.Chapas)
+                {
+                    Vector3D cw = Vector3D.CrossProduct(ch.Normal, ch.U);
+                    foreach (Point q in ch.Contorno) foreach (double tt in new[] { 0, ch.Espessura })
+                    {
+                        Vector3D pl3 = ch.Origem + ch.U * q.X + cw * q.Y + ch.Normal * tt;
+                        zmax = Math.Max(zmax, (o + (x * pl3.X + y * pl3.Y + z * pl3.Z) / 1000).Z);
+                    }
+                }
+                double sobe = zmax - topo.Z - (double.IsNaN(l.FolgaTopo) ? 0 : l.FolgaTopo / 1000);
+                if (sobe <= 1e-4 || sobe > 2) continue;
+                if (kp != null && kp.P.Z >= topo.Z + sobe) continue;   // outra ligação do nó já subiu mais
+                cortes[(pl, topoI)] = new Corte { P = topo + new Vector3D(0, 0, sobe), N = new Vector3D(0, 0, 1), Contra = kp?.Contra };
+            }
             g.NLig = ligs.Count;
             if (coleta != null) { CortesColeta = cortes; LigsColeta = porPonta; }
             string NomeLig(Ligacao3D l) => (l.Excluir ? "excluir · " : "") + "ligação " + (l.Nome ?? "") + (l.Proposta ? " (proposta)" : "") + " · barra " + (barras.TryGetValue(l.Barra, out Barra3D bn) && bn.Origem is RefMotor rn ? rn.Id : l.Barra.ToString())
@@ -615,7 +648,15 @@ namespace NovoFtool
                     if (!l.Proposta && !string.IsNullOrEmpty(pf.Campo)) g.Parafs.Add(new ParafPick { Lig = l, Campo = pf.Campo, A = W(pf.Origem), V = ep * (pf.Comprimento / 1000), R = Math.Max(0.9 * pf.D / 1000, 0.006) });   // clique no parafuso: raio x segmento (sem octree)
                     if (coleta != null) { var sp = new MalhaDx(); Render3DGeometria.Parafuso(sp, W(pf.Origem), ep, pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000, refU); coleta.Add(new Peca3D { Nome = "parafuso · " + NomeLig(l), Tipo = "parafuso", M = sp, Lig = l, Excluir = true, Apertadas = pf.Pilha.Select(x => W(pf.Origem + pf.Eixo * ((x[0] + x[1]) / 2 / Math.Max(1e-9, pf.Eixo.Length)))).ToArray() }); }
                 }
-                foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallS, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, x);
+                foreach (var sd in l.Soldas)
+                {
+                    if (sd.Pontos == null || sd.Pontos.Length < 2) continue;
+                    var (axs, lados, face) = Ligacao3D.Apoio(l, sd);   // onde a solda assenta: face de chapa (recorta), borda de chapa (enrijecedor) ou nenhuma
+                    Render3DGeometria.Cordao(mallS, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, axs == null ? x : Wv(axs.Value),
+                                             lados?.Select(q => (Wv(q.n), q.desl / 1000)).ToList(),
+                                             face == null ? null : (pa, pb) => Render3DGeometria.Intervalos(face.Q(ParaLig(pa)), face.Q(ParaLig(pb)), face.Contorno));
+                }
+                Vector3D ParaLig(Point3D pw) { Vector3D r = (pw - o) * 1000; return new Vector3D(Vector3D.DotProduct(r, x), Vector3D.DotProduct(r, y), Vector3D.DotProduct(r, z)); }   // x, y, z ortonormais
             }
 
             g.Aco = mallAco; g.Conc = mallConc; g.Sel = mallSel; g.Arestas = arestas; g.Paraf = mallParaf; g.Solda = mallSolda; g.Prop = mallProp; g.PropDet = mallPropDet;

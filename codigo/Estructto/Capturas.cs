@@ -1171,6 +1171,7 @@ namespace NovoFtool
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
                 if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)
+                if (so == "geo") so1(() => CapturasGeo(w));                       // só as 61) da geometria das ligações (solda, enrijecedores, placa)
                 if (so == "visual") so1(() => CapturasVisual(w));                 // só as 58) close-ups de parafusos, linhas e ligações propostas
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado

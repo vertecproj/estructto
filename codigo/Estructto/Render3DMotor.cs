@@ -226,10 +226,20 @@ namespace NovoFtool
                         var f = GeometriaPerfis.CriarContorno(Perfil3D.DoMotor(sj), 0.1);
                         if (f.Concreto) continue;
                         double sobra = Dd("sobra", 0.1) * 1000, borda = Dd("borda", 0.05) * 1000, esp = Dd("esp", 0.019) * 1000, dia = Dd("diametro_mm", 16);
-                        bool peloPerfil = d?["pelo_perfil"] is JsonValue pv && pv.TryGetValue(out bool pp) ? pp : true;
-                        double H = peloPerfil ? Math.Ceiling((f.H * 1000 + 2 * sobra) / 10) * 10 : Dd("H", 0.4) * 1000, B = peloPerfil ? Math.Ceiling((f.B * 1000 + 2 * sobra) / 10) * 10 : Dd("B", 0.3) * 1000;
-                        var furos = new List<(double, double)> { (-H / 2 + borda, -B / 2 + borda), (H / 2 - borda, -B / 2 + borda), (H / 2 - borda, B / 2 - borda), (-H / 2 + borda, B / 2 - borda) };
-                        lig = LigacoesAmostra.PlacaDeBase(idN, b, b.Ni == idN, f, H, B, esp, dia, furos, Dd("solda", 0) * 1000);
+                        // mesmos padrões e a mesma geometria do motor (placa_base.esquema_placa_base / geometria_placa): com projeto,
+                        // pelo_perfil ausente = falso como no motor (antes o 3D supunha verdadeiro e desenhava outra placa); sem projeto
+                        // (proposta) = verdadeiro, como o sugerir do motor (ligacoes_modelo); eixo_fraco = placa deitada (H na direção da
+                        // largura do perfil), furos pelas fileiras × fixações por fileira no contorno
+                        bool Db(string k, bool padrao) => d?[k] is JsonValue bv && bv.TryGetValue(out bool bb) ? bb : padrao;
+                        bool peloPerfil = Db("pelo_perfil", d == null), fraco = Db("eixo_fraco", false);
+                        double ri = (fraco ? f.B : f.H) * 1000, ro = (fraco ? f.H : f.B) * 1000;
+                        double H = peloPerfil ? Math.Ceiling(Math.Round(ri + 2 * sobra, 6) / 10) * 10 : Dd("H", 0.4) * 1000, B = peloPerfil ? Math.Ceiling(Math.Round(ro + 2 * sobra, 6) / 10) * 10 : Dd("B", 0.3) * 1000;
+                        int nf = Math.Max(1, (int)Dd("fileiras", 2)), nq = Math.Max(1, (int)Dd("por_fileira", 2));
+                        var furos = new List<(double, double)>();
+                        for (int i = 0; i < nf; i++) for (int j = 0; j < nq; j++)
+                            if (!(0 < i && i < nf - 1 && 0 < j && j < nq - 1))
+                                furos.Add((nf == 1 ? 0 : -H / 2 + borda + i * (H - 2 * borda) / (nf - 1), nq == 1 ? 0 : -B / 2 + borda + j * (B - 2 * borda) / (nq - 1)));
+                        lig = LigacoesAmostra.PlacaDeBase(idN, b, b.Ni == idN, f, H, B, esp, dia, furos, Dd("solda", 0) * 1000, fraco);
                     }
                     else if (tl == "tubo_tubo_soldado")
                     {   // v0.6 A3: medidas dos tubos (mm) e o ângulo entre os eixos; a sela do contrato (receptor no plano xz local) gira em

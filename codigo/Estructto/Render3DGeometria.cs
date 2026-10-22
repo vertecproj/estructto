@@ -108,9 +108,13 @@ namespace NovoFtool
             var p0 = new Point3D[m]; var p1 = new Point3D[m];
             for (int k = 0; k < m; k++) { p0[k] = origem + u * contorno[k].X + w * contorno[k].Y; p1[k] = p0[k] + n * esp; }
             bool ccw = Area(contorno) > 0 == Vector3D.DotProduct(Vector3D.CrossProduct(u, w), n) > 0;   // anti-horário olhando contra n (vale para (u, w, n) canhoto)
+            // tampas: Triangular devolve os triângulos sempre anti-horários em (u, w), qualquer que seja o sentido do contorno; a
+            // face de cima depende só de (u × w)·n. Antes usava `ccw` (que inclui o sentido do contorno): contorno horário (ex.:
+            // enrijecedor do pilar do lado −y) saía com as duas tampas viradas para dentro e a chapa aparecia "oca" (o interior).
+            bool cima = Vector3D.DotProduct(Vector3D.CrossProduct(u, w), n) > 0;
             if (faces) foreach (int[] t in Render3DGeometria.Triangular(contorno))
             {
-                if (ccw) { Tri(p1[t[0]], p1[t[1]], p1[t[2]], cor); Tri(p0[t[2]], p0[t[1]], p0[t[0]], cor); }
+                if (cima) { Tri(p1[t[0]], p1[t[1]], p1[t[2]], cor); Tri(p0[t[2]], p0[t[1]], p0[t[0]], cor); }
                 else { Tri(p1[t[2]], p1[t[1]], p1[t[0]], cor); Tri(p0[t[0]], p0[t[1]], p0[t[2]], cor); }
             }
             for (int k = 0; k < m; k++)
@@ -394,7 +398,12 @@ namespace NovoFtool
         // contrato: a solda fica na face da chapa/apoio e sobe pela peça). Polilinha fechada (contorno do perfil): uma perna
         // em ax e a outra para fora do contorno (pela orientação do laço, vale nos cantos côncavos do I). Aberta: dos dois lados.
         // ponytail: sem esquadria nos cantos do laço (as pontas dos prismas se cruzam).
-        public static void Cordao(MalhaDx m, IList<Point3D> pts, double perna, Color4 cor, Vector3D ax)
+        // lados (opcional, cordão aberto): pares (direção da perna que assenta na peça de apoio, unitária e ⟂ ao cordão e a ax; deslocamento da raiz em m nessa direção) — solda
+        // de borda de chapa (enrijecedor), com a raiz na face da chapa e não no plano médio. recorte (opcional): dado o segmento
+        // deslocado meia perna para o lado da perna "w" (o pé que assenta na chapa), devolve os trechos t ∈ [0, 1] que ficam
+        // sobre a chapa; o resto não é desenhado (solda não fica no ar além da borda da chapa).
+        public static void Cordao(MalhaDx m, IList<Point3D> pts, double perna, Color4 cor, Vector3D ax, IList<(Vector3D w, double desloc)> lados = null,
+                                  Func<Point3D, Point3D, IList<(double, double)>> recorte = null)
         {
             double p = Math.Max(0.003, perna);
             if (pts.Count < 2 || ax.Length < 1e-12) return;
@@ -402,13 +411,17 @@ namespace NovoFtool
             bool laco = pts.Count > 3 && (pts[0] - pts[pts.Count - 1]).Length < 1e-6;
             double sinal = 0;   // laço anti-horário em torno de ax: s × ax aponta para fora
             if (laco) { Vector3D area = new Vector3D(); for (int k = 0; k + 1 < pts.Count; k++) area += Vector3D.CrossProduct((Vector3D)pts[k], (Vector3D)pts[k + 1]); sinal = Vector3D.DotProduct(area, ax) >= 0 ? 1 : -1; }
+            var unico = new[] { (0.0, 1.0) };
             for (int k = 0; k + 1 < pts.Count; k++)
             {
                 Vector3D sg = pts[k + 1] - pts[k]; if (sg.Length < 1e-9) continue; sg.Normalize();
                 Vector3D o = Vector3D.CrossProduct(sg, ax); if (o.Length < 1e-6) continue; o.Normalize();
-                foreach (Vector3D w in laco ? new[] { o * sinal } : new[] { o, -o })
+                var ws = laco ? new[] { (o * sinal, 0.0) } : lados != null ? lados.Select(l => (l.w, l.desloc)).ToArray() : new[] { (o, 0.0), (-o, 0.0) };
+                foreach (var (w, desl) in ws)
+                foreach (var (t0, t1) in recorte == null ? unico : (IEnumerable<(double, double)>)recorte(pts[k] + w * (desl + p / 2), pts[k + 1] + w * (desl + p / 2)))
                 {
-                    Point3D a = pts[k], b = pts[k + 1];
+                    if (t1 - t0 < 1e-6) continue;
+                    Point3D a = pts[k] + (pts[k + 1] - pts[k]) * t0 + w * desl, b = pts[k] + (pts[k + 1] - pts[k]) * t1 + w * desl;
                     Vector3D h = ax + w; h.Normalize();   // face exposta (hipotenusa)
                     Point3D a1 = a + ax * p, a2 = a + w * p, b1 = b + ax * p, b2 = b + w * p;
                     if (Vector3D.DotProduct(Vector3D.CrossProduct(a2 - a1, b2 - a1), h) >= 0) m.Quad(a1, a2, b2, b1, h, h, h, h, cor);
@@ -418,6 +431,40 @@ namespace NovoFtool
                     m.QuadN(a, b, b1, a1, -w, cor); m.QuadN(a, a2, b2, b, -ax, cor);
                 }
             }
+        }
+
+        // Trechos t ∈ [0, 1] do segmento a→b (2D) que ficam dentro do polígono (qualquer, também côncavo): cortes nas arestas,
+        // e cada trecho vale se o ponto médio está dentro.
+        public static List<(double, double)> Intervalos(Point a, Point b, Point[] poly)
+        {
+            var ts = new List<double> { 0, 1 };
+            double dx = b.X - a.X, dy = b.Y - a.Y;
+            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+            {
+                double ex = poly[i].X - poly[j].X, ey = poly[i].Y - poly[j].Y, den = dx * ey - dy * ex;
+                if (Math.Abs(den) < 1e-15) continue;
+                double qx = poly[j].X - a.X, qy = poly[j].Y - a.Y, t = (qx * ey - qy * ex) / den, s = (qx * dy - qy * dx) / den;
+                if (t > 0 && t < 1 && s >= -1e-12 && s <= 1 + 1e-12) ts.Add(t);
+            }
+            ts.Sort();
+            var r = new List<(double, double)>();
+            for (int k = 0; k + 1 < ts.Count; k++)
+            {
+                double tm = (ts[k] + ts[k + 1]) / 2;
+                if (ts[k + 1] - ts[k] > 1e-9 && DentroPoligono(poly, new Point(a.X + dx * tm, a.Y + dy * tm)))
+                {
+                    if (r.Count > 0 && Math.Abs(r[r.Count - 1].Item2 - ts[k]) < 1e-12) r[r.Count - 1] = (r[r.Count - 1].Item1, ts[k + 1]); else r.Add((ts[k], ts[k + 1]));
+                }
+            }
+            return r;
+        }
+
+        public static bool DentroPoligono(Point[] poly, Point p)
+        {
+            bool d = false;
+            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+                if ((poly[i].Y > p.Y) != (poly[j].Y > p.Y) && p.X < (poly[j].X - poly[i].X) * (p.Y - poly[i].Y) / (poly[j].Y - poly[i].Y) + poly[i].X) d = !d;
+            return d;
         }
 
         // Contorno com cope: corta o laço único (I, U, L; tubos e maciços não) fora da faixa vMin ≤ v ≤ vMax (Sutherland-Hodgman,
@@ -696,6 +743,21 @@ namespace NovoFtool
                 var mc = new MalhaDx(); mc.Chapa(new Point3D(1, 0, 0), new Vector3D(0, 1, 0), new Vector3D(0, 0, 1), new Vector3D(-1, 0, 0), new[] { new Point(0, 0), new Point(0.3, 0), new Point(0.3, 0.2), new Point(0.1, 0.25), new Point(0, 0.2) }, 0.016, cb, false);
                 var (fc, vc) = Fechada(mc);
                 afirmar(fc && Math.Abs(vc / (0.016 * (0.3 * 0.2 + 0.3 * 0.05 / 2)) - 1) < 1e-4, "chapa (referencial canhoto): fechada, volume = área × espessura");
+                foreach (var nn in new[] { new Vector3D(-1, 0, 0), new Vector3D(1, 0, 0) })   // contorno horário (enrijecedor do lado −y): tampas para fora (antes: "oca")
+                {
+                    var mh = new MalhaDx(); mh.Chapa(new Point3D(0, 0, 0), new Vector3D(0, 1, 0), new Vector3D(0, 0, 1), nn, new[] { new Point(0, 0), new Point(0, 0.2), new Point(0.3, 0.2), new Point(0.3, 0) }, 0.01, cb, false);
+                    var (fh, vh) = Fechada(mh);
+                    afirmar(fh && Math.Abs(vh / (0.01 * 0.06) - 1) < 1e-4, "chapa de contorno horário, normal " + nn.X + ": fechada e para fora (volume > 0)");
+                }
+                {   // solda limitada à chapa: trechos do segmento dentro do polígono (côncavo também)
+                    var iv = Intervalos(new Point(-1, 0.5), new Point(3, 0.5), new[] { new Point(0, 0), new Point(2, 0), new Point(2, 1), new Point(0, 1) });
+                    var ic = Intervalos(new Point(-1, 0.5), new Point(4, 0.5), new[] { new Point(0, 0), new Point(3, 0), new Point(3, 1), new Point(2, 1), new Point(2, 0.2), new Point(1, 0.2), new Point(1, 1), new Point(0, 1) });
+                    afirmar(iv.Count == 1 && Math.Abs(iv[0].Item1 - 0.25) < 1e-9 && Math.Abs(iv[0].Item2 - 0.75) < 1e-9 && ic.Count == 2, "solda recortada pela chapa: trecho [0,25; 0,75] no retângulo, 2 trechos no U");
+                    var mr = new MalhaDx(); Cordao(mr, new[] { new Point3D(0, -0.1, 0), new Point3D(0, 0.3, 0) }, 0.008, cb, new Vector3D(1, 0, 0), null,
+                                                   (pa, pb) => Intervalos(new Point(pa.Y, pa.Z), new Point(pb.Y, pb.Z), new[] { new Point(0, -1), new Point(0.2, -1), new Point(0.2, 1), new Point(0, 1) }));
+                    var (fr, vr) = Fechada(mr);
+                    afirmar(fr && Math.Abs(vr / (2 * 0.2 * 0.008 * 0.008 / 2) - 1) < 1e-3, "cordão recortado: só os 0,2 m sobre a chapa (de 0,4 m), fechado");
+                }
                 var mx = new MalhaDx(); mx.Caixa(new Point3D(1, 2, 3), 0.4, 0.5, 0.6, cb);
                 var (fx, vx) = Fechada(mx);
                 afirmar(fx && Math.Abs(vx - 0.12) < 1e-6, "caixa (pedestal): fechada, volume 0,12 m³");

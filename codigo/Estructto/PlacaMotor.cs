@@ -23,7 +23,7 @@ namespace NovoFtool
             ["solda"] = p.Solda / 1000, ["eletrodo"] = string.IsNullOrEmpty(p.Eletrodo) ? "E70" : p.Eletrodo,
             ["bloco_H"] = p.BlocoH / 1000, ["bloco_B"] = p.BlocoB / 1000, ["bloco_altura"] = p.BlocoAltura / 1000, ["hef"] = p.Hef / 1000,
             ["fissurado"] = !p.NaoFissurado, ["lug_b"] = p.LugB / 1000, ["lug_t"] = p.LugT / 1000, ["lug_h"] = p.LugH / 1000, ["graute"] = p.Graute / 1000,
-            ["arruela_soldada"] = p.ArruelaSoldada
+            ["arruela_soldada"] = p.ArruelaSoldada, ["eixo_fraco"] = p.EixoFraco
         };
 
         public static PlacaBase Placa(JsonNode d)
@@ -41,7 +41,7 @@ namespace NovoFtool
                 Solda = Nn("solda", 0) * 1000, Eletrodo = Sx("eletrodo", "E70"),
                 BlocoH = Nn("bloco_H", 0) * 1000, BlocoB = Nn("bloco_B", 0) * 1000, BlocoAltura = Nn("bloco_altura", 0) * 1000, Hef = Nn("hef", 0) * 1000,
                 NaoFissurado = !Bx("fissurado", true), LugB = Nn("lug_b", 0) * 1000, LugT = Nn("lug_t", 0) * 1000, LugH = Nn("lug_h", 0) * 1000,
-                Graute = Nn("graute", 0) * 1000, ArruelaSoldada = Bx("arruela_soldada", false)
+                Graute = Nn("graute", 0) * 1000, ArruelaSoldada = Bx("arruela_soldada", false), EixoFraco = Bx("eixo_fraco", false)
             };
         }
 
