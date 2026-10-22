@@ -259,6 +259,11 @@ namespace NovoFtool
             Directory.CreateDirectory(pasta);
             Render3DGeometria.Testar((c, nome) => Ok("render3d: " + nome, c));   // juntas, extrusão com corte, triangulação
             LigacoesAmostra.Testar((c, nome) => Ok("ligacoes3d: " + nome, c));   // contrato ida e volta, chapa de topo, placa de base
+            {   // G6 r5: troca forçada do motor → pedido que grava solda direta no projeto do grupo, sem o contexto da ponta
+                var tr = new System.Text.Json.Nodes.JsonObject { ["tipo"] = "solda_direta_alma", ["motivo"] = "m", ["dados"] = new System.Text.Json.Nodes.JsonObject { ["perfil_viga"] = "UPN 50", ["b_solda"] = 3 } };
+                var e = DocumentoEspacial.EditarTroca("G7", tr);
+                Ok("ligacoes3d: troca do motor grava o tipo no grupo", (string)e["acao"] == "projeto" && (string)e["grupo"] == "G7" && (string)e["tipo_ligacao"] == "solda_direta_alma" && (string)e["dados"]?["perfil_viga"] == "UPN 50");
+            }
             {   // ponto cardinal 8 (topo) numa viga I de 200 mm: o sólido exportado desce H/2 (topo no eixo, base 200 mm abaixo)
                 var mc = new Modelo3D(); mc.Nos.Add(new No3D { Id = 1 }); mc.Nos.Add(new No3D { Id = 2, X = 5 });
                 mc.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "I200", Cardinal = 8 });

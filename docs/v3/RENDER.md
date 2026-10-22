@@ -202,6 +202,9 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
   mínimas da Tab. 14) e, se nenhuma parafusada cabe ou os dados são impossíveis (UPN 50), troca por `solda_direta_alma`; o lote
   verifica e desenha o tipo trocado. PLATAFORMA: 0 pares, fora só B1110 e B1452 (< 30 mm). O teste lista a causa de cada barra
   curta (recuos / motor / guarda).
+- Rodada 5: o lote devolve `troca` {tipo, dados, motivo} quando o sugerir troca o tipo (solda direta). O WPF grava no projeto do
+  grupo (proposta) via `grupos/editar` (`acao: projeto`), para que cálculo, desenho e memorial usem o mesmo tipo. O gerenciador
+  mostra "Trocada por solda direta: grupo: motivo". PLATAFORMA: 21 grupos trocados; galpão: 2.
 - Resultado (21/10/2026, r1): PLATAFORMA 0 pares; fora do teste só barras curtas (nós a < 200 mm): B1091 (101 mm), B1110 (12,5),
   B1125 (97,5), B1452 (15). Galpão 0 pares, nada fora. Lote ≤ 500 itens por POST (`MAX_LOTE_LIGACOES`).
 

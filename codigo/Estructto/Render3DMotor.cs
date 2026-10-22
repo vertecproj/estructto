@@ -53,6 +53,10 @@ namespace NovoFtool
             return null;
         }
 
+        // G6 r5: pedido de edição que grava a troca do motor ({tipo, dados, motivo} do lote) no projeto do grupo
+        internal static JsonObject EditarTroca(string grupo, JsonObject troca) => new JsonObject
+        { ["acao"] = "projeto", ["grupo"] = grupo, ["tipo_ligacao"] = (string)troca["tipo"], ["dados"] = troca["dados"]?.DeepClone() ?? new JsonObject() };
+
         static async Task<List<Ligacao3D>> LigacoesDe(JsonObject Json, Modelo3D vista)
         {
             var r = new List<Ligacao3D>();
@@ -168,18 +172,26 @@ namespace NovoFtool
                     // barra curta demais para a ligação (G2: ok = false + motivo/aviso): fora do teste de interferência
                     if (geo != null && (((string)it["motivo"] ?? "").Contains("barra curta") || (it["avisos"] as JsonArray)?.Any(a => ((string)a ?? "").Contains("barra curta")) == true))
                         geo["excluir_interferencia"] = true;
+                    if (geo != null && it["troca"] is JsonObject tr) geo["_troca"] = tr.DeepClone();   // G6 r5: o motor trocou o tipo
                     if (geo != null && !(geo["chapas"] is JsonArray ca && ca.Count > 0) && !(geo["cantoneiras"] is JsonArray cc && cc.Count > 0) && !(geo["soldas"] is JsonArray sc && sc.Count > 0)) geo = null;   // sem peças: proposta local
                     geo?.Parent?.AsObject().Remove("geometria");
                     lock (cacheGeo) cacheGeo[chave] = geo;
                 }
                 }
             }
+            var trocas = new Dictionary<string, (string nome, JsonObject tr)>();   // grupo → troca do motor (G6 r5)
             pedidos = new Dictionary<string, (string, JsonObject, JsonObject)>();
             await Passo();
             await Lote();
             pedidos = null;
             r.Clear();
             await Passo();
+            // G6 r5: tipo trocado pelo motor (solda direta) vai para o projeto do grupo: cálculo = desenho = memorial
+            foreach (var kv in trocas)
+            {
+                try { await Motor.Post("/api/ligacoes/grupos/editar", EditarTroca(kv.Key, kv.Value.tr)); } catch { continue; }
+                lock (Render3D.Trocadas) Render3D.Trocadas.Add(kv.Value.nome + ": " + (string)kv.Value.tr["motivo"]);
+            }
             return r;
             async Task Passo()
             {
@@ -256,6 +268,8 @@ namespace NovoFtool
                         }
                         JsonObject geo = proposta && perfis == null ? null : await Geometria(tl, dados, perfis);
                         if (geo != null) lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]);
+                        if (lig != null && proposta && pedidos == null && geo["_troca"] is JsonObject trc && (string)g["id"] is string gid)
+                            trocas.TryAdd(gid, ((string)g["nome"] ?? gid, trc));
                         if (lig != null && ((perfis?["x_max"] ?? dados["x_max"]) as JsonValue)?.TryGetValue(out double xm) == true) lig.XMax = xm;
                         // G6: o contrato tem o centroide do U no eixo (costas da alma em y = −abertura·xg); o WPF desenha o U pelo
                         // retângulo envolvente (costas em u = −B/2): o Render3D anda a origem DeslU em u

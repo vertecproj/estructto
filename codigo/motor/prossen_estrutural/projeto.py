@@ -2564,17 +2564,22 @@ def geometrias_ligacoes(itens):
             if perfis:
                 dados.update(perfis)
                 sug = dict(sugerir_ligacao(tipo, perfis, dict(N=50, V=50, M=30)) or {})
+                pedido = tipo
                 tipo, mot_sug = sug.pop("tipo_ligacao", None) or tipo, sug.pop("motivo", None)   # G6 r4: troca (solda direta)
                 dados.update({k: v for k, v in sug.items() if v is not None})
+                troca = None if tipo == pedido else dict(   # G6 r5: o WPF grava no projeto do grupo
+                    tipo=tipo, motivo=mot_sug, dados={k: v for k, v in sug.items() if v is not None and k not in
+                                                      ("x_max", "x_face", "abertura_y")})
             else:
-                mot_sug = None
+                mot_sug = troca = None
             r = verificar_ligacao(tipo, dados, nulos)
             mot = r.get("motivo") or mot_sug
             cab = next((v for v in r.get("verificacoes") or [] if v.get("nome", "").startswith("geometria: comprimento disponível")), None)
             if cab and not cab["ok"]:   # G6 r3: não cabe no x_max → o WPF trata como barra curta, com o motivo
                 mot = (f"barra curta demais para a ligação: precisa {cab['solicitante']:.0f} mm, "
                        f"disponível {cab['resistente']:.0f} mm")
-            saida.append(dict(geometria=r.get("geometria"), motivo=mot, avisos=r.get("avisos") or []))
+            saida.append(dict(geometria=r.get("geometria"), motivo=mot, avisos=r.get("avisos") or [],
+                              **({"troca": troca} if troca else {})))
         except Exception as e:   # noqa: BLE001 - o lote continua; o WPF cai na proposta local
             saida.append(dict(erro=str(e)))
     return saida

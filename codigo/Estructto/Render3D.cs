@@ -91,6 +91,8 @@ namespace NovoFtool
         public static readonly HashSet<string> Curtas = new HashSet<string>();
         // G6 r4 (diagnóstico do --testes-interferencia): causa por barra curta — "recuos", "motor" (recusa x_max) ou "guarda" (AparaEm)
         public static readonly Dictionary<string, string> CurtasCausa = new Dictionary<string, string>();
+        // G6 r5: grupos que o motor trocou por solda direta ao desenhar (projeto do grupo gravado): "nome: motivo", para o gerenciador
+        public static readonly List<string> Trocadas = new List<string>();
         public static readonly HashSet<string> Locais = new HashSet<string>();   // G6: barras com chapa de proposta local (sem ligação do motor), para o gerenciador
         public static Dictionary<(Barra3D, bool), Corte> CortesColeta; public static Dictionary<(int, bool), Ligacao3D> LigsColeta;   // diagnóstico do teste
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)

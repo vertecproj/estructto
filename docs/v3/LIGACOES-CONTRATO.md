@@ -70,4 +70,5 @@ Cada tipo tem pelo menos 1 exemplo resolvido de livro (`docs/v3/ligacoes/*.md`, 
 - `x_max` (mm, opcional; flexíveis e gusset): alcance máximo da ligação ao longo da barra (chapas, cantoneiras, parafusos);
   verificação "geometria: comprimento disponível na barra". No lote, se reprova: motivo "barra curta demais para a ligação: …".
   O sugerir dos flexíveis já escolhe com `x_max` (chapa simples compacta pela Tab. 14; sem parafusada que caiba →
-  `solda_direta_alma` com `tipo_ligacao` e `motivo`, que o lote passa a verificar e desenhar).
+  `solda_direta_alma` com `tipo_ligacao` e `motivo`, que o lote passa a verificar e desenhar). Nesse caso o item do lote
+  traz `troca` {tipo, dados (sem x_max/x_face/abertura_y), motivo}, e o WPF grava isso no projeto do grupo.

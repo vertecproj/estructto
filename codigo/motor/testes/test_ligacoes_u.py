@@ -398,6 +398,29 @@ class TestChapaFaceContrato(unittest.TestCase):
             g = lote["geometria"]
             self.assertTrue(g["soldas"] and not g["parafusos"] and not g["chapas"])
 
+    def test_viga_w_na_alma_de_viga_sem_cope_nao_vira_solda_direta(self):
+        """G6 r5: W310 na alma de W360 (sem cope): a solda direta reprova ("abaixo da mesa da viga suporte"), então nunca
+        troca. x_max 150: a chapa compacta cabe (~78 mm), parafusada. x_max 60: nada cabe → continua parafusada e o lote
+        devolve "barra curta" (pendente no WPF), sem `troca`."""
+        pf = dict(perfil_viga="W310x38.7", perfil_suporte="W360x51", apoio="alma_viga")
+        for xm, curta in ((150, False), (60, True)):
+            sug = P.sugerir_ligacao("chapa_simples_alma", dict(pf, x_max=xm), {"V": 50})
+            self.assertNotIn("tipo_ligacao", sug, xm)
+            lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=dict(pf, x_max=xm))])[0]
+            self.assertNotIn("troca", lote)
+            self.assertTrue(lote["geometria"]["parafusos"])
+            self.assertEqual("barra curta" in (lote.get("motivo") or ""), curta, xm)
+
+    def test_lote_informa_troca(self):
+        """G6 r5: quando o sugerir troca o tipo, o lote devolve `troca` {tipo, dados, motivo} para o WPF gravar no projeto
+        do grupo (cálculo = desenho = memorial); `dados` sem o contexto da ponta (x_max, x_face, abertura_y)."""
+        pf = dict(perfil_viga="W310x38.7", perfil_suporte="W250x73", apoio="mesa_pilar", x_max=150)
+        tr = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=pf)])[0]["troca"]
+        self.assertEqual(tr["tipo"], "solda_direta_alma")
+        self.assertIn("disponível 150 mm", tr["motivo"])
+        self.assertFalse({"x_max", "x_face", "abertura_y", "tipo_ligacao", "motivo"} & set(tr["dados"]))
+        self.assertTrue(P.verificar_ligacao("solda_direta_alma", tr["dados"], {"V": 50})["ok"])
+
     def test_upn50_chapa_simples_invalida_cai_na_solda_direta(self):
         """G6 r4: UPN 50 com chapa simples dá resistência ≤ 0 (furo maior que a alma útil): o lote não devolve erro
         (proposta local), devolve solda_direta_alma (caso PLATAFORMA, UPN 50 em UPN 50, x_max 101 mm)."""

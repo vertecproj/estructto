@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G6 r5): troca para solda direta feita pelo motor é gravada no projeto do grupo (cálculo = desenho = memorial) e aparece no gerenciador. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente G (G6 r4): barras de 97–350 mm voltam a ter ligação — guarda do Realista usa o `x_max` do motor; sugerir com chapa compacta (Tab. 14) e solda direta quando a parafusada não cabe. PLATAFORMA 0 pares, fora só B1110/B1452. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente G (G6 r3): `x_max` — o motor projeta a ligação dentro do comprimento disponível ou recusa com motivo; o Realista não apaga mais parafusos (AparaEm só guarda). Interferência 0/0. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente G (G6 r2): chapas param no meio de barra curta (B1091, B1125 voltam ao teste); fora do teste só B1110 e B1452; close-ups do gusset e do caixão/tubo nos nós certos. Ver [v3/RENDER.md](v3/RENDER.md).

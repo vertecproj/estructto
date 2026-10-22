@@ -1,4 +1,4 @@
-// Gerenciador de ligações (docs/v3/LIGACOES-GRUPOS.md): o motor identifica as ligações nos nós e agrupa as iguais;
+﻿// Gerenciador de ligações (docs/v3/LIGACOES-GRUPOS.md): o motor identifica as ligações nos nós e agrupa as iguais;
 // aqui o usuário vê os grupos (cartões à esquerda), os membros do grupo com a taxa de cada um (meio, ordenável, arrastar
 // para outro cartão move) e o projeto do grupo à direita ("Dimensionar pela pior": o detalhe vale para todo o grupo).
 // Placa de base abre a JanelaPlaca com os esforços do pior membro. Escolher um grupo destaca os nós na Vista3D.
@@ -201,6 +201,8 @@ namespace NovoFtool
             var nv = erro != null ? Nivel.Erro : pior == null ? Nivel.Neutro : NivelAp(Taxa(pior), grupos.All(g => g["ok"] == null || Bool(g, "ok")));
             lock (Render3D.Curtas) if (Render3D.Curtas.Count > 0)   // vindas da última cena do Realista (recuos das duas pontas ≥ comprimento)
                 sub += " · Barra curta demais para a ligação: " + string.Join(", ", Render3D.Curtas.Take(8)) + (Render3D.Curtas.Count > 8 ? "…" : "");
+            lock (Render3D.Trocadas) if (Render3D.Trocadas.Count > 0)   // G6 r5: o projeto do grupo já foi gravado com a solda direta
+                sub += " · Trocada por solda direta: " + string.Join("; ", Render3D.Trocadas.Take(4)) + (Render3D.Trocadas.Count > 4 ? "…" : "");
             lock (Render3D.Locais) if (Render3D.Locais.Count > 0)   // G6: o motor não desenha essas pontas; o Realista mostra uma proposta indicativa
                 sub += " · Sem ligação do motor (proposta local, pode interferir): " + string.Join(", ", Render3D.Locais.OrderBy(x => x).Take(8)) + (Render3D.Locais.Count > 8 ? "…" : "");
             hostCab.Child = Cabecalho(nv, nv == Nivel.Erro ? "✕" : nv == Nivel.Neutro ? "≡" : nv == Nivel.Alerta ? "!" : "✓", titulo, sub, acoes);
