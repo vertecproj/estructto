@@ -183,6 +183,43 @@ namespace NovoFtool
             w.FecharEspaciaisSemPerguntar();
         }
 
+        // E1: chão do Realista. Modelo de 2 barras, pórtico 2x2, galpão e PLATAFORMA, vista alta e rasante (60-chao-<modelo>-<vista>).
+        static void CapturasChao(MainWindow w)
+        {
+            Esperar(w.NovoEmBranco(true));
+            var duas = new Modelo3D();
+            duas.Nos.Add(new No3D { Id = 1, X = 0, Y = 0, Z = 0, Apoios = new[] { true, true, true, true, true, true }, Desl = new double[3] });
+            duas.Nos.Add(new No3D { Id = 2, X = 0, Y = 0, Z = 3, Apoios = new bool[6], Desl = new double[3] });
+            duas.Nos.Add(new No3D { Id = 3, X = 4, Y = 0, Z = 3, Apoios = new bool[6], Desl = new double[3] });
+            duas.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W 250 x 32,7", Aprov = 0.5 });
+            duas.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "W 310 x 38,7", Aprov = 0.5 });
+            var mini = new Modelo3D();
+            mini.Nos.Add(new No3D { Id = 1, X = 0, Y = 0, Z = 0, Apoios = new[] { true, true, true, true, true, true }, Desl = new double[3] });
+            mini.Nos.Add(new No3D { Id = 2, X = 0, Y = 0, Z = 1, Apoios = new bool[6], Desl = new double[3] });
+            mini.Nos.Add(new No3D { Id = 3, X = 1.5, Y = 0, Z = 1, Apoios = new bool[6], Desl = new double[3] });
+            mini.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W 250 x 32,7", Aprov = 0.5 });
+            mini.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "W 310 x 38,7", Aprov = 0.5 });
+            w.vista3D.Diagrama = Diagrama3D.Nenhum; w.vista3D.MostrarDeformada = false; w.vista3D.MostrarAproveitamento = false;
+            foreach (var (nome, mk) in new (string, Func<Modelo3D>)[] { ("2barras", () => duas), ("2barras-1m", () => mini), ("2barras-no-longe", () => { var m = new Modelo3D(); m.Nos.AddRange(duas.Nos); m.Barras.AddRange(duas.Barras); m.Nos.Add(new No3D { Id = 9, X = 40, Y = 30, Z = 0, Apoios = new bool[6], Desl = new double[3] }); return m; }), ("portico", () => Portico2x2()) })
+            {
+                w.vista3D.Carregar(mk(), false); w.DefinirEstilo(EstiloVisual.Realista);
+                foreach (var (az, el, vn) in new[] { (-60.0, 38.0, "alto"), (-30.0, 8.0, "rasante") })
+                { w.vista3D.Enquadrar(az, el, false); EsperarIdle(); CapturarPrincipal(w, "60-chao-" + nome + "-" + vn); }
+            }
+            w.MostrarDiagrama(Diagrama.Momento, false); EsperarIdle(); CapturarPrincipal(w, "60-chao-chip-sem-calculo");   // E2: sem cálculo, só o chip curto
+            w.FecharEspaciaisSemPerguntar();
+            Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo("galpao_aco"), "exemplo")); w.DefinirEstilo(EstiloVisual.Realista);
+            foreach (var (az, el, vn) in new[] { (-60.0, 38.0, "alto"), (-30.0, 8.0, "rasante") })
+            { w.vista3D.Enquadrar(az, el, false); EsperarIdle(); CapturarPrincipal(w, "60-chao-galpao-" + vn); }
+            w.FecharEspaciaisSemPerguntar();
+            string ed3 = new[] { "C:/dev/wt/v5-vista/testes-aceite/PLATAFORMA.ed3", "H:/20.  CLAUDE CODE AGENTES/14. CYPE/estructto/testes-aceite/PLATAFORMA.ed3" }.FirstOrDefault(File.Exists);
+            if (ed3 == null) return;
+            Esperar(w.AbrirTarefa(ed3)); EsperarIdle(); w.DefinirEstilo(EstiloVisual.Realista);
+            foreach (var (az, el, vn) in new[] { (-60.0, 38.0, "alto"), (-30.0, 8.0, "rasante") })
+            { w.vista3D.Enquadrar(az, el, false); EsperarIdle(); CapturarPrincipal(w, "60-chao-plataforma-" + vn); }
+            w.FecharEspaciaisSemPerguntar();
+        }
+
         // V1: seta e nó escolhido atrás de uma viga (pórtico 2x2 real). Sem "sempre visíveis" a viga os esconde (Realista DX e
         // Sombreado nativo); com ele a seta e o nó aparecem por cima.
         static void CapturasCargasProfundidade(MainWindow w)
@@ -1127,6 +1164,7 @@ namespace NovoFtool
                 if (w.EspacialAtivo == null) throw new InvalidOperationException("o modelo não abriu como documento 3D: " + caminhoModelo);
                 string so = Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS");
                 Action<Action> so1 = f => { f(); w.alterado = false; w.Close(); Environment.Exit(0); };
+                if (so == "chao") so1(() => CapturasChao(w));   // só as 60) de chão do Realista
                 if (so == "sombra") so1(() => CapturasSombra(w));   // só as 59) de sombra do chão
                 if (so == "cargasprof") so1(() => CapturasCargasProfundidade(w));   // só as 58) de cargas com profundidade
                 if (so == "planos") so1(() => CapturasPlanos(w));                 // só as capturas 43) de níveis e planos

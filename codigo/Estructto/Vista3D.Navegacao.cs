@@ -137,7 +137,8 @@ namespace NovoFtool
                 u0 = Math.Min(u0, du); u1 = Math.Max(u1, du); v0 = Math.Min(v0, dv); v1 = Math.Max(v1, dv);
             }
             double asp = ActualWidth > 1 && ActualHeight > 1 ? ActualWidth / ActualHeight : 16.0 / 9;
-            return new Camera3 { Az = azv, El = elv, Larg = Math.Max(1, Math.Max(u1 - u0, (v1 - v0) * asp) * (perspectiva ? 1.35 : 1.15)),
+            double pad = mod.Barras.Count == 0 ? 0 : mod.Barras.Max(b => FormaDe(b.Secao, raio * 0.012).Larg);   // E1: a seção também entra na caixa (modelo pequeno ficava cortado)
+            return new Camera3 { Az = azv, El = elv, Larg = Math.Max(1, Math.Max(u1 - u0 + pad, (v1 - v0 + pad) * asp) * (perspectiva ? 1.35 : 1.15)),
                                  Alvo = c + dir * ((u0 + u1) / 2) + cima * ((v0 + v1) / 2) };
         }
 

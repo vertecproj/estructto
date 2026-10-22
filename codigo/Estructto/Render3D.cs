@@ -96,6 +96,9 @@ namespace NovoFtool
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
         public const int MaxPropostas = 600;         // ponytail: modelos enormes ficam com as 600 primeiras; subir se pedirem
 
+        // E1: o PBR soma a luz ambiente (0x30,0x34,0x3C) mesmo com albedo 0, então o chão nunca fica abaixo dela. O fundo do estúdio é esse
+        // mesmo tom: o chão desvanece até ele sem borda (com o canvas #141820 o disco aparecia como elipse).
+        static readonly Color FundoEstudio = Color.FromRgb(0x30, 0x34, 0x3C);
         static readonly Vector3D Luz = Norm(new Vector3D(0.45, 0.5, -0.74));          // chave: a mesma do Realista nativo (esquerda-alto da Iso)
         static readonly Vector3D LuzEnch = Norm(new Vector3D(-0.8, 0.25, -0.35));     // enchimento frio, do outro lado
         static readonly Vector3D LuzContra = Norm(new Vector3D(0.3, -0.85, -0.3));    // contraluz: desenha a silhueta por trás
@@ -108,7 +111,7 @@ namespace NovoFtool
             {
                 EffectsManager = new DefaultEffectsManager(),
                 Camera = cam,
-                BackgroundColor = TemaPlant.BgCanvas,   // opaco: o fundo transparente do D3DImage sai branco no RenderTargetBitmap (capturas)
+                BackgroundColor = FundoEstudio,   // opaco: o fundo transparente do D3DImage sai branco no RenderTargetBitmap (capturas)
                 ShowViewCube = false, ShowCoordinateSystem = false,
                 IsRotationEnabled = false, IsPanEnabled = false, IsZoomEnabled = false, IsMoveEnabled = false,
                 IsHitTestVisible = false, Focusable = false, EnableMouseButtonHitTest = false,
@@ -131,7 +134,7 @@ namespace NovoFtool
             Vista.Items.Add(new DirectionalLight3D { Color = Color.FromRgb(0xF2, 0xE8, 0xD6), Direction = Luz });          // 1ª direcional = sombra
             Vista.Items.Add(new DirectionalLight3D { Color = Color.FromRgb(0x30, 0x3A, 0x4C), Direction = LuzEnch });
             Vista.Items.Add(new DirectionalLight3D { Color = Color.FromRgb(0x48, 0x54, 0x6A), Direction = LuzContra });
-            sombra = new ShadowMap3D { Resolution = new Size(4096, 4096), Intensity = 0.7, Bias = 0.0012, AutoCoverCompleteScene = true };
+            sombra = new ShadowMap3D { Resolution = new Size(4096, 4096), Intensity = 0.55, Bias = 0.0012, AutoCoverCompleteScene = true };
             Vista.Items.Add(sombra);
             Vista.Items.Add(new PostEffectMeshOutlineBlur { EffectName = "selecao", Color = TemaPlant.CorBarraSel, ScaleX = 1.2f, ScaleY = 1.2f, NumberOfBlurPass = 1 });   // halo justo: o pós-efeito passa por cima de tudo
 
@@ -144,7 +147,7 @@ namespace NovoFtool
             };
             var (metal, rugo) = Aco == Acabamento.Primer ? (0.0f, 0.78f) : Aco == Acabamento.Pintado ? (0.08f, 0.5f) : (0.3f, 0.5f);   // galvanizado: metálico com o céu
             // opaco: a passagem transparente do Helix ignora a profundidade das peças (grade aparecia por cima de tudo)
-            mChao = new MeshGeometryModel3D { Material = Pbr(0f, 0.95f, 0.25f), IsThrowingShadow = false, CullMode = SharpDX.Direct3D11.CullMode.None };
+            mChao = new MeshGeometryModel3D { Material = Pbr(0f, 1f, 0f), IsThrowingShadow = false, CullMode = SharpDX.Direct3D11.CullMode.None };
             mConcreto = new MeshGeometryModel3D { Material = Pbr(0f, 0.9f, 0.35f), IsThrowingShadow = true };
             mAco = new MeshGeometryModel3D { Material = Pbr(metal, rugo, 0.5f, true), IsThrowingShadow = true };
             mSel = new MeshGeometryModel3D { Material = Pbr(metal, rugo, 0.5f, true), IsThrowingShadow = true, PostEffects = "selecao" };
@@ -256,7 +259,11 @@ namespace NovoFtool
         // TemaPlant são as cores-alvo na tela, então o albedo entra dividido por isso.
         // Chão (horizontal, recebe as 3 luzes): 0,42. Peças (faces verticais recebem menos luz e o SSAO escurece as quinas): 0,6.
         const float Expo = 0.42f, ExpoPecas = 0.6f;
-        static Color4 Cor(Color c, float expo = ExpoPecas) { var k = MalhaDx.Cor(c); return new Color4(k.Red * expo, k.Green * expo, k.Blue * expo, 1); }
+        static Color4 Cor(Color c, float expo = ExpoPecas)
+        {
+            var k = MalhaDx.Cor(c);
+            if (expo == ExpoPecas) { float l = (k.Red + k.Green + k.Blue) / 3, m = 0.28f; if (l < m && l > 0) { float f = m / l; k = new Color4(Math.Min(1, k.Red * f), Math.Min(1, k.Green * f), Math.Min(1, k.Blue * f), 1); } }   // peças nunca somem no fundo (aço muito escuro)
+            return new Color4(k.Red * expo, k.Green * expo, k.Blue * expo, 1); }
         static Color CorAco => Aco == Acabamento.Primer ? TemaPlant.CorPrimer3D : Aco == Acabamento.Pintado ? TemaPlant.CorAcoPintado3D : TemaPlant.CorAco3D;
         public static Color CorBase(bool concreto) => concreto ? TemaPlant.CorConcreto3D : CorAco;
 
@@ -631,9 +638,9 @@ namespace NovoFtool
         void Chao(Cena3D c, MalhaDx m)
         {
             Rect3D cx = c.Caixa; double raio = c.Raio, z = c.Z0;
-            double xm = cx.X + cx.SizeX / 2, ym = cx.Y + cx.SizeY / 2, R = Math.Max(cx.SizeX, cx.SizeY) / 2 + raio * 0.9;   // V2: só modelo + margem (o ShadowMap3D cobre a cena inteira, chão incluso)
+            double xm = cx.X + cx.SizeX / 2, ym = cx.Y + cx.SizeY / 2, R = Math.Min(400, Math.Max(5, Math.Max(cx.SizeX, cx.SizeY) / 2 + raio * 0.9));   // V2: só modelo + margem (o ShadowMap3D cobre a cena inteira, chão incluso)
             Color cc = TemaPlant.CorChao3D, cf = TemaPlant.BgCanvas, cg = TemaPlant.CorGrade3D;   // a borda chega à cor do canvas (Expo) e some
-            Color cfA = cf;
+            Color cfA = Color.FromRgb(0, 0, 0);   // albedo 0 no limite: o que sobra é a luz ambiente = FundoEstudio
             Color4 CorR(double r, Color centro) { double t = Suave((r / R - 0.2) / 0.8); return Cor(Mistura(centro, cfA, t), Expo); }
             const int seg = 72; double[] aneis = { 0.3, 0.55, 0.75, 0.9, 1.0, 1.5 };   // o último anel já é a cor do canvas: a borda fica fora da tela
             var ant = Enumerable.Repeat(new Point3D(xm, ym, z), seg + 1).ToArray(); double rAnt = 0;
