@@ -291,6 +291,16 @@ namespace NovoFtool
             await Motor.Post("/api/modelo/lote", new JsonObject { ["itens"] = itens });
         }, titulo, null);
 
+        // Gerenciador de ligações › "Ligar": nó que encosta no vão de outra barra sem nó (POST /api/ligacoes/ligar_no) vai ao
+        // eixo dela e a barra é dividida ali. Muda a estrutura: o motor descarta o cálculo.
+        public Task LigarNo(string no) => Motor.Exclusivo(async () =>
+        {
+            await Garantir();
+            await Motor.Post("/api/ligacoes/ligar_no", new JsonObject { ["no"] = no });
+            TemHistorico = true;
+            await Recarregar();
+        });
+
         public Task Editar(string tipo, string id, JsonObject campos) => Motor.Exclusivo(async () =>
         {
             await Garantir();

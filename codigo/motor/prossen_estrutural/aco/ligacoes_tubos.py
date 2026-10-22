@@ -30,9 +30,9 @@ _ENT = {
 }
 
 
-def _ler(dados):
+def _ler(dados, ent=None, nome="tubo_tubo_soldado"):
     out, erros = {}, []
-    for k, c in _ENT.items():
+    for k, c in (ent or _ENT).items():
         v = (dados or {}).get(k, c["padrao"])
         if v is None:
             erros.append(f"{k}: obrigatório")
@@ -46,7 +46,7 @@ def _ler(dados):
                 erros.append(f"{k}: {x:g} fora da faixa [{c['min']}, {c['max']}] {c['unidade']}")
             out[k] = x * MM if c["unidade"] == "mm" else x
     if erros:
-        raise ValueError("ligação 'tubo_tubo_soldado': " + "; ".join(erros))
+        raise ValueError(f"ligação '{nome}': " + "; ".join(erros))
     return out
 
 
@@ -149,11 +149,119 @@ def _sugerir(perfis, esforcos):
     return {k: v for k, v in dict(perfis or {}).items() if k in _ENT}
 
 
+# ---------------------------------------------------------------- perfil (I, U, tubo, retangular) soldado em tubo
+
+_FORMAS_TUBO = ("tubo_circular", "tubo_retangular")
+_ENT_PT = {
+    "forma_ramal": F._e("Forma do perfil", "-", "I", list(P.FORMAS_RAMAL)),
+    "h_ramal": F._e("Altura do perfil", "mm", 310, mn=10, mx=2000),
+    "b_ramal": F._e("Largura do perfil", "mm", 165, mn=10, mx=2000),
+    "tw_ramal": F._e("Alma/parede do perfil", "mm", 5.8, mn=1, mx=100),
+    "tf_ramal": F._e("Mesa/parede do perfil", "mm", 9.7, mn=1, mx=100),
+    "forma_receptor": F._e("Forma do tubo", "-", "tubo_circular", list(_FORMAS_TUBO)),
+    "D_receptor": F._e("Tubo: Ø ou lado (D)", "mm", 323.8, mn=10, mx=3000),
+    "B_receptor": F._e("Tubo: largura da face (B)", "mm", 0, mn=0, mx=3000),
+    "t_receptor": F._e("Parede do tubo", "mm", 9.5, mn=1, mx=100),
+    "theta": F._e("Ângulo perfil–tubo", "°", 90, mn=1, mx=90),
+    "giro": F._e("Giro do tubo (0 = plano h)", "°", 0, mn=-180, mx=180),
+    "b_solda": F._e("Perna do filete", "mm", 5, mn=2, mx=30),
+    "eletrodo": F._e("Eletrodo", "-", "E70", list(L.ELETRODOS)),
+    "aco_ramal": F._e("Aço do perfil", "-", "A-572 GR.50", F._ACOS),
+    "aco_receptor": F._e("Aço do tubo", "-", "A-572 GR.50", F._ACOS),
+}
+
+
+def _linha_solda(cont):
+    """Propriedades da solda tratada como linha (m) no plano da seção do perfil (comprimento projetado, conservador),
+    polígono fechado [(yb, zh)]: L, centroide, I_forte (∫zh²), I_fraco (∫yb²) e as distâncias máximas; Lv_h / Lv_b =
+    soma das projeções dos trechos na direção h / b (trechos que levam o cortante dessa direção). Segmento reto:
+    ∫y² ds = l·(y1² + y1·y2 + y2²)/3."""
+    n = len(cont)
+    seg = [(cont[k], cont[(k + 1) % n]) for k in range(n)]
+    ln = [math.dist(p, q) for p, q in seg]
+    Lw = sum(ln)
+    cy = sum(l * (p[0] + q[0]) / 2 for l, (p, q) in zip(ln, seg)) / Lw
+    cz = sum(l * (p[1] + q[1]) / 2 for l, (p, q) in zip(ln, seg)) / Lw
+    i2 = lambda j, c: sum(l * ((p[j] - c) ** 2 + (p[j] - c) * (q[j] - c) + (q[j] - c) ** 2) / 3 for l, (p, q) in zip(ln, seg))
+    return dict(Lw=Lw, I_forte=i2(1, cz), I_fraco=i2(0, cy), zmax=max(abs(p[1] - cz) for p in cont),
+                ymax=max(abs(p[0] - cy) for p in cont), rmax=max(math.hypot(p[0] - cy, p[1] - cz) for p in cont),
+                Lv_h=sum(abs(q[1] - p[1]) for p, q in seg), Lv_b=sum(abs(q[0] - p[0]) for p, q in seg))
+
+
+def _verificar_pt(dados, esforcos):
+    d = _ler_pt(dados)
+    r = F._Col()
+    e = dict(esforcos or {})
+    N = abs(float(e.get("N", 0.0) or 0.0))
+    V, Vb = abs(float(e.get("V", 0.0) or 0.0)), abs(float(e.get("Vz", 0.0) or 0.0))   # V no plano da alma (h), Vz na largura
+    M, Mz = abs(float(e.get("M", 0.0) or 0.0)), abs(float(e.get("Mz", 0.0) or 0.0))  # M eixo forte, Mz eixo fraco
+    T = abs(float(e.get("T", 0.0) or 0.0))
+    tubo_r = d["forma_ramal"] in ("tubo_retangular", "tubo_circular")
+    perfil = dict(tipo=d["forma_ramal"], h=d["h_ramal"], b=d["h_ramal"] if d["forma_ramal"] == "tubo_circular" else d["b_ramal"],
+                  tw=d["tw_ramal"], tf=d["tw_ramal"] if tubo_r else d["tf_ramal"])
+    circ = d["forma_receptor"] == "tubo_circular"
+    Dr = d["D_receptor"]
+    Br = Dr if circ or d["B_receptor"] <= 0 else d["B_receptor"]
+    th, g = math.radians(d["theta"]), math.radians(d["giro"])
+    c, s = math.cos(th), math.sin(th)
+    ramal = dict(barra=0, extremo="i", dir=[1.0, 0.0, 0.0], eixo_d=[0.0, 0.0, 1.0], comprimento=math.inf, perfil=perfil)
+    # referencial do contrato: x = perfil saindo do nó, z = altura h dele; eixo do tubo a θ de x, girado `giro` de z para
+    # y; eixo_d do tubo = do eixo dele para o perfil (lado D), largura da face B no terceiro eixo
+    rec = dict(barra=1, extremo="i", dir=[c, s * math.sin(g), s * math.cos(g)],
+               eixo_d=[s, -c * math.sin(g), -c * math.cos(g)], continuo=True, comprimento=math.inf,
+               perfil=dict(tipo=d["forma_receptor"], h=Dr, b=Br))
+    vazio = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=[], recortes=[], pontas=[])
+    try:
+        pts, _ts, beta = P.contato_tubo(ramal, rec)
+    except ValueError as ex:
+        r.res("geometria: β = largura do perfil / largura do tubo ≤ 1", math.inf, 1.0, "-", "geometria")
+        r.avisos.append(str(ex))
+        return r.resultado(vazio)
+    r.val.update(beta=beta)
+    r.res("geometria: β = largura do perfil / largura do tubo ≤ 1", beta, 1.0, "-", "geometria (perfil apoiado no tubo)")
+    ls = _linha_solda(P.contorno(perfil))
+    r.val.update(Lw_mm=ls["Lw"] / MM, W_forte_mm2=ls["I_forte"] / ls["zmax"] / 1e-6, W_fraco_mm2=ls["I_fraco"] / ls["ymax"] / 1e-6)
+    # solda como linha (método elástico, mesmo critério de modulo_sela): normal = N/Lw + M/W_forte + Mz/W_fraco;
+    # cortante = V/Lv_h ⊕ Vz/Lv_b (só os trechos paralelos ao cortante) + T·r/Ip; combinados vetorialmente
+    qn = N / ls["Lw"] + M * ls["zmax"] / ls["I_forte"] + Mz * ls["ymax"] / ls["I_fraco"]
+    qv = math.hypot(V / ls["Lv_h"], Vb / ls["Lv_b"]) + T * ls["rmax"] / (ls["I_forte"] + ls["I_fraco"])
+    q = math.hypot(qn, qv)
+    fyr, fur = F._aco(d["aco_ramal"])
+    fyc, fuc = F._aco(d["aco_receptor"])
+    bs, fw = d["b_solda"], L.ELETRODOS[d["eletrodo"]] * F.MPa
+    r.res("solda perfil–tubo (filete em todo o contorno)", q, L.resistencia_filete(bs, fw, fyr, fur)["FwRd"], "kN/m",
+          "6.2.5 / tabela 8")
+    r.res("tubo: metal base junto à solda", q, L.resistencia_filete(bs, fw, fyc, fuc)["metal_base"], "kN/m",
+          "6.2.5 / tabela 8")
+    r.minimo("solda: dimensão mínima", L.filete_minimo(min(max(perfil["tw"], perfil["tf"]), d["t_receptor"])), bs,
+             "6.2.6.2.1 / tabela 10", "b_solda")
+    r.maximo("solda: dimensão máxima (chapa mais fina do perfil)", bs, L.filete_maximo(min(perfil["tw"], perfil["tf"])),
+             "6.2.6.2.2", "b_solda")
+    r.avisos.append("parede do tubo: plastificação, punção e cisalhamento (NBR 16239 / CIDECT) não verificados — "
+                    "conferir; só a solda, o metal base e β verificados")
+    geo = dict(vazio, membros=[dict(barra="viga", perfil=f"{d['forma_ramal']} {perfil['h'] / MM:g}×{perfil['b'] / MM:g}"),
+                               dict(barra="pilar", perfil=f"{d['forma_receptor']} {Dr / MM:g}", theta=d["theta"])],
+               soldas=[dict(tipo="filete", campo="b_solda", perna=bs / MM, pontos=[[x / MM for x in p] for p in pts + pts[:1]])],
+               pontas=P.pontas_do_no([0.0, 0.0, 0.0], [ramal, rec], "solda_em_tubo"))
+    return r.resultado(geo)
+
+
+def _ler_pt(dados):
+    return _ler(dados, _ENT_PT, "perfil_tubo_soldado")
+
+
 TIPOS = {
     "tubo_tubo_soldado": dict(
         nome="Tubo–tubo soldado (boca de peixe)", familia="tubo", liga=["tubo-tubo"], entradas=_ENT, esforcos=["N", "V", "Vz", "M", "Mz", "T"],
         descricao="Tubo redondo com a ponta em boca de peixe soldado em todo o contorno num tubo redondo de diâmetro "
                   "maior ou igual. Solda pela NBR 8800 6.2.5; nó tubular (NBR 16239) não verificado.",
         verificar=_verificar, sugerir=_sugerir),
+    "perfil_tubo_soldado": dict(
+        nome="Perfil–tubo soldado (recorte)", familia="tubo", liga=["viga-tubo", "diagonal-tubo"], entradas=_ENT_PT,
+        esforcos=["N", "V", "Vz", "M", "Mz", "T"],
+        descricao="Perfil I/H, U, tubo ou barra retangular encostado num tubo (redondo: ponta em boca de peixe; "
+                  "retangular: corte na face) com filete em todo o contorno de contato. Solda pela NBR 8800 6.2.5; "
+                  "parede do tubo (NBR 16239) não verificada.",
+        verificar=_verificar_pt, sugerir=lambda perfis, esforcos: {k: v for k, v in dict(perfis or {}).items() if k in _ENT_PT}),
 }
 L.registrar_pontas(TIPOS)
