@@ -1,6 +1,8 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente G (G6 r5): troca para solda direta feita pelo motor é gravada no projeto do grupo (cálculo = desenho = memorial) e aparece no gerenciador. Ver [v3/RENDER.md](v3/RENDER.md).
+- 21/10/2026 — Frente G (G6 r4): barras de 97–350 mm voltam a ter ligação — guarda do Realista usa o `x_max` do motor; sugerir com chapa compacta (Tab. 14) e solda direta quando a parafusada não cabe. PLATAFORMA 0 pares, fora só B1110/B1452. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente C (C3): editor da ligação por componente (seções Chapa, Parafusos, Soldas, Enrijecedores, Recortes, Folgas); clique na peça (desenho da ligação e chapas da Vista3D) abre a seção, rola e destaca o campo por 1,5 s; otimizador sem solução mostra faixa vermelha com o motivo e botão para o campo limitante. Detalhe: `docs/v3/LIGACOES-EDITOR.md`. Fix r1: `campo` por peça vem do motor (ligacoes_campos.py), parafusos clicáveis na Vista3D (0,3 ms/clique), destaque da célula inteira, faixa de sem solução estruturada (`campos_limite`/`campo_limitante`).
 - 21/10/2026 — Frente G (G6 r3): `x_max` — o motor projeta a ligação dentro do comprimento disponível ou recusa com motivo; o Realista não apaga mais parafusos (AparaEm só guarda). Interferência 0/0. Ver [v3/RENDER.md](v3/RENDER.md).
 - 21/10/2026 — Frente G (G6 r2): chapas param no meio de barra curta (B1091, B1125 voltam ao teste); fora do teste só B1110 e B1452; close-ups do gusset e do caixão/tubo nos nós certos. Ver [v3/RENDER.md](v3/RENDER.md).
@@ -343,3 +345,4 @@ genérico dos tipos do contrato nos grupos. `JanelaLigacao.cs` retirada. Detalhe
 - Padrão do memorial: [PADRAO-MEMORIAL.md](PADRAO-MEMORIAL.md). Prompt de correção da planilha: [historico/2026-10-18-PROMPT-memorial-excel.md](historico/2026-10-18-PROMPT-memorial-excel.md).
 - Análise do catálogo Walsywa (coeficiente baixo/alto risco, cones sobrepostos): [CHUMBADORES.md](CHUMBADORES.md).
 - C1: limites de projeto das ligações (docs/v3/LIGACOES-LIMITES.md, aco/ligacoes_limites.py)
+- C4: parafusos 3D corretos: motor manda pega no contraventamento, hexágonos alinhados à chapa, auto-teste na interferência (docs/v3/PARAFUSOS-3D.md)

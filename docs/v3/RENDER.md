@@ -195,6 +195,16 @@ triangulação; `ligacoes3d:` chapa de topo, ida e volta pelo JSON do contrato, 
   escolhe o que cabe. Se nada cabe, o lote devolve o motivo "barra curta demais para a ligação: precisa X, disponível Y" e o
   Realista mostra a barra como curta. `AparaEm` virou só guarda: corta sobra de chapa sem parafuso; se cortaria parafuso
   ou borda (1,5·d), não corta e a ligação fica pendente (barra curta). Desenho = cálculo.
+- Rodada 4: as cinco barras que sobravam como "curtas" (B1080, B1091, B1111, B1125, B1462) eram da guarda, não do motor: ela
+  cortava sempre no meio da barra, mesmo quando a outra ponta não tinha ligação (o motor nem recebia `x_max`). Agora a guarda usa
+  o `x_max` que o motor recebeu (`Ligacao3D.XMax`); sem ele, o meio (outra ponta com ligação) ou o comprimento menos o recuo da
+  outra ponta. No motor, o sugerir passa a ver `x_face`/`x_max`/`abertura_y`, tenta a chapa simples compacta (a e e_h nas bordas
+  mínimas da Tab. 14) e, se nenhuma parafusada cabe ou os dados são impossíveis (UPN 50), troca por `solda_direta_alma`; o lote
+  verifica e desenha o tipo trocado. PLATAFORMA: 0 pares, fora só B1110 e B1452 (< 30 mm). O teste lista a causa de cada barra
+  curta (recuos / motor / guarda).
+- Rodada 5: o lote devolve `troca` {tipo, dados, motivo} quando o sugerir troca o tipo (solda direta). O WPF grava no projeto do
+  grupo (proposta) via `grupos/editar` (`acao: projeto`), para que cálculo, desenho e memorial usem o mesmo tipo. O gerenciador
+  mostra "Trocada por solda direta: grupo: motivo". PLATAFORMA: 21 grupos trocados; galpão: 2.
 - Resultado (21/10/2026, r1): PLATAFORMA 0 pares; fora do teste só barras curtas (nós a < 200 mm): B1091 (101 mm), B1110 (12,5),
   B1125 (97,5), B1452 (15). Galpão 0 pares, nada fora. Lote ≤ 500 itens por POST (`MAX_LOTE_LIGACOES`).
 

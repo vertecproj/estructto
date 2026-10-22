@@ -52,6 +52,18 @@ class TestPfeil352(unittest.TestCase):
         self.assertLess(rel(5 * linha(self.r, "parafusos: cisalhamento")["resistente"], 156.0), 0.01)
         self.assertLess(rel(linha(self.r, "parafusos: contato no gusset")["resistente"], 267.9), 0.01)
 
+    def test_geometria_pega_ate_fim_do_gusset(self):
+        # C4: o parafuso diz a pega (cabeça → fim das chapas apertadas); sem ela o render estimava errado e a porca ficava dentro da chapa
+        g = self.r["geometria"]
+        gus = next(c for c in g["chapas"] if c["nome"] == "gusset")
+        y_fim = gus["origem"][1] + gus["normal"][1] * gus["espessura"]
+        self.assertTrue(g["parafusos"])
+        for p in g["parafusos"]:
+            self.assertGreaterEqual(p["pega"] + 1e-6, p["origem"][1] - y_fim)   # 2L: passa também pela 2ª cantoneira, além do gusset
+            self.assertAlmostEqual(p["pega"], 6.3 * 2 + 6.3 + 4, places=3)    # 2 cantoneiras de 6,3 + gusset 6,3 + 4 mm sob a cabeça
+            self.assertGreater(p["comprimento"], p["pega"] + 0.94 * p["d"])   # porca + fios cabem: o render não encurta a pega
+            self.assertEqual(len(p["pilha"]), 2)                                # aba da cantoneira 1 e da 2
+
     def test_barra(self):
         self.assertLess(rel(linha(self.r, "barra: escoamento")["resistente"], 349.0), 0.01)   # 15,36·25/1,1
         rup = linha(self.r, "barra: ruptura")

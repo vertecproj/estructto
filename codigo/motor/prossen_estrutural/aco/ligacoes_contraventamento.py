@@ -556,7 +556,12 @@ def _geo_membro(info, recuo, dirv, perp, dir1, perp1, tg, d_mm):
     for p in info["parafusos"]:
         X, Z = loc(p["x"], p["z"])
         y0 = tg / 2 + info["t"] + 0.004   # cabeça sobre a aba (2L: aba do lado +y)
-        par.append(dict(d=d_mm, comprimento=round((p["pega"] + 0.025) / MM, 1),
+        t_, fol = info["t"], 0.004   # fol: 4 mm entre a face da aba e a cabeça (arruela)
+        pega = p["pega"] + fol       # cabeça → fim da pilha: aba + gusset (+ 2ª cantoneira no 2L)
+        pilha = [[fol, fol + t_]] + ([[fol + t_ + tg, fol + 2 * t_ + tg]] if info["npf"] == 2 else [])
+        comp = pega + max(0.025, 1.2 * d_mm * MM + 0.006)   # porca (0,94d) + fios: o render nunca precisa encurtar a pega
+        par.append(dict(d=d_mm, comprimento=round(comp / MM, 1), pega=round(pega / MM, 1),
+                        pilha=[[round(x / MM, 1), round(y / MM, 1)] for x, y in pilha],   # peças apertadas fora de `chapas` (mm a partir da cabeça)
                         origem=[X / MM, y0 / MM, Z / MM], eixo=[0.0, -1.0, 0.0]))
     for s_ in info["soldas"]:
         a_, b_ = loc(s_["x0"], s_["z"]), loc(s_["x1"], s_["z"])
@@ -939,7 +944,7 @@ def verificar_tirante(dados, esforcos):
                                                          [(a + 3 * dp) / MM, bw / 2 / MM], [0.0, bw / 2 / MM]],
                                   origem=[0.0, t / 2 / MM, 0.0], normal=[0.0, -1.0, 0.0], u=[1.0, 0.0, 0.0],
                                   espessura=t / MM))
-        geo["parafusos"].append(dict(d=dp / MM, comprimento=round(t / MM + 2 * dp / MM + 20, 1),
+        geo["parafusos"].append(dict(d=dp / MM, comprimento=round(t / MM + 2 * dp / MM + 20, 1), pega=round(t / MM + dp / MM, 1),
                                      origem=[a / MM, t / 2 / MM + dp / MM, 0.0], eixo=[0.0, -1.0, 0.0]))
     if d["comprimento"] > 0:
         av.append(f"esbeltez L/r = {d['comprimento'] * MM / (D / 4):.0f}: barras redondas pré-tracionadas "

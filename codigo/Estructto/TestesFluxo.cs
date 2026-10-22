@@ -1,4 +1,4 @@
-// Testes de fluxo ponta a ponta (docs/v3/BUGS-E2E.md): Estructto.exe --testes-fluxo <pasta> [A,B,C,D,E]
+﻿// Testes de fluxo ponta a ponta (docs/v3/BUGS-E2E.md): Estructto.exe --testes-fluxo <pasta> [A,B,C,D,E]
 // Dirige a MainWindow de verdade (fora da tela, como as capturas) por fluxos de um engenheiro: galpão do zero (A),
 // edifício de 4 pavimentos (B), arquivos legados e CYPE (C), edição (D) e robustez (E). Cada passo importante grava um PNG
 // (fluxo-<X>-*.png) e cada conferência vai para fluxo-<X>.txt na hora (um travamento ainda deixa a evidência).
@@ -1353,7 +1353,7 @@ namespace NovoFtool
 
         static void RodarInterferencia(MainWindow w, string arquivo)
         {
-            var sb = new StringBuilder(); int pares = -1;
+            var sb = new StringBuilder(); int pares = -1; bool trocaFalhou = false;
             try
             {
                 sb.AppendLine("Interferência · " + arquivo + " · ESTRUCTTO_MOTOR = " + (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") ?? "(não definida)"));
@@ -1379,6 +1379,14 @@ namespace NovoFtool
                 w.DefinirRealista(true); w.Atualizar3D(false); EsperarIdle();
                 Esperar(w.TarefaLigacoes3D); EsperarIdle();
                 sb.AppendLine("carga das ligações no Realista: " + swLig.ElapsedMilliseconds + " ms (pedidos novos ao motor num lote, POST /api/ligacoes/geometrias)");
+                {   // G6 r5: grupos trocados pelo motor têm o projeto gravado com o tipo novo
+                    var tg = Motor.Get("/api/ligacoes/grupos"); Esperar(tg);
+                    var gs = (tg.Result as JsonArray ?? (tg.Result as JsonObject)?["grupos"] as JsonArray ?? new JsonArray()).ToList();
+                    List<string> tr; lock (Render3D.Trocadas) tr = Render3D.Trocadas.ToList();
+                    int comSolda = gs.Count(g => (string)g?["projeto"]?["tipo_ligacao"] == "solda_direta_alma");
+                    sb.AppendLine("trocadas por solda direta: " + tr.Count + " grupos · grupos com projeto solda_direta_alma: " + comSolda + (tr.Count > comSolda ? " · FALHA: troca não gravada" : "") + (tr.Count > 0 ? " (" + string.Join("; ", tr.Take(3)) + ")" : ""));
+                    trocaFalhou = tr.Count > comSolda;
+                }
                 var v = w.vista3D;
                 if (!v.UsandoDx) throw new InvalidOperationException("Render3D (Direct3D 11) indisponível: sem placa de vídeo");
                 sb.AppendLine("ligações na vista: " + v.ModeloAtual.Ligacoes.Count + " (com pontas do motor: " + v.ModeloAtual.Ligacoes.Count(l => l.Ponta != null) + ")");
@@ -1386,10 +1394,12 @@ namespace NovoFtool
                 v.DefinirLigacoes(v.ModeloAtual.Ligacoes); EsperarIdle();   // remonta a cena guardando os sólidos
                 var todos = Render3D.Coleta; Render3D.Coleta = null;
                 var col = todos.Where(x => !x.Excluir).ToList();   // parafusos atravessam as chapas; barras curtas demais para a ligação (motor ou WPF)
-                sb.AppendLine("fora do teste: " + todos.Count(x => x.Excluir && x.Tipo != "parafuso") + " sólidos (barras curtas demais para a ligação: " + string.Join(", ", Render3D.Curtas) + ")");
+                sb.AppendLine("fora do teste: " + todos.Count(x => x.Excluir && x.Tipo != "parafuso") + " sólidos (barras curtas demais para a ligação: " + string.Join(", ", Render3D.Curtas.Select(id => id + " [" + (Render3D.CurtasCausa.TryGetValue(id, out string cz) ? cz : "?") + "]")) + ")");
                 var sw = Stopwatch.StartNew();
                 var r = Render3DGeometria.Interferencias(col.Select(x => x.M).ToList()).Where(x => col[x.A].Barra == null || col[x.A].Barra != col[x.B].Barra).ToList();   // trechos do cope da mesma barra encostam
-                pares = r.Count;
+                pares = r.Count + (trocaFalhou ? 1 : 0);   // G6 r5: troca não gravada também reprova
+                pares += VerificarParafusos(v.ModeloAtual.Ligacoes, sb);   // C4
+                pares += VerificarApertadas(todos, sb);   // C4: a peça apertada (aba da barra) existe no mundo sob o parafuso
                 sb.AppendLine(col.Count + " sólidos · " + pares + " pares com interseção > 1 mm · " + sw.ElapsedMilliseconds + " ms");
                 string Ponta(Barra3D b, int no)   // diagnóstico: corte e ligação da ponta de b no nó
                 {
@@ -1426,6 +1436,7 @@ namespace NovoFtool
                     var pn = Pos((JsonObject)json, no);
                     v.Focar(pn, nome == "placa-base" ? 1.4 : 2.0, -40, 22);
                     CapturarPrincipal(w, "interf-" + nome);
+                    if (nome is "viga-pilar" or "gusset") { v.Focar(pn, 0.7, -40, 22); CapturarPrincipal(w, "interf-" + nome + "-perto"); v.Focar(pn, 0.7, 140, 22); CapturarPrincipal(w, "interf-" + nome + "-perto-oposto"); }   // C4: parafusos de perto
                     sb.AppendLine("captura " + nome + ": nó " + no + " (" + Nf(pn.X) + ", " + Nf(pn.Y) + ", " + Nf(pn.Z) + ")");
                 }
             }

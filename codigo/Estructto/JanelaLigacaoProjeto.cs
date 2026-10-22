@@ -1250,10 +1250,10 @@ namespace NovoFtool
         // C3: clique de verdade (Vista3D.TesteClique = botão solto sem arrasto) numa chapa e num parafuso do galpão com projeto aplicado
         // abre o projetista do grupo no campo; clique numa barra ainda seleciona a barra (e não abre nada). Custo do picking em
         // `custo-picking.txt`.
-        static void CliqueVista3DPrincipal(MainWindow w)
+        static void CliqueVista3DPrincipal(MainWindow w, string obra = "galpao")
         {
             var log = new StringBuilder();
-            string Fim() { File.WriteAllText(Path.Combine(pastaSaida, "custo-picking.txt"), log.ToString()); return log.ToString(); }
+            string Fim() { File.WriteAllText(Path.Combine(pastaSaida, "custo-picking-" + obra + ".txt"), log.ToString()); return log.ToString(); }
             w.DefinirRealista(true); w.Atualizar3D(false); EsperarIdle(); Esperar(w.TarefaLigacoes3D); EsperarIdle();
             var v = w.vista3D;
             if (!v.UsandoDx) { log.AppendLine("sem Direct3D: clique na Vista3D não testado"); Fim(); throw new InvalidOperationException("Render3D (Direct3D 11) indisponível"); }
@@ -1266,7 +1266,7 @@ namespace NovoFtool
             JanelaLigacaoProjeto Aberta() => Application.Current.Windows.OfType<JanelaLigacaoProjeto>().FirstOrDefault(x => x.IsVisible && x.CampoDoDestaque != null);
             JanelaLigacaoProjeto Clicar(string tipoPeca, string nome, Func<string, bool> tagOk)
             {
-                var centros = tipoPeca == "parafuso" ? v.CentrosParafusos() : col.Where(x => x.Tipo == tipoPeca && x.Lig != null && !x.Lig.Proposta).Take(40).Select(Centro).ToList();
+                var centros = tipoPeca == "parafuso" ? v.CentrosParafusos() : col.Where(x => x.Tipo == tipoPeca && x.Lig != null && !x.Lig.Proposta).Take(250).Select(Centro).ToList();
                 foreach (var c in centros)
                 {
                     gotL = null; gotTag = null;
@@ -1288,12 +1288,15 @@ namespace NovoFtool
                 }
                 throw new InvalidOperationException("clique na Vista3D: nenhum(a) " + nome + " acertou");
             }
+            log.AppendLine("coleta: chapas " + col.Count(x => x.Tipo == "chapa") + ", fora de proposta " + col.Count(x => x.Tipo == "chapa" && x.Lig != null && !x.Lig.Proposta) + ", com campo " + col.Count(x => x.Tipo == "chapa" && x.Lig != null && !x.Lig.Proposta && x.Lig.Chapas.Any(c => !string.IsNullOrEmpty(c.Campo))) + ", parafusos clicáveis " + v.MedirClique(1).parafusos + ", ligações " + v.ModeloAtual.Ligacoes.Count); Fim();
+            { var L = v.ModeloAtual.Ligacoes; log.AppendLine("ligações: com grupo do motor " + L.Count(l => l.Grupo != "")) ; }
+            { var L = v.ModeloAtual.Ligacoes; log.AppendLine("proposta " + L.Count(l => l.Proposta) + ", motor com chapas " + L.Count(l => !l.Proposta && l.Chapas.Count > 0) + ", motor com parafusos " + L.Count(l => !l.Proposta && l.Parafusos.Count > 0) + ", motor sem peças " + L.Count(l => !l.Proposta && l.Chapas.Count + l.Parafusos.Count + l.Cantoneiras.Count == 0) + ", chapas do motor sem campo " + L.Count(l => !l.Proposta && l.Chapas.Any(c => string.IsNullOrEmpty(c.Campo))) + ", Grupo vazio entre as não-proposta " + L.Count(l => !l.Proposta && l.Grupo == "")); Fim(); }
             var jc = Clicar("chapa", "chapa", t => !string.IsNullOrEmpty(t));
             if (!jc.TemTipo) throw new InvalidOperationException("projetista aberto sem tipo");
-            CapturarPrincipal(w, "51-vista3d-clique-chapa");
-            CapturarDialogo(jc, "51-projetista-clique-vista3d-chapa.png"); jc.Close(); EsperarIdle();
+            CapturarPrincipal(w, "51-vista3d-clique-chapa-" + obra);
+            CapturarDialogo(jc, "51-projetista-clique-vista3d-chapa-" + obra + ".png"); jc.Close(); EsperarIdle();
             var jb = Clicar("parafuso", "parafuso", t => t != null && t.StartsWith("d"));
-            CapturarDialogo(jb, "51-projetista-clique-vista3d-parafuso.png"); jb.Close(); EsperarIdle();
+            CapturarDialogo(jb, "51-projetista-clique-vista3d-parafuso-" + obra + ".png"); jb.Close(); EsperarIdle();
             v.CliquePecaLig -= ouvir;
             // barra: ainda seleciona a barra e não abre o projetista
             v.Selecionar(new string[0], new string[0]); EsperarIdle();
@@ -1312,9 +1315,9 @@ namespace NovoFtool
             if (!achou) throw new InvalidOperationException("clique na barra: nenhuma barra acertada no meio");
             v.Enquadrar(-60, 30, false); EsperarIdle();
             var (ms, np) = v.MedirClique();
-            log.AppendLine("galpão: " + np + " parafusos clicáveis, Acertar completo = " + ms.ToString("0.00") + " ms/clique");
+            log.AppendLine(obra + ": " + np + " parafusos clicáveis, Acertar completo = " + ms.ToString("0.00") + " ms/clique");
             int nb2 = col.Count(x => x.Tipo == "parafuso");
-            log.AppendLine("galpão: " + nb2 + " parafusos no total; teste de parafusos sozinho (mesmo código) = " + Render3D.MedirParafusos(nb2).ToString("0.000") + " ms/clique");
+            log.AppendLine(obra + ": " + nb2 + " parafusos no total; teste de parafusos sozinho (mesmo código) = " + Render3D.MedirParafusos(nb2).ToString("0.000") + " ms/clique");
             Fim();
         }
 
@@ -1403,13 +1406,25 @@ namespace NovoFtool
             if (ed3 != null)
             {
                 Esperar(w.AbrirTarefa(ed3)); EsperarIdle();
-                w.DefinirRealista(true); w.Atualizar3D(false); EsperarIdle(); Esperar(w.TarefaLigacoes3D); EsperarIdle();
-                Render3D.Coleta = new List<Render3D.Peca3D>(); w.vista3D.DefinirLigacoes(w.vista3D.ModeloAtual.Ligacoes); EsperarIdle();
-                var col2 = Render3D.Coleta; Render3D.Coleta = null;
-                w.vista3D.Enquadrar(-60, 30, false); EsperarIdle();
-                var (ms2, np2) = w.vista3D.MedirClique();
-                int nb3 = col2.Count(x => x.Tipo == "parafuso");
-                File.AppendAllText(Path.Combine(pastaSaida, "custo-picking.txt"), "PLATAFORMA: " + w.vista3D.ModeloAtual.Ligacoes.Count + " ligações, " + nb3 + " parafusos na cena (" + np2 + " clicáveis: só os de ligação com projeto do motor), Acertar completo = " + ms2.ToString("0.00") + " ms/clique; teste de parafusos com " + nb3 + " parafusos = " + Render3D.MedirParafusos(nb3).ToString("0.000") + " ms/clique\n");
+                var dP = w.EspacialAtivo ?? throw new InvalidOperationException("PLATAFORMA não abriu");
+                var gerP = w.NovoGerenciadorLigacoes(dP); PrepararDialogoForaDaTela(gerP); gerP.Show(); EsperarIdle();
+                Esperar(gerP.Carregar(true)); EsperarIdle(); gerP.Close(); EsperarIdle();   // identifica os grupos (como o --testes-interferencia)
+                // PLATAFORMA só tem projeto do motor de solda direta (sem chapa/parafuso) e propostas: o engenheiro aplica chapa simples em alguns grupos viga–pilar
+                var gruposP = Esperar2(dP.Ligacoes("GET", "/api/ligacoes/grupos")).AsArray();
+                int aplicados = 0;
+                foreach (var gp in gruposP.Where(x => S(x, "tipo").StartsWith("viga_pilar")).Take(6))
+                {
+                    try
+                    {
+                        var tp = w.CriarProjetistaGrupo(dP, gp, null); Esperar(tp); var jp = tp.Result; if (jp == null) continue;
+                        PrepararDialogoForaDaTela(jp); jp.Show(); EsperarIdle();
+                        Esperar(jp.Escolher("chapa_simples_alma")); Esperar(jp.AplicarAoGrupo()); jp.Close(); EsperarIdle(); aplicados++;
+                    }
+                    catch (Exception) { }
+                }
+                File.AppendAllText(Path.Combine(pastaSaida, "custo-picking-plataforma-aplicados.txt"), "grupos viga-pilar com chapa simples aplicada: " + aplicados + Environment.NewLine);
+                w.Atualizar3D(false); EsperarIdle(); Esperar(w.TarefaLigacoes3D); EsperarIdle();
+                CliqueVista3DPrincipal(w, "plataforma");   // PLATAFORMA já tem projetos do motor: clique em chapa e parafuso abre o projetista
                 w.FecharEspaciaisSemPerguntar();
             }
         }
