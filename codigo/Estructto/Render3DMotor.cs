@@ -57,6 +57,7 @@ namespace NovoFtool
                 case "viga_pilar_mesa": return rigida && !vigaU ? "chapa_topo_estendida" : "chapa_simples_alma";   // G6: U não tem rígida no motor: flexível
                 case "viga_pilar_alma": case "viga_viga": return "chapa_simples_alma";
                 case "gusset_contraventamento": return "gusset_contraventamento";
+                case "perfil_tubo_soldado": return "perfil_tubo_soldado";   // perfil soldado em tubo: recorte + filete, sem chapa (LIGACOES-TUBO-PERFIL.md)
                 case "tubo_tubo_soldado": return "tubo_tubo_soldado";   // v0.6 A3: boca de peixe + filete na sela
                 case "emenda": return a.Length > 3 && int.TryParse(a[3], out int ang) && ang <= 5 ? (vertical ? "emenda_pilar" : "emenda_viga")
                                       : "chapa_simples_alma";   // G6: canto (> 5°) = viga–viga na outra barra (o membro traz o apoio), não proposta local

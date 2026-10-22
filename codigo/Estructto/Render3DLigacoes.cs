@@ -448,6 +448,7 @@ namespace NovoFtool
             if (!cortes.TryGetValue((b, emI), out Corte c) || c.Contra == null) return r;
             Contorno f = forma(b), fc = forma(c.Contra); if (f.Concreto || fc.Concreto) return r;
             if (c.Raio > 0) return r;   // v0.6 A3: tubo em tubo, boca de peixe sem chapa
+            if (fc.Forma == "TR" || fc.Forma == "TC" || fc.Forma == "CIRC") return r;   // perfil em tubo: solda com recorte do motor, sem chapa proposta
             var nos = mod.Nos.Where(n => n.Id == b.Ni || n.Id == b.Nj).ToDictionary(n => n.Id);
             if (nos.Count < 2) return r;
             Vector3D e = P(nos[b.Nj]) - P(nos[b.Ni]); double dz = Math.Abs(e.Z) / e.Length;
