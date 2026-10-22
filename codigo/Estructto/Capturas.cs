@@ -29,6 +29,7 @@ namespace NovoFtool
         public static bool Configurar(MainWindow w, string[] args)
         {
             if (args == null) return false;
+            if (args.Length >= 3 && args[1] == "--testes-atualizacao") { ConfigurarAtualizacao(w, args[2]); return true; }   // TestesAtualizacao.cs
             if (args.Length >= 3 && args[1] == "--testes-novo") { ConfigurarNovo(w, args[2]); return true; }   // TestesNovo.cs
             if (args.Length >= 3 && args[1] == "--testes-comandos") { ConfigurarComandos(w, args[2]); return true; }   // TestesComandos.cs
             if (args.Length >= 3 && args[1] == "--testes-interferencia") { ConfigurarInterferencia(w, args[2], args.Length >= 4 ? args[3] : null); return true; }   // TestesFluxo.cs
@@ -1122,6 +1123,7 @@ namespace NovoFtool
                 Esperar(w.AbrirTarefa(caminhoModelo));
                 w.TelaInicial.Visibility = Visibility.Collapsed;
                 EsperarIdle();
+                CapturaAtualizacao(w);   // TestesAtualizacao.cs: faixa "Nova versão disponível"
                 if (w.EspacialAtivo == null) throw new InvalidOperationException("o modelo não abriu como documento 3D: " + caminhoModelo);
                 string so = Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS");
                 Action<Action> so1 = f => { f(); w.alterado = false; w.Close(); Environment.Exit(0); };

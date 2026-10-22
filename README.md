@@ -61,7 +61,7 @@ codigo\portico\sincronizar-planilha.ps1 -Planilha "<caminho>\PLANILHA DE CÁLCUL
 Release (precisa do .NET 8 SDK e de python com numpy e pyinstaller; bin/obj ficam em `C:\dev\build\EstructtoV2`, fora do Drive):
 
 ```
-codigo\publicar.ps1 -Versao 0.4   [-Saida C:\dev\build\EstructtoRelease\publish]
+codigo\publicar.ps1 -Versao 0.4   [-Saida C:\dev\build\EstructtoRelease\publish] [-Enviar]
 ```
 
 Um comando faz tudo e para na primeira falha (mensagem `FALHOU: ...`, código de saída 1):

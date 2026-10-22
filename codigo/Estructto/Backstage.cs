@@ -35,6 +35,7 @@ namespace NovoFtool
             PaginaBs("propriedades", "Propriedades do projeto", "Cliente, engenheiro, empresa e normas do projeto aberto.", PaginaPropriedadesBs);
             PaginaBs("opcoes", "Opções", "Acento, autor e empresa padrão, unidades, salvamento automático.", PaginaOpcoesBs);
             PaginaBs("sobre", "Sobre", "Versão, licenças e créditos.", PaginaSobreBs);
+            BsAbas.Items.Add(BotaoBs("Procurar atualizações", "", () => ProcurarAtualizacao(true), "Consulta se há uma versão nova do Estructto e mostra o aviso com o botão Instalar."));
             BsAbas.Items.Add(new F.SeparatorTabItem());
             BsAbas.Items.Add(BotaoBs("Sair", "Alt+F4", Close, "Fecha o programa (pergunta antes caso existam alterações não salvas)."));
             BsAbas.SelectedItem = paginasBs["inicio"];
@@ -242,6 +243,13 @@ namespace NovoFtool
             // ponytail: unidades só na barra de status; conversão de tabelas/inspetor quando alguém pedir
             var st = Ui.Stepper(Config.Opcoes.AutosalvarMin + " min", () => MudarAutosalvar(-1), () => MudarAutosalvar(1), 110, null, "Intervalo da cópia de recuperação (1 a 30 min).");
             Linha("Salvamento automático", st, "Cópia de recuperação em %AppData%\\NovoFtool; o arquivo do projeto só muda com Ctrl+S.");
+            var atu = new StackPanel();
+            var cbAtu = new CheckBox { Content = "Procurar atualizações ao iniciar", IsChecked = Config.Opcoes.ProcurarAtualizacoes, Foreground = TemaPlant.BTexto1, Margin = new Thickness(0, 4, 0, 8) };
+            cbAtu.Click += (s, e) => Config.Opcoes.ProcurarAtualizacoes = cbAtu.IsChecked == true;
+            var agora = JanelaEscura.B("Procurar agora", () => { Bastidor.IsOpen = false; ProcurarAtualizacao(true); }, false, "Consulta o GitHub e mostra o aviso se houver versão nova.");
+            agora.Margin = new Thickness(0); agora.HorizontalAlignment = HorizontalAlignment.Left;
+            atu.Children.Add(cbAtu); atu.Children.Add(agora);
+            Linha("Atualizações", atu, "Versão instalada " + Atualizador.VersaoAtual + ". A instalação só acontece com o SHA-256 publicado conferindo.");
             var reset = JanelaEscura.B("Restaurar painéis", () =>
             {
                 foreach (var la in AvalonDock.Layout.Extensions.Descendents(Docas.Layout).OfType<AvalonDock.Layout.LayoutAnchorable>()) if (la.IsHidden) la.Show();
@@ -265,7 +273,7 @@ namespace NovoFtool
             cab.Children.Add(new Image { Source = TemaPlant.Selo(64), Width = 64, Height = 64, Margin = new Thickness(0, 0, 16, 0), VerticalAlignment = VerticalAlignment.Center });
             var t = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             t.Children.Add(Marca(30, TemaPlant.BTexto1));
-            string ver = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "";
+            string ver = Atualizador.VersaoAtual;
             t.Children.Add(new TextBlock { Text = "Modelagem e cálculo de estruturas 3D · versão " + ver, FontSize = 12, Foreground = TemaPlant.BTexto2 });
             cab.Children.Add(t);
             var txt = new StackPanel();
