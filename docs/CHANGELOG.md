@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 21/10/2026 — Frente U1: atualização automática. Faixa "Nova versão disponível" com Instalar (baixa, confere SHA-256 publicado, troca a pasta por script com backup e restauração, reabre), opção em Opções, `publicar.ps1` gera o `.sha256` e versão do exe = tag. Auto-teste `--testes-atualizacao`. Detalhe em [v3/ATUALIZACAO.md](v3/ATUALIZACAO.md).
 - 21/10/2026 — Frente N1: novo arquivo lento. Causa: id automático de carga em `Modelo.add` era O(n²) (grade 20×20: 12 s só no lote). Cache no motor, motor aquecido ao abrir, teto de 200 barras na prévia, auto-teste `--testes-novo`. Detalhe em [v3/NOVO-ARQUIVO.md](v3/NOVO-ARQUIVO.md).
 - 21/10/2026 — Frente V, V2: sombra do chão sem artefatos (nativo sem malha projetada, DX com chão menor na cobertura do ShadowMap3D); botão Vista › Mostrar › Sombra; captura 59. [docs/v3/render/SOMBRA.md](v3/render/SOMBRA.md)
 - 21/10/2026 — Frente V, V1: setas de carga no Realista DX respeitam a profundidade (malha no Viewport3DX); opção "Cargas sempre visíveis" (padrão só no Analítico); captura 58. [docs/v3/render/CARGAS-PROFUNDIDADE.md](v3/render/CARGAS-PROFUNDIDADE.md)

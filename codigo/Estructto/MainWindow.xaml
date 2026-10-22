@@ -33,6 +33,9 @@
       </StackPanel>
     </Border>
 
+    <!-- faixa de atualização (AtualizadorUi.cs): nova versão disponível; fica recolhida até a checagem achar uma -->
+    <Border x:Name="FaixaAtualiza" DockPanel.Dock="Top" Visibility="Collapsed" Background="{DynamicResource Surface.2}" BorderBrush="{DynamicResource Accent.Primary}" BorderThickness="0,0,0,2" Padding="12,5"/>
+
     <!-- barra de status: mensagem a esquerda; aviso, pílulas Snap/Grade/Orto/Polar..., coordenadas do cursor e unidades a direita -->
     <DockPanel DockPanel.Dock="Bottom" Background="{DynamicResource Surface.0}" Height="30">
       <TextBlock x:Name="StatusUnid" DockPanel.Dock="Right" Margin="0,0,12,0" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource Text.Tertiary}" Text="m · kN · kN·m" ToolTip="Unidades do modelo: comprimentos em metros, forças em kN, momentos em kN·m."/>

@@ -54,7 +54,7 @@ namespace NovoFtool
             tmDica.Tick += (s, e) => AtualizarDica(); tmDica.Start();
             PreviewKeyDown += Tecla;
             PreviewTextInput += TextoDigitado;
-            Closing += (s, e) => { if (!PodeFecharTudo()) e.Cancel = true; else foreach (var x in docs) { Config.ApagarRecuperacao(x.Esp?.Chave); x.Esp?.Descartar(); } };
+            Closing += (s, e) => { if (!fechandoParaAtualizar && !PodeFecharTudo()) e.Cancel = true; else foreach (var x in docs) { Config.ApagarRecuperacao(x.Esp?.Chave); x.Esp?.Descartar(); } };
             autoSalvar.Tick += (s, e) => SalvarRecuperacoes();
             autoSalvar.Start();
         }

@@ -185,6 +185,8 @@ namespace NovoFtool
             public static string Empresa { get => Get("empresa", RelatorioMotor.Empresa); set { Set("empresa", value); RelatorioMotor.Empresa = value; } }
             public static string PastaProjetos { get => Get("pasta", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Estructto")); set => Set("pasta", value); }
             public static string Unidades { get => Get("unidades", "kN · m"); set => Set("unidades", value); }   // só exibição (o modelo é sempre kN, m)
+            public static bool ProcurarAtualizacoes { get => Get("atualizar", "1") != "0"; set => Set("atualizar", value ? "1" : "0"); }   // AtualizadorUi.cs
+            public static string AtualizacaoIgnorada { get => Get("atualizacao_ignorada"); set => Set("atualizacao_ignorada", value); }   // tag da versão em que o usuário clicou "Depois"
             public static int AutosalvarMin { get => int.TryParse(Get("autosalvar", "2"), out int v) && v >= 1 ? v : 2; set => Set("autosalvar", value.ToString()); }
         }
     }

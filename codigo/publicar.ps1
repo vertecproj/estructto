@@ -1,10 +1,14 @@
 # Gera a release do Estructto num comando: empacota o motor Python, confere o pacote, publica o Estructto.exe,
 # testa o exe publicado com o motor empacotado e monta o .zip.
-#   codigo\publicar.ps1 -Versao 0.4  [-Saida C:\dev\build\EstructtoRelease\publish]
+#   codigo\publicar.ps1 -Versao 0.4  [-Saida C:\dev\build\EstructtoRelease\publish] [-Enviar]
+# -Versao = tag da release sem o "v": vira a versao do exe (-p:Version) que o atualizador compara com a release do GitHub.
+# Gera Estructto-<versao>-win-x64.zip e Estructto-<versao>-win-x64.zip.sha256 (o atualizador so instala com esse hash).
+# -Enviar sobe os dois como assets da release v<versao> (gh release upload; a release tem de existir). Sem -Enviar nada vai para a rede.
 # Precisa: python com numpy e pyinstaller; .NET 8 SDK. Qualquer falha para o script com codigo de saida 1.
 param(
     [Parameter(Mandatory = $true)][string]$Versao,
-    [string]$Saida = 'C:\dev\build\EstructtoRelease\publish'
+    [string]$Saida = 'C:\dev\build\EstructtoRelease\publish',
+    [switch]$Enviar
 )
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $MyInvocation.MyCommand.Path          # codigo\
@@ -107,7 +111,7 @@ try {
         if (MotoresEm $Saida) { Falha "ha estructto-motor rodando de $Saida; feche o Estructto de la" }
         Remove-Item -Recurse -Force $Saida
     }
-    & dotnet publish $csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $Saida
+    & dotnet publish $csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=$Versao -o $Saida
     if ($LASTEXITCODE -ne 0) { Falha "dotnet publish ($LASTEXITCODE)" }
     $exe = Join-Path $Saida 'Estructto.exe'
     if (-not (Test-Path $exe)) { Falha "sem $exe" }
@@ -144,12 +148,24 @@ try {
         }
     }
     finally { $z.Dispose() }
+    # SHA-256 no formato do sha256sum ("hash  arquivo", LF, sem BOM): o atualizador do Estructto confere este arquivo antes de instalar
+    $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $shaArq = "$zip.sha256"
+    [IO.File]::WriteAllText($shaArq, "$hash  $(Split-Path -Leaf $zip)`n", (New-Object Text.UTF8Encoding($false)))
+    Write-Host "sha256 $hash"
 
     Etapa '6/6 resumo'
     Write-Host "versao          $Versao (motor $($v.versao))"
     Write-Host "Estructto.exe   $(Tamanho $exe)"
     Write-Host "motor\          $(Tamanho (Join-Path $Saida 'motor')) ($((Get-ChildItem (Join-Path $Saida 'motor') -Recurse -File).Count) arquivos)"
     Write-Host "zip             $(Tamanho $zip)  $zip"
+    Write-Host "sha256          $shaArq"
+    if ($Enviar) {
+        Etapa "enviar para a release v$Versao"
+        & gh release upload "v$Versao" $zip $shaArq --clobber --repo vertecproj/estructto
+        if ($LASTEXITCODE -ne 0) { Falha "gh release upload ($LASTEXITCODE)" }
+    }
+    else { Write-Host "Suba o zip E o .sha256 como assets da release v$Versao (ou rode de novo com -Enviar)." }
     Write-Host 'RELEASE OK' -ForegroundColor Green
 }
 catch {
