@@ -932,6 +932,10 @@ namespace NovoFtool
             var bm = J(w)["barras"][vigaY5];
             r.Checar(bm != null && Math.Abs(Pos(J(w), (string)bm["ni"]).Y - 6) < 1e-9 && Math.Abs(Pos(J(w), (string)bm["nj"]).Y - 6) < 1e-9, "grip do meio: barra movida para y = 6");
             Desfaz("grip do meio", () => Math.Abs(Pos(J(w), (string)J(w)["barras"][vigaY5]["ni"]).Y - 5) < 1e-9, () => Math.Abs(Pos(J(w), (string)J(w)["barras"][vigaY5]["ni"]).Y - 6) < 1e-9);
+            v.Selecionar(null, new[] { vigaY5 }); EsperarIdle();
+            double y0 = Pos(J(w), (string)J(w)["barras"][vigaY5]["ni"]).Y; bool esq = v.EsquentarGrip("meio", vigaY5), quenteAntes = v.GripQuente; v.Tecla(Key.Escape); EsperarIdle();
+            r.L("        C2 Esc: esquentou=" + esq + " quente=" + quenteAntes + " depois=" + v.GripQuente + " y=" + Pos(J(w), (string)J(w)["barras"][vigaY5]["ni"]).Y);
+            r.Checar(esq && !v.GripQuente && Math.Abs(Pos(J(w), (string)J(w)["barras"][vigaY5]["ni"]).Y - y0) < 1e-9, "C2: Esc esfria o grip e nada se move");
             v.LimparSelecao();
 
             // MEDIR: distância entre (0; 0; 0) e (6; 0; 3) e entre dois nós da cópia

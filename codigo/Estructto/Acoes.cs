@@ -8,6 +8,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Media;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -48,7 +50,8 @@ namespace NovoFtool
             TabVerif.MouseDoubleClick += (s, e) => VerificarBarraConforme(null);
             ListaAvisos.SelectionChanged += (s, e) => { if (ListaAvisos.SelectedItem is ListBoxItem it && it.Tag is IEnumerable<object> objs) { if (objs.FirstOrDefault() is RefMotor r) SelecionarEsp(r); else Vista.Selecionar(objs); } };
             SeloAvisos.Click += (s, e) => { PainelAvisos.Show(); PainelAvisos.IsSelected = true; PainelAvisos.IsActive = true; };
-            Comando.KeyDown += ComandoTecla;
+            Comando.PreviewKeyDown += ComandoTecla;
+            Comando.PreviewMouseRightButtonUp += (s, e) => { if (Comando.Text.Trim() != "") { e.Handled = true; ConfirmarLinha(Comando.Text.Trim()); } };   // botão direito = Enter (AutoCAD)
             Comando.TextChanged += (s, e) => MostrarSugestao();
             var tmDica = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
             tmDica.Tick += (s, e) => AtualizarDica(); tmDica.Start();
@@ -157,7 +160,7 @@ namespace NovoFtool
             Vista.Resolvido = false;
             erroCalculo = "";
             Aviso.Visibility = Visibility.Collapsed;
-            if (M.Barras.Count == 0) { StatusMsg.Text = "Modelo vazio: desenhe barras (B) ou use Modelo › Gerar estrutura."; AtualizarLegenda(); Vista.InvalidateVisual(); return; }
+            if (M.Barras.Count == 0) { StatusMsg.Text = ""; AtualizarLegenda(); Vista.InvalidateVisual(); return; }
             // cada caso de carga e resolvido separadamente; combinacoes e envoltorias saem por superposicao
             resCasos = M.Nos.Any(n => n.TemApoio) ? Analise.ResolverCasos(M) : new ResultadosCasos { Erro = "Sem apoios: selecione um nó e aplique um apoio (aba Modelo)." };
             if (!string.IsNullOrEmpty(resCasos.Erro))
@@ -346,12 +349,35 @@ namespace NovoFtool
 
         // ================= teclado e linha de comando =================
 
+        // Candidatos da linha de comando (AutoCAD): o texto igual a um nome/apelido vence; depois os que começam com ele, do mais curto ao mais longo.
+        // O primeiro já vem "selecionado": Enter, Espaço ou botão direito o executam; Tab troca pelo seguinte.
+        internal static List<string> CandidatosComando(IEnumerable<string> todos, string digitado)
+        {
+            string t = (digitado ?? "").Trim().ToUpperInvariant();
+            if (t.Length == 0 || t.Any(c => char.IsDigit(c) || c == ',' || c == '@' || c == '<' || c == ' ')) return new List<string>();
+            var l = todos.Where(c => c.StartsWith(t)).OrderBy(c => c == t ? 0 : 1).ThenBy(c => c.Length).ThenBy(c => c, StringComparer.Ordinal).ToList();
+            return l;
+        }
+
+        string tabBase, tabAtual; int tabIdx;   // ciclo do Tab: texto digitado original e posição
+
         void MostrarSugestao()
         {
             string t = Comando.Text.Trim().ToUpperInvariant();
-            if (t.Length == 0 || t.Any(c => char.IsDigit(c) || c == ',' || c == '@' || c == '<' || c == ' ')) { Sugestao.Text = ""; return; }
-            string s = Comandos.Where(c => c.StartsWith(t)).OrderBy(c => c.Length).FirstOrDefault();
-            Sugestao.Text = s != null ? new string(' ', Comando.Text.Length) + s.Substring(t.Length) + "   (Tab completa)" : "";
+            var cand = CandidatosComando(Comandos, Comando.Text);
+            string s = cand.FirstOrDefault();
+            Sugestao.Inlines.Clear();
+            if (s == null || s == t) return;   // sem candidato, ou já é exatamente o comando: nada a completar
+            // C5: só o resto, logo depois do cursor, na fonte/tamanho do campo e com a caixa (maiúsc./minúsc.) do que foi digitado
+            string resto = s.Substring(t.Length);
+            string digitado = Comando.Text.Trim();
+            if (digitado == digitado.ToLowerInvariant()) resto = resto.ToLowerInvariant();
+            var ft = new FormattedText(Comando.Text, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                new Typeface(Comando.FontFamily, Comando.FontStyle, Comando.FontWeight, Comando.FontStretch), Comando.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(Comando).PixelsPerDip);
+            Sugestao.FontSize = Comando.FontSize; Sugestao.FontFamily = Comando.FontFamily;
+            Sugestao.Margin = new Thickness(Comando.Padding.Left + 2 + ft.WidthIncludingTrailingWhitespace, 0, 0, 0);   // 2 px: recuo interno do TextBox
+            Sugestao.Inlines.Add(new Run(resto));
+            Sugestao.Inlines.Add(new Run("  (Tab completa)") { FontSize = Comando.FontSize - 2, FontStyle = FontStyles.Italic });
         }
 
         bool Editando()
@@ -396,16 +422,24 @@ namespace NovoFtool
         {
             if (e.Key == Key.Tab)
             {
-                string t0 = Comando.Text.Trim().ToUpperInvariant();
-                string c = Comandos.Where(x => t0.Length > 0 && x.StartsWith(t0)).OrderBy(x => x.Length).FirstOrDefault();
-                if (c != null) { Comando.Text = c; Comando.CaretIndex = c.Length; }
+                var cand = CandidatosComando(Comandos, tabBase != null && Comando.Text == tabAtual ? tabBase : Comando.Text);
+                if (tabBase == null || Comando.Text != tabAtual) { tabBase = Comando.Text; tabIdx = -1; }
+                if (cand.Count > 0) { tabIdx = (tabIdx + 1) % cand.Count; tabAtual = cand[tabIdx]; Comando.Text = tabAtual; Comando.CaretIndex = tabAtual.Length; }
                 e.Handled = true;
                 return;
             }
+            if (e.Key == Key.Escape && Comando.Text != "") { Comando.Text = ""; e.Handled = true; return; }   // Esc limpa o texto digitado
             if (e.Key != Key.Enter && e.Key != Key.Space) return;
             string t = Comando.Text.Trim();
             if (e.Key == Key.Space && t.Length > 0 && (PareceCoordenada(t) || valorPendente != null)) return;   // espaço dentro de coordenada/expressão ou da resposta (perfil "Ue 200x75")
             e.Handled = true;
+            ConfirmarLinha(t);
+        }
+
+        // Enter, Espaço ou botão direito na linha de comando: executa o que está digitado ou a sugestão do topo.
+        void ConfirmarLinha(string t)
+        {
+            if (valorPendente == null && !t.Contains(' ')) { var cd = CandidatosComando(Comandos, t); if (cd.Count > 0) t = cd[0]; }   // a sugestão no topo executa (igual ao nome/apelido exato)
             Comando.Text = "";
             FocarVista();
             if (t == "") { RepetirUltimo(); return; }

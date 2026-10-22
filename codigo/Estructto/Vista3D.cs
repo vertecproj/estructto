@@ -938,7 +938,7 @@ namespace NovoFtool
             bool tl = Ler(din[0], out double l), tg = Ler(din[1], out double g);
             if (tl && !tg && ferr == Ferramenta3D.Barra)   // C1: só o comprimento digitado: segue a direção apontada em 3D (vertical/inclinada)
             {
-                var dir = Snap3D.DirecaoDigitada(a, cursor3, Tela(a), Tela(a + new Vector3D(0, 0, 1)), mouseTela, Orto);
+                var dir = Snap3D.DirecaoDigitada(a, cursor3, Tela(a), Tela(a + new Vector3D(0, 0, 1)), mouseDentro ? mouseTela : Tela(a));
                 if (dir != null) return a + dir.Value * l;
             }
             double ang = tg ? g * Math.PI / 180 : angM, len = tl ? l : dm * Math.Max(0, Math.Cos(angM - ang));
@@ -1166,6 +1166,13 @@ namespace NovoFtool
                 {
                     Point a = Tela(inicio.Value);
                     if (cursor3 != null && DinTravado) dc.DrawLine(PGuia3, a, Tela(cursor3.Value));
+                    if (ferr == Ferramenta3D.Barra && Snap3D.TrilhaZ(a, Tela(inicio.Value + new Vector3D(0, 0, 1)), mouseTela) != 0)   // C1: rastreio em Z (vertical), como o polar do CAD
+                    {
+                        Vector vz = Tela(inicio.Value + new Vector3D(0, 0, 1)) - a; vz.Normalize();
+                        dc.DrawLine(PGuia3, a - vz * 4000, a + vz * 4000);
+                        var fz = Ft("Z", TemaPlant.BTexto1, 11);
+                        dc.DrawText(fz, new Point(s.X + 12, s.Y - 26));
+                    }
                     dc.DrawLine(PElastico, a, s);
                     if (EntradaDinamica) CaixasDinamicas(dc, inicio.Value, pf.Value, s, Ft);
                 }

@@ -474,22 +474,28 @@ namespace NovoFtool
             return true;
         }
 
-        // C1: direção da medida digitada. Segue o cursor em 3D (inclui o que sai do plano, ex.: snap a um ponto alto); se o mouse
-        // aponta, na tela, ao longo do eixo Z (a ±20°) e Z aparece na tela, vale a vertical (+Z ou -Z). Orto: só o eixo travado (3D puro).
-        // telaA/telaZ: tela do 1º ponto e de 1º ponto + 1 m em Z. null = sem direção (cursor sobre o 1º ponto).
-        public static Vector3D? DirecaoDigitada(Point3D a, Point3D? cursor3, Point telaA, Point telaZ, Point telaMouse, bool orto)
+        // C1: direção da medida digitada. Segue o ponto 3D do cursor (já com Polar/Orto/snap de objeto, inclusive ponto alto).
+        // Vertical (+Z/-Z) só pelo rastreio em Z: cursor a até 10 px da vertical que passa pelo 1º ponto (linha tracejada + "Z"),
+        // ou plano de trabalho de perfil na vista (cursor3 null). Chão visto de longe/de cima continua horizontal.
+        // telaA/telaZ: tela do 1º ponto e de 1º ponto + 1 m em Z. null = sem direção.
+        public static Vector3D? DirecaoDigitada(Point3D a, Point3D? cursor3, Point telaA, Point telaZ, Point telaMouse)
         {
-            Vector z = telaZ - telaA, m = telaMouse - telaA;
-            if (!orto && z.Length > 4 && m.Length > 6)
-            {
-                double ang = Math.Abs(Vector.AngleBetween(z, m));
-                if (ang < 20) return new Vector3D(0, 0, 1);
-                if (ang > 160) return new Vector3D(0, 0, -1);
-            }
+            int z = TrilhaZ(telaA, telaZ, telaMouse);
+            if (z != 0) return new Vector3D(0, 0, z);
             if (cursor3 == null) return null;
             Vector3D d = cursor3.Value - a;
             if (d.Length < 1e-9) return null;
             d.Normalize(); return d;
+        }
+
+        // Rastreio em Z: +1/-1 se o mouse está a ≤ 10 px da reta vertical (na tela) que passa pelo 1º ponto, para cima/baixo; 0 = fora.
+        public static int TrilhaZ(Point telaA, Point telaZ, Point telaMouse)
+        {
+            Vector z = telaZ - telaA, m = telaMouse - telaA;
+            if (z.Length < 4 || m.Length < 6) return 0;   // Z de ponta (vista de topo) ou mouse em cima do ponto
+            z.Normalize();
+            double perp = Math.Abs(m.X * z.Y - m.Y * z.X);
+            return perp <= 10 ? (Vector.Multiply(m, z) >= 0 ? 1 : -1) : 0;
         }
 
         // C2: grip só esquenta num clique (soltar a menos de 6 px de onde apertou); arrastar a partir dele não faz nada.
@@ -688,19 +694,25 @@ namespace NovoFtool
             Ok("\"2<90\" polar relativo = (1,4,3)", Perto(Snap3D.LerCoordenada("2<90", bb, pl), 1, 4, 3));
             Ok("\"1,x\" inválido", Snap3D.LerCoordenada("1,x", bb, pl) == null);
 
-            // --- C1: medida digitada segue o cursor em 3D; C2: limiar do grip ---
+            // --- C1: medida digitada segue o cursor em 3D; vertical só pelo rastreio em Z; C2: limiar do grip ---
             var A0 = new Point3D(0, 0, 0); Point tA = new Point(300, 400), tZ = new Point(300, 350);   // Z aparece 50 px/m para cima
-            var dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(380, 410), false);
-            Ok("C1 mouse na horizontal: direção do cursor no plano (+X)", dv1 != null && (dv1.Value - new Vector3D(1, 0, 0)).Length < 1e-9);
-            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(305, 300), false);
-            Ok("C1 mouse apontando para cima (eixo Z na tela): vertical +Z, não deitada", dv1 != null && (dv1.Value - new Vector3D(0, 0, 1)).Length < 1e-9);
-            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(298, 480), false);
-            Ok("C1 mouse para baixo ao longo de Z: vertical -Z", dv1 != null && (dv1.Value - new Vector3D(0, 0, -1)).Length < 1e-9);
-            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(3, 0, 4), tA, tZ, new Point(380, 410), false);
-            Ok("C1 cursor num ponto alto (snap): direção inclinada 3D (3,0,4)/5", dv1 != null && (dv1.Value - new Vector3D(0.6, 0, 0.8)).Length < 1e-9);
-            dv1 = Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(300, 300), true);
-            Ok("C1 Orto: respeita o eixo travado (+X), sem vertical", dv1 != null && (dv1.Value - new Vector3D(1, 0, 0)).Length < 1e-9);
-            Ok("C1 sem cursor sobre o 1º ponto: sem direção", Snap3D.DirecaoDigitada(A0, A0, tA, new Point(300, 400), new Point(300, 400), false) == null);
+            bool Igual(Vector3D? v, double x, double y, double zz) => v != null && (v.Value - new Vector3D(x, y, zz)).Length < 1e-9;
+            Ok("C1 mouse na horizontal: direção do cursor no plano (+X)", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(380, 410)), 1, 0, 0));
+            // chão se afastando do observador em 3 inclinações de vista: o cursor sobe na tela mas NÃO está sobre a vertical: fica horizontal
+            foreach (double pitch in new[] { 20.0, 35.0, 60.0 })
+            {
+                double k = Math.Cos(pitch * Math.PI / 180);   // 1 m de profundidade (+Y) sobe k*50 px na tela; Z sobe 50*cos(pitch) → escalas só mudam o tamanho
+                Point tZp = new Point(300, 400 - 50 * Math.Cos(pitch * Math.PI / 180)); Point cur = new Point(300 + 60, 400 - 60 * Math.Sin(pitch * Math.PI / 180) - 20);
+                Ok("C1 chão se afastando (pitch " + pitch + "°): fica horizontal (+Y)", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZp, cur), 0, 1, 0));
+            }
+            Ok("C1 cursor na linha de rastreio Z (a 4 px): vertical +Z", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(304, 300)), 0, 0, 1));
+            Ok("C1 rastreio Z para baixo: -Z", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(297, 480)), 0, 0, -1));
+            Ok("C1 11 px fora da linha Z: horizontal", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(0, 4, 0), tA, tZ, new Point(311, 300)), 0, 1, 0));
+            Ok("C1 cursor num ponto alto (snap): direção inclinada (3,0,4)/5", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(3, 0, 4), tA, tZ, new Point(380, 410)), 0.6, 0, 0.8));
+            Ok("C1 Polar 30° (cursor já atraído): a medida sai a 30°", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(4 * Math.Cos(Math.PI / 6), 4 * Math.Sin(Math.PI / 6), 0), tA, tZ, new Point(380, 360)), Math.Cos(Math.PI / 6), Math.Sin(Math.PI / 6), 0));
+            Ok("C1 Orto (cursor no eixo X) + rastreio Z: vertical ainda possível", Igual(Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(300, 300)), 0, 0, 1) && Igual(Snap3D.DirecaoDigitada(A0, new Point3D(4, 0, 0), tA, tZ, new Point(380, 400)), 1, 0, 0));
+            Ok("C1 plano de perfil (cursor3 nulo) fora da trilha: sem direção", Snap3D.DirecaoDigitada(A0, null, tA, tZ, new Point(380, 400)) == null);
+            Ok("C1 vista de topo (Z de ponta): nunca vertical", Snap3D.TrilhaZ(tA, tA, new Point(300, 300)) == 0);
             Ok("C2 5 px de arrasto ainda é clique no grip", Snap3D.CliqueNoGrip(new Vector(3, 4)));
             Ok("C2 6 px ou mais é arrasto: grip não esquenta", !Snap3D.CliqueNoGrip(new Vector(6, 0)) && !Snap3D.CliqueNoGrip(new Vector(4, 5)));
 
