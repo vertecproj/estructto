@@ -2510,7 +2510,7 @@ def _membros_geometria(dados):
         except KeyError:
             continue
         if p.get("tipo") == "I":
-            out.append(dict(barra=k[7:], perfil=v, d=p["h"] * 1e3, bf=p["b"] * 1e3, tw=p["tw"] * 1e3, tf=p["tf"] * 1e3,
+            out.append(dict(barra=k[7:], perfil=v, campo=k, d=p["h"] * 1e3, bf=p["b"] * 1e3, tw=p["tw"] * 1e3, tf=p["tf"] * 1e3,
                             apoio=str((dados or {}).get("apoio") or "")))
     return out
 
@@ -2529,6 +2529,8 @@ def verificar_ligacao(tipo, dados, esforcos):
         r["geometria"] = lig.geometria_basica(tipo, dados)
     if isinstance(r.get("geometria"), dict):
         r["geometria"].setdefault("membros", _membros_geometria(dados))
+        from .aco import ligacoes_campos as _lc   # `campo` de cada peça: o clique na peça leva ao campo (docs/v3/LIGACOES-EDITOR.md)
+        _lc.anotar(tipo, r["geometria"], dados, {c["nome"] for c in lig.esquema(tipo)} if hasattr(lig, "esquema") else set())
     return _puro(r)
 
 

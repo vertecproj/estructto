@@ -715,13 +715,17 @@ def verificar_gusset(dados, esforcos):
     _whitmore_cabe(casca, info, recuo, dirv, perp, av)
     cont = _para_local(casca, dirv, perp)
     par, sol = _geo_membro(info, recuo, dirv, perp, dirv, perp, tg, d["d_mm"])
+    for x in par:
+        x["campo"] = "d_mm"
+    for x in sol:
+        x["campo"] = "b_solda"
     trechos = ([(canto[0], canto[1])] if ap != "pilar" else []) + \
               ([(canto[0], canto[-1])] if ap in ("viga-pilar", "pilar") else [])
     for P0, P1 in trechos:
         (x0, z0), (x1, z1) = _para_local([P0, P1], dirv, perp)
         for lado in (1, -1):
             y = lado * tg / 2 / MM
-            sol.append(dict(tipo="filete", perna=bi / MM, pontos=[[x0 / MM, y, z0 / MM], [x1 / MM, y, z1 / MM]]))
+            sol.append(dict(tipo="filete", perna=bi / MM, campo="b_interface", pontos=[[x0 / MM, y, z0 / MM], [x1 / MM, y, z1 / MM]]))
     geo = dict(chapas=[_chapa("gusset", cont, tg)], cantoneiras=[], parafusos=par, soldas=sol,
                recortes=[dict(barra="diagonal", tipo="rasgo", parametros=dict(
                    # G6: o rasgo cobre a chapa dentro do tubo (l1 e a borda do contorno além dele) + a folga
@@ -827,12 +831,16 @@ def verificar_no_trelica(dados, esforcos):
         # rotaciona a direção da barra para o referencial local
         dl, pl = to_loc(dv), to_loc(pp)
         p_, s_ = _geo_membro(info, recuo, dl, pl, (1.0, 0.0), (0.0, 1.0), tg, d["d_mm"])
+        for x in p_:
+            x["campo"] = "d_mm"
+        for x in s_:
+            x["campo"] = f"b_solda_{i}"
         par += p_
         sol += s_
     for lado in (1, -1):
         if canto:
             a0, a1 = to_loc(canto[0]), to_loc(canto[1])
-            sol.append(dict(tipo="filete", perna=d["b_interface"],
+            sol.append(dict(tipo="filete", perna=d["b_interface"], campo="b_interface",
                             pontos=[[a0[0] / MM, lado * tg / 2 / MM, a0[1] / MM],
                                     [a1[0] / MM, lado * tg / 2 / MM, a1[1] / MM]]))
     geo = dict(chapas=[_chapa("gusset", cont, tg)], cantoneiras=[], parafusos=par, soldas=sol, recortes=[],

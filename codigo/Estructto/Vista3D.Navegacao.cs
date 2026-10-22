@@ -525,6 +525,16 @@ namespace NovoFtool
 
         // chapa/cantoneira de ligação sob o cursor no último Acertar (o Acertar devolve só barra/nó): o clique abre o campo da ligação
         PecaLig pecaSob;
+        public List<Point3D> CentrosParafusos() => render?.CentrosParafusos() ?? new List<Point3D>();
+        public PecaLig PecaLigSob => pecaSob;   // do último Acertar
+        // medição (capturas): ms por Acertar completo (sólidos + parafusos + analítico) em pixels sorteados
+        public (double ms, int parafusos) MedirClique(int n = 200)
+        {
+            var rnd = new Random(3); var sw = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < n; i++) Acertar(new Point(rnd.NextDouble() * ActualWidth, rnd.NextDouble() * ActualHeight));
+            return (sw.Elapsed.TotalMilliseconds / n, render?.NParafusosClicaveis ?? 0);
+        }
+        public void TesteClique(Point tela) => Clique(tela, ModifierKeys.None);   // autotestes: o que o botão solto sem arrasto faz
         public event Action<Ligacao3D, string> CliquePecaLig;
 
         // `ponto`: onde o raio tocou a peça (peça sólida do Sombreado/Render3D) ou o ponto do eixo da barra/nó achado na tela.
@@ -551,6 +561,13 @@ namespace NovoFtool
                 achado = render.Acertar(TranslatePoint(p, render.Vista), out Point3D? pr);
                 pt ??= pr;
                 if (achado is PecaLig pl) { pecaSob = pl; achado = null; }
+                if (render.NParafusosClicaveis > 0)   // parafusos (cabeça sobre a chapa): ganham se o raio os cruza antes do sólido
+                {
+                    var (ro, rd) = Raio(p);
+                    double lim = pr is Point3D hit ? (hit - ro).Length : double.MaxValue / 4;
+                    var pp = render.AcertarParafuso(ro, rd, lim);
+                    if (pp != null) { pecaSob = pp; achado = null; }
+                }
             }
             if (achado is Barra3D bb)   // sólido acertado: vale um nó dele a até 8 px
             {

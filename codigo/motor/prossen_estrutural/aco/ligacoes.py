@@ -998,15 +998,17 @@ def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False
         except (ValueError, KeyError, TypeError, ZeroDivisionError):
             return None
 
-    def falha(motivo, limitante=None, atingido=None):
+    def falha(motivo, limitante=None, atingido=None, campos=None, campo=None):
         return dict(ok=False, params={}, motivo=motivo, verificacao_limitante=limitante, limite_atingido=atingido or [],
+                    campos_limite=campos or [], campo_limitante=campo,
                     dados=original, resultado=rodar(original), passos=[], mudancas={})
 
     L0 = lim(cur)
     for k, f in L0.items():   # faixa vazia (ex.: apoio mais estreito que a chapa mínima): para antes de buscar
         if f["max"] is not None and f["min"] > f["max"] + 1e-9:
             return falha(f"sem solução dentro dos limites: {k} mínimo {round(f['min'], 4):g} {f['unidade']} > máximo "
-                         f"{round(f['max'], 4):g} {f['unidade']} (limite do apoio/barra) — nada alterado", None, [k])
+                         f"{round(f['max'], 4):g} {f['unidade']} (limite do apoio/barra) — nada alterado", None, [k],
+                         [dict(campo=k, tipo="faixa_vazia")], k)
     botoes = _botoes_limitados(tipo, campos, L0, cur)
     nomes_b = {b[0] for b in botoes}
     espac = [k for k in L0 if re.sub(r"_\d$", "", k) in _ESPAC and k not in nomes_b]
@@ -1119,10 +1121,18 @@ def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False
         topo += [f"{n}: próximo degrau viola disposição construtiva ou geometria" for n in dict.fromkeys(barrados)
                  if not any(t.startswith(n + " =") for t in topo)]
         nome = pior["nome"] if pior else "?"
+        papel = {b[0]: b[1] for b in botoes}
+        campos_lim = [dict(campo=n, valor=cur.get(n), tipo="no_maximo") for n, _p, lista in botoes
+                      if _num(cur.get(n)) and float(cur[n]) >= lista[-1] - 1e-9]
+        campos_lim += [dict(campo=n, valor=cur.get(n), tipo="degrau_barrado") for n in dict.fromkeys(barrados)
+                       if not any(c["campo"] == n for c in campos_lim)]
+        nn = nome.lower()   # o campo limitante é o do tipo de verificação que governa: solda, parafuso (diâmetro/quantidade) ou chapa
+        papeis = (0,) if ("solda" in nn or "filete" in nn) else (2, 3) if ("parafus" in nn or "pino" in nn) else (1, 4)
+        campo_lim = next((c["campo"] for c in campos_lim if papel.get(c["campo"]) in papeis), campos_lim[0]["campo"] if campos_lim else None)
         return falha(f"sem solução dentro dos limites: '{nome}' governa com taxa {_nota(r_or):.2f} nos dados atuais; "
                      f"a busca chegou a {_nota(r):.2f}"
                      + (f"; no limite: {', '.join(topo)}" if topo else "; nenhum degrau dentro dos limites reduz a taxa")
-                     + " — nada alterado", nome, topo)
+                     + " — nada alterado", nome, topo, campos_lim, campo_lim)
     mudou = True   # descida: menos material enquanto passa (do item mais caro para o mais barato)
     while mudou:
         mudou = False
@@ -1137,7 +1147,7 @@ def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False
                 cur, r, mudou = cand, rc, True
     mud = {k: [original.get(k), v] for k, v in cur.items() if original.get(k) != v}
     return dict(ok=True, params={k: v[1] for k, v in mud.items()}, motivo=None, verificacao_limitante=None,
-                limite_atingido=[], dados=cur, resultado=r, passos=passos, mudancas=mud)
+                limite_atingido=[], campos_limite=[], campo_limitante=None, dados=cur, resultado=r, passos=passos, mudancas=mud)
 
 
 # --- memorial: seção HTML com as verificações (expressão pelo item da norma, valores e taxa)

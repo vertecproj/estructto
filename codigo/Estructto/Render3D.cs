@@ -258,7 +258,8 @@ namespace NovoFtool
         static Color CorAco => Aco == Acabamento.Primer ? TemaPlant.CorPrimer3D : Aco == Acabamento.Pintado ? TemaPlant.CorAcoPintado3D : TemaPlant.CorAco3D;
         public static Color CorBase(bool concreto) => concreto ? TemaPlant.CorConcreto3D : CorAco;
 
-        public sealed class Montagem { public MalhaDx Aco, Conc, Sel, Arestas, Paraf, Solda, Prop, PropDet; public int Propostas, NLig; public double LargSecao = 0.3; }
+        public sealed class ParafPick { public Ligacao3D Lig; public string Campo; public Point3D A; public Vector3D V; public double R; }
+        public sealed class Montagem { public readonly List<ParafPick> Parafs = new List<ParafPick>(); public MalhaDx Aco, Conc, Sel, Arestas, Paraf, Solda, Prop, PropDet; public int Propostas, NLig; public double LargSecao = 0.3; }
 
         public void Montar(Cena3D c)
         {
@@ -268,7 +269,7 @@ namespace NovoFtool
             MalhaDx mallAco = g.Aco, mallConc = g.Conc, mallSel = g.Sel, arestas = g.Arestas, mallParaf = g.Paraf, mallSolda = g.Solda, mallProp = g.Prop, mallPropDet = g.PropDet;
             var mallChao = new MalhaDx(); Chao(c, mallChao);
 
-            faixas.Clear();
+            faixas.Clear(); pickParaf = g.Parafs;
             Aplicar(mAco, mallAco); Aplicar(mConcreto, mallConc); Aplicar(mSel, mallSel); Aplicar(mParafusos, mallParaf); Aplicar(mSoldas, mallSolda); Aplicar(mChao, mallChao); Aplicar(mProp, mallProp); Aplicar(mPropDet, mallPropDet);
             var mallCargas = new MalhaDx();
             if (c.Cargas != null)
@@ -539,7 +540,7 @@ namespace NovoFtool
                     Point[] ct = ch.Contorno.Select(p => new Point(p.X / 1000, p.Y / 1000)).ToArray();
                     Point3D org = W(ch.Origem);
                     if (ch.Nome == "gusset" && l.ApoioDir == null) for (int it = 0; it < 3; it++) foreach (Barra3D sup in mod.Barras.Where(q => q != b && (q.Ni == l.No || q.Nj == l.No))) org += FolgaGusset(org, uu, ww, nn, ct, ch.Espessura / 1000, sup, x);   // cada peça do nó (3 voltas: um afastamento pode empurrar para outra)
-                    if (!l.Proposta) mallChapas.Marcar(new PecaLig { Lig = l, Tag = TagLig.Chapa(ch.Nome) });   // clique na chapa: vai ao campo (sem isso o picking dava a última barra)
+                    if (!l.Proposta && !string.IsNullOrEmpty(ch.Campo)) mallChapas.Marcar(new PecaLig { Lig = l, Tag = ch.Campo }); else mallChapas.Marcar(null);   // clique na chapa: vai ao campo (sem isso o picking dava a última barra)
                     mallChapas.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false);
                     if (coleta != null) { var sc = new MalhaDx(); sc.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false); coleta.Add(new Peca3D { Nome = NomeLig(l) + " " + ch.Nome, Tipo = "chapa", M = sc, Lig = l, Excluir = l.Excluir }); }
                     arestas.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, true, false);
@@ -551,7 +552,7 @@ namespace NovoFtool
                     Vector3D ex = Wv(ca.Eixo), uu = Wv(ca.U); if (ex.Length < 0.5 || uu.Length < 0.5) continue;
                     Vector3D vv = Vector3D.CrossProduct(ex, uu);   // ponytail: triedro direito no mundo (a aba pode sair espelhada no referencial canhoto)
                     Point3D pa = W(ca.Origem), pb = pa + ex * (ca.Comprimento / 1000);
-                    if (!l.Proposta) mallChapas.Marcar(new PecaLig { Lig = l, Tag = TagLig.Cantoneira });
+                    if (!l.Proposta && !string.IsNullOrEmpty(ca.Campo)) mallChapas.Marcar(new PecaLig { Lig = l, Tag = ca.Campo }); else mallChapas.Marcar(null);
                     Render3DGeometria.Extrudar(mallChapas, f, pa, pb, uu, vv, null, null, corChapa, false);
                     if (coleta != null) { var sc = new MalhaDx(); Render3DGeometria.Extrudar(sc, f, pa, pb, uu, vv, null, null, corChapa, false); coleta.Add(new Peca3D { Nome = NomeLig(l) + " cantoneira", Tipo = "cantoneira", M = sc, Lig = l, Excluir = l.Excluir }); }
                     Render3DGeometria.Extrudar(arestas, f, pa, pb, uu, vv, null, null, corChapa, true, false);
@@ -559,6 +560,8 @@ namespace NovoFtool
                 foreach (var pf in l.Parafusos)
                 {
                     Render3DGeometria.Parafuso(mallP, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000);
+                    // clique no parafuso: teste raio x segmento por parafuso (sem octree na malha das ligações, que é grande)
+                    if (!l.Proposta && !string.IsNullOrEmpty(pf.Campo)) g.Parafs.Add(new ParafPick { Lig = l, Campo = pf.Campo, A = W(pf.Origem), V = Wv(pf.Eixo) * (pf.Comprimento / 1000), R = Math.Max(0.9 * pf.D / 1000, 0.006) });
                     if (coleta != null) { var sp = new MalhaDx(); Render3DGeometria.Parafuso(sp, W(pf.Origem), Wv(pf.Eixo), pf.D / 1000, pf.Comprimento / 1000, corParaf, pf.Pega / 1000); coleta.Add(new Peca3D { Nome = "parafuso · " + NomeLig(l), Tipo = "parafuso", M = sp, Lig = l, Excluir = true }); }
                 }
                 foreach (var sd in l.Soldas) if (sd.Pontos != null && sd.Pontos.Length >= 2) Render3DGeometria.Cordao(mallS, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, x);
@@ -664,6 +667,42 @@ namespace NovoFtool
 
         // Barra sob o pixel (coordenadas da Vista): a mais próxima da câmera; chapas, parafusos e chão não contam.
         // `ponto`: o 1º toque fora do chão (barra, chapa ou parafuso), para o pivô da órbita e o zoom no cursor.
+        List<ParafPick> pickParaf = new List<ParafPick>();
+        public int NParafusosClicaveis => pickParaf.Count;
+        public List<Point3D> CentrosParafusos() => pickParaf.Select(b => b.A + b.V / 2).ToList();   // autotestes
+
+        // Parafuso mais perto do olho cruzado pelo raio (distância raio–eixo ≤ raio da cabeça): O(n) simples, ~0,2 µs por parafuso.
+        // `antes`: só vale se o ponto de contato fica antes de `limite` (distância do olho ao 1º sólido) + meio parafuso.
+        public PecaLig AcertarParafuso(Point3D o, Vector3D d, double limite) => AcertarParafuso(pickParaf, o, d, limite);
+
+        public static PecaLig AcertarParafuso(List<ParafPick> lista, Point3D o, Vector3D d, double limite)
+        {
+            PecaLig melhor = null; double tm = double.MaxValue;
+            foreach (var b in lista)
+            {
+                Vector3D w0 = b.A - o, v = b.V; double a = Vector3D.DotProduct(v, v); if (a < 1e-12) continue;
+                double bb = Vector3D.DotProduct(v, d), c = Vector3D.DotProduct(d, d), dd = Vector3D.DotProduct(v, w0), ee = Vector3D.DotProduct(d, w0);
+                double den = a * c - bb * bb; if (den < 1e-12) continue;
+                double s = Math.Max(0, Math.Min(1, (bb * ee - c * dd) / den));   // ponto do eixo (0..1)
+                double t = (bb * s + ee) / c; if (t < 0) continue;
+                Vector3D q = (b.A + v * s) - (o + d * t);
+                if (q.Length > b.R || t > limite + v.Length * 0.5 + 0.02 || t >= tm) continue;
+                tm = t; melhor = new PecaLig { Lig = b.Lig, Tag = b.Campo, T = t };
+            }
+            return melhor;
+        }
+
+        // medição (capturas): ms por clique do teste de parafusos com n parafusos espalhados (≈ 30 m de obra)
+        public static double MedirParafusos(int n, int cliques = 500)
+        {
+            var rnd = new Random(7); var lista = new List<ParafPick>();
+            for (int i = 0; i < n; i++) lista.Add(new ParafPick { Lig = null, Campo = "d", A = new Point3D(rnd.NextDouble() * 30, rnd.NextDouble() * 30, rnd.NextDouble() * 30), V = new Vector3D(0, 0.06, 0), R = 0.014 });
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            for (int k = 0; k < cliques; k++)
+                AcertarParafuso(lista, new Point3D(rnd.NextDouble() * 30, -20, rnd.NextDouble() * 30), new Vector3D(0, 1, 0), 40);
+            return sw.Elapsed.TotalMilliseconds / cliques;
+        }
+
         public object Acertar(Point p) => Acertar(p, out _);
 
         public object Acertar(Point p, out Point3D? ponto)

@@ -18,33 +18,14 @@ using static NovoFtool.UiAnalise;
 
 namespace NovoFtool
 {
-    // Cada peça desenhada carrega "<secao>.<campo>|<campo alternativo>...": a janela de projeto usa o 1o campo que o padrao tem
-    // (docs/v3/LIGACOES-EDITOR.md). Secao em JanelaLigacaoProjeto.Secao; "barras" = passo 1 (perfis).
-    public static class TagLig
-    {
-        public const string Parafuso = "Parafusos.d|d_mm|d_mesa_mm|d_alma_mm|n";
-        public const string Solda = "Soldas.b_solda|b_solda_mesa|b_solda_pilar|solda_mesa|b_solda_alma|b_interface|b";
-        public const string Cantoneira = "Chapa.cantoneira|cantoneira_superior";
-        public const string Viga = "barras.perfil_viga|perfil_1|perfil_barra";
-        public const string Suporte = "barras.perfil_suporte|perfil_pilar|apoio";
-        public static string Chapa(string nome)
-        {
-            string n = (nome ?? "").ToLowerInvariant();
-            if (n.Contains("enrij")) return "Enrijecedores.t_enrijecedor|t_enr_pilar|t_reforco";
-            if (n.Contains("tala") && n.Contains("alma")) return "Chapa.t_tala_alma";
-            if (n.Contains("tala")) return "Chapa.t_tala_mesa";
-            if (n.Contains("gusset")) return "Chapa.t_gusset|e_gusset|t_chapa";
-            if (n.Contains("assento")) return "Chapa.t_assento|t_chapa";
-            return "Chapa.t_chapa|tp|t|t_mesa|t_gusset|t_orelha";
-        }
-    }
+    // Cada peça desenhada carrega Tag = campo editável que o MOTOR pôs na peça do contrato (`campo`; ligacoes_campos.py).
 
     public class GeoLig
     {
         // Camada: 0 perfil ligado, 1 chapa, 2 cantoneira. Grupo de falha: viga, suporte, chapas, cantoneiras.
         public class Prisma { public string Nome = "", Grupo = ""; public Point3D[] Base; public Vector3D N; public double T; public int Camada; public bool Falha; public string Tag = ""; }
-        public class Paraf { public Point3D O; public Vector3D E; public double D, L, Pega; public bool Falha; public string Tag = TagLig.Parafuso; }
-        public class Cordao { public Point3D[] P; public double Perna; public bool Falha; public string Tag = TagLig.Solda; }
+        public class Paraf { public Point3D O; public Vector3D E; public double D, L, Pega; public bool Falha; public string Tag = ""; }
+        public class Cordao { public Point3D[] P; public double Perna; public bool Falha; public string Tag = ""; }
 
         public readonly List<Prisma> Pecas = new List<Prisma>();
         public readonly List<Paraf> Parafs = new List<Paraf>();
@@ -79,7 +60,7 @@ namespace NovoFtool
                 var v = c["v"] is JsonArray ? V3(c["v"], new Vector3D()) : Vector3D.CrossProduct(n, u);
                 var pts = Lista(c["contorno"]).OfType<JsonArray>().Where(p => p.Count >= 2).Select(p => o + D(p[0]) * u + D(p[1]) * v).ToArray();
                 double t = D(c, "espessura");
-                if (pts.Length >= 3 && Ok(t)) r.Pecas.Add(new Prisma { Base = pts, N = n, T = t, Camada = 1, Grupo = "chapas", Nome = S(c, "nome"), Falha = F("chapas"), Tag = TagLig.Chapa(S(c, "nome")) });
+                if (pts.Length >= 3 && Ok(t)) r.Pecas.Add(new Prisma { Base = pts, N = n, T = t, Camada = 1, Grupo = "chapas", Nome = S(c, "nome"), Falha = F("chapas"), Tag = S(c, "campo") });
             }
             foreach (var c in Lista(g["cantoneiras"]))
             {
@@ -98,8 +79,8 @@ namespace NovoFtool
                 if (!Ok(b2)) b2 = b1;
                 if (!Ok(L) || !Ok(b1) || !Ok(t)) continue;
                 var o1 = o + w * t / 2; var o2 = o + u * t / 2;
-                r.Pecas.Add(new Prisma { Base = new[] { o1, o1 + u * b1, o1 + u * b1 + e * L, o1 + e * L }, N = w, T = t, Camada = 2, Grupo = "cantoneiras", Nome = S(c, "perfil"), Falha = F("cantoneiras"), Tag = TagLig.Cantoneira });
-                r.Pecas.Add(new Prisma { Base = new[] { o2, o2 + w * b2, o2 + w * b2 + e * L, o2 + e * L }, N = u, T = t, Camada = 2, Grupo = "cantoneiras", Nome = S(c, "perfil"), Falha = F("cantoneiras"), Tag = TagLig.Cantoneira });
+                r.Pecas.Add(new Prisma { Base = new[] { o1, o1 + u * b1, o1 + u * b1 + e * L, o1 + e * L }, N = w, T = t, Camada = 2, Grupo = "cantoneiras", Nome = S(c, "perfil"), Falha = F("cantoneiras"), Tag = S(c, "campo") });
+                r.Pecas.Add(new Prisma { Base = new[] { o2, o2 + w * b2, o2 + w * b2 + e * L, o2 + e * L }, N = u, T = t, Camada = 2, Grupo = "cantoneiras", Nome = S(c, "perfil"), Falha = F("cantoneiras"), Tag = S(c, "campo") });
             }
             foreach (var p in Lista(g["parafusos"]).Concat(Lista(g["porcas"])))
             {
@@ -107,12 +88,12 @@ namespace NovoFtool
                 var e = V3(p["eixo"], new Vector3D(0, -1, 0)); e.Normalize();
                 double L = D(p, "comprimento"); if (!Ok(L)) L = 1.2 * d;
                 double pega = D(p, "pega"); if (!Ok(pega)) pega = Math.Max(d * 0.5, L - 1.2 * d);
-                if (Ok(d) && p["origem"] is JsonArray) r.Parafs.Add(new Paraf { O = P3(p["origem"]), E = e, D = d, L = L, Pega = pega, Falha = F("parafusos"), Tag = TagLig.Parafuso });
+                if (Ok(d) && p["origem"] is JsonArray) r.Parafs.Add(new Paraf { O = P3(p["origem"]), E = e, D = d, L = L, Pega = pega, Falha = F("parafusos"), Tag = S(p, "campo") });
             }
             foreach (var s in Lista(g["soldas"]))
             {
                 var pts = Lista(s["pontos"]).OfType<JsonArray>().Select(P3).ToArray();
-                if (pts.Length >= 2) r.Soldas.Add(new Cordao { P = pts, Perna = Ok(D(s, "perna")) ? D(s, "perna") : 5, Falha = F("soldas"), Tag = TagLig.Solda });
+                if (pts.Length >= 2) r.Soldas.Add(new Cordao { P = pts, Perna = Ok(D(s, "perna")) ? D(s, "perna") : 5, Falha = F("soldas"), Tag = S(s, "campo") });
             }
             // perfis ligados (projeto.verificar_ligacao → geometria.membros) posicionados pelo contrato
             double xPonta = double.NaN, cs = 0, hs = 0, ci = 0, hi = 0;
@@ -139,6 +120,7 @@ namespace NovoFtool
                 double d = D(mb, "d"), bf = D(mb, "bf"), tw = D(mb, "tw"), tf = D(mb, "tf");
                 if (!Ok(d) || !Ok(bf) || !Ok(tw) || !Ok(tf)) continue;
                 string papel = S(mb, "barra");
+                string tgm = S(mb, "campo");   // campo do perfil no padrão (motor); sem campo (viga esquemática) = não editável
                 bool passante = Lista(g["membros"]).Count() == 1 && xMinLig < -1;   // emenda: a barra passa pelo nó (x < 0 e x > 0)
                 if (papel == "viga" || passante)
                 {
@@ -152,9 +134,9 @@ namespace NovoFtool
                     web.Add(new Point(x1, -d / 2 + tf)); web.Add(new Point(x1, d / 2 - tf));
                     if (hs > 0) { web.Add(new Point(x0 + cs, d / 2 - tf)); web.Add(new Point(x0 + cs, d / 2 - hs)); web.Add(new Point(x0, d / 2 - hs)); }
                     else web.Add(new Point(x0, d / 2 - tf));
-                    r.Pecas.Add(new Prisma { Base = web.Select(q => new Point3D(q.X, 0, q.Y)).ToArray(), N = new Vector3D(0, 1, 0), T = tw, Camada = 0, Grupo = "viga", Nome = r.NomeViga, Falha = fv, Tag = TagLig.Viga });
-                    r.Pecas.Add(Caixa(x0 + (hs > 0 ? cs : 0), x1, -bf / 2, bf / 2, d / 2 - tf, d / 2, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = TagLig.Viga;
-                    r.Pecas.Add(Caixa(x0 + (hi > 0 ? ci : 0), x1, -bf / 2, bf / 2, -d / 2, -d / 2 + tf, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = TagLig.Viga;
+                    r.Pecas.Add(new Prisma { Base = web.Select(q => new Point3D(q.X, 0, q.Y)).ToArray(), N = new Vector3D(0, 1, 0), T = tw, Camada = 0, Grupo = "viga", Nome = r.NomeViga, Falha = fv, Tag = tgm });
+                    r.Pecas.Add(Caixa(x0 + (hs > 0 ? cs : 0), x1, -bf / 2, bf / 2, d / 2 - tf, d / 2, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = tgm;
+                    r.Pecas.Add(Caixa(x0 + (hi > 0 ? ci : 0), x1, -bf / 2, bf / 2, -d / 2, -d / 2 + tf, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = tgm;
                 }
                 else
                 {
@@ -182,7 +164,7 @@ namespace NovoFtool
                         lst.Add(Caixa(d / 2 - tf, d / 2, -bf / 2, bf / 2, z0, z1, 0, "suporte"));
                         lst.Add(Caixa(-d / 2, -d / 2 + tf, -bf / 2, bf / 2, z0, z1, 0, "suporte"));
                     }
-                    foreach (var q in lst) { q.Falha = F("suporte"); q.Nome = r.NomeSuporte; q.Tag = TagLig.Suporte; }
+                    foreach (var q in lst) { q.Falha = F("suporte"); q.Nome = r.NomeSuporte; q.Tag = tgm; }
                     r.Pecas.InsertRange(0, lst);
                 }
             }
@@ -339,7 +321,7 @@ namespace NovoFtool
             }
         }
 
-        // clique sem arrastar numa peca: tag "<secao>.<campo>" (TagLig) ou null
+        // clique sem arrastar numa peca: Tag (campo do contrato) ou null
         public event Action<string> ClicouPeca;
         Func<Point3D, Point> proj; (Vector3D R, Vector3D U, Vector3D F) bs; double escUlt;
         Point? descida;
@@ -354,7 +336,7 @@ namespace NovoFtool
             for (int a = 0; a <= 8; a++) for (int b = 0; b <= 8; b++)
             {
                 var q = new Point(x0 + (x1 - x0) * (0.1 + 0.1 * a), y0 + (y1 - y0) * (0.1 + 0.1 * b));
-                if (PecaEm(q) is string t && t.StartsWith("Chapa.")) return q;
+                if (PecaEm(q) is string t && !string.IsNullOrEmpty(t) && geo.Pecas.Any(z => z.Camada == 1 && z.Tag == t)) return q;
             }
             return null;
         }
@@ -364,10 +346,11 @@ namespace NovoFtool
             if (geo == null || proj == null) return null;
             foreach (var b in geo.Parafs)
             {
+                if (string.IsNullOrEmpty(b.Tag)) continue;
                 double r = Math.Max(5, b.D * escUlt * 0.8);
                 if ((proj(b.O) - p).Length <= r || (proj(b.O + b.E * b.Pega) - p).Length <= r) return b.Tag;
             }
-            foreach (var s in geo.Soldas)
+            foreach (var s in geo.Soldas.Where(q => !string.IsNullOrEmpty(q.Tag)))
             {
                 var sp = s.P.Select(proj).ToList();
                 for (int i = 1; i < sp.Count; i++) if (DistSeg(p, sp[i - 1], sp[i]) <= 4) return s.Tag;

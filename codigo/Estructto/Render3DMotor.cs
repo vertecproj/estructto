@@ -255,7 +255,7 @@ namespace NovoFtool
                             if (proposta) { perfis = new JsonObject(); foreach (var kv in dados) perfis[kv.Key] = kv.Value?.DeepClone(); dados = new JsonObject(); }
                         }
                         JsonObject geo = proposta && perfis == null ? null : await Geometria(tl, dados, perfis);
-                        if (geo != null) lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]);
+                        if (geo != null) { lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]); lig.Grupo = (string)g["id"]; }
                         // G6: o contrato tem o centroide do U no eixo (costas da alma em y = −abertura·xg); o WPF desenha o U pelo
                         // retângulo envolvente (costas em u = −B/2): o Render3D anda a origem DeslU em u
                         if (lig != null && ehU && tl != "gusset_contraventamento") lig.DeslU = Prop(sec, "xg") - Prop(sec, "b") / 2;

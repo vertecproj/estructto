@@ -20,6 +20,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Portico;
 using static NovoFtool.UiPlaca;
@@ -56,7 +57,7 @@ namespace NovoFtool
         readonly HashSet<string> abertos = new HashSet<string> { "Chapa", "Parafusos", "Soldas", "Barra 1" };
         readonly Dictionary<string, FrameworkElement> celulas = new Dictionary<string, FrameworkElement>();   // campo -> célula (clique na peça rola até ela)
         readonly DispatcherTimer tDestaque = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-        Panel celDestaque; ScrollViewer rolagemPassos;
+        ScrollViewer rolagemPassos;
         JsonNode semSolucao; string campoLimitante;   // otimizador sem solução: faixa vermelha com o motivo e o botão para o campo
         string tipo, busca = "", familiaFiltro = "", filtroComp, status = "", erro;
         bool soDoGrupo = true, calculando, ocupado;
@@ -79,7 +80,7 @@ namespace NovoFtool
             MinWidth = 1180; MinHeight = 700;
             Content = Raiz(hostCab, hostCorpo, hostRodape);
             espera.Tick += async (s, e) => { espera.Stop(); await CalcularAgora(); };
-            tDestaque.Tick += (s, e) => { tDestaque.Stop(); if (celDestaque != null) celDestaque.Background = null; celDestaque = null; };
+            tDestaque.Tick += (s, e) => { tDestaque.Stop(); if (celDestaque != null) { celDestaque.Background = Brushes.Transparent; celDestaque.BorderBrush = Brushes.Transparent; } celDestaque = null; campoDestaque = null; };
             foreach (var v in vistas) v.ClicouPeca += IrParaTag;
             tipo = tipos.Any(x => S(x, "tipo") == tipoInicial) ? tipoInicial : null;
             Montar();
@@ -244,7 +245,7 @@ namespace NovoFtool
         public async Task Escolher(string id, bool sugerir = true)
         {
             if (Tipo(id) == null) return;
-            tipo = id; resultado = null; erro = null; filtroComp = null; aplicado = null; abaRes = 0; realces.Clear(); status = ""; semSolucao = null;
+            tipo = id; resultado = null; erro = null; filtroComp = null; aplicado = null; abaRes = 0; realces.Clear(); status = ""; semSolucao = null; aviso = null;
             Montar();
             if (sugerir && grupo != null && Bool(Tipo(), "sugerir")) await Sugerir(); else await CalcularAgora();
         }
@@ -264,8 +265,23 @@ namespace NovoFtool
         }
         public void AbrirTodasSecoes() { foreach (var c in Campos(Tipo())) { string sc = Secao(c); if (sc != "barras") abertos.Add(sc); } Montar(); }
         public bool TemTipo => tipo != null;
+        // teste: cada peça da geometria atual (perfis, chapas, cantoneiras, parafusos, soldas) tem um Tag que resolve a um campo do padrão
+        public List<string> PecasSemCampo()
+        {
+            var r = new List<string>(); var g = GeoLig.De(resultado?["geometria"]);
+            foreach (var p in g.Pecas.Where(q => q.Camada > 0 || q.Tag != "")) if (CampoDoTag(p.Tag) == null) r.Add((p.Camada == 0 ? "perfil " : "") + p.Grupo + " " + p.Nome + " [" + p.Tag + "]");
+            foreach (var b in g.Parafs) if (CampoDoTag(b.Tag) == null) r.Add("parafuso [" + b.Tag + "]");
+            foreach (var s in g.Soldas) if (CampoDoTag(s.Tag) == null) r.Add("solda [" + s.Tag + "]");
+            return r.Distinct().ToList();
+        }
         public bool SemSolucao => semSolucao != null;
-        public string CampoDoDestaque => celDestaque == null ? null : celulas.FirstOrDefault(kv => kv.Value == celDestaque).Key;
+        public IEnumerable<string> NomesSecoes(string id)
+        {
+            var ant = tipo; tipo = id;
+            try { return Campos(Tipo(id)).Select(Secao).Where(x => x != "barras" && x != "Materiais e opções" && !x.StartsWith("Barra")).Distinct().ToList(); }
+            finally { tipo = ant; }
+        }
+        public void RecolherSecoes() { abertos.Clear(); Montar(); }
 
         public async Task Sugerir()
         {
@@ -532,7 +548,7 @@ namespace NovoFtool
         void Mudou(string campo = null)
         {
             if (campo != null) realces.Remove(campo);
-            status = ""; aplicado = null; semSolucao = null; if (abaRes == 1 && grupo == null) abaRes = 0;
+            status = ""; aplicado = null; semSolucao = null; aviso = null; if (abaRes == 1 && grupo == null) abaRes = 0;
             MontarPassos();
             Agendar();
         }
@@ -574,6 +590,7 @@ namespace NovoFtool
             var t = Tipo();
             var sp = new StackPanel();
             celulas.Clear();
+            if (aviso != null) sp.Children.Add(FaixaAviso());
             if (semSolucao != null) sp.Children.Add(FaixaSemSolucao());
             // tipo escolhido
             var topo = new DockPanel { Margin = new Thickness(2, 0, 0, 10) };
@@ -646,21 +663,32 @@ namespace NovoFtool
         }
 
         // ---- editor por componente: clique na peça -> seção aberta, campo rolado à vista e destacado 1,5 s
-        // tag "<secao>.<campo>|<alternativa>..." (TagLig); vale o 1º campo que o padrão tem
+        // tag = campo que o motor pôs na peça (contrato `campo`), ou candidatos "a|b" (perfis); vale o 1º que o padrão tem
         string CampoDoTag(string tag)
         {
-            int i = (tag ?? "").IndexOf('.');
-            if (i < 0 || tipo == null) return null;
+            if (string.IsNullOrEmpty(tag) || tipo == null) return null;
             var nomes = Campos(Tipo()).Select(c => S(c, "nome")).ToHashSet();
-            return tag.Substring(i + 1).Split('|').FirstOrDefault(nomes.Contains);
+            return tag.Split('|').FirstOrDefault(nomes.Contains);
         }
 
         public void IrParaTag(string tag)
         {
             string campo = CampoDoTag(tag);
             if (campo != null) { IrParaCampo(campo); return; }
-            status = "Esta peça não tem campo para editar neste padrão."; MontarStatus();
+            Avisar("Esta peça não tem um campo para editar neste padrão.");
         }
+
+        // faixa âmbar no topo do passo 2 (some sozinha em 5 s ou ao editar), além da barra de status
+        string aviso; readonly DispatcherTimer tAviso = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        void Avisar(string msg)
+        {
+            aviso = msg; status = msg; MontarPassos(); MontarStatus();
+            tAviso.Stop(); tAviso.Tick -= FimAviso; tAviso.Tick += FimAviso; tAviso.Start();
+        }
+        void FimAviso(object s, EventArgs e) { tAviso.Stop(); if (aviso == null) return; aviso = null; MontarPassos(); }
+
+        Border celDestaque; string campoDestaque;
+        public string CampoDoDestaque => campoDestaque;
 
         public void IrParaCampo(string campo)
         {
@@ -670,49 +698,61 @@ namespace NovoFtool
             if (sec != "barras" && abertos.Add(sec)) MontarPassos();
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
-                if (!celulas.TryGetValue(campo, out var el)) return;
+                if (!celulas.TryGetValue(campo, out var el) || !(el is Border bd)) return;
                 el.BringIntoView();
-                if (celDestaque != null) celDestaque.Background = null;
-                celDestaque = el as Panel;
-                if (celDestaque != null) celDestaque.Background = TemaPlant.B(TemaPlant.Acento, 70);
-                tDestaque.Stop(); tDestaque.Start();
+                if (celDestaque != null && celDestaque != bd) { celDestaque.BeginAnimation(Border.OpacityProperty, null); celDestaque.Background = Brushes.Transparent; celDestaque.BorderBrush = Brushes.Transparent; }
+                celDestaque = bd; campoDestaque = campo;
+                var ac = TemaPlant.Acento;
+                var fundo = new SolidColorBrush(Color.FromArgb(120, ac.R, ac.G, ac.B)); var borda = new SolidColorBrush(ac);
+                bd.Background = fundo; bd.BorderBrush = borda;
+                if (!Capturas.Ativo)   // 1,5 s: cheio por 0,9 s e some em 0,6 s (nas capturas fica cheio, para a imagem mostrar)
+                {
+                    ColorAnimationUsingKeyFrames Anim(Color de) => new ColorAnimationUsingKeyFrames
+                    {
+                        KeyFrames = { new LinearColorKeyFrame(de, TimeSpan.Zero), new LinearColorKeyFrame(de, TimeSpan.FromMilliseconds(900)),
+                                      new LinearColorKeyFrame(Color.FromArgb(0, de.R, de.G, de.B), TimeSpan.FromMilliseconds(1500)) }
+                    };
+                    fundo.BeginAnimation(SolidColorBrush.ColorProperty, Anim(fundo.Color)); borda.BeginAnimation(SolidColorBrush.ColorProperty, Anim(borda.Color));
+                }
+                tDestaque.Stop(); if (!Capturas.Ativo) tDestaque.Start();   // capturas: o destaque fica (a imagem o mostra)
             }));
         }
 
+        // campo(s) onde o otimizador parou: estruturado (campo_limitante / campos_limite do motor), sem ler texto
         string CampoLimitante(JsonNode r)
         {
             var nomes = Campos(Tipo()).Select(c => S(c, "nome")).ToHashSet();
-            foreach (var x in Lista(r["limite_atingido"]))
-            {
-                var m = System.Text.RegularExpressions.Regex.Match(x?.ToString() ?? "", @"^\s*([A-Za-z_][A-Za-z0-9_]*)");
-                if (m.Success && nomes.Contains(m.Groups[1].Value)) return m.Groups[1].Value;
-            }
-            string lim = S(r, "verificacao_limitante");
-            if (lim == "") return null;
-            switch (GrupoDe(lim))
-            {
-                case "parafusos": return CampoDoTag(TagLig.Parafuso);
-                case "soldas": return CampoDoTag(TagLig.Solda);
-                case "cantoneiras": return CampoDoTag(TagLig.Cantoneira);
-                case "chapas": return CampoDoTag(TagLig.Chapa(lim));
-                default: return null;
-            }
+            string c1 = S(r, "campo_limitante");
+            return nomes.Contains(c1) ? c1 : Lista(r["campos_limite"]).Select(x => S(x, "campo")).FirstOrDefault(nomes.Contains);
         }
 
         FrameworkElement FaixaSemSolucao()
         {
             var f = new StackPanel();
             f.Children.Add(Tx("✕ Sem solução — nada foi alterado", 12.5, TemaPlant.BErro, FontWeights.SemiBold));
-            var m = Tx(S(semSolucao, "motivo") != "" ? S(semSolucao, "motivo") : "O otimizador não achou uma combinação que passe dentro dos limites.", 11.5, TemaPlant.BTexto1, null, true);
+            string ver = S(semSolucao, "verificacao_limitante");
+            double tx = semSolucao["resultado"] != null ? TaxaDe(semSolucao["resultado"]) : double.NaN;
+            var campos = Campos(Tipo()).ToList();
+            JsonNode Cp(string n) => campos.FirstOrDefault(x => S(x, "nome") == n);
+            var lims = Lista(semSolucao["campos_limite"]).Take(2).Select(x =>
+            {
+                string n = S(x, "campo"); var cc = Cp(n);
+                return S(x, "tipo") == "faixa_vazia" ? Rotulo(cc, n) + ": faixa vazia (mínimo > máximo)" : Rotulo(cc, n) + (x["valor"] != null ? " = " + Valor(cc, x["valor"]) : "");
+            }).ToList();
+            string txt = (ver != "" ? "Governa: " + (ver.Length > 46 ? ver.Substring(0, 45) + "…" : ver) + (double.IsNaN(tx) ? "" : " · " + Pct(tx)) + "." : S(semSolucao, "motivo")) + (lims.Count > 0 ? "\nLimite atingido: " + string.Join("; ", lims) + "." : "");
+            var m = Tx(txt, 11.5, TemaPlant.BTexto1, null, true);
             m.Margin = new Thickness(0, 4, 0, 0); f.Children.Add(m);
             if (campoLimitante != null)
             {
-                var c = Campos(Tipo()).FirstOrDefault(x => S(x, "nome") == campoLimitante);
-                var l = Link("Ir ao campo limitante: " + Rotulo(c, campoLimitante), () => IrParaCampo(campoLimitante), "Abre a seção e destaca o campo que travou a busca.", 11.5);
+                var l = Link("Ir ao campo: " + Rotulo(Cp(campoLimitante), campoLimitante), () => IrParaCampo(campoLimitante), "Abre a seção e destaca o campo que travou a busca.", 11.5);
                 l.Margin = new Thickness(0, 6, 0, 0); f.Children.Add(l);
             }
             return new Border { Background = TemaPlant.BErroFundo, BorderBrush = TemaPlant.BErro, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5), Padding = new Thickness(10, 8, 10, 9), Margin = new Thickness(0, 0, 0, 10), Child = f };
         }
+
+        FrameworkElement FaixaAviso() =>
+            new Border { Background = TemaPlant.BAlertaFundo, BorderBrush = TemaPlant.BAlertaBorda, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5), Padding = new Thickness(10, 7, 10, 8), Margin = new Thickness(0, 0, 0, 10),
+                         Child = Tx("! " + aviso, 11.5, TemaPlant.BAlerta, FontWeights.SemiBold, true) };
 
         static Grid GradeCampos()
         {
@@ -743,7 +783,9 @@ namespace NovoFtool
             if (largo && n % 2 == 1) lin = (n + 1) / 2;
             while (g.RowDefinitions.Count <= lin) g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var c = Celula(rotulo, ctl, realce);
-            if (nome != null) celulas[nome] = c;
+            FrameworkElement caixa = c;
+            if (nome != null) { caixa = new Border { Child = c, BorderThickness = new Thickness(2), BorderBrush = Brushes.Transparent, Background = Brushes.Transparent, CornerRadius = new CornerRadius(4), Margin = new Thickness(-2) }; celulas[nome] = caixa; }
+            c = caixa;
             Grid.SetRow(c, lin); Grid.SetColumn(c, col);
             if (largo) Grid.SetColumnSpan(c, 3);
             g.Children.Add(c);
@@ -1163,9 +1205,7 @@ namespace NovoFtool
             try
             {
                 var gs = await d.Ligacoes("GET", "/api/ligacoes/grupos");
-                bool Dono(JsonNode m) => S(m, "no") == l.No.ToString();
-                var g = Lista(gs).FirstOrDefault(x => Lista(x["membros"]).Any(m => Dono(m) && S(m, "barra") == l.Barra.ToString()))
-                        ?? Lista(gs).FirstOrDefault(x => Lista(x["membros"]).Any(Dono));
+                var g = Lista(gs).FirstOrDefault(x => l.Grupo != "" && S(x, "id") == l.Grupo);   // Ligacao3D.Grupo = id do motor (os ids No/Barra da vista não são os do motor)
                 if (g == null) { MostrarToast("Esta chapa não pertence a nenhum grupo de ligações do modelo.", true); return; }
                 var j = await CriarProjetistaGrupo(d, g, null);
                 if (j == null) return;
@@ -1207,6 +1247,77 @@ namespace NovoFtool
     {
         // Biblioteca; chapa simples (shear tab) ao vivo; caso que não passa (vermelho); otimizado; galpão: grupo viga–pilar
         // projetado e aplicado (lista por membro). Só elas: ESTRUCTTO_CAPTURAS=projetista (com ESTRUCTTO_MOTOR).
+        // C3: clique de verdade (Vista3D.TesteClique = botão solto sem arrasto) numa chapa e num parafuso do galpão com projeto aplicado
+        // abre o projetista do grupo no campo; clique numa barra ainda seleciona a barra (e não abre nada). Custo do picking em
+        // `custo-picking.txt`.
+        static void CliqueVista3DPrincipal(MainWindow w)
+        {
+            var log = new StringBuilder();
+            string Fim() { File.WriteAllText(Path.Combine(pastaSaida, "custo-picking.txt"), log.ToString()); return log.ToString(); }
+            w.DefinirRealista(true); w.Atualizar3D(false); EsperarIdle(); Esperar(w.TarefaLigacoes3D); EsperarIdle();
+            var v = w.vista3D;
+            if (!v.UsandoDx) { log.AppendLine("sem Direct3D: clique na Vista3D não testado"); Fim(); throw new InvalidOperationException("Render3D (Direct3D 11) indisponível"); }
+            Render3D.Coleta = new List<Render3D.Peca3D>(); v.DefinirLigacoes(v.ModeloAtual.Ligacoes); EsperarIdle();
+            var col = Render3D.Coleta; Render3D.Coleta = null;
+            System.Windows.Media.Media3D.Point3D Centro(Render3D.Peca3D p) { var ps = p.M.P; return new System.Windows.Media.Media3D.Point3D(ps.Average(q => q.X), ps.Average(q => q.Y), ps.Average(q => q.Z)); }
+            Ligacao3D gotL = null; string gotTag = null;
+            Action<Ligacao3D, string> ouvir = (l, t) => { gotL = l; gotTag = t; };
+            v.CliquePecaLig += ouvir;
+            JanelaLigacaoProjeto Aberta() => Application.Current.Windows.OfType<JanelaLigacaoProjeto>().FirstOrDefault(x => x.IsVisible && x.CampoDoDestaque != null);
+            JanelaLigacaoProjeto Clicar(string tipoPeca, string nome, Func<string, bool> tagOk)
+            {
+                var centros = tipoPeca == "parafuso" ? v.CentrosParafusos() : col.Where(x => x.Tipo == tipoPeca && x.Lig != null && !x.Lig.Proposta).Take(40).Select(Centro).ToList();
+                foreach (var c in centros)
+                {
+                    gotL = null; gotTag = null;
+                    foreach (double az in new[] { 30.0, 150.0, 210.0, 330.0 })   // o parafuso só aparece de um lado da chapa
+                    {
+                        v.Focar(c, tipoPeca == "parafuso" ? 0.5 : 1.0, az, 20); EsperarIdle(); EsperarIdle();
+                        v.TesteClique(v.Tela(c));
+                        if (gotL != null && tagOk(gotTag)) break;
+                        gotL = null; gotTag = null;
+                    }
+                    if (gotL == null || !tagOk(gotTag)) { foreach (var j0 in Application.Current.Windows.OfType<JanelaLigacaoProjeto>().Where(x => x.IsVisible).ToList()) j0.Close(); continue; }
+                    JanelaLigacaoProjeto jp = null;
+                    for (int i = 0; i < 300 && jp == null; i++) { EsperarIdle(); System.Threading.Thread.Sleep(100); jp = Aberta(); }
+                    if (jp == null) { var qq = Application.Current.Windows.OfType<JanelaLigacaoProjeto>().ToList(); throw new InvalidOperationException("clique na Vista3D (" + nome + ") não abriu o projetista no campo; tag " + gotTag + " lig " + gotL.No + "/" + gotL.Barra + "; janelas " + qq.Count + " " + string.Join(",", qq.Select(x => x.IsVisible + "/" + x.TemTipo + "/" + x.CampoDoDestaque))); }
+                    Esperar(jp.CalcularAgora());   // nas capturas a janela não calcula sozinha ao abrir
+                    EsperarIdle();
+                    log.AppendLine(nome + ": clique abriu o projetista, tag " + gotTag + ", campo destacado " + jp.CampoDoDestaque);
+                    return jp;
+                }
+                throw new InvalidOperationException("clique na Vista3D: nenhum(a) " + nome + " acertou");
+            }
+            var jc = Clicar("chapa", "chapa", t => !string.IsNullOrEmpty(t));
+            if (!jc.TemTipo) throw new InvalidOperationException("projetista aberto sem tipo");
+            CapturarPrincipal(w, "51-vista3d-clique-chapa");
+            CapturarDialogo(jc, "51-projetista-clique-vista3d-chapa.png"); jc.Close(); EsperarIdle();
+            var jb = Clicar("parafuso", "parafuso", t => t != null && t.StartsWith("d"));
+            CapturarDialogo(jb, "51-projetista-clique-vista3d-parafuso.png"); jb.Close(); EsperarIdle();
+            v.CliquePecaLig -= ouvir;
+            // barra: ainda seleciona a barra e não abre o projetista
+            v.Selecionar(new string[0], new string[0]); EsperarIdle();
+            bool achou = false;
+            foreach (var b in v.ModeloAtual.Barras.OrderByDescending(x => { var a = v.ModeloAtual.Nos.First(n => n.Id == x.Ni); var d2 = v.ModeloAtual.Nos.First(n => n.Id == x.Nj); return Math.Abs(a.X - d2.X) + Math.Abs(a.Y - d2.Y) + Math.Abs(a.Z - d2.Z); }).Take(30))
+            {
+                var na = v.ModeloAtual.Nos.First(n => n.Id == b.Ni); var nb = v.ModeloAtual.Nos.First(n => n.Id == b.Nj);
+                var m = new System.Windows.Media.Media3D.Point3D((na.X + nb.X) / 2, (na.Y + nb.Y) / 2, (na.Z + nb.Z) / 2);
+                v.Focar(m, 6, 30, 20); EsperarIdle(); EsperarIdle();
+                if (!(v.Acertar(v.Tela(m)) is Barra3D)) continue;
+                v.TesteClique(v.Tela(m)); EsperarIdle();
+                if (v.Selecao.Barras.Count != 1) throw new InvalidOperationException("clique na barra não a selecionou");
+                if (Application.Current.Windows.OfType<JanelaLigacaoProjeto>().Any(x => x.IsVisible)) throw new InvalidOperationException("clique na barra abriu o projetista");
+                log.AppendLine("barra " + b.Id + ": clique seleciona a barra, projetista não abre"); achou = true; break;
+            }
+            if (!achou) throw new InvalidOperationException("clique na barra: nenhuma barra acertada no meio");
+            v.Enquadrar(-60, 30, false); EsperarIdle();
+            var (ms, np) = v.MedirClique();
+            log.AppendLine("galpão: " + np + " parafusos clicáveis, Acertar completo = " + ms.ToString("0.00") + " ms/clique");
+            int nb2 = col.Count(x => x.Tipo == "parafuso");
+            log.AppendLine("galpão: " + nb2 + " parafusos no total; teste de parafusos sozinho (mesmo código) = " + Render3D.MedirParafusos(nb2).ToString("0.000") + " ms/clique");
+            Fim();
+        }
+
         static void CapturasProjetista(MainWindow w)
         {
             var tipos = Esperar2(Motor.Get("/api/ligacoes/tipos"));
@@ -1229,14 +1340,30 @@ namespace NovoFtool
             CapturarDialogo(j, "51-projetista-falha.png");
             Esperar(j.Otimizar()); EsperarIdle();
             CapturarDialogo(j, "51-projetista-otimizado.png");
-            // C3: editor por seções, clique na chapa -> campo destacado, otimizador sem solução -> faixa vermelha
+            // C3: seções (as 6 existem; capturas recolhidas e abertas), toda peça de todo padrão tem campo, clique -> campo, sem solução
+            var secs = new HashSet<string>();
+            foreach (var t in Lista(tipos)) foreach (var x in j.NomesSecoes(S(t, "tipo"))) secs.Add(x);
+            foreach (var n in new[] { "Chapa", "Parafusos", "Soldas", "Enrijecedores", "Recortes", "Folgas" })
+                if (!secs.Contains(n)) throw new InvalidOperationException("projetista: nenhum padrão tem a seção " + n);
+            var semCampo = new List<string>();
+            foreach (var t in Lista(tipos))
+            {
+                Esperar(j.Escolher(S(t, "tipo"), false)); Esperar(j.CalcularAgora());
+                foreach (var m in j.PecasSemCampo()) semCampo.Add(S(t, "tipo") + ": " + m);
+            }
+            File.WriteAllText(Path.Combine(pastaSaida, "pecas-sem-campo.txt"), semCampo.Count == 0 ? "todas as pecas dos 20 padroes tem campo\n" : string.Join("\n", semCampo));
+            if (semCampo.Count > 0) throw new InvalidOperationException("projetista: peças sem campo: " + string.Join(" | ", semCampo.Take(6)));
+            Esperar(j.Escolher("chapa_simples_alma", false)); j.RecolherSecoes(); EsperarIdle();
+            CapturarDialogo(j, "51-projetista-secoes-recolhidas.png");
+            Esperar(j.Escolher("apoio_cantoneira", false)); j.RecolherSecoes(); EsperarIdle();
+            CapturarDialogo(j, "51-projetista-secoes-recolhidas-apoio-cantoneira.png");
             Esperar(j.Escolher("chapa_topo_estendida", false)); EsperarIdle();
-            j.AbrirTodasSecoes(); EsperarIdle();
-            CapturarDialogo(j, "51-projetista-editor-secoes.png");
             string tg = j.ClicarChapa3D(); EsperarIdle(); EsperarIdle();
-            if (tg == null || !tg.StartsWith("Chapa.")) throw new InvalidOperationException("projetista: clique na chapa não achou a peça (" + tg + ")");
+            if (tg == null) throw new InvalidOperationException("projetista: clique na chapa não achou a peça");
             if (j.CampoDoDestaque == null) throw new InvalidOperationException("projetista: clique na chapa não destacou o campo");
             CapturarDialogo(j, "51-projetista-clique-chapa.png");
+            j.IrParaTag("campo_que_nao_existe"); EsperarIdle();
+            CapturarDialogo(j, "51-projetista-clique-sem-campo.png");
             Esperar(j.Escolher("chapa_simples_alma", false));
             j.DefinirEsforcos(new JsonObject { ["V"] = 5000, ["N"] = 0 }); Esperar(j.CalcularAgora()); EsperarIdle();
             Esperar(j.Otimizar()); EsperarIdle();
@@ -1267,9 +1394,24 @@ namespace NovoFtool
             CapturarDialogo(jg, "51-projetista-grupo-projeto.png");
             Esperar(jg.AplicarAoGrupo()); EsperarIdle();
             CapturarDialogo(jg, "51-projetista-grupo-aplicado.png");
-            jg.Close(); ger.Close();
+            jg.Close(); ger.Close(); EsperarIdle();
+            CliqueVista3DPrincipal(w);
             w.FecharEspaciaisSemPerguntar();
             EsperarIdle();
+            // custo do picking na obra real (PLATAFORMA.ed3, ~30 m; fora do git): parafusos da cena + medição com o mesmo número
+            string ed3 = new[] { "C:/dev/wt/v5-vista/testes-aceite/PLATAFORMA.ed3" }.FirstOrDefault(File.Exists);
+            if (ed3 != null)
+            {
+                Esperar(w.AbrirTarefa(ed3)); EsperarIdle();
+                w.DefinirRealista(true); w.Atualizar3D(false); EsperarIdle(); Esperar(w.TarefaLigacoes3D); EsperarIdle();
+                Render3D.Coleta = new List<Render3D.Peca3D>(); w.vista3D.DefinirLigacoes(w.vista3D.ModeloAtual.Ligacoes); EsperarIdle();
+                var col2 = Render3D.Coleta; Render3D.Coleta = null;
+                w.vista3D.Enquadrar(-60, 30, false); EsperarIdle();
+                var (ms2, np2) = w.vista3D.MedirClique();
+                int nb3 = col2.Count(x => x.Tipo == "parafuso");
+                File.AppendAllText(Path.Combine(pastaSaida, "custo-picking.txt"), "PLATAFORMA: " + w.vista3D.ModeloAtual.Ligacoes.Count + " ligações, " + nb3 + " parafusos na cena (" + np2 + " clicáveis: só os de ligação com projeto do motor), Acertar completo = " + ms2.ToString("0.00") + " ms/clique; teste de parafusos com " + nb3 + " parafusos = " + Render3D.MedirParafusos(nb3).ToString("0.000") + " ms/clique\n");
+                w.FecharEspaciaisSemPerguntar();
+            }
         }
     }
 }

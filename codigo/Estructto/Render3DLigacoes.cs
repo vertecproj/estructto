@@ -16,18 +16,18 @@ using Contorno = NovoFtool.GeometriaPerfis.Contorno;
 namespace NovoFtool
 {
     // Peça de chapa/cantoneira escolhível na cena (Render3D.Marcar): o clique leva ao campo da ligação (TagLig, JanelaLigacaoProjeto)
-    public sealed class PecaLig { public Ligacao3D Lig; public string Tag; }
+    public sealed class PecaLig { public Ligacao3D Lig; public string Tag; public double T; }   // T: distância do olho (só parafuso)
 
     public sealed class Ligacao3D
     {
         public int No, Barra;   // nó e barra que chega (dá o referencial local)
-        public string Nome = "";
+        public string Nome = "", Grupo = "";   // Grupo: id do grupo de ligações do motor (clique na peça abre o projetista dele)
         // Proposta: o grupo não tem projeto; é a geometria padrão sugerida (desenhada esmaecida, com o chip "Proposta" na vista).
         // Pendente: proposta sem geometria do motor; o Render3D faz a do tipo de nó (LigacoesAmostra.Proposta) com as juntas.
         public bool Proposta; public string Pendente;
-        public sealed class Chapa { public string Nome; public Point[] Contorno; public Vector3D Origem, Normal, U; public double Espessura; }
-        public sealed class Cantoneira { public string Perfil; public Vector3D Origem, Eixo, U; public double Comprimento; }
-        public sealed class Parafuso { public double D, Comprimento, Pega = double.NaN; public Vector3D Origem, Eixo; }   // pega: espessura apertada (NaN = estimada do comprimento)
+        public sealed class Chapa { public string Nome, Campo; public Point[] Contorno; public Vector3D Origem, Normal, U; public double Espessura; }
+        public sealed class Cantoneira { public string Perfil, Campo; public Vector3D Origem, Eixo, U; public double Comprimento; }
+        public sealed class Parafuso { public string Campo; public double D, Comprimento, Pega = double.NaN; public Vector3D Origem, Eixo; }   // pega: espessura apertada (NaN = estimada do comprimento)
         public sealed class Solda { public string Tipo = "filete"; public double Perna; public Vector3D[] Pontos; }
         public sealed class Recorte { public string Barra, Tipo; public double Folga = double.NaN, XPonta = double.NaN, Altura, Comprimento; public string Posicao = "topo"; }   // recuo: folga (vão até a face) ou x_ponta (posição absoluta da ponta); cope: posição (topo/base), altura e comprimento a partir da ponta (Render3D desenha)
         public readonly List<Chapa> Chapas = new List<Chapa>();
@@ -93,12 +93,12 @@ namespace NovoFtool
             var l = new Ligacao3D { No = no, Barra = barra, Nome = nome ?? "" };
             if (g == null) return l;
             foreach (var c in g["chapas"]?.AsArray() ?? new JsonArray())
-                l.Chapas.Add(new Chapa { Nome = (string)c["nome"], Origem = V3(c["origem"]), Normal = V3(c["normal"]), U = V3(c["u"]), Espessura = D(c, "espessura"),
+                l.Chapas.Add(new Chapa { Nome = (string)c["nome"], Campo = (string)c["campo"], Origem = V3(c["origem"]), Normal = V3(c["normal"]), U = V3(c["u"]), Espessura = D(c, "espessura"),
                                          Contorno = (c["contorno"]?.AsArray() ?? new JsonArray()).Select(p => new Point((double)p[0], (double)p[1])).ToArray() });
             foreach (var c in g["cantoneiras"]?.AsArray() ?? new JsonArray())
-                l.Cantoneiras.Add(new Cantoneira { Perfil = (string)c["perfil"], Origem = V3(c["origem"]), Eixo = V3(c["eixo"]), U = V3(c["u"]), Comprimento = D(c, "comprimento") });
+                l.Cantoneiras.Add(new Cantoneira { Perfil = (string)c["perfil"], Campo = (string)c["campo"], Origem = V3(c["origem"]), Eixo = V3(c["eixo"]), U = V3(c["u"]), Comprimento = D(c, "comprimento") });
             foreach (var p in g["parafusos"]?.AsArray() ?? new JsonArray())
-                l.Parafusos.Add(new Parafuso { D = D(p, "d"), Comprimento = D(p, "comprimento"), Pega = D(p, "pega", double.NaN), Origem = V3(p["origem"]), Eixo = V3(p["eixo"]) });
+                l.Parafusos.Add(new Parafuso { Campo = (string)p["campo"], D = D(p, "d"), Comprimento = D(p, "comprimento"), Pega = D(p, "pega", double.NaN), Origem = V3(p["origem"]), Eixo = V3(p["eixo"]) });
             foreach (var s in g["soldas"]?.AsArray() ?? new JsonArray())
                 l.Soldas.Add(new Solda { Tipo = (string)s["tipo"] ?? "filete", Perna = D(s, "perna"), Pontos = (s["pontos"]?.AsArray() ?? new JsonArray()).Select(V3).ToArray() });
             foreach (var r in g["recortes"]?.AsArray() ?? new JsonArray())
