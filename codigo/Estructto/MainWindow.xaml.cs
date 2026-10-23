@@ -83,7 +83,9 @@ namespace NovoFtool
             Loaded += (s, e) => AplicarModoEspacial();   // só existe vista 3D (docs/MODELO-ESPACIAL.md)
             AbaSoldas.Visibility = Visibility.Collapsed;   // soldas das pontas das barras eram do cálculo 2D (Nucleo.cs)
             if (Capturas.Configurar(this, args)) return;
-            string arqInicial = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--") && File.Exists(a));
+            // sem arquivo na linha de comando, reabre o último aberto/salvo (Config.Recentes); só abre em branco se não houver nenhum
+            string arqInicial = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--") && File.Exists(a))
+                ?? (args.Any(a => a.StartsWith("--")) ? null : Config.Recentes().FirstOrDefault(File.Exists));
             if (arqInicial != null)
                 Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() => Abrir(arqInicial)), System.Windows.Threading.DispatcherPriority.Loaded);
             else if (!args.Any(a => a.StartsWith("--")))   // como o AutoCAD: abre com um desenho em branco (em planta, no térreo)
