@@ -27,6 +27,7 @@ namespace NovoFtool
         public bool Proposta; public string Pendente;
         // Projeto ligacao_tracao num gusset (Render3DMotor): desenhado pelo gusset local com t, d (mm), nº de parafusos e passo s (mm) do projeto
         public (double t, double d, int n, double s)? Tracao;
+        public bool FaceV;   // gusset local na face de v do perfil (LigacoesAmostra.Gusset emV): o y do gusset vai para o lado de v
         public sealed class Chapa
         {
             public string Nome, Campo; public Point[] Contorno; public Vector3D Origem, Normal, U; public double Espessura;
@@ -270,6 +271,21 @@ namespace NovoFtool
             return (f.Tw / 2 * 1000, 1);
         }
 
+        // Face de v (z local = v, sem o s de y): mesa do I e do U e lado H do tubo em +H/2; costas da outra aba do L em −H/2.
+        static (double y, double sinal) FaceChapaV(Contorno f) => f.Forma == "L" ? (-f.H / 2 * 1000, -1) : f.Forma is "TC" or "CIRC" ? (f.B / 2 * 1000, 1) : (f.H / 2 * 1000, 1);
+
+        // O plano do gusset (eixo da diagonal + eixo do apoio) é ⟂ ao eixo v do perfil da diagonal? (normal x × apoio mais perto de v que de u)
+        public static bool NormalEmV(Modelo3D mod, Barra3D b, bool emI, Barra3D apoio)
+        {
+            var nos = mod.Nos.ToDictionary(n => n.Id);
+            if (apoio == null || !nos.ContainsKey(b.Ni) || !nos.ContainsKey(b.Nj) || !nos.ContainsKey(apoio.Ni) || !nos.ContainsKey(apoio.Nj)) return false;
+            Vector3D e = P(nos[b.Nj]) - P(nos[b.Ni]); e.Normalize(); Vector3D x = emI ? e : -e;
+            Vector3D v = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), u = Vector3D.CrossProduct(v, e);
+            Vector3D s = P(nos[apoio.Nj]) - P(nos[apoio.Ni]), zp = s - Vector3D.DotProduct(s, x) * x; if (zp.Length < 1e-9) return false;
+            Vector3D n = Vector3D.CrossProduct(x, zp);
+            return Math.Abs(Vector3D.DotProduct(n, v)) > Math.Abs(Vector3D.DotProduct(n, u));
+        }
+
         // Chapa simples (shear tab) soldada na peça contínua e parafusada na alma da viga (3 parafusos). Com perfil de apoio I
         // (viga em viga): a chapa vai na alma do apoio, a viga entra até 12 mm da alma (x_ponta) com cope em cada mesa que bate
         // nas mesas do apoio (regra do contrato pontas). Apoio U/L/tubo: a viga para na face (a alma do U não é centrada).
@@ -304,19 +320,29 @@ namespace NovoFtool
 
         // Gusset de diagonal: chapa paralela ao plano xz local, encostada na face da diagonal (FaceChapa: costas do U/L, lado do
         // I ou do tubo; antes cortava a peça ao meio), parafusos ao longo dela, solda na peça contínua. recuo = recuo da diagonal (m).
-        public static Ligacao3D Gusset(int no, Barra3D diag, bool emI, Contorno fDiag, double recuo)
+        // emV: o plano do gusset (diagonal + apoio) fica ⟂ ao eixo v do perfil (LigacoesAmostra.NormalEmV). Aí a chapa encosta na face
+        // de v (mesa do I/U, lado H do tubo, costas da outra aba do L) e o y do gusset é lido como v pelo Render3D (FaceV).
+        public static Ligacao3D Gusset(int no, Barra3D diag, bool emI, Contorno fDiag, double recuo, bool emV = false)
         {
             double B = Math.Max(fDiag.B, fDiag.H) * 1000, t = Math.Max(fDiag.Tw, 0.006) * 1000, esp = 10;
             double xr = Math.Round(recuo * 1000, 1), xb = 0.4 * xr, x1 = xr + 220;
-            var (yf, sg) = FaceChapa(fDiag, emI);
-            if (fDiag.Forma == "I") yf = fDiag.B / 2 * 1000;   // I: por fora da ponta das mesas
-            var l = new Ligacao3D { No = no, Barra = diag.Id, Nome = "Gusset" };
-            l.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, yf, 0), Normal = new Vector3D(0, sg, 0), U = new Vector3D(sg, 0, 0), Espessura = esp,
-                                               Contorno = new[] { new Point(sg * xb, -(B / 2 + 90)), new Point(sg * x1, -(B / 2 + 30)), new Point(sg * x1, B / 2 + 30), new Point(sg * xb, B / 2 + 90) } });
+            var (yf, sg) = emV ? FaceChapaV(fDiag) : FaceChapa(fDiag, emI);
+            if (emV && fDiag.Tf > 0 && (fDiag.Forma == "I" || fDiag.Forma == "U")) t = fDiag.Tf * 1000;   // aperta a mesa
+            var l = new Ligacao3D { No = no, Barra = diag.Id, Nome = "Gusset", FaceV = emV };
+            // I/W com a alma no plano do gusset: chapa na face da alma (FaceChapa: tw/2), entre as mesas no trecho da diagonal (meia
+            // largura h/2 − tf − 10 a partir da ponta xr) e alargando só antes dela até a borda soldada. Antes ia por fora da ponta das
+            // mesas (sem alma para os parafusos) e com a largura do perfil todo: atravessava as mesas.
+            Point[] ct = !emV && fDiag.Forma == "I" && fDiag.Tf > 0
+                ? new Func<double, Point[]>(hw => new[] { new Point(sg * xb, -(hw + 90)), new Point(sg * xr, -hw), new Point(sg * x1, -hw), new Point(sg * x1, hw), new Point(sg * xr, hw), new Point(sg * xb, hw + 90) })
+                      (Math.Max(30, fDiag.H * 1000 / 2 - fDiag.Tf * 1000 - 10))
+                : new[] { new Point(sg * xb, -(B / 2 + 90)), new Point(sg * x1, -(B / 2 + 30)), new Point(sg * x1, B / 2 + 30), new Point(sg * xb, B / 2 + 90) };
+            l.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, yf, 0), Normal = new Vector3D(0, sg, 0), U = new Vector3D(sg, 0, 0), Espessura = esp, Contorno = ct });
+            double zp = emV && fDiag.Forma == "I" ? fDiag.B * 1000 / 4 : 0;   // mesa do I: linha fora da alma (no eixo o parafuso bateria nela)
             for (int k = 0; k < 3; k++)
-                l.Parafusos.Add(new Ligacao3D.Parafuso { D = 16, Comprimento = esp + t + 20, Pega = esp + t, Origem = new Vector3D(xr + 40 + 60 * k, yf + sg * esp, 0), Eixo = new Vector3D(0, -sg, 0) });
+                l.Parafusos.Add(new Ligacao3D.Parafuso { D = 16, Comprimento = esp + t + 20, Pega = esp + t, Origem = new Vector3D(xr + 40 + 60 * k, yf + sg * esp, zp), Eixo = new Vector3D(0, -sg, 0) });
+            double wb = -ct[0].Y;   // meio comprimento da borda soldada
             foreach (double y in new[] { yf, yf + sg * esp })
-                l.Soldas.Add(new Ligacao3D.Solda { Perna = 6, Pontos = new[] { new Vector3D(xb, y, -(B / 2 + 90)), new Vector3D(xb, y, B / 2 + 90) } });
+                l.Soldas.Add(new Ligacao3D.Solda { Perna = 6, Pontos = new[] { new Vector3D(xb, y, -wb), new Vector3D(xb, y, wb) } });
             // sem recorte: a ponta da diagonal fica na regra das juntas, que é o próprio xr (Corte.Recuo, contado do nó, seção inteira
             // livre da face). Antes ia como Folga (vão a partir da face): a diagonal recuava a face a mais e os parafusos ficavam fora dela.
             return l;
@@ -401,7 +427,7 @@ namespace NovoFtool
                 if (vert.Contains(b)) continue;
                 if (c.Raio > 0) continue;   // v0.6 A3: tubo em tubo = solda direta com boca de peixe (motor tubo_tubo_soldado), sem chapa
                 bool horiz = Math.Abs(nos[b.Nj].Z - nos[b.Ni].Z) < 0.2 * (P(nos[b.Nj]) - P(nos[b.Ni])).Length;
-                if (!horiz) r.Add(Gusset(no, b, emI, f, c.Recuo));
+                if (!horiz) r.Add(Gusset(no, b, emI, f, c.Recuo, NormalEmV(mod, b, emI, c.Contra)));
                 else if (vert.Contains(c.Contra) && c.NaMesa) { Contorno fp = forma(c.Contra); r.Add(ChapaDeTopo(no, b, emI, f, face, fp.Tf, Math.Max(fp.B, fp.H) / 2, fp.Forma == "I", fp.B)); }
                 else r.Add(ChapaSimples(no, b, emI, f, face, forma(c.Contra)));
             }
@@ -467,7 +493,7 @@ namespace NovoFtool
             if (dz > 0.95) return r;   // pilar que para em algo: fica sem proposta
             string tipo = p.Pendente ?? "";
             double face = c.Face;
-            if (tipo.StartsWith("gusset") || tipo.StartsWith("no_trelica") || dz > 0.2) r.Add(Gusset(p.No, b, emI, f, c.Recuo));
+            if (tipo.StartsWith("gusset") || tipo.StartsWith("no_trelica") || dz > 0.2) r.Add(Gusset(p.No, b, emI, f, c.Recuo, NormalEmV(mod, b, emI, c.Contra)));
             else if (tipo.StartsWith("viga_pilar_mesa") && tipo.Contains("rigida") && fc.Lacos.Count == 1 && c.NaMesa) r.Add(ChapaDeTopo(p.No, b, emI, f, face, fc.Tf, Math.Max(fc.B, fc.H) / 2, fc.Forma == "I", fc.B));
             else r.Add(ChapaSimples(p.No, b, emI, f, face, fc));
             return r;

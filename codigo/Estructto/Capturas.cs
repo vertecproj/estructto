@@ -326,19 +326,24 @@ namespace NovoFtool
                     CapturarPrincipal(w, "42-realista-contraventamento");
                     w.vista3D.Focar(PNo(cv, nid(1, 0, 1)) + new Vector3D(0, 0, -0.15), 2.4, -75, 14);
                     CapturarPrincipal(w, "42-realista-ligacao-gusset");
-                    {   // diagonal que chega no meio de um pilar contínuo (sem viga no nó): o gusset tem de ficar na face do pilar, junto da diagonal
+                    // diagonal que chega no meio de um pilar contínuo (sem viga no nó), uma seção de diagonal por captura: o gusset tem de ficar
+                    // na face da diagonal (alma do W, costas do L/U, lado do tubo), soldado rente à face do pilar, com os parafusos na diagonal
+                    foreach (var (secD, nomeD, rotD) in new[] { ("L 3\" x 1/4\"", "", 0.0), ("W 310 x 38,7", "-w", 0.0), ("W 310 x 38,7", "-w90", 90.0), ("UPN 200", "-u", 0.0), ("Tubo 100x50x3,00", "-tubo", 0.0) })
+                    {
                         var dg = new Modelo3D();
                         dg.Nos.Add(new No3D { Id = 1, X = 0, Y = 0, Z = 0, Apoios = new[] { true, true, true, true, true, true } });
                         dg.Nos.Add(new No3D { Id = 2, X = 0, Y = 0, Z = 2.5 }); dg.Nos.Add(new No3D { Id = 3, X = 0, Y = 0, Z = 5 });
                         dg.Nos.Add(new No3D { Id = 4, X = 2.5, Y = 0, Z = 0, Apoios = new[] { true, true, true, false, false, false } });
                         dg.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W 250 x 32,7", Aprov = 0.4 });
                         dg.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "W 250 x 32,7", Aprov = 0.4 });
-                        dg.Barras.Add(new Barra3D { Id = 3, Ni = 4, Nj = 2, Secao = "L 3\" x 1/4\"", Aprov = 0.5 });
+                        dg.Barras.Add(new Barra3D { Id = 3, Ni = 4, Nj = 2, Secao = secD, Aprov = 0.5, Rot = rotD });
                         w.vista3D.Carregar(dg, false);
                         w.vista3D.Focar(new Point3D(0, 0, 2.4), 1.6, -90, 10);
-                        CapturarPrincipal(w, "42-realista-ligacao-gusset-pilar-meio");
+                        CapturarPrincipal(w, "42-realista-ligacao-gusset-pilar-meio" + nomeD);
                         w.vista3D.Focar(new Point3D(0, 0, 2.4), 1.6, -40, 20);
-                        CapturarPrincipal(w, "42-realista-ligacao-gusset-pilar-meio-iso");
+                        CapturarPrincipal(w, "42-realista-ligacao-gusset-pilar-meio" + nomeD + "-iso");
+                        w.vista3D.Focar(new Point3D(0, 0, 2.4), 1.6, 140, 20);
+                        CapturarPrincipal(w, "42-realista-ligacao-gusset-pilar-meio" + nomeD + "-tras");
                     }
                     // viga secundária (W 250) apoiada na alma da principal (W 310), topos alinhados: chapa simples + cope na mesa de cima
                     var sb = Portico2x2(false);
@@ -1175,6 +1180,14 @@ namespace NovoFtool
                         var n = m3.Nos.First(x => x.Id == no); var p = new Point3D(n.X, n.Y, n.Z);
                         w.vista3D.Focar(p, 1.6, -90, 8); CapturarPrincipal(w, $"modelo-no{no}-frente");
                         w.vista3D.Focar(p, 1.6, -40, 22); CapturarPrincipal(w, $"modelo-no{no}-iso");
+                        // perto da borda soldada: ~16 cm do nó para o lado da barra da ligação (na horizontal), de frente e de trás
+                        var bl = m3.Barras.FirstOrDefault(b => b.Id == m3.Ligacoes.First(l => l.No == no).Barra);
+                        var nb = bl == null ? null : m3.Nos.FirstOrDefault(x => x.Id == (bl.Ni == no ? bl.Nj : bl.Ni));
+                        Vector3D dh = nb == null ? new Vector3D() : new Vector3D(nb.X - n.X, nb.Y - n.Y, 0); if (dh.Length > 1e-9) dh.Normalize();
+                        var pp = p + dh * 0.16;
+                        w.vista3D.Focar(pp, 0.45, -90, 5); CapturarPrincipal(w, $"modelo-no{no}-perto");   // solda e parafusos
+                        w.vista3D.Focar(pp, 0.45, 90, 5); CapturarPrincipal(w, $"modelo-no{no}-perto-tras");
+                        w.vista3D.Focar(pp, 0.45, -60, 30); CapturarPrincipal(w, $"modelo-no{no}-perto-iso");
                     }
                     w.alterado = false; w.Close(); Environment.Exit(0);
                 }

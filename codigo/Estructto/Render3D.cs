@@ -599,7 +599,14 @@ namespace NovoFtool
                     var (sa, sd) = c.Pontos(kl.Contra); Vector3D ds = sd - sa;
                     if (Vector3D.DotProduct(ds, x) < 0) ds = -ds;
                     Vector3D zp = ds - Vector3D.DotProduct(ds, x) * x;
-                    if (zp.Length > 1e-6)
+                    if (zp.Length > 1e-6 && l.Ponta == null)
+                    {   // gusset local (LigacoesAmostra.Gusset): a chapa já vem na face da peça (FaceChapa, eixos do perfil). Só gira em torno
+                        // da barra até o plano do apoio, com y' do mesmo lado de y; a origem fica no eixo (o deslocamento abaixo é do contrato do
+                        // motor, chapa centrada: aqui punha a chapa no meio da alma do W, atravessando as mesas, e afundava os parafusos)
+                        zp.Normalize(); if (Vector3D.DotProduct(Vector3D.CrossProduct(x, zp), l.FaceV ? z : y) < 0) zp = -zp;   // FaceV: o y do gusset é o v do perfil (= z local)
+                        (y, z) = (Vector3D.CrossProduct(x, zp), zp);
+                    }
+                    else if (zp.Length > 1e-6)
                     {
                         zp.Normalize(); Vector3D yp = EscolheY(Vector3D.CrossProduct(x, zp), zp);
                         Vector3D vb = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), ub = Vector3D.CrossProduct(vb, e);
@@ -623,27 +630,33 @@ namespace NovoFtool
                     double ymin = forma(b).Lacos.SelectMany(z => z).Min(q => Vector3D.DotProduct(ub * q.X + vb * q.Y, y));
                     o += y * (ymin - gus.Espessura / 2000);
                 }
-                if (gus != null && l.Ponta == null && l.ApoioDir == null && kl?.Contra != null && gus.Contorno.Length == 4 && gus.Contorno[0].X == gus.Contorno[3].X)
-                {   // gusset proposto (LigacoesAmostra.Gusset): a borda soldada (pontos 0 e 3, u = xb) era ⟂ à diagonal e tocava o pilar por um
-                    // canto; inclina para ficar ∥ ao eixo do apoio (x local = xb − w·sx/sz, z local = −w). Pontos 0 e 3 iguais = ainda não feito.
+                if (gus != null && l.Ponta == null && l.ApoioDir == null && kl?.Contra != null && gus.Contorno.Length >= 4 && gus.Contorno[0].X == gus.Contorno[gus.Contorno.Length - 1].X)
+                {   // gusset proposto (LigacoesAmostra.Gusset): a borda soldada (primeiro e último ponto, u = xb) era ⟂ à diagonal e tocava o pilar
+                    // por um canto; inclina para ficar ∥ ao eixo do apoio (x local = xb − w·sx/sz, z local = −w). Pontos iguais = ainda não feito.
                     var (sa, sd) = c.Pontos(kl.Contra); Vector3D ds = sd - sa; ds.Normalize();
                     double sx = Vector3D.DotProduct(ds, x), sz = Vector3D.DotProduct(ds, z), sg = Math.Sign(gus.U.X);
                     if (Math.Abs(sz) > 0.2)
                     {
-                        foreach (int k in new[] { 0, 3 }) { Point q = gus.Contorno[k]; gus.Contorno[k] = new Point(sg * (sg * q.X - q.Y * sx / sz), q.Y); }
+                        foreach (int k in new[] { 0, gus.Contorno.Length - 1 }) { Point q = gus.Contorno[k]; gus.Contorno[k] = new Point(sg * (sg * q.X - q.Y * sx / sz), q.Y); }
                         foreach (var s in l.Soldas.Where(s => s.Pontos?.Length == 2 && s.Pontos[0].X == s.Pontos[1].X))   // filetes da borda, no mesmo plano
                             s.Pontos = s.Pontos.Select(p => new Vector3D(p.X + p.Z * sx / sz, p.Y, p.Z)).ToArray();
                     }
                 }
                 Point3D W(Vector3D p) => o + (x * p.X + y * p.Y + z * p.Z) / 1000;
                 Vector3D Wv(Vector3D p) { Vector3D r = x * p.X + y * p.Y + z * p.Z; if (r.Length > 1e-12) r.Normalize(); return r; }
+                Vector3D deslGusset = new Vector3D();
                 foreach (var ch in l.Chapas)
                 {
                     Vector3D nn = Wv(ch.Normal), uu = Wv(ch.U); if (nn.Length < 0.5 || uu.Length < 0.5) continue;
                     Vector3D ww = Wv(Vector3D.CrossProduct(ch.Normal, ch.U));   // no local: o referencial do contrato (y = x × z) é canhoto, o produto no mundo inverteria
                     Point[] ct = ch.Contorno.Select(p => new Point(p.X / 1000, p.Y / 1000)).ToArray();
                     Point3D org = W(ch.Origem);
-                    if (ch.Nome == "gusset" && l.ApoioDir == null) for (int it = 0; it < 3; it++) foreach (Barra3D sup in mod.Barras.Where(q => q != b && (q.Ni == l.No || q.Nj == l.No))) org += FolgaGusset(org, uu, ww, nn, ct, ch.Espessura / 1000, sup, x);   // cada peça do nó (3 voltas: um afastamento pode empurrar para outra)
+                    if (ch.Nome == "gusset" && l.ApoioDir == null)
+                    {
+                        Point3D org0 = org;
+                        for (int it = 0; it < 3; it++) foreach (Barra3D sup in mod.Barras.Where(q => q != b && (q.Ni == l.No || q.Nj == l.No))) org += FolgaGusset(org, uu, ww, nn, ct, ch.Espessura / 1000, sup, x);   // cada peça do nó (3 voltas: um afastamento pode empurrar para outra)
+                        deslGusset = org - org0;   // as soldas da chapa vão junto (antes ficavam onde a chapa estava, dentro do pilar)
+                    }
                     if (l.Proposta) mallChapas.Marcar(new PecaLig { Lig = l }); else if (!string.IsNullOrEmpty(ch.Campo)) mallChapas.Marcar(new PecaLig { Lig = l, Tag = ch.Campo }); else mallChapas.Marcar(null);   // proposta: clique abre o gerenciador no grupo (Aplicar troca / escolher padrão)   // clique na chapa: vai ao campo (sem isso o picking dava a última barra)
                     mallChapas.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false);
                     if (coleta != null) { var sc = new MalhaDx(); sc.Chapa(org, uu, ww, nn, ct, ch.Espessura / 1000, corChapa, false); coleta.Add(new Peca3D { Nome = NomeLig(l) + " " + ch.Nome, Tipo = "chapa", M = sc, Lig = l, Excluir = l.Excluir }); }
@@ -672,7 +685,7 @@ namespace NovoFtool
                 {
                     if (sd.Pontos == null || sd.Pontos.Length < 2) continue;
                     var (axs, lados, face) = Ligacao3D.Apoio(l, sd);   // onde a solda assenta: face de chapa (recorta), borda de chapa (enrijecedor) ou nenhuma
-                    Render3DGeometria.Cordao(mallS, sd.Pontos.Select(W).ToList(), sd.Perna / 1000, corSolda, axs == null ? x : Wv(axs.Value),
+                    Render3DGeometria.Cordao(mallS, sd.Pontos.Select(p => W(p) + deslGusset).ToList(), sd.Perna / 1000, corSolda, axs == null ? x : Wv(axs.Value),
                                              lados?.Select(q => (Wv(q.n), q.desl / 1000)).ToList(),
                                              face == null ? null : (pa, pb) => Render3DGeometria.Intervalos(face.Q(ParaLig(pa)), face.Q(ParaLig(pb)), face.Contorno));
                 }

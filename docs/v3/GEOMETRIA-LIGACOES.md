@@ -67,6 +67,35 @@ O que ficou suportado:
 
 ![placa deitada com 3 fileiras](render/geo-placa-eixo-fraco-perto.png)
 
+## 6. Gusset de diagonal desenhado pelo Estructto (gusset local)
+
+O gusset local é o `LigacoesAmostra.Gusset`. Ele é usado nas propostas sem projeto, nas capturas e no projeto `ligacao_tracao` de um nó de gusset ou treliça. A geometria do motor para `ligacao_tracao` é esquemática: uma chapa que começa no nó, sem perfil. Por isso o Render3DMotor troca essa geometria pelo gusset local, com t, d, nº de parafusos e passo do projeto.
+
+A referência é o Advance Steel. A chapa fica no plano formado pela diagonal e pelo apoio, soldada em toda a borda reta na face do apoio. A diagonal encosta numa face dela, e os parafusos ficam só no trecho em que a diagonal está sobre a chapa, contados a partir da ponta da diagonal.
+
+Regras aprendidas (23/10/2026, cada uma veio de um defeito real):
+
+| # | Regra | Defeito que ela corrige |
+|---|---|---|
+| 1 | O plano da chapa é o da diagonal com o eixo do apoio. O Render3D gira o referencial em torno da diagonal (y' = x × apoio⊥) e não desloca a origem: o gusset local já vem na face da peça. | A chapa ficava no referencial da diagonal, girada e no eixo do pilar. Depois, o deslocamento do contrato do motor (que supõe a chapa centrada) a punha no meio da alma do W e afundava os parafusos. |
+| 2 | A borda soldada fica ∥ ao eixo do apoio (`x = xb − w·sx/sz`). Os filetes acompanham. | A borda ⟂ à diagonal tocava o pilar só por um canto. |
+| 3 | `FolgaGusset` empurra a chapa para fora das peças do nó, e as soldas da chapa vão junto (`deslGusset`). | As soldas ficavam onde a chapa estava antes do empurrão, soltas dentro do pilar. |
+| 4 | A ponta da diagonal vem da regra das juntas (`Corte.Recuo`, contado do nó). O gusset não grava recorte. | O recuo ia como `Folga`, que é o vão a partir da face: a diagonal recuava a face a mais e os parafusos ficavam fora dela. |
+| 5 | A diagonal recua a seção inteira, não só o eixo: `recuo += Saliencia`, que é o máximo de `−p·f/(d·f)` no contorno, com f a normal da face que o eixo cruza. Vale na `Juntas` e na `JuntasV04`, e o teste compara as duas. | Com o corte ⟂ à barra, o canto da mesa de baixo entrava no pilar. |
+| 6 | Face onde a chapa encosta: se o plano do gusset é ⟂ a u, vale `FaceChapa` (alma do I, costas do U e do L, lado do tubo). Se é ⟂ a v (`NormalEmV`), vale `FaceChapaV` (mesa do I e do U, lado H do tubo, costas da outra aba do L) e o Render3D lê o y do gusset como v (`FaceV`). | A chapa ia num lado fixo do perfil, qualquer que fosse a posição da diagonal. |
+| 7 | I/W com a alma no plano: a chapa encosta na alma e, a partir da ponta da diagonal, tem meia largura h/2 − tf − 10. Ela só alarga antes da ponta, até a borda soldada. I/W com as mesas no plano: a chapa encosta na face externa da mesa, com a linha de parafusos a B/4 do eixo, fora da alma, e a pega = tf. | Por fora da ponta das mesas não há alma para os parafusos, e com a largura do perfil todo a chapa atravessava as mesas. |
+
+Provas:
+- `42-realista-ligacao-gusset-pilar-meio{,-w,-u,-tubo}` (frente, iso e trás): diagonal de L, W, UPN e tubo chegando no meio de um pilar W.
+- `ESTRUCTTO_CAPTURAS=modelo` mais `--capturas <pasta> <arquivo>` renderiza um modelo qualquer: vista iso, mais frente, iso e três vistas de perto da borda soldada em cada nó com ligação.
+- Asserção `ligacoes3d: gusset ...` no `--testes-exportar`.
+
+Ainda falta:
+- O gusset do motor (`gusset_contraventamento`, com `apoio_dir`) segue o contrato do motor. Nenhuma das regras acima foi aplicada a ele.
+- Parafusos de `ligacao_tracao` com várias linhas saem numa linha só ao longo da diagonal.
+- W como diagonal com as mesas no plano do pórtico (captura `-w90`): a chapa encosta na mesa, a h/2 do plano, e passa da largura da mesa do pilar. Fica ao lado do pilar, sem onde soldar. O detalhe certo é outro: chapa no plano central, com rasgo na alma da diagonal ou a diagonal girada. Não implementado.
+- O recorte da mesa da diagonal em W para a chapa entrar mais (o snipe do Advance Steel) não é feito. A chapa estreita entre as mesas.
+
 ## Provas
 
 - Motor: `python -m unittest discover -s testes`, com 1211 testes OK, 9 pulados, 5 deles novos em `test_geometria_ligacoes.py`.
