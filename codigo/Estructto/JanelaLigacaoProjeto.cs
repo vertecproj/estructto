@@ -1196,7 +1196,7 @@ namespace NovoFtool
                     mem.Margin = new Thickness(0, 0, 8, 0); esq.Children.Add(mem);
                 }
             }
-            var abrC = Botao("Abrir .pcon", "abrir", () => _ = AbrirConexao(), "Abre uma conexão salva (.pcon) e preenche " + (grupo != null ? "a ligação do grupo " + S(grupo, "nome") : "esta calculadora") + " com ela.");
+            var abrC = Botao(grupo != null ? "Importar .pcon" : "Abrir .pcon", "abrir", () => _ = AbrirConexao(), grupo != null ? "Importa uma conexão salva (.pcon) para a ligação do grupo " + S(grupo, "nome") + ": tipo, dados e esforços do arquivo preenchem este projeto; depois \"Aplicar ao grupo\" grava no modelo." : "Abre uma conexão salva (.pcon) nesta calculadora.");
             abrC.Margin = new Thickness(0, 0, 8, 0); esq.Children.Add(abrC);
             if (tipo != null)
             {

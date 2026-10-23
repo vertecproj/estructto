@@ -477,7 +477,8 @@ namespace NovoFtool
 
             var acoes = new StackPanel();
             acoes.Children.Add(AcaoInicio("novo", "Novo projeto", comp ? null : "modelo, dados do projeto, grade e níveis", "Ctrl+N", () => NovoProjeto(), true, "Cria um projeto 3D em três passos: modelo, dados e grade de eixos/níveis. O arquivo já nasce salvo na pasta escolhida."));
-            acoes.Children.Add(AcaoInicio("abrir", "Abrir…", comp ? null : "modelo .json do motor", "Ctrl+O", () => Inicio.Acoes.AbrirDialogo(this), false, "Abre um projeto salvo (.json do motor)."));
+            acoes.Children.Add(AcaoInicio("ligacao", "Nova conexão", comp ? null : "calculadora de ligação, arquivo .pcon", null, () => AbrirProjetistaLigacao(), false, "Abre a calculadora de conexão, sem modelo: escolha o tipo, informe dados e esforços e salve como .pcon. Depois o .pcon pode ser importado numa ligação de qualquer projeto."));
+            acoes.Children.Add(AcaoInicio("abrir", "Abrir…", comp ? null : "projeto .pstr, conexão .pcon, .json", "Ctrl+O", () => Inicio.Acoes.AbrirDialogo(this), false, "Abre um projeto salvo (.pstr, .estructto antigo ou .json do motor) ou uma conexão (.pcon)."));
             acoes.Children.Add(AcaoInicio("cype", "Importar CYPE 3D", comp ? null : "obra .ed3", null, () => Inicio.Acoes.ImportarCype(this), false, "Importa uma obra do CYPE 3D (.ed3) como projeto novo, com avisos do que não foi convertido."));
             acoes.Children.Add(AcaoInicio("importar", "Importar Ftool", comp ? null : "arquivo .ftl", null, () => Inicio.Acoes.ImportarFtool(this), false, "Importa a geometria, seções, materiais e casos de um arquivo .ftl do Ftool."));
             esq.Children.Add(acoes);
