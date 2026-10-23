@@ -26,6 +26,6 @@ só abre em branco se não houver nenhum. Antes abria sempre `NovoEmBranco`.
 Fluxo E em 23/10: 36 ok, 0 falhas. Reabertura conferida abrindo o programa: o título veio do primeiro recente, não de documento novo.
 
 ## Pendente
-- Associação de `.pstr`/`.pcon` no instalador (`instalador.iss`) e ícone próprio.
+- Ícone próprio para `.pstr`/`.pcon` (hoje usam o ícone do exe). A associação (duplo clique) já está em `codigo/instalador.iss` ([Registry], HKCU); só vale depois de gerar um instalador novo (`publicar.ps1`).
 - Teste automático da interface de Abrir/Salvar `.pcon` (os diálogos de arquivo são do Windows).
 - Migração de modelos existentes para `.pstr` (não obrigatória: `.estructto` segue válido).
