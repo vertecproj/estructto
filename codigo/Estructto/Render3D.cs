@@ -353,7 +353,15 @@ namespace NovoFtool
             foreach (Ligacao3D p in mod.Ligacoes.Where(l => l.Pendente != null && l.Pendente != "*").Take(MaxPropostas))
                 foreach (Ligacao3D q in LigacoesAmostra.Proposta(p, mod, cortes, forma, FolgaPadrao, ParaLocal))
                 {
-                    q.Proposta = true; q.Nome = p.Nome; q.Pendente = p.Pendente; ligs.Add(q);   // G6: Pendente marca a proposta local (o motor não desenha)
+                    q.Proposta = p.Tracao == null; q.Nome = p.Nome; q.Pendente = p.Pendente; q.Grupo = p.Grupo; ligs.Add(q);   // G6: Pendente marca a proposta local (o motor não desenha)
+                    if (p.Tracao is var (tt, dd, nn, ss) && q.Chapas.FirstOrDefault(ch => ch.Nome == "gusset") is Ligacao3D.Chapa gq && q.Parafusos.Count > 0)
+                    {   // projeto ligacao_tracao: espessura e parafusos do projeto (ponytail: numa linha só ao longo da diagonal)
+                        var p0 = q.Parafusos[0]; double sg = Math.Sign(gq.Normal.Y), tg = gq.Espessura;
+                        gq.Espessura = tt; q.Parafusos.Clear();
+                        for (int k = 0; k < Math.Max(1, nn); k++)
+                            q.Parafusos.Add(new Ligacao3D.Parafuso { D = dd, Comprimento = p0.Comprimento - tg + tt, Pega = p0.Pega - tg + tt, Origem = p0.Origem + new Vector3D(k * ss, sg * (tt - tg), 0), Eixo = p0.Eixo });
+                        foreach (var sd in q.Soldas.Skip(1)) sd.Pontos = sd.Pontos.Select(v => v + new Vector3D(0, sg * (tt - tg), 0)).ToArray();
+                    }
                     if (q.Chapas.Count > 0 && barras.TryGetValue(q.Barra, out Barra3D bq)) lock (Locais) Locais.Add(Exportador.IdBarra(bq));
                 }
             bool todas = mod.Ligacoes.Any(l => l.Pendente == "*");

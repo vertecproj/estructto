@@ -219,6 +219,15 @@ namespace NovoFtool
                     string sec = (string)bj[bid]?["secao"];
                     string tl = proposta ? TipoProposto(tipoNo, assin, Vertical(b), (string)secoes?[(string)bj[bid]?["secao"] ?? ""]?["props"]?["tipo"] is "U" or "Ue") : (string)proj["tipo_ligacao"];
                     Ligacao3D lig = null;
+                    if (!proposta && tl == "ligacao_tracao" && tipoNo is "gusset_contraventamento" or "no_trelica")
+                    {   // a geometria do motor para ligacao_tracao é esquemática (chapa a partir do nó, sem perfil: ficava no eixo do pilar,
+                        // girada com a diagonal): desenha o gusset local (LigacoesAmostra.Gusset) com a chapa e os parafusos do projeto
+                        var d = proj["dados"] as JsonObject;
+                        double Dd(string k, double padrao) { try { return (d?[k] as JsonValue)?.GetValue<double>() ?? padrao; } catch { return padrao; } }
+                        r.Add(new Ligacao3D { No = idN, Barra = b.Id, Nome = (string)g["nome"] ?? "", Grupo = (string)g["id"], Pendente = "gusset|" + string.Join("|", assin),
+                                              Tracao = (Dd("t", 0.0095) * 1000, Dd("d_mm", 16), (int)(Dd("n_linhas", 1) * Dd("n_por_linha", 3)), Dd("s", 0.06) * 1000) });
+                        continue;
+                    }
                     if (tl == "placa_base")
                     {
                         if (secoes?[sec] is not JsonObject sj) continue;

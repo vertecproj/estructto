@@ -25,6 +25,8 @@ namespace NovoFtool
         // Proposta: o grupo não tem projeto; é a geometria padrão sugerida (desenhada esmaecida, com o chip "Proposta" na vista).
         // Pendente: proposta sem geometria do motor; o Render3D faz a do tipo de nó (LigacoesAmostra.Proposta) com as juntas.
         public bool Proposta; public string Pendente;
+        // Projeto ligacao_tracao num gusset (Render3DMotor): desenhado pelo gusset local com t, d (mm), nº de parafusos e passo s (mm) do projeto
+        public (double t, double d, int n, double s)? Tracao;
         public sealed class Chapa
         {
             public string Nome, Campo; public Point[] Contorno; public Vector3D Origem, Normal, U; public double Espessura;

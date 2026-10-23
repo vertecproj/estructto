@@ -326,6 +326,20 @@ namespace NovoFtool
                     CapturarPrincipal(w, "42-realista-contraventamento");
                     w.vista3D.Focar(PNo(cv, nid(1, 0, 1)) + new Vector3D(0, 0, -0.15), 2.4, -75, 14);
                     CapturarPrincipal(w, "42-realista-ligacao-gusset");
+                    {   // diagonal que chega no meio de um pilar contínuo (sem viga no nó): o gusset tem de ficar na face do pilar, junto da diagonal
+                        var dg = new Modelo3D();
+                        dg.Nos.Add(new No3D { Id = 1, X = 0, Y = 0, Z = 0, Apoios = new[] { true, true, true, true, true, true } });
+                        dg.Nos.Add(new No3D { Id = 2, X = 0, Y = 0, Z = 2.5 }); dg.Nos.Add(new No3D { Id = 3, X = 0, Y = 0, Z = 5 });
+                        dg.Nos.Add(new No3D { Id = 4, X = 2.5, Y = 0, Z = 0, Apoios = new[] { true, true, true, false, false, false } });
+                        dg.Barras.Add(new Barra3D { Id = 1, Ni = 1, Nj = 2, Secao = "W 250 x 32,7", Aprov = 0.4 });
+                        dg.Barras.Add(new Barra3D { Id = 2, Ni = 2, Nj = 3, Secao = "W 250 x 32,7", Aprov = 0.4 });
+                        dg.Barras.Add(new Barra3D { Id = 3, Ni = 4, Nj = 2, Secao = "L 3\" x 1/4\"", Aprov = 0.5 });
+                        w.vista3D.Carregar(dg, false);
+                        w.vista3D.Focar(new Point3D(0, 0, 2.4), 1.6, -90, 10);
+                        CapturarPrincipal(w, "42-realista-ligacao-gusset-pilar-meio");
+                        w.vista3D.Focar(new Point3D(0, 0, 2.4), 1.6, -40, 20);
+                        CapturarPrincipal(w, "42-realista-ligacao-gusset-pilar-meio-iso");
+                    }
                     // viga secundária (W 250) apoiada na alma da principal (W 310), topos alinhados: chapa simples + cope na mesa de cima
                     var sb = Portico2x2(false);
                     int na = sb.Nos.Max(n => n.Id) + 1, nb = na + 1;
@@ -1148,6 +1162,21 @@ namespace NovoFtool
                     if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
                 }
                 Esperar(w.AbrirTarefa(caminhoModelo));
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "modelo")
+                {   // só o modelo dado (Realista com as ligações do motor): vista iso + close-up em cada nó com ligação; depois sai
+                    w.DefinirRealista(true); w.MostrarDiagrama(Diagrama.Nenhum); w.MostrarVista3D(true); EsperarIdle();
+                    w.Atualizar3D(false); Esperar(w.TarefaLigacoes3D); EsperarIdle();
+                    w.vista3D.MostrarVista(VistaPadrao.Iso, false);
+                    CapturarPrincipal(w, "modelo-iso");
+                    var m3 = w.vista3D.ModeloAtual;
+                    foreach (int no in m3.Ligacoes.Select(l => l.No).Distinct())
+                    {
+                        var n = m3.Nos.First(x => x.Id == no); var p = new Point3D(n.X, n.Y, n.Z);
+                        w.vista3D.Focar(p, 1.6, -90, 8); CapturarPrincipal(w, $"modelo-no{no}-frente");
+                        w.vista3D.Focar(p, 1.6, -40, 22); CapturarPrincipal(w, $"modelo-no{no}-iso");
+                    }
+                    w.alterado = false; w.Close(); Environment.Exit(0);
+                }
                 w.TelaInicial.Visibility = Visibility.Collapsed;
                 EsperarIdle();
                 CapturaAtualizacao(w);   // TestesAtualizacao.cs: faixa "Nova versão disponível"
