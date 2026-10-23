@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $MyInvocation.MyCommand.Path          # codigo\
 $motorFonte = Join-Path $raiz 'motor'
-$dist = Join-Path $motorFonte 'dist'
+$dist = 'C:\dev\build\EstructtoMotor\dist'   # fora do Google Drive: a sincronização trava o estructto-motor.exe recém-copiado (acesso negado)
 $csproj = Join-Path $raiz 'Estructto\Estructto.csproj'
 $exemplo = Join-Path (Split-Path -Parent $raiz) 'exemplos\guincho-com-placa.estructto'
 $zip = Join-Path (Split-Path -Parent $Saida) "Estructto-$Versao-win-x64.zip"
@@ -111,7 +111,7 @@ try {
         if (MotoresEm $Saida) { Falha "ha estructto-motor rodando de $Saida; feche o Estructto de la" }
         Remove-Item -Recurse -Force $Saida
     }
-    & dotnet publish $csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=$Versao -o $Saida
+    & dotnet publish $csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=$Versao "-p:MotorDist=$dist" -o $Saida
     if ($LASTEXITCODE -ne 0) { Falha "dotnet publish ($LASTEXITCODE)" }
     $exe = Join-Path $Saida 'Estructto.exe'
     if (-not (Test-Path $exe)) { Falha "sem $exe" }
