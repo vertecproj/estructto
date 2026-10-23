@@ -328,7 +328,7 @@ namespace NovoFtool
                     CapturarPrincipal(w, "42-realista-ligacao-gusset");
                     // diagonal que chega no meio de um pilar contínuo (sem viga no nó), uma seção de diagonal por captura: o gusset tem de ficar
                     // na face da diagonal (alma do W, costas do L/U, lado do tubo), soldado rente à face do pilar, com os parafusos na diagonal
-                    foreach (var (secD, nomeD, rotD) in new[] { ("L 3\" x 1/4\"", "", 0.0), ("W 310 x 38,7", "-w", 0.0), ("W 310 x 38,7", "-w90", 90.0), ("UPN 200", "-u", 0.0), ("Tubo 100x50x3,00", "-tubo", 0.0) })
+                    foreach (var (secD, nomeD, rotD) in new[] { ("L 3\" x 1/4\"", "", 0.0), ("W 310 x 38,7", "-w", 0.0), ("W 310 x 38,7", "-w90", 90.0), ("U 8\" x 17,1", "-u", 0.0), ("Tubo 100x50x3,00", "-tubo", 0.0) })
                     {
                         var dg = new Modelo3D();
                         dg.Nos.Add(new No3D { Id = 1, X = 0, Y = 0, Z = 0, Apoios = new[] { true, true, true, true, true, true } });
@@ -1214,7 +1214,8 @@ namespace NovoFtool
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
                 if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)
-                if (so == "geo") so1(() => CapturasGeo(w));                       // só as 61) da geometria das ligações (solda, enrijecedores, placa)
+                if (so == "interf3d") { int np = CapturasInterf3D(w); w.alterado = false; w.Close(); Environment.Exit(np); }   // só as 62) bateria de interferência das ligações locais
+                if (so == "geo") so1(() => CapturasGeo(w));                     // só as 61) da geometria das ligações (solda, enrijecedores, placa)
                 if (so == "visual") so1(() => CapturasVisual(w));                 // só as 58) close-ups de parafusos, linhas e ligações propostas
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado

@@ -1355,7 +1355,7 @@ namespace NovoFtool
         }
 
         // ================================================================ interferência (docs/v3/RENDER.md)
-        // Estructto.exe --testes-interferencia <arquivo | galpao> [pasta]: abre o modelo (galpao = o do assistente de novo
+        // Estructto.exe --testes-interferencia <arquivo | galpao | edificio | portico | trelica | mezanino> [pasta]: abre o modelo (chave = o do assistente de novo
         // projeto), identifica as ligações, monta o Realista com as ligações do motor e lista os pares de sólidos (barras,
         // chapas, cantoneiras) que se interpenetram mais de 1 mm (Render3DGeometria.Interferencias). Grava interferencia.txt,
         // o gerenciador de ligações (todos os nós, com os sem ligação) e close-ups: viga-pilar, gusset, placa de base e
@@ -1379,11 +1379,11 @@ namespace NovoFtool
             {
                 sb.AppendLine("Interferência · " + arquivo + " · ESTRUCTTO_MOTOR = " + (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") ?? "(não definida)"));
                 VigiarCaixas();
-                if (arquivo == "galpao")
+                if (ModeloInicial.Todos.Any(m => m.Chave == arquivo && m.Gerador != null))   // galpao, edificio, portico, trelica, mezanino
                 {
-                    var mi = ModeloInicial.Por("galpao");
+                    var mi = ModeloInicial.Por(arquivo);
                     var g = new GradeNiveis { X = GradeNiveis.Espacamentos(mi.EixosX), Y = GradeNiveis.Espacamentos(mi.EixosY), Z = GradeNiveis.Cotas(mi.Niveis) };
-                    Esperar(Inicio.Acoes.Novo(w, new NovoProjetoDados { Modelo = mi, Grade = g, Nome = "galpao-interferencia", Pasta = Path.Combine(pastaSaida, "projeto"), Material = mi.Material, Pilar = mi.Pilar, Viga = mi.Viga }));
+                    Esperar(Inicio.Acoes.Novo(w, new NovoProjetoDados { Modelo = mi, Grade = g, Nome = arquivo + "-interferencia", Pasta = Path.Combine(pastaSaida, "projeto"), Material = mi.Material, Pilar = mi.Pilar, Viga = mi.Viga }));
                 }
                 else Esperar(w.AbrirArquivo(Path.GetFullPath(arquivo)));
                 EsperarIdle();

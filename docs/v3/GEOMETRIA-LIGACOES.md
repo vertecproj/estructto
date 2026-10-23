@@ -96,6 +96,41 @@ Ainda falta:
 - W como diagonal com as mesas no plano do pórtico (captura `-w90`): a chapa encosta na mesa, a h/2 do plano, e passa da largura da mesa do pilar. Fica ao lado do pilar, sem onde soldar. O detalhe certo é outro: chapa no plano central, com rasgo na alma da diagonal ou a diagonal girada. Não implementado.
 - O recorte da mesa da diagonal em W para a chapa entrar mais (o snipe do Advance Steel) não é feito. A chapa estreita entre as mesas.
 
+## 7. Bateria de interferência das ligações locais (`interf3d`)
+
+Data: 23/10/2026. Pedido: gusset de W ainda bugado e nó de pilar com 4 vigas cheio de sobreposições; "testar todas as possibilidades até ficar certo".
+
+`ESTRUCTTO_CAPTURAS=interf3d` mais `--capturas <pasta>` (`CapturasInterf.cs`) monta 2.958 cenas pequenas sem motor, com as ligações locais (`LigacoesAmostra`), e roda o mesmo detector do `--testes-interferencia` (pares que se interpenetram > 1 mm). Grava `interf3d.txt` e captura iso/trás só das cenas reprovadas. O código de saída é o nº de cenas reprovadas. `ESTRUCTTO_INTERF=<trecho do nome>` roda só as cenas que o contêm, captura também as aprovadas e põe a caixa (mm) de cada sólido no relatório.
+
+| Família | Combinações |
+|---|---|
+| `cruz` | pilar (W250, W200, W310, HP250, tubo 100×50, tubo 150×150, U 8") × giro 0/90 × viga (W310, W200, W410, U 8", tubo) × cardinal 5/8 × topo/meio × lados (4, mesas, almas, 1x, 1y, L, 3) |
+| `mista` | vigas da mesa e da alma com perfis e cardinais diferentes (alturas misturadas no nó) |
+| `diag` | pilar (W250, W310, tubo 100×50, tubo 150×150) × giro × diagonal (L, W310, W200, U 8", tubo retangular, tubo redondo) × giro × 5 geometrias (45°, outro lado, rasa, íngreme, subindo) × com/sem viga no nó |
+| `portico2x2` | pórtico 2×2 com e sem contraventamento em X |
+
+Seção fora do catálogo reprova a bateria (o "UPN 200" das capturas antigas virava perfil genérico 70×70 e não testava nada; agora `U 8" x 17,1`). Barras sem nó em comum que se cruzam (X de cantoneiras sem nó no meio) são choque do modelo, não da ligação: saem à parte e não reprovam.
+
+Defeitos achados e corrigidos (733 → 32 reprovadas):
+
+| # | Defeito | Correção |
+|---|---|---|
+| 1 | Enrijecedor do pilar (chapa de topo) com meia largura max(B, H)/2 − tf: passava ~50 mm da mesa e batia nas vigas da alma; uma chapa só atravessava a alma | Dois enrijecedores por nível, da face da alma (tw/2) até a ponta da mesa (B/2) (`ChapaDeTopo`, `twPilar`) |
+| 2 | Pilar contínuo (nó no meio) subia até o topo da chapa de topo e entrava no trecho de cima | A regra "pilar até o topo da chapa" só vale se nenhuma barra vertical sobe do nó (`Render3D`) |
+| 3 | Viga na alma do pilar com enrijecedores no nó entrava entre as mesas (regra de viga em viga, com cope) e batia nos enrijecedores | Com enrijecedor no nó: a viga para na ponta das mesas e a chapa simples vai da face da alma até ela (chapa estendida). Sem enrijecedor fica a regra antiga (entra até 12 mm da alma) |
+| 4 | Chapa simples × enrijecedor quando as alturas ou os cardinais diferem | A chapa vai para a maior faixa livre entre os enrijecedores dentro da altura dela, descentrada se preciso (`Enrijecedores`) |
+| 5 | **Gusset de W com a alma no plano (o da imagem do pedido):** a borda soldada partia de xb = 0,4·xr e o `FolgaGusset` empurrava a chapa até a face; no lado agudo a ponta da borda passava de xr e a chapa entrava na mesa da diagonal (5 mm) | A borda é calculada direto na face do apoio, x(z) = (a0 − z·az)/ax, e a ponta fica em x ≤ xr − 1, andando sobre a face |
+| 6 | Diagonal no nó viga-pilar com a viga pendurada pela mesa (cardinal 8): `FaceDist` supunha o eixo da viga no nó e a diagonal entrava na viga | `RecuoDiag`: saída real do eixo da diagonal da caixa de cada peça (com o deslocamento entre os eixos) mais a saliência na face cruzada. Vale na `Juntas` e na `JuntasV04` |
+| 7 | Gusset no nó viga-pilar-diagonal atravessava a viga e a chapa de topo (lado obtuso, +90 mm) | A chapa é recortada pelo semiplano de cada peça do nó no plano dela (caixa da peça + o que as chapas da ligação dela passam da caixa); os filetes são recortados junto |
+| 8 | Gusset no pé do pilar atravessava a placa de base | Recorte pela face de cima da placa de base do apoio |
+
+Ficou: 32 cenas, todas pilar tubo 100×50 com 4 vigas W de mesa 140–165 mm (mais largas que a face do pilar). As vigas a 90° se tocam fisicamente: o nó não tem como ser montado assim e precisa de outro detalhe (capitel, consolo). A decisão é do usuário.
+
+Provas desta rodada:
+- `interf3d`: 2.958 cenas, 2.926 aprovadas (diagonais 960/960, mistas todas, pórticos sem par).
+- `--testes-exportar`: 0 falhas.
+- `--testes-interferencia` com o motor empacotado: galpão, edifício, pórtico, treliça, mezanino e `testes-aceite/PLATAFORMA.ed3`, todos com 0 pares. O teste aceita agora qualquer chave de modelo inicial, não só `galpao`.
+
 ## Provas
 
 - Motor: `python -m unittest discover -s testes`, com 1211 testes OK, 9 pulados, 5 deles novos em `test_geometria_ligacoes.py`.

@@ -426,6 +426,9 @@ namespace NovoFtool
                 if (ep.Length < 1e-9 || Math.Abs(ep.Z) < 0.95 * ep.Length || (pl.Ni != l.No && pl.Nj != l.No)) continue;
                 bool topoI = pl.Ni == l.No; Point3D topo = topoI ? qa : qd, baixo = topoI ? qd : qa;
                 if (baixo.Z >= topo.Z) continue;
+                // pilar contínuo (outra barra vertical sobe do nó): não termina aqui; antes subia mesmo assim e entrava no trecho de cima (bateria interf3d)
+                if (barras.Values.Any(o2 => o2 != pl && (o2.Ni == l.No || o2.Nj == l.No) && c.Pontos(o2) is var (oa, od) && (od - oa).Length > 1e-9
+                                            && Math.Abs((od - oa).Z) >= 0.95 * (od - oa).Length && (o2.Ni == l.No ? od : oa).Z > topo.Z)) continue;
                 if (cortes.TryGetValue((pl, topoI), out Corte kp) && (kp.Esquadria || kp.Motor)) continue;
                 var (av, dv) = c.Pontos(bv); Vector3D e = dv - av; if (e.Length < 1e-9) continue; e.Normalize();
                 Vector3D vz = Modelo3D.EixoY(e, bv.Rot + bv.RotPerfil); Point dcv = GeometriaPerfis.Cardinal(forma(bv), bv.Cardinal);
@@ -633,13 +636,86 @@ namespace NovoFtool
                 if (gus != null && l.Ponta == null && l.ApoioDir == null && kl?.Contra != null && gus.Contorno.Length >= 4 && gus.Contorno[0].X == gus.Contorno[gus.Contorno.Length - 1].X)
                 {   // gusset proposto (LigacoesAmostra.Gusset): a borda soldada (primeiro e último ponto, u = xb) era ⟂ à diagonal e tocava o pilar
                     // por um canto; inclina para ficar ∥ ao eixo do apoio (x local = xb − w·sx/sz, z local = −w). Pontos iguais = ainda não feito.
+                    // A borda vai direto na face do apoio (dist. ao eixo dele, na normal nf do plano da chapa, = ext da seção): x(z) = (a0 − z·az)/ax.
+                    // Antes partia de xb = 0,4·xr e o FolgaGusset empurrava a chapa até a face: no lado agudo a ponta da borda passava da
+                    // ponta da diagonal (xr) e a chapa entrava na mesa do W (bateria interf3d). Agora a ponta fica em x ≤ xr − 1, andando sobre a face.
                     var (sa, sd) = c.Pontos(kl.Contra); Vector3D ds = sd - sa; ds.Normalize();
-                    double sx = Vector3D.DotProduct(ds, x), sz = Vector3D.DotProduct(ds, z), sg = Math.Sign(gus.U.X);
-                    if (Math.Abs(sz) > 0.2)
+                    double sg = Math.Sign(gus.U.X);
+                    Vector3D nf = x - Vector3D.DotProduct(x, ds) * ds;
+                    if (nf.Length > 0.2)
                     {
-                        foreach (int k in new[] { 0, gus.Contorno.Length - 1 }) { Point q = gus.Contorno[k]; gus.Contorno[k] = new Point(sg * (sg * q.X - q.Y * sx / sz), q.Y); }
+                        nf.Normalize();
+                        Contorno fs = forma(kl.Contra); Vector3D vs = Modelo3D.EixoY(ds, kl.Contra.Rot + kl.Contra.RotPerfil), us = Vector3D.CrossProduct(vs, ds);
+                        Point dcs = GeometriaPerfis.Cardinal(fs, kl.Contra.Cardinal);
+                        double ext = fs.Lacos.SelectMany(q => q).Max(p => Vector3D.DotProduct(us * p.X + vs * p.Y, nf));
+                        double a0 = (ext - Vector3D.DotProduct(o - (sa + us * dcs.X + vs * dcs.Y), nf)) * 1000, ax = Vector3D.DotProduct(x, nf), az = Vector3D.DotProduct(z, nf);
+                        double lim = Enumerable.Range(1, gus.Contorno.Length - 2).Min(k => sg * gus.Contorno[k].X) - 1;
+                        var pts = new List<(double x, double z)>();
+                        foreach (int k in new[] { 0, gus.Contorno.Length - 1 })
+                        {
+                            double zl = -gus.Contorno[k].Y, xl = (a0 - zl * az) / ax;   // contorno (u, w): w = −z local (N × U com N = ±y, U = ±x)
+                            if (xl > lim && Math.Abs(az) > 1e-6) { zl = (a0 - lim * ax) / az; xl = lim; }
+                            gus.Contorno[k] = new Point(sg * xl, -zl); pts.Add((xl, zl));
+                        }
                         foreach (var s in l.Soldas.Where(s => s.Pontos?.Length == 2 && s.Pontos[0].X == s.Pontos[1].X))   // filetes da borda, no mesmo plano
-                            s.Pontos = s.Pontos.Select(p => new Vector3D(p.X + p.Z * sx / sz, p.Y, p.Z)).ToArray();
+                            s.Pontos = pts.Select(p => new Vector3D(p.x, s.Pontos[0].Y, p.z)).ToArray();
+                        // Outras peças do nó no plano da chapa (a viga do nó viga-pilar-diagonal): a chapa fica do lado da diagonal, fora da caixa
+                        // da peça e do que as chapas da ligação dela passam da caixa (chapa de topo estendida); os filetes da borda são recortados
+                        // junto. Antes o lado obtuso (+90 mm) atravessava a viga e a chapa de topo (bateria interf3d).
+                        Vector3D ng = Wv(gus.Normal);
+                        // corta a chapa no semiplano F(x, z) ≥ 0 (x, z locais em mm) e os filetes junto
+                        void Recortar(Func<double, double, double> F)
+                        {
+                            var ent = gus.Contorno.Select(q => (x: sg * q.X, z: -q.Y)).ToList(); var sai = new List<(double x, double z)>();
+                            for (int k = 0; k < ent.Count; k++)
+                            {
+                                var p = ent[k]; var q2 = ent[(k + 1) % ent.Count]; double fp = F(p.x, p.z), fq = F(q2.x, q2.z);
+                                if (fp >= 0) sai.Add(p);
+                                if ((fp >= 0) != (fq >= 0)) { double t = fp / (fp - fq); sai.Add((p.x + t * (q2.x - p.x), p.z + t * (q2.z - p.z))); }
+                            }
+                            if (sai.Count < 3) return;
+                            gus.Contorno = sai.Select(p => new Point(sg * p.x, -p.z)).ToArray();
+                            foreach (var s in l.Soldas.Where(s => s.Pontos?.Length == 2))
+                            {
+                                Vector3D p0 = s.Pontos[0], p1 = s.Pontos[1]; double f0 = F(p0.X, p0.Z), f1 = F(p1.X, p1.Z);
+                                if (f0 < 0 && f1 < 0) { s.Pontos = null; continue; }
+                                if (f0 < 0) s.Pontos[0] = p0 + (p1 - p0) * (f0 / (f0 - f1)); else if (f1 < 0) s.Pontos[1] = p1 + (p0 - p1) * (f1 / (f1 - f0));
+                            }
+                            l.Soldas.RemoveAll(s => s.Pontos == null);
+                        }
+                        // placa de base do apoio no nó (diagonal no pé do pilar): a chapa fica acima da face de cima dela
+                        {
+                            Vector3D xc = kl.Contra.Ni == l.No ? ds : -ds; double topo = double.NegativeInfinity;
+                            foreach (var lo in ligs.Where(q => q != l && q.No == l.No && q.Barra == kl.Contra.Id))
+                                foreach (var cho in lo.Chapas.Where(ch => ch.Nome == "placa de base" && ch.U.Length > 0.5))
+                                {
+                                    Vector3D wo = Vector3D.CrossProduct(cho.N1, cho.U1);
+                                    foreach (Point q in cho.Contorno) foreach (double tt in new[] { 0, cho.Espessura })
+                                        topo = Math.Max(topo, (cho.Origem + cho.U1 * q.X + wo * q.Y + cho.N1 * tt).X);   // x local = ao longo do pilar (mm)
+                                }
+                            if (!double.IsInfinity(topo) && Vector3D.DotProduct(x, xc) > 0)
+                            {
+                                Point3D noC = kl.Contra.Ni == l.No ? sa : sd;
+                                double A3 = Vector3D.DotProduct(o - noC, xc) * 1000 - topo - 1, cx3 = Vector3D.DotProduct(x, xc), cz3 = Vector3D.DotProduct(z, xc);
+                                Recortar((xl, zl) => A3 + cx3 * xl + cz3 * zl);
+                            }
+                        }
+                        foreach (Barra3D ot in mod.Barras.Where(q => q != b && q != kl.Contra && (q.Ni == l.No || q.Nj == l.No)))
+                        {
+                            var (oa, od) = c.Pontos(ot); Vector3D eo = od - oa; if (eo.Length < 1e-9) continue; eo.Normalize();
+                            if (Math.Abs(Vector3D.DotProduct(eo, ds)) > 0.95 || Math.Abs(Vector3D.DotProduct(eo, ng)) > 0.3) continue;   // trecho do mesmo apoio, ou fora do plano
+                            Vector3D n2 = x - Vector3D.DotProduct(x, eo) * eo; n2 -= Vector3D.DotProduct(n2, ng) * ng; if (n2.Length < 0.2) continue; n2.Normalize();
+                            Contorno fo = forma(ot); Vector3D vo = Modelo3D.EixoY(eo, ot.Rot + ot.RotPerfil), uo = Vector3D.CrossProduct(vo, eo);
+                            Point dco = GeometriaPerfis.Cardinal(fo, ot.Cardinal); Point3D oo = oa + uo * dco.X + vo * dco.Y;
+                            double lim2 = fo.Lacos.SelectMany(q => q).Max(p => Vector3D.DotProduct(uo * p.X + vo * p.Y, n2));
+                            Vector3D xo = ot.Ni == l.No ? eo : -eo, yo = Vector3D.CrossProduct(xo, vo);   // referencial local da ligação de ot (y = x × z, z = v)
+                            foreach (var lo in ligs.Where(q => q != l && q.No == l.No && q.Barra == ot.Id))
+                                foreach (var cho in lo.Chapas) { Vector3D wo = Vector3D.CrossProduct(cho.Normal, cho.U); if (cho.U.Length < 0.5) continue; wo.Normalize(); Vector3D uo1 = cho.U1;
+                                    foreach (Point q in cho.Contorno) foreach (double tt in new[] { 0, cho.Espessura })
+                                    { Vector3D pl = cho.Origem + uo1 * q.X + wo * q.Y + cho.N1 * tt; lim2 = Math.Max(lim2, Vector3D.DotProduct(yo * pl.Y + vo * pl.Z, n2) / 1000); } }   // origem da ligação no eixo de ot (n2 ⟂ eixo)
+                            double A = (Vector3D.DotProduct(o - oo, n2) - lim2 - 0.001) * 1000, bx = Vector3D.DotProduct(x, n2), bz = Vector3D.DotProduct(z, n2);
+                            Recortar((xl, zl) => A + bx * xl + bz * zl);   // ≥ 0 = do lado da diagonal, fora da peça
+                        }
                     }
                 }
                 Point3D W(Vector3D p) => o + (x * p.X + y * p.Y + z * p.Z) / 1000;
