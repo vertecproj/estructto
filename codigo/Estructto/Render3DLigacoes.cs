@@ -307,7 +307,8 @@ namespace NovoFtool
         public static Ligacao3D Gusset(int no, Barra3D diag, bool emI, Contorno fDiag, double recuo)
         {
             double B = Math.Max(fDiag.B, fDiag.H) * 1000, t = Math.Max(fDiag.Tw, 0.006) * 1000, esp = 10;
-            double xr = Math.Round(recuo * 1000, 1), xb = 0.4 * xr, x1 = xr + 220;            var (yf, sg) = FaceChapa(fDiag, emI);
+            double xr = Math.Round(recuo * 1000, 1), xb = 0.4 * xr, x1 = xr + 220;
+            var (yf, sg) = FaceChapa(fDiag, emI);
             if (fDiag.Forma == "I") yf = fDiag.B / 2 * 1000;   // I: por fora da ponta das mesas
             var l = new Ligacao3D { No = no, Barra = diag.Id, Nome = "Gusset" };
             l.Chapas.Add(new Ligacao3D.Chapa { Nome = "gusset", Origem = new Vector3D(0, yf, 0), Normal = new Vector3D(0, sg, 0), U = new Vector3D(sg, 0, 0), Espessura = esp,
