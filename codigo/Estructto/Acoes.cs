@@ -238,7 +238,7 @@ namespace NovoFtool
 
         internal void AbrirDialogo()
         {
-            var d = new OpenFileDialog { Multiselect = true, Filter = "Modelos (*.estructto;*.portico;*.ftl;*.json;*.ed3)|*.estructto;*.portico;*.ftl;*.json;*.ed3|Estructto (*.estructto)|*.estructto|Modelo do motor (*.json)|*.json|Obra do CYPE 3D (*.ed3)|*.ed3|Portico antigo (*.portico)|*.portico|Ftool original (*.ftl)|*.ftl" };
+            var d = new OpenFileDialog { Multiselect = true, Filter = "Modelos e conexões (*.pstr;*.pcon;*.estructto;*.portico;*.ftl;*.json;*.ed3)|*.pstr;*.pcon;*.estructto;*.portico;*.ftl;*.json;*.ed3|Estructto (*.pstr)|*.pstr|Conexão (*.pcon)|*.pcon|Estructto antigo (*.estructto)|*.estructto|Modelo do motor (*.json)|*.json|Obra do CYPE 3D (*.ed3)|*.ed3|Portico antigo (*.portico)|*.portico|Ftool original (*.ftl)|*.ftl" };
             if (d.ShowDialog(this) == true) foreach (string f in d.FileNames) Abrir(f);
         }
 
@@ -253,6 +253,7 @@ namespace NovoFtool
 
         internal Task AbrirTarefa(string caminho)
         {
+            if (ConexaoArquivo.EhConexao(caminho)) { AbrirProjetistaLigacao(null, caminho); return Task.CompletedTask; }   // .pcon: calculadora de conexão, não é modelo
             int ja = docs.FindIndex(x => x.Esp?.Arquivo != null && string.Equals(System.IO.Path.GetFullPath(x.Esp.Arquivo), System.IO.Path.GetFullPath(caminho), StringComparison.OrdinalIgnoreCase));
             if (ja >= 0) { TrocarDoc(ja); return Task.CompletedTask; }   // já aberto: só troca para a aba dele
             return AbrirEspacialArquivo(caminho);

@@ -289,8 +289,8 @@ namespace NovoFtool
         {
             // barra de acesso rapido (Calcular fica sempre visivel aqui, nao em abas)
             var qNovo = Botao("novo", "Novo", () => NovoProjeto(), "Novo projeto 3D: modelo, dados e grade de eixos e níveis.", "Ctrl+N");
-            var qAbrir = Botao("abrir", "Abrir", AbrirDialogo, "Abre .estructto (os antigos, 2D, são convertidos para 3D), .json do motor, .ed3 do CYPE ou .ftl do Ftool.", "Ctrl+O");
-            var qSalvar = Botao("salvar", "Salvar", () => Salvar(false), "Salva no formato .estructto (modelo do motor + placas de base + grade).", "Ctrl+S");
+            var qAbrir = Botao("abrir", "Abrir", AbrirDialogo, "Abre .pstr (e os .estructto antigos; os 2D são convertidos para 3D), .pcon (conexão), .json do motor, .ed3 do CYPE ou .ftl do Ftool.", "Ctrl+O");
+            var qSalvar = Botao("salvar", "Salvar", () => Salvar(false), "Salva no formato .pstr (modelo do motor + placas de base + grade).", "Ctrl+S");
             var qDesf = Botao("desfazer", "Desfazer", Desfazer, "Desfaz a última alteração feita no modelo.", "Ctrl+Z / U");
             var qRef = Botao("refazer", "Refazer", Refazer, "Refaz a última alteração desfeita.", "Ctrl+Y");
             var qCalc = Botao("calc", "Calcular", Calcular, "Calcula no motor Python: combinações NBR 8681 e verificação por norma.", "F5");
