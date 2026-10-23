@@ -317,7 +317,8 @@ namespace NovoFtool
                 l.Parafusos.Add(new Ligacao3D.Parafuso { D = 16, Comprimento = esp + t + 20, Pega = esp + t, Origem = new Vector3D(xr + 40 + 60 * k, yf + sg * esp, 0), Eixo = new Vector3D(0, -sg, 0) });
             foreach (double y in new[] { yf, yf + sg * esp })
                 l.Soldas.Add(new Ligacao3D.Solda { Perna = 6, Pontos = new[] { new Vector3D(xb, y, -(B / 2 + 90)), new Vector3D(xb, y, B / 2 + 90) } });
-            l.Recortes.Add(new Ligacao3D.Recorte { Barra = "viga", Tipo = "recuo", Folga = xr });
+            // sem recorte: a ponta da diagonal fica na regra das juntas, que é o próprio xr (Corte.Recuo, contado do nó, seção inteira
+            // livre da face). Antes ia como Folga (vão a partir da face): a diagonal recuava a face a mais e os parafusos ficavam fora dela.
             return l;
         }
 
@@ -497,6 +498,9 @@ namespace NovoFtool
             Ligacao3D v = Ligacao3D.DoJson(l.No, l.Barra, l.ParaJson(), l.Nome);
             afirmar(v.Chapas.Count == l.Chapas.Count && v.Parafusos.Count == l.Parafusos.Count && v.Soldas[0].Pontos.Length == l.Soldas[0].Pontos.Length && Math.Abs(v.RecuoDe("viga") - l.RecuoDe("viga")) < 1e-12
                     && v.Chapas[0].Contorno.SequenceEqual(l.Chapas[0].Contorno), "ida e volta pelo JSON do contrato");
+            Ligacao3D gs = Gusset(1, viga, true, f, 0.3);
+            afirmar(double.IsNaN(gs.PontaDe("viga")) && double.IsNaN(gs.RecuoDe("viga")) && gs.Parafusos.All(p => p.Origem.X >= 300 + 1.5 * p.D),
+                    "gusset: ponta da diagonal pela regra das juntas (o recuo xr) e todos os parafusos dentro da diagonal");
             Ligacao3D pb = PlacaDeBase(1, new Barra3D { Id = 1, Ni = 1, Nj = 2 }, true, f, 400, 300, 25, 20, new[] { (-150.0, -100.0), (150.0, 100.0) }, 8);
             {   // solda: borda do enrijecedor (plano médio) e face da placa de base (docs/v3/GEOMETRIA-LIGACOES.md)
                 var le = new Ligacao3D();

@@ -234,6 +234,8 @@ namespace NovoFtool
                     if (continuas.Contains(q) && double.IsNaN(fixo)) continue;
                     double fd = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max();
                     double recuo = double.IsNaN(fixo) ? fd + folga(q.B, q.EmI) : fixo;
+                    if (q.Rank == 1 && double.IsNaN(fixo))   // diagonal: corte ⟂ à barra; o canto da seção do lado do apoio não pode passar da face
+                        recuo += ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => Saliencia(q, t)).DefaultIfEmpty(0).Max();
                     if (q.Rank == 1 && double.IsNaN(fixo)) recuo = Math.Min(recuo, 0.3 * q.L);   // só diagonal: viga curta demais some (cortada até a chapa) em vez de entrar no apoio
                     if (recuo <= 1e-6) continue;
                     var k = new Corte { P = q.No + q.D * recuo, N = q.D, Recuo = recuo, Face = fd, Contra = continuas.Contains(q) ? null : top.B };
@@ -305,6 +307,18 @@ namespace NovoFtool
         }
 
         // Distância, ao longo de d (saindo do nó), até sair da caixa da seção da peça contínua.
+        // Quanto a seção de q (corte ⟂ ao eixo no ponto em que o eixo cruza a face de top) passa da face, medido ao longo do eixo:
+        // max(−p·f)/(d·f) nos pontos p do contorno, f = normal da face que o eixo cruza (a mesma de FaceDist).
+        static double Saliencia(Ponta q, Ponta top)
+        {
+            double du = Vector3D.DotProduct(q.D, top.U), dv = Vector3D.DotProduct(q.D, top.V);
+            double tu = Math.Abs(du) > 1e-6 ? top.F.B / 2 / Math.Abs(du) : double.PositiveInfinity, tv = Math.Abs(dv) > 1e-6 ? top.F.H / 2 / Math.Abs(dv) : double.PositiveInfinity;
+            if (double.IsInfinity(tu) && double.IsInfinity(tv) || q.F.Lacos.Count == 0) return 0;
+            Vector3D f = tu <= tv ? top.U * Math.Sign(du) : top.V * Math.Sign(dv);
+            double df = Vector3D.DotProduct(q.D, f); if (df < 1e-6) return 0;
+            return Math.Max(0, q.F.Lacos[0].Max(p => -Vector3D.DotProduct(q.U * p.X + q.V * p.Y, f)) / df);
+        }
+
         public static double FaceDist(Vector3D d, Ponta top)
         {
             double du = Vector3D.DotProduct(d, top.U), dv = Vector3D.DotProduct(d, top.V), t = double.PositiveInfinity;
@@ -710,6 +724,8 @@ namespace NovoFtool
                     if (continuas.Contains(q) && double.IsNaN(fixo)) continue;
                     double fd = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max();
                     double recuo = double.IsNaN(fixo) ? fd + folga(q.B, q.EmI) : fixo;
+                    if (q.Rank == 1 && double.IsNaN(fixo))   // mesma regra da Juntas (o teste compara as duas)
+                        recuo += ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => Saliencia(q, t)).DefaultIfEmpty(0).Max();
                     recuo = Math.Min(recuo, 0.3 * q.L);
                     if (recuo <= 1e-6) continue;
                     var k = new Corte { P = q.No + q.D * recuo, N = q.D, Recuo = recuo, Face = fd, Contra = continuas.Contains(q) ? null : top.B };
