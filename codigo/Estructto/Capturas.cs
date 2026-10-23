@@ -713,6 +713,7 @@ namespace NovoFtool
             // 2 níveis: Térreo (z = 0) + P1 (z = 3); um caso G para as cargas
             Esperar(w.OperarNiveis(() => Motor.Post("/api/modelo/pavimento", new System.Text.Json.Nodes.JsonObject { ["nome"] = "P1", ["z"] = 3.0, ["diafragma"] = true }), "teste: nível P1"));
             Esperar(w.OperarEspacial(dd => dd.ComJanela(() => Motor.Post("/api/modelo/caso", new System.Text.Json.Nodes.JsonObject { ["nome"] = "G", ["tipo"] = "G" })), "teste: caso G"));
+            D().CasoAtivo = "G";   // o modelo vazio já nasce com o caso PP (peso próprio): o caso novo não vira o ativo sozinho
             if (Niveis.Lista(J()).Count != 2 || D().CasoAtivo != "G") Falha("níveis " + Niveis.Lista(J()).Count + " / caso " + D().CasoAtivo);
             log.AppendLine("ok 2 níveis (Térreo, P1), caso G ativo");
 
