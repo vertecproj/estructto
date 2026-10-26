@@ -555,8 +555,12 @@ namespace NovoFtool
     }
 
     // Seletor de perfil: botao com miniatura + popup com busca e lista (virtualizada) com miniaturas.
-    sealed class LinhaPerfil : Linha
+    // O mesmo controle no inspetor (LinhaPerfil) e no projetista de ligações (JanelaLigacaoProjeto).
+    public sealed class SeletorPerfil : Grid
     {
+        readonly Func<IEnumerable<string>> fonte; readonly Func<string> atual; readonly Action<string> escolher;
+        public bool AceitaDigitado = true;     // "Ret 20x50", "Circ 30"... (só o pórtico entende; o motor de ligações não)
+        public string RotuloContagem = " nesta família";
         readonly Border botao; readonly Image mini; readonly TextBlock nome; readonly Popup pop; readonly TextBox busca; readonly ListBox lista; readonly TextBlock contagem;
         List<string> todos = new List<string>();
 
@@ -566,9 +570,9 @@ namespace NovoFtool
             public object ConvertBack(object v, Type t, object p, CultureInfo c) { throw new NotSupportedException(); }
         }
 
-        public LinhaPerfil(Inspector p, PropertyDescriptor pd)
+        public SeletorPerfil(Func<IEnumerable<string>> fonte, Func<string> atual, Action<string> escolher)
         {
-            P = p; Pd = pd;
+            this.fonte = fonte; this.atual = atual; this.escolher = escolher;
             mini = new Image { Width = 22, Height = 22, Margin = new Thickness(5, 0, 6, 0), SnapsToDevicePixels = true };
             nome = new TextBlock { FontSize = 12, Foreground = TemaPlant.BTexto1, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             var seta = new Path { Data = Geometry.Parse("M0,0 L4,4 L8,0"), Stroke = TemaPlant.BTexto2, StrokeThickness = 1.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 8, 0) };
@@ -630,8 +634,7 @@ namespace NovoFtool
             pop = new Popup { PlacementTarget = botao, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true, Child = caixa, PopupAnimation = PopupAnimation.None };
             pop.Opened += (s, e) => botao.BorderBrush = TemaPlant.BBordaFoco;
             pop.Closed += (s, e) => botao.BorderBrush = botao.IsKeyboardFocusWithin ? TemaPlant.BBordaFoco : TemaPlant.BBordaSutil;
-            var raiz = new Grid(); raiz.Children.Add(botao); raiz.Children.Add(pop);
-            Editor = raiz;
+            Children.Add(botao); Children.Add(pop);
         }
 
         public FrameworkElement RetirarConteudo() { var c = (FrameworkElement)pop.Child; pop.Child = null; return c; }
@@ -639,28 +642,22 @@ namespace NovoFtool
 
         public void Abrir()
         {
-            LerValor();
-            var ctx = new ContextoProp(Alvos, Pd);
-            todos = new List<string>();
-            foreach (object o in Pd.Converter.GetStandardValues(ctx)) todos.Add(Convert.ToString(o));
+            todos = fonte().ToList();
             ((FrameworkElement)pop.Child).Width = Math.Max(280, botao.ActualWidth + 8);
             busca.Text = "";
             Filtrar();
-            if (!Misto && Valor is string v) { lista.SelectedItem = v; if (lista.SelectedItem != null) lista.ScrollIntoView(lista.SelectedItem); }
+            if (atual() is string v) { lista.SelectedItem = v; if (lista.SelectedItem != null) lista.ScrollIntoView(lista.SelectedItem); }
             pop.IsOpen = true;
             busca.Dispatcher.BeginInvoke(new Action(() => { busca.Focus(); Keyboard.Focus(busca); }), System.Windows.Threading.DispatcherPriority.Input);
         }
 
         public void Preparar(string textoBusca)
         {
-            var ctx = new ContextoProp(Alvos, Pd);
-            todos = new List<string>();
-            foreach (object o in Pd.Converter.GetStandardValues(ctx)) todos.Add(Convert.ToString(o));
+            todos = fonte().ToList();
             ((FrameworkElement)pop.Child).Width = 296;
             busca.Text = textoBusca ?? "";
             Filtrar();
-            LerValor();
-            if (!Misto && Valor is string v) lista.SelectedItem = v;
+            if (atual() is string v) lista.SelectedItem = v;
         }
 
         public void Filtrar()
@@ -669,13 +666,13 @@ namespace NovoFtool
             var toks = q.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             var r = todos.Where(n => toks.All(t => n.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
             // texto digitado que e uma secao valida (Ret 20x50, Circ 30, A=.. I=..): oferece usar como esta
-            if (q.Length > 0 && !todos.Any(n => string.Equals(n, q, StringComparison.OrdinalIgnoreCase)))
+            if (AceitaDigitado && q.Length > 0 && !todos.Any(n => string.Equals(n, q, StringComparison.OrdinalIgnoreCase)))
             {
                 Secao s = null; try { s = Biblioteca.AcharSecao(q); } catch { }
                 if (s != null) r.Insert(0, q);
             }
             lista.ItemsSource = r;
-            contagem.Text = r.Count + (r.Count == 1 ? " perfil" : " perfis") + (q.Length == 0 ? " nesta família" : "");
+            contagem.Text = r.Count + (r.Count == 1 ? " perfil" : " perfis") + (q.Length == 0 ? RotuloContagem : "");
             if (r.Count > 0 && q.Length > 0) lista.SelectedIndex = 0;
         }
 
@@ -683,15 +680,17 @@ namespace NovoFtool
         {
             if (string.IsNullOrEmpty(n)) return;
             pop.IsOpen = false;
-            Aplicar(n);
+            escolher(n);
             botao.Focus();
         }
 
-        public override void Atualizar()
+        // capturas/testes: escolhe o primeiro da lista filtrada, como Enter na busca
+        public void EscolherPrimeiro() => Escolher(lista.Items.Count > 0 ? lista.Items[0] as string : null);
+
+        // mostra o perfil no botão; misto = vários itens selecionados com perfis diferentes
+        public void Mostrar(string n, bool misto = false)
         {
-            LerValor();
-            string n = Misto ? null : Valor as string;
-            if (Misto) { nome.Text = "(vários)"; nome.FontStyle = FontStyles.Italic; nome.Foreground = TemaPlant.BTexto3; mini.Source = MiniaturaPerfil.Criar(null, 22); botao.ToolTip = "Perfis diferentes entre os itens selecionados."; }
+            if (misto) { nome.Text = "(vários)"; nome.FontStyle = FontStyles.Italic; nome.Foreground = TemaPlant.BTexto3; mini.Source = MiniaturaPerfil.Criar(null, 22); botao.ToolTip = "Perfis diferentes entre os itens selecionados."; }
             else
             {
                 nome.Text = Inspector.NomeBonito(n); nome.FontStyle = FontStyles.Normal; nome.Foreground = TemaPlant.BTexto1;
@@ -700,6 +699,27 @@ namespace NovoFtool
                 botao.ToolTip = s != null ? s.Descricao + (s.Massa > 0 ? " — " + Num.Fmt(s.Massa, 1) + " kg/m" : "") + ". Clique para trocar." : "Perfil não reconhecido: " + n;
             }
         }
+
+    }
+
+    sealed class LinhaPerfil : Linha
+    {
+        readonly SeletorPerfil sel;
+
+        public LinhaPerfil(Inspector p, PropertyDescriptor pd)
+        {
+            P = p; Pd = pd;
+            sel = new SeletorPerfil(() => Pd.Converter.GetStandardValues(new ContextoProp(Alvos, Pd)).Cast<object>().Select(o => Convert.ToString(o)),
+                                    () => { LerValor(); return Misto ? null : Valor as string; }, n => Aplicar(n));
+            Editor = sel;
+        }
+
+        public FrameworkElement RetirarConteudo() => sel.RetirarConteudo();
+        public void DevolverConteudo(FrameworkElement c) => sel.DevolverConteudo(c);
+        public void Abrir() => sel.Abrir();
+        public void Preparar(string textoBusca) => sel.Preparar(textoBusca);
+
+        public override void Atualizar() { LerValor(); sel.Mostrar(Misto ? null : Valor as string, Misto); }
 
         public override bool DefinirTexto(string t) { return Aplicar(t.Trim()); }
     }

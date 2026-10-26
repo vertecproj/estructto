@@ -980,29 +980,31 @@ namespace NovoFtool
             }
         }
 
+        // mesmo seletor do inspetor (SeletorPerfil: miniatura, busca, lista); nas rígidas e emendas só I/H (o motor recusa U, G5)
+        static readonly HashSet<string> FamiliasI = new HashSet<string> { "W", "HP", "IPE", "HEA", "HEB" };
+        bool SoPerfilI => S(Tipo(), "familia") is "rigida" or "emenda";
+        IEnumerable<string> PerfisDoTipo() => Lista(catalogo).Where(x => !SoPerfilI || FamiliasI.Contains(S(x, "familia"))).Select(x => S(x, "nome")).Where(x => x != "");
+
         FrameworkElement CaixaPerfil(string nome, string atual, string dica, Action<string> gravar)
         {
-            var cb = new ComboBox { IsEditable = true, Width = 176, Height = 28, Text = atual, VerticalContentAlignment = VerticalAlignment.Center, Tag = nome };
-            // todo o catálogo do motor (W, HP, IPE, U, Ue...): a solda direta é para viga U, que o filtro antigo (só W/HP) escondia; o motor valida
-            void Encher() { if (cb.Items.Count > 0) return; foreach (var p in Lista(catalogo).Select(x => S(x, "nome")).Where(x => x != "")) cb.Items.Add(p); cb.Text = atual; }
-            Encher();
-            void Ok() { var s = (cb.Text ?? "").Trim(); if (s != "" && s != atual) { atual = s; gravar(s); } }
-            cb.SelectionChanged += (s, e) => { if (cb.SelectedItem is string x) { cb.Text = x; Ok(); } };
-            cb.LostKeyboardFocus += (s, e) => { if (!cb.IsKeyboardFocusWithin) Ok(); };
-            cb.KeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; Ok(); } };
-            // antes a lista era montada uma vez, com o catálogo ainda não carregado (assíncrono): o combo ficava vazio e não dava para trocar
-            if (!Capturas.Ativo) _ = CarregarCatalogo().ContinueWith(_ => cb.Dispatcher.Invoke(Encher));
-            cb.DropDownOpened += async (s, e) => { if (cb.Items.Count == 0) { await CarregarCatalogo(); Encher(); } };
-            return Dica(cb, dica + "\nPerfil do catálogo do motor (digite para filtrar).");
+            SeletorPerfil sel = null;
+            sel = new SeletorPerfil(PerfisDoTipo, () => atual, s => { if (s != atual) { atual = s; sel.Mostrar(s); gravar(s); } })
+            { AceitaDigitado = false, RotuloContagem = SoPerfilI ? " perfis I/H (ligação rígida)" : " perfis no catálogo", Width = 176, Tag = nome };
+            sel.Mostrar(atual);
+            // catálogo vem do motor (assíncrono): carrega já; a abertura do seletor usa o que tiver chegado
+            if (!Capturas.Ativo) _ = CarregarCatalogo();
+            sel.PreviewMouseLeftButtonDown += async (s, e) => { if (!Lista(catalogo).Any()) await CarregarCatalogo(); };
+            return Dica(sel, dica + "\nPerfil do catálogo do motor (digite para filtrar).");
         }
 
         // capturas (projetista): abre o combo do campo como o usuário, espera o catálogo e escolhe `novo`; devolve (itens, valor gravado)
         internal async Task<(int itens, string gravado)> TrocarPerfil(string campo, string novo)
         {
             IEnumerable<DependencyObject> Filhos(DependencyObject o) { for (int i = 0; i < VisualTreeHelper.GetChildrenCount(o); i++) { var f = VisualTreeHelper.GetChild(o, i); yield return f; foreach (var x in Filhos(f)) yield return x; } }
-            var cb = Filhos(this).OfType<ComboBox>().FirstOrDefault(c => (c.Tag as string) == campo) ?? throw new InvalidOperationException("sem combo " + campo);
-            cb.IsDropDownOpen = true; await CarregarCatalogo(); for (int i = 0; i < 50 && cb.Items.Count == 0; i++) await Task.Delay(20);
-            int n = cb.Items.Count; cb.SelectedItem = cb.Items.Cast<object>().FirstOrDefault(x => (string)x == novo); cb.IsDropDownOpen = false;
+            var sel = Filhos(this).OfType<SeletorPerfil>().FirstOrDefault(c => (c.Tag as string) == campo) ?? throw new InvalidOperationException("sem seletor " + campo);
+            await CarregarCatalogo();
+            int n = PerfisDoTipo().Count();
+            sel.Preparar(novo); sel.EscolherPrimeiro();
             return (n, S(dados[tipo], campo));
         }
 

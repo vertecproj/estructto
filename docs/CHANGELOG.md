@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 26/10/2026 — v0.6.11 (pedido do usuário: troca de perfil igual à do programa): o seletor do inspetor (botão com miniatura, busca, lista) virou o controle `SeletorPerfil` (`Inspector.cs`) e substitui o combo do projetista de ligações. Nas rígidas e emendas, a lista mostra só I/H (W, HP, IPE, HEA, HEB), porque o motor recusa U (G5). Capturas OK, incluindo a troca de perfil.
 - 26/10/2026 — v0.6.10 (pedido do usuário, caso `chapa_topo_estendida.pcon`, viga UPN 50 em pilar UPN 120):
   - Perfil U na chapa de topo continua recusado (G5). A mensagem agora indica solda direta ou ligação flexível.
   - Corrigido: o Otimizar sem solução trazia de volta o resultado e o desenho anteriores (W310) e apagava o erro. Por isso os perfis "não trocavam" no desenho.
