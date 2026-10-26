@@ -220,3 +220,12 @@ class TestBarraCurtaClasse(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVigaVigaApoio(unittest.TestCase):
+    """26/10/2026: o card viga–viga desenhava o suporte em pé (apoio vazio = pilar); o suporte é a alma de uma viga."""
+
+    def test_membros_saem_com_apoio_alma_viga(self):
+        t = next(t for t in P.tipos_ligacao() if t["tipo"] == "viga_viga_recorte")
+        r = P.verificar_ligacao("viga_viga_recorte", t["exemplo"]["dados"], t["exemplo"]["esforcos"])
+        self.assertTrue(all(m["apoio"] == "alma_viga" for m in r["geometria"]["membros"]))

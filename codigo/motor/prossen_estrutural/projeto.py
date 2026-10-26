@@ -2528,7 +2528,8 @@ def verificar_ligacao(tipo, dados, esforcos):
     if r.get("geometria") is None and hasattr(lig, "geometria_basica"):
         r["geometria"] = lig.geometria_basica(tipo, dados)
     if isinstance(r.get("geometria"), dict):
-        r["geometria"].setdefault("membros", _membros_geometria(dados))
+        # viga_viga_recorte não leva `apoio` nos dados (o tipo já é alma de viga): sem ele o desenho põe o suporte em pé, como pilar
+        r["geometria"].setdefault("membros", _membros_geometria(dict(dados or {}, apoio="alma_viga") if tipo == "viga_viga_recorte" else dados))
         from .aco import ligacoes_campos as _lc   # `campo` de cada peça: o clique na peça leva ao campo (docs/v3/LIGACOES-EDITOR.md)
         _lc.anotar(tipo, r["geometria"], dados, {c["nome"] for c in lig.esquema(tipo)} if hasattr(lig, "esquema") else set())
     return _puro(r)
