@@ -256,6 +256,7 @@ _ENT_AP = {**_BASE,
 
 _ENT_SD = {**_BASE, **_SOLDA,
            "comprimento_solda": _e("Comprimento do filete", "mm", 0, mn=0, mx=2000),
+           "soldar_mesas": _e("Soldar as mesas", "-", "auto", ["auto", "sim", "não"]),
            "folga": _e("Folga viga–apoio", "mm", 2, mn=0, mx=10)}
 
 _ENT_VV = {**{k: v for k, v in _ENT_CD.items() if k not in _RECORTE and k != "apoio"},
@@ -1090,11 +1091,26 @@ def _solda_direta(d, e, tipo="solda_direta_alma"):
     fys, fus = _aco(d["aco_suporte"])
     bs, fw = d["b_solda"], L.ELETRODOS[d["eletrodo"]] * MPa
     tw, t_ap, apoio = vg["tw"], _t_apoio(sp, d["apoio"]), d["apoio"]
-    Lw = d["comprimento_solda"] or vg["d"]
-    q = math.hypot(V, N) / (2 * Lw)
-    r.val.update(Lw_mm=Lw / MM, q_kN_m=q)
-    r.res("solda alma–apoio (V, N; 2 filetes)", q, L.resistencia_filete(bs, fw, fyv, fuv)["FwRd"], "kN/m",
-          "6.2.5 / tabela 8")
+    # 26/10/2026: mesas soldadas (auto = sim no I, não no U pequeno, o caso de origem). O cordão contorna o perfil: a alma
+    # entre as mesas (Lw = d − 2·tf) leva V; N se divide no contorno todo (alma 2·Lw + mesas: bf por fora e bf − tw por dentro).
+    sm = d.get("soldar_mesas", "auto")
+    mesas = (vg.get("forma") != "U") if sm == "auto" else sm == "sim"
+    fwrd = L.resistencia_filete(bs, fw, fyv, fuv)["FwRd"]
+    if mesas:
+        Lw = d["comprimento_solda"] or vg["d"] - 2 * vg["tf"]
+        Lt = 2 * Lw + 2 * (2 * vg["bf"] - tw)
+        qn = abs(N) / Lt
+        q = math.hypot(V / (2 * Lw), qn)
+        r.val.update(Lw_mm=Lw / MM, L_contorno_mm=Lt / MM, q_kN_m=q)
+    else:
+        Lw = d["comprimento_solda"] or vg["d"]
+        q = math.hypot(V, N) / (2 * Lw)
+        r.val.update(Lw_mm=Lw / MM, q_kN_m=q)
+    r.res("solda alma–apoio (V, N; 2 filetes)", q, fwrd, "kN/m", "6.2.5 / tabela 8")
+    if mesas:
+        r.res("solda das mesas (N no contorno)", qn, fwrd, "kN/m", "6.2.5 / tabela 8")
+        r.avisos.append("mesas soldadas: a ligação passa a transmitir momento (deixa de ser flexível); o momento não é "
+                        "verificado aqui — se o modelo a trata como rotulada, use 'soldar as mesas: não' ou uma ligação rígida")
     r.res("apoio: metal base junto à solda", q, L.resistencia_filete(bs, fw, fys, fus)["metal_base"], "kN/m",
           "6.2.5 / tabela 8")
     r.res("alma da viga: metal base entre os filetes", 2 * q, min(0.6 * fyv * tw / GA1, 0.6 * fuv * tw / GA2),
@@ -1106,7 +1122,7 @@ def _solda_direta(d, e, tipo="solda_direta_alma"):
     r.minimo("solda: dimensão mínima", L.filete_minimo(min(tw, t_ap)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
     r.maximo("solda: dimensão máxima (borda da alma)", bs, L.filete_maximo(tw), "6.2.6.2.2", "b_solda")
     r.minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * bs, 0.040), Lw, "6.2.6.2.3")
-    _cabe_no_apoio(r, sp, apoio, tw + 2 * bs, "solda", topo=vg["tf"] + vg["r"])
+    _cabe_no_apoio(r, sp, apoio, (vg["bf"] if mesas else tw) + 2 * bs, "solda", topo=vg["tf"] + vg["r"])
     if vg.get("forma") == "U":
         e_ = vg["x_cc"]
         r.val["e_centro_cisalhamento_mm"] = e_ / MM
@@ -1120,6 +1136,17 @@ def _solda_direta(d, e, tipo="solda_direta_alma"):
     z1, z2, y1, y2 = zt - (vg["d"] - Lw) / 2, zt - (vg["d"] + Lw) / 2, yw + tw / 2, yw - tw / 2
     sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y1, z1), _p(xf, y1, z2), _p(xf, y2, z2), _p(xf, y2, z1),
                                                       _p(xf, y1, z1)])]
+    if mesas:   # contorno do perfil inteiro (sentido anti-horário em (y, z)), fechado
+        h, b, tf_ = vg["d"] / 2, vg["bf"], vg["tf"]
+        if vg.get("forma") == "U":   # costas da alma em yb, mesas para o lado da abertura (ab)
+            yb, s_ = yw - ab * tw / 2, ab
+            yz = [(yb, -h), (yb + s_ * b, -h), (yb + s_ * b, -h + tf_), (yb + s_ * tw, -h + tf_), (yb + s_ * tw, h - tf_),
+                  (yb + s_ * b, h - tf_), (yb + s_ * b, h), (yb, h)]
+        else:
+            yz = [(-b / 2, -h), (b / 2, -h), (b / 2, -h + tf_), (tw / 2, -h + tf_), (tw / 2, h - tf_), (b / 2, h - tf_),
+                  (b / 2, h), (-b / 2, h), (-b / 2, h - tf_), (-tw / 2, h - tf_), (-tw / 2, -h + tf_), (-b / 2, -h + tf_)]
+            yz = [(y + yw, z) for y, z in yz]
+        sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y, z) for y, z in yz + yz[:1]])]
     geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=sol,
                recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=(xf + d["folga"]) / MM))])
     if vg.get("forma") == "U":
@@ -1421,8 +1448,8 @@ TIPOS = {
                   "dupla cantoneira ou chapa simples; escoamento, flambagem local e rasgamento da viga recortada."),
     "solda_direta_alma": dict(
         nome="Solda direta da alma", familia="flexivel", liga=_LIGA_VP, entradas=_ENT_SD, esforcos=["V", "N"],
-        descricao="Alma da viga (U pequeno) soldada direto no apoio por dois filetes, sem chapa nem parafusos. "
-                  "NBR 8800 6.2.5 / tabela 10."),
+        descricao="Viga soldada direto no apoio, sem chapa nem parafusos: dois filetes na alma e, com 'soldar as "
+                  "mesas' (padrão no I), o contorno das mesas. NBR 8800 6.2.5 / tabela 10."),
 }
 for _t, _f, _s in (("cantoneira_dupla_alma", _cantoneira_dupla, _com_solda_direta("cantoneira_dupla_alma", _sug_cd)),
                    ("chapa_simples_alma", _chapa_simples, _com_solda_direta("chapa_simples_alma", _sug_cs)),

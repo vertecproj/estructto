@@ -935,22 +935,36 @@ namespace NovoFtool
 
         FrameworkElement CaixaPerfil(string nome, string atual, string dica, Action<string> gravar)
         {
-            var cb = new ComboBox { IsEditable = true, Width = 176, Height = 28, Text = atual, VerticalContentAlignment = VerticalAlignment.Center };
-            foreach (var p in Lista(catalogo).Select(x => S(x, "nome")).Where(x => x.StartsWith("W") || x.StartsWith("HP"))) cb.Items.Add(p);
-            cb.Text = atual;
+            var cb = new ComboBox { IsEditable = true, Width = 176, Height = 28, Text = atual, VerticalContentAlignment = VerticalAlignment.Center, Tag = nome };
+            // todo o catálogo do motor (W, HP, IPE, U, Ue...): a solda direta é para viga U, que o filtro antigo (só W/HP) escondia; o motor valida
+            void Encher() { if (cb.Items.Count > 0) return; foreach (var p in Lista(catalogo).Select(x => S(x, "nome")).Where(x => x != "")) cb.Items.Add(p); cb.Text = atual; }
+            Encher();
             void Ok() { var s = (cb.Text ?? "").Trim(); if (s != "" && s != atual) { atual = s; gravar(s); } }
             cb.SelectionChanged += (s, e) => { if (cb.SelectedItem is string x) { cb.Text = x; Ok(); } };
             cb.LostKeyboardFocus += (s, e) => { if (!cb.IsKeyboardFocusWithin) Ok(); };
             cb.KeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; Ok(); } };
-            if (catalogo == null && !Capturas.Ativo) _ = CarregarCatalogo();
-            return Dica(cb, dica + "\nPerfil I/H do catálogo do motor (W, HP).");
+            // antes a lista era montada uma vez, com o catálogo ainda não carregado (assíncrono): o combo ficava vazio e não dava para trocar
+            if (!Capturas.Ativo) _ = CarregarCatalogo().ContinueWith(_ => cb.Dispatcher.Invoke(Encher));
+            cb.DropDownOpened += async (s, e) => { if (cb.Items.Count == 0) { await CarregarCatalogo(); Encher(); } };
+            return Dica(cb, dica + "\nPerfil do catálogo do motor (digite para filtrar).");
         }
 
-        async Task CarregarCatalogo()
+        // capturas (projetista): abre o combo do campo como o usuário, espera o catálogo e escolhe `novo`; devolve (itens, valor gravado)
+        internal async Task<(int itens, string gravado)> TrocarPerfil(string campo, string novo)
         {
-            if (catalogo != null) return;
-            catalogo = new JsonArray();
-            try { catalogo = await Api("GET", "/api/catalogo", null) ?? new JsonArray(); } catch (Exception) { }
+            IEnumerable<DependencyObject> Filhos(DependencyObject o) { for (int i = 0; i < VisualTreeHelper.GetChildrenCount(o); i++) { var f = VisualTreeHelper.GetChild(o, i); yield return f; foreach (var x in Filhos(f)) yield return x; } }
+            var cb = Filhos(this).OfType<ComboBox>().FirstOrDefault(c => (c.Tag as string) == campo) ?? throw new InvalidOperationException("sem combo " + campo);
+            cb.IsDropDownOpen = true; await CarregarCatalogo(); for (int i = 0; i < 50 && cb.Items.Count == 0; i++) await Task.Delay(20);
+            int n = cb.Items.Count; cb.SelectedItem = cb.Items.Cast<object>().FirstOrDefault(x => (string)x == novo); cb.IsDropDownOpen = false;
+            return (n, S(dados[tipo], campo));
+        }
+
+        Task cargaCatalogo;
+        Task CarregarCatalogo()   // uma carga para todos os combos; se o motor ainda não respondeu (lista vazia), a próxima abertura tenta de novo
+        {
+            if (cargaCatalogo != null && !(cargaCatalogo.IsCompleted && Lista(catalogo).Count() == 0)) return cargaCatalogo;
+            return cargaCatalogo = Carregar();
+            async Task Carregar() { try { catalogo = await Api("GET", "/api/catalogo", null) ?? new JsonArray(); } catch (Exception) { catalogo ??= new JsonArray(); } }
         }
 
         // ---------------------------------------------------------------- desenho
@@ -1351,6 +1365,19 @@ namespace NovoFtool
             CapturarDialogo(j, "51-projetista-falha.png");
             Esperar(j.Otimizar()); EsperarIdle();
             CapturarDialogo(j, "51-projetista-otimizado.png");
+            {   // 26/10/2026: o combo de perfil vinha vazio (lista montada antes de o catálogo chegar) e a solda direta só soldava a alma
+                Esperar(j.Escolher("solda_direta_alma", false)); EsperarIdle();
+                var tp1 = j.TrocarPerfil("perfil_viga", "W360x51"); Esperar(tp1); EsperarIdle(); var (n1, g1) = tp1.Result;
+                var tp2 = j.TrocarPerfil("perfil_suporte", "W250x73"); Esperar(tp2); EsperarIdle(); var (n2, g2) = tp2.Result;
+                if (n1 < 50 || n2 < 50 || g1 != "W360x51" || g2 != "W250x73")
+                    throw new InvalidOperationException($"projetista: troca de perfil no combo: itens {n1}/{n2}, gravado '{g1}'/'{g2}'");
+                j.DefinirEsforcos(new JsonObject { ["V"] = 100, ["N"] = 0 }); Esperar(j.CalcularAgora()); EsperarIdle();
+                var sd = j.Resultado?["geometria"]?["soldas"]?.AsArray();
+                if (sd == null || sd.Count != 1 || sd[0]["pontos"].AsArray().Count != 13)
+                    throw new InvalidOperationException("projetista: solda direta de W sem o contorno das mesas");
+                CapturarDialogo(j, "51-projetista-solda-direta-mesas.png");
+                j.MostrarVista(4); EsperarIdle(); CapturarDialogo(j, "51-projetista-solda-direta-mesas-3d.png"); j.MostrarVista(0);
+            }
             // C3: seções (as 6 existem; capturas recolhidas e abertas), toda peça de todo padrão tem campo, clique -> campo, sem solução
             var secs = new HashSet<string>();
             foreach (var t in Lista(tipos)) foreach (var x in j.NomesSecoes(S(t, "tipo"))) secs.Add(x);

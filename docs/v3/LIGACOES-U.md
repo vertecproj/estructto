@@ -88,6 +88,22 @@ do membro em `dimensionar_grupo` também traz essa chave. O WPF tira essa ponta 
 - Viga de piso UPN 120 com 45 kN (mínimo de 6.1.5.2, sem isenção): a chapa simples com 2 parafusos de 1/2" reprova
   no cisalhamento dos parafusos. O `sugerir` troca para solda direta.
 
+## Solda direta com as mesas soldadas (26/10/2026)
+
+Pedido do usuário: W310 em W250 com solda só na alma; a solda tinha de pegar as mesas também.
+
+- Entrada nova `soldar_mesas` (`auto`, `sim`, `não`). `auto` = sim no I, não no U (o caso de origem: UPN 50/65). Projetos antigos de U não mudam.
+- Com mesas, o cordão contorna o perfil inteiro (I: 12 cantos; U: 8). A alma entre as mesas, Lw = d − 2·tf, leva V. O N se divide no contorno todo: L = 2·Lw + 2·(2·bf − tw), porque cada mesa leva bf por fora e bf − tw por dentro.
+  - A solda da alma resiste a √((V/2Lw)² + (N/L)²).
+  - Verificação nova: "solda das mesas (N no contorno)", N/L.
+  - A largura na face do apoio passa a ser bf + 2b.
+- Aviso: com as mesas soldadas, a ligação transmite momento e deixa de ser flexível. O momento não é verificado aqui.
+- Conta à mão e testes: `testes/test_solda_mesas.py`. Exemplo: W310 em W250×73 com V = 100 kN e N = 50 kN dá alma 176,8 kN/m ≤ 762 kN/m.
+
+Projetista: o combo de perfil vinha vazio. A lista era montada antes de o catálogo chegar do motor, e o carregamento assíncrono nunca a enchia. Além disso, o filtro só aceitava W/HP e escondia o U, que é justamente o perfil da solda direta.
+- Agora o combo enche quando o catálogo chega ou quando é aberto, com todo o catálogo do motor.
+- Prova: capturas `projetista`, `51-projetista-solda-direta-mesas*`. O teste abre o combo, troca para W360x51 e confere o contorno de 13 pontos.
+
 ## Pendências
 
 - O `sugerir` ainda não tenta a cantoneira lateral quando a chapa não cabe. Por enquanto só sai o motivo.
