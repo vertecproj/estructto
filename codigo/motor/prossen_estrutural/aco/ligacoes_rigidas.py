@@ -570,9 +570,13 @@ def _chapa_topo(d, e, estendida_padrao):
     ts = (d.get("t_enrijecedor") or 0) * MM
     if enr and ts <= 0:
         raise ValueError("t_enrijecedor: obrigatório (> 0) com enrijecedor_chapa")
-    e = _esforcos(e, av)
+    e = _esforcos(e, av, usados=("N", "V", "Vz", "M", "Mz", "T"))
     _minimo_6152(e, H - tf, av)
     M, N, V = e["M"], e["N"], e["V"]
+    # fora do plano forte (docs/v3/LIGACOES-ESFORCOS-3D.md): Vh = cortante horizontal (eixo y), Mz = momento no eixo
+    # fraco (vertical), Tx = torção (eixo da viga)
+    Vh, Mz, Tx = e["Vz"], e["Mz"], e["T"]
+    tem3d = any(abs(x) > 1e-9 for x in (Vh, Mz, Tx))
     if bp > bf + 0.025 + 1e-9:
         av.append(f"bp = {bp / MM:.0f} mm > bf + 25 mm: largura efetiva do T-stub limitada a {(bf + 0.025) / MM:.0f} mm "
                   "(CBCA 6.1.1)")
@@ -635,9 +639,16 @@ def _chapa_topo(d, e, estendida_padrao):
         R.res("tração axial: linhas da mesa oposta (N/2 − |M|/braço, sem contato)", "6.3.3.1 / 6.3.5", F_op, Rop)
         fator_op = F_op / Rop
     n_tot = sum(L["n"] for L in linhas)
-    Vb = abs(V) / n_tot
+    # cortante por parafuso: grupo elástico no plano da chapa (y, z) com Vh, V e a torção Tx (Ip = Σ(y² + z²));
+    # sem Vh e Tx dá V/n como antes
+    furos = [(y, L["z"]) for L in linhas for y in (-g / 2, g / 2)]
+    Ip = sum(y * y + z * z for y, z in furos)
+    Vb = max(math.hypot(Vh / n_tot - Tx * z / Ip, V / n_tot + Tx * y / Ip) for y, z in furos)
+    # Mz: binário nas duas colunas de parafusos (braço g, sem contar o contato na borda da chapa: conservador);
+    # cada parafuso da coluna tracionada recebe dT a mais
+    dT = 2 * abs(Mz) / (g * n_tot)
     for i, L in enumerate(tr + co, 1):
-        T = L["Tcap"] * (fator if i <= len(tr) else fator_op)
+        T = L["Tcap"] * (fator if i <= len(tr) else fator_op) + dT   # T e Tcap são por parafuso
         c = tstub(T, L["p"], tp, L["b"], L["a"], db, dh, fyp, FtRd)
         L["T"], L["Q"] = T, c["Q"]
         nome = f"linha {i} ({dict(ext='externa', int='interna', alma='junto à alma')[L['tipo']]}, h = {L['h'] / MM:.0f} mm)"
@@ -656,8 +667,13 @@ def _chapa_topo(d, e, estendida_padrao):
         if Vb > 0:
             R.res(f"{nome}: tração + cisalhamento no parafuso", "6.3.3.4",
                   lg.interacao_tracao_cisalhamento(B, FtRd, Vb, FvRd), 1.0, "-")
+    if dT > 0 and len(tr + co) < len(linhas):   # linhas comprimidas pelo M também tracionam pelo Mz
+        R.res("parafusos fora da zona tracionada: tração por Mz", "6.3.3.1", dT, FtRd)
+        R.res("parafusos fora da zona tracionada: tração (Mz) + cisalhamento", "6.3.3.4",
+              lg.interacao_tracao_cisalhamento(dT, FtRd, Vb, FvRd), 1.0, "-")
     # cortante
-    R.res("parafusos: cisalhamento (V/n, todos os parafusos)", "6.3.3.2", Vb, FvRd)
+    R.res("parafusos: cisalhamento (grupo elástico: Fz, Fy e Mx)" if tem3d else "parafusos: cisalhamento (V/n, todos os parafusos)",
+          "6.3.3.2", Vb, FvRd)
     zs = sorted(L["z"] for L in linhas)
     lf = min([zs[i + 1] - zs[i] - dh for i in range(len(zs) - 1)] + [zs[0] - zb - dh / 2])
     R.res("pressão de contato na chapa de topo", "6.3.3.3", Vb, lg.pressao_contato(lf, tp, db, fup))
@@ -667,10 +683,20 @@ def _chapa_topo(d, e, estendida_padrao):
     c = lg.cisalhamento_chapa(bp * tp, (bp - 2 * dn) * tp, fyp, fup)
     R.res("chapa de topo: escoamento por cisalhamento", "6.5.5", abs(V), c["escoamento"])
     R.res("chapa de topo: ruptura por cisalhamento", "6.5.5", abs(V), c["ruptura"])
+    if abs(Vh) > 1e-9:   # cortante horizontal: seção vertical da chapa (altura × tp), descontadas as linhas de furos
+        hc = zt - zb
+        c = lg.cisalhamento_chapa(hc * tp, (hc - len(linhas) * dn) * tp, fyp, fup)
+        R.res("chapa de topo: escoamento por cisalhamento horizontal (Fy)", "6.5.5", abs(Vh), c["escoamento"])
+        R.res("chapa de topo: ruptura por cisalhamento horizontal (Fy)", "6.5.5", abs(Vh), c["ruptura"])
     # viga e soldas
-    R.res("viga: momento resistente (Zx·fy/γa1 ≤ 1,5·Wx·fy/γa1)", "5.4.2 (CBCA 6.4)", abs(M),
-          min(vg["Zx"], 1.5 * vg["Wx"]) * fyb / GA1, "kN·m")
+    MRdx = min(vg["Zx"], 1.5 * vg["Wx"]) * fyb / GA1
+    R.res("viga: momento resistente (Zx·fy/γa1 ≤ 1,5·Wx·fy/γa1)", "5.4.2 (CBCA 6.4)", abs(M), MRdx, "kN·m")
+    if abs(Mz) > 1e-9:
+        MRdy = min(vg["Zy"], 1.5 * vg["Wy"]) * fyb / GA1
+        R.res("viga: flexão oblíqua My/MRd,x + Mz/MRd,y", "5.5.1.2", abs(M) / MRdx + abs(Mz) / MRdy, 1.0, "-")
     Ff = Mef / braco
+    # solda das mesas: além do binário do My, cada mesa leva Mz/2 no seu plano (σ = 6·(Mz/2)/bf² por comprimento →
+    # 3·Mz/bf na força equivalente), Fy/2 e o binário da torção Tx/braço (conservador: somados em módulo)
     fw = lg.ELETRODOS[d["eletrodo"]] * MPa
     # ponta da viga (pontas.py): chapa encostada no apoio, viga cortada a tp dele; copes laterais encurtam as mesas
     ctx = d.get("contexto_pontas") or {}
@@ -680,13 +706,18 @@ def _chapa_topo(d, e, estendida_padrao):
     bf_s = _pontas.largura_util(ponta, bf)
     if bf_s < bf - 1e-9:
         av.append(f"mesas da viga recortadas na ponta: solda das mesas em {bf_s / MM:.1f} mm de {bf / MM:.0f} mm")
+    Ffm = Ff + 3 * abs(Mz) / bf_s + abs(Vh) / 2 + abs(Tx) / braco
     if d["solda_mesa"] == "penetracao":
-        R.res("solda das mesas (penetração total): metal base", "6.2.5 / tabela 8", Ff, bf_s * tf * fyb / GA1)
+        R.res("solda das mesas (penetração total): metal base", "6.2.5 / tabela 8", Ffm, bf_s * tf * fyb / GA1)
     else:
         bm = d["b_mesa"] * MM
         r = lg.resistencia_filete(bm, fw, min(fyb, fyp), min(fub_v, fup))
-        R.res("solda das mesas (filetes dos dois lados)", "6.2.5 / tabela 8", Ff, 2 * bf_s * r["FwRd"])
+        R.res("solda das mesas (filetes dos dois lados)", "6.2.5 / tabela 8", Ffm, 2 * bf_s * r["FwRd"])
         _filete(R, bm, min(tf, tp), "das mesas", "b_mesa")
+    if tem3d:
+        R.avisos.append("esforços fora do plano forte: parafusos ao cortante por grupo elástico (Fy, Fz, Mx); Mz como binário "
+                        "nas duas colunas de parafusos (braço g); solda das mesas com Mz, Fy e Mx somados em módulo. "
+                        "Pilar verificado só com My e N (docs/v3/LIGACOES-ESFORCOS-3D.md)")
     bw = d["b_alma"] * MM
     lw = (H - 2 * tf) / 2                                  # CBCA 6.4: só a metade comprimida da alma
     r = lg.resistencia_filete(bw, fw, min(fyb, fyp), min(fub_v, fup))
