@@ -409,7 +409,38 @@ namespace NovoFtool
                 var tt = Txt(Titulo.ToUpperInvariant(), 10.5, TemaPlant.BTexto2, FontWeights.SemiBold);
                 dc.DrawText(tt, new Point(12, 10));
             }
+            if (!Miniatura && g == geo) Triedro(dc, R, U, F, new Point(40, H - 34));
             if (opac < 1) dc.Pop();
+        }
+
+        // eixos dos esforços (Passo 1): x = eixo da viga (Fx, Mx), y = fora do plano da alma (Fy, My), z = vertical (Fz, Mz).
+        // Eixo apontando para o observador = ponto (⊙), para dentro = cruz (⊗).
+        void Triedro(DrawingContext dc, Vector3D R, Vector3D U, Vector3D F, Point o)
+        {
+            foreach (var (v, nome, cor) in new[] { (new Vector3D(1, 0, 0), "x", TemaPlant.BEixoX), (new Vector3D(0, 1, 0), "y", TemaPlant.BEixoY), (new Vector3D(0, 0, 1), "z", TemaPlant.BAcento) })
+            {
+                var d = new Vector(Vector3D.DotProduct(v, R), -Vector3D.DotProduct(v, U)) * 22;
+                var pen = new Pen(cor, 2);
+                Point fim;
+                if (d.Length < 4)
+                {
+                    bool frente = Vector3D.DotProduct(v, F) > 0;
+                    dc.DrawEllipse(null, pen, o, 5, 5);
+                    if (frente) dc.DrawEllipse(cor, null, o, 1.8, 1.8);
+                    else { dc.DrawLine(pen, o + new Vector(-3.5, -3.5), o + new Vector(3.5, 3.5)); dc.DrawLine(pen, o + new Vector(-3.5, 3.5), o + new Vector(3.5, -3.5)); }
+                    fim = o + new Vector(7, 7);
+                }
+                else
+                {
+                    fim = o + d;
+                    var u = d / d.Length; var nn = new Vector(-u.Y, u.X);
+                    dc.DrawLine(pen, o, fim);
+                    dc.DrawGeometry(cor, null, Poli(new[] { fim + u * 4, fim - u * 4 + nn * 3.5, fim - u * 4 - nn * 3.5 }));
+                    fim += u * 9;
+                }
+                var tx = Txt(nome, 11, cor, FontWeights.SemiBold);
+                dc.DrawText(tx, new Point(fim.X - tx.Width / 2, fim.Y - tx.Height / 2));
+            }
         }
 
         static double Dot(Point3D p, Vector3D v) => p.X * v.X + p.Y * v.Y + p.Z * v.Z;

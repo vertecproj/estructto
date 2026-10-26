@@ -100,6 +100,14 @@ namespace NovoFtool
             return Enumerable.Empty<JsonNode>();
         }
         static IEnumerable<string> NomesEsforcos(JsonNode t) => Lista(t?["esforcos"]).Select(x => x is JsonValue ? x.ToString() : S(x, "nome"));
+        // ligação entre barras: os 6 esforços da ponta sempre na tela (eixos do desenho: x = eixo da barra, y = fora do plano da
+        // alma, z = vertical). O motor recebe todos e avisa os que o tipo não verifica (ligacoes_rigidas/_flexiveis._esforcos).
+        static readonly string[] Seis = { "N", "Vz", "V", "T", "M", "Mz" };
+        static IEnumerable<string> EsforcosTela(JsonNode t)
+        {
+            var ns = NomesEsforcos(t).ToList();
+            return ns.Count > 0 && ns.All(Seis.Contains) ? Seis : ns;
+        }
         JsonObject Dados => dados[tipo];
         JsonObject Esf => esforcos[tipo];
         static string Norm(string s)
@@ -149,7 +157,7 @@ namespace NovoFtool
             double N = Z("N"), Vy = Z("Vy"), Vz = Z("Vz"), My = Z("My"), Mz = Z("Mz"), T = Z("T");
             bool antigo = Antigos.Contains(S(t, "tipo"));
             var o = new JsonObject();
-            foreach (var n in NomesEsforcos(t))
+            foreach (var n in EsforcosTela(t))
                 o[n] = Math.Round(n switch
                 {
                     "Ft" => Math.Max(N, 0), "Fv" => Math.Sqrt(Vy * Vy + Vz * Vz), "F" => Math.Sqrt(N * N + Vy * Vy + Vz * Vz),
@@ -653,7 +661,7 @@ namespace NovoFtool
             }
             var gp = GradeCampos();
             foreach (var c in campos.Where(c => Secao(c) == "barras")) AddCelula(gp, Rotulo(c, S(c, "nome")), Controle(c), Largo(c), false, S(c, "nome"));
-            foreach (var n in NomesEsforcos(t))
+            foreach (var n in EsforcosTela(t))
             {
                 string un = n.StartsWith("M") || n == "T" ? "kN·m" : "kN";
                 double v = D(Esf, n);
@@ -822,8 +830,8 @@ namespace NovoFtool
         }
 
         static readonly Dictionary<string, string> RotEsf = new Dictionary<string, string>
-        { ["N"] = "N  (tração +)", ["V"] = "V  cortante no plano da alma", ["Vz"] = "Vz  cortante fora do plano", ["M"] = "M  momento (eixo forte)", ["Mz"] = "Mz  momento (eixo fraco)",
-          ["T"] = "T  torção", ["Ft"] = "Ft  tração no parafuso", ["Fv"] = "Fv  cortante no parafuso", ["F"] = "F  força no filete" };
+        { ["N"] = "Fx  normal N (tração +)", ["V"] = "Fz  cortante na alma (vertical)", ["Vz"] = "Fy  cortante fora do plano", ["M"] = "My  momento eixo forte", ["Mz"] = "Mz  momento eixo fraco",
+          ["T"] = "Mx  torção", ["Ft"] = "Ft  tração no parafuso", ["Fv"] = "Fv  cortante no parafuso", ["F"] = "F  força no filete" };
         static string RotuloEsforco(string n) => RotEsf.TryGetValue(n, out var r) ? r : n.StartsWith("N") ? n + "  (barra " + n.Substring(1) + ")" : n;
         static string AjudaEsforco(string n) => "Esforço de cálculo (ELU, já majorado) na ponta da barra que chega à ligação. " + (n.StartsWith("M") || n == "T" ? "kN·m." : "kN.");
 
