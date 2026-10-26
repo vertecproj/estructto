@@ -336,7 +336,8 @@ def _perfil(v, campo):
             raise ValueError(f"{campo}: {ex.args[0]}") from None
     p = s.props
     if p.get("tipo") in ("U", "Ue"):   # G5: sem tipo rígido para U (docs/v3/LIGACOES-U.md)
-        raise ValueError(f"{campo}: {U_RIGIDA} ({s.nome})")
+        raise ValueError(f"{campo}: {U_RIGIDA} ({s.nome}) — para U use a solda direta (perfil soldado no apoio) ou uma "
+                         "ligação flexível (chapa simples, cantoneiras)")
     if p.get("tipo") != "I":
         raise ValueError(f"{campo}: só perfis I/H (W, HP, soldados) — recebido {s.nome}")
     return dict(p, nome=s.nome)
@@ -528,13 +529,13 @@ def _linhas_chapa(H, tf, tw, pf, de, g, bp, estendida, sobra, db, enr, ts, nx=0,
     ou 'int' (entre as mesas). Retorna (linhas, z_base, z_topo da chapa)."""
     linhas = []
     for s in (1, -1):
-        lado_ext = estendida == "ambas" or (estendida == "superior" and s == 1)
+        lado_ext = estendida == "ambas" or (estendida == "superior" and s == 1) or (estendida == "inferior" and s == -1)
         if lado_ext:
             linhas.append(dict(z=s * (H / 2 + pf), tipo="ext", lado=s))
         linhas.append(dict(z=s * (H / 2 - tf - pf), tipo="int", lado=s))
         linhas += [dict(z=s * (H / 2 - tf - pf - k * sl), tipo="alma", lado=s) for k in range(1, nx + 1)]
     zt = H / 2 + (pf + de if estendida in ("superior", "ambas") else sobra)
-    zb = -(H / 2 + (pf + de if estendida == "ambas" else sobra))
+    zb = -(H / 2 + (pf + de if estendida in ("ambas", "inferior") else sobra))
     for L in linhas:
         L["n"] = 2
         if L["tipo"] == "ext":
@@ -585,9 +586,9 @@ def _chapa_topo(d, e, estendida_padrao):
     if nx and H / 2 - tf - pf - nx * sl < 0:
         raise ValueError(f"n_linhas_extras = {nx}: as linhas passam do meio da alma (H/2 − tf − pf − n·s < 0)")
     linhas, zb, zt = _linhas_chapa(H, tf, tw, pf, de, g, bp_ef, estendida, d["sobra"] * MM, db, enr, ts, nx, sl)
-    if estendida == "superior" and M < 0:
-        av.append("M < 0 traciona a mesa inferior, lado não estendido da chapa assimétrica (CBCA 6.1: com inversão "
-                  "de momento usar chapa estendida nas duas mesas)")
+    if (estendida == "superior" and M < 0) or (estendida == "inferior" and M > 0):
+        av.append(f"M {'<' if M < 0 else '>'} 0 traciona a mesa {'inferior' if M < 0 else 'superior'}, lado não estendido da "
+                  "chapa assimétrica (CBCA 6.1: com inversão de momento usar chapa estendida nas duas mesas)")
     s_t = 1 if M >= 0 else -1
     zc = -s_t * (H / 2 - tf / 2)                       # centro da mesa comprimida
     tr = [L for L in linhas if L["z"] * s_t > 0]
@@ -642,8 +643,9 @@ def _chapa_topo(d, e, estendida_padrao):
     # cortante por parafuso: grupo elástico no plano da chapa (y, z) com Vh, V e a torção Tx (Ip = Σ(y² + z²));
     # sem Vh e Tx dá V/n como antes
     furos = [(y, L["z"]) for L in linhas for y in (-g / 2, g / 2)]
-    Ip = sum(y * y + z * z for y, z in furos)
-    Vb = max(math.hypot(Vh / n_tot - Tx * z / Ip, V / n_tot + Tx * y / Ip) for y, z in furos)
+    zg = sum(z for _, z in furos) / len(furos)          # centroide (chapa assimétrica: fora do eixo da viga)
+    Ip = sum(y * y + (z - zg) ** 2 for y, z in furos)
+    Vb = max(math.hypot(Vh / n_tot - Tx * (z - zg) / Ip, V / n_tot + Tx * y / Ip) for y, z in furos)
     # Mz: binário nas duas colunas de parafusos (braço g, sem contar o contato na borda da chapa: conservador);
     # cada parafuso da coluna tracionada recebe dT a mais
     dT = 2 * abs(Mz) / (g * n_tot)
@@ -675,7 +677,8 @@ def _chapa_topo(d, e, estendida_padrao):
     R.res("parafusos: cisalhamento (grupo elástico: Fz, Fy e Mx)" if tem3d else "parafusos: cisalhamento (V/n, todos os parafusos)",
           "6.3.3.2", Vb, FvRd)
     zs = sorted(L["z"] for L in linhas)
-    lf = min([zs[i + 1] - zs[i] - dh for i in range(len(zs) - 1)] + [zs[0] - zb - dh / 2])
+    lf = min([zs[i + 1] - zs[i] - dh for i in range(len(zs) - 1)] + [zs[0] - zb - dh / 2, zt - zs[-1] - dh / 2]
+             + ([(bp - g) / 2 - dh / 2] if abs(Vh) > 1e-9 else []))
     R.res("pressão de contato na chapa de topo", "6.3.3.3", Vb, lg.pressao_contato(lf, tp, db, fup))
     if pil is not None:
         R.res("pressão de contato na mesa do pilar", "6.3.3.3", Vb,
@@ -693,7 +696,10 @@ def _chapa_topo(d, e, estendida_padrao):
     R.res("viga: momento resistente (Zx·fy/γa1 ≤ 1,5·Wx·fy/γa1)", "5.4.2 (CBCA 6.4)", abs(M), MRdx, "kN·m")
     if abs(Mz) > 1e-9:
         MRdy = min(vg["Zy"], 1.5 * vg["Wy"]) * fyb / GA1
-        R.res("viga: flexão oblíqua My/MRd,x + Mz/MRd,y", "5.5.1.2", abs(M) / MRdx + abs(Mz) / MRdy, 1.0, "-")
+        # 5.5.1.2 com N (NRd = A·fy/γa1: seção da ponta, sem flambagem)
+        nr = abs(N) / (vg["A"] * fyb / GA1)
+        fm = abs(M) / MRdx + abs(Mz) / MRdy
+        R.res("viga: N + flexão oblíqua (My e Mz)", "5.5.1.2", nr + 8 / 9 * fm if nr >= 0.2 else nr / 2 + fm, 1.0, "-")
     Ff = Mef / braco
     # solda das mesas: além do binário do My, cada mesa leva Mz/2 no seu plano (σ = 6·(Mz/2)/bf² por comprimento →
     # 3·Mz/bf na força equivalente), Fy/2 e o binário da torção Tx/braço (conservador: somados em módulo)
@@ -706,9 +712,13 @@ def _chapa_topo(d, e, estendida_padrao):
     bf_s = _pontas.largura_util(ponta, bf)
     if bf_s < bf - 1e-9:
         av.append(f"mesas da viga recortadas na ponta: solda das mesas em {bf_s / MM:.1f} mm de {bf / MM:.0f} mm")
-    Ffm = Ff + 3 * abs(Mz) / bf_s + abs(Vh) / 2 + abs(Tx) / braco
-    if d["solda_mesa"] == "penetracao":
-        R.res("solda das mesas (penetração total): metal base", "6.2.5 / tabela 8", Ffm, bf_s * tf * fyb / GA1)
+    Fn, Fc_m = Ff + 3 * abs(Mz) / bf_s, abs(Vh) / 2 + abs(Tx) / braco   # normal e cisalhamento por mesa
+    Ffm = Fn + Fc_m
+    if d["solda_mesa"] == "penetracao":   # tabela 8: normal com fy, cisalhamento com 0,6·fy (metal base)
+        R.res("solda das mesas (penetração total): metal base", "6.2.5 / tabela 8", Fn, bf_s * tf * fyb / GA1)
+        if Fc_m > 1e-9:
+            R.res("solda das mesas (penetração total): cisalhamento (Fy, Mx)", "6.2.5 / tabela 8", Fc_m,
+                  0.6 * bf_s * tf * fyb / GA1)
     else:
         bm = d["b_mesa"] * MM
         r = lg.resistencia_filete(bm, fw, min(fyb, fyp), min(fub_v, fup))
@@ -732,7 +742,7 @@ def _chapa_topo(d, e, estendida_padrao):
                  0.56 * math.sqrt(E_ACO / fyp) * MM)
     # detalhamento
     _bordas(R, db, tp, (bp - g) / 2, "lateral da chapa", d["borda_laminada"])
-    if estendida in ("superior", "ambas"):
+    if estendida in ("superior", "ambas", "inferior"):
         _bordas(R, db, tp, de, "extremidade da chapa estendida", d["borda_laminada"])
     R.minimo("gabarito ≥ 2,7db", "6.3.9", 2.7 * db, g)
     R.minimo("gabarito: folga para a alma (g − tw)/2 ≥ db", "CBCA 6.1.1", db, (g - tw) / 2)
@@ -759,7 +769,7 @@ def _chapa_topo(d, e, estendida_padrao):
     for y in (-tw / 2, tw / 2):
         geo["soldas"].append(_solda("filete", bw, [[xs, y, -(H / 2 - tf)], [xs, y, H / 2 - tf]]))
     if enr:
-        for s in ((1,) if estendida == "superior" else (1, -1)):
+        for s in {"superior": (1,), "inferior": (-1,)}.get(estendida, (1, -1)):
             geo["chapas"].append(_chapa("enrijecedor da chapa de topo",
                                         [[0, s * H / 2], [Ls, s * H / 2], [0, s * (H / 2 + hs)]],
                                         [xs, ts / 2, 0], [0, -1, 0], [1, 0, 0], ts))
@@ -1197,8 +1207,8 @@ _E_CHAPA_TOPO = dict(
     **_E_PILAR)
 _E_CHAPA_TOPO_EST = dict(
     _E_CHAPA_TOPO,
-    estendida=_ent("Lado(s) estendido(s)", "-", "superior", opcoes=["superior", "ambas"],
-                   descricao="superior = assimétrica (CBCA LMPA); ambas = simétrica (inversão de momento)"),
+    estendida=_ent("Posição da chapa", "-", "superior", opcoes=["superior", "ambas", "inferior"],
+                   descricao="superior = estende em cima, alinhada embaixo (CBCA LMPA); ambas = centralizada (inversão de momento); inferior = estende embaixo, alinhada em cima (M < 0)"),
     de=_ent("Furo → extremidade da chapa", "mm", 40.0, 15.0, 200.0),
     enrijecedor_chapa=_ent("Enrijecedor na extensão", "-", False, opcoes=[True, False]),
     t_enrijecedor=_ent("Espessura do enrijecedor", "mm", 0.0, 0.0, 50.0))

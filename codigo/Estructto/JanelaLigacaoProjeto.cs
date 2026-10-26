@@ -355,7 +355,8 @@ namespace NovoFtool
                 if (r != null && r["ok"] != null && !Bool(r, "ok"))   // sem solução: o motor devolve os dados originais; para e explica
                 {
                     semSolucao = r; campoLimitante = CampoLimitante(r);
-                    resultado = r["resultado"] ?? resultado; erro = null; seq++; realces.Clear();
+                    // sem resultado novo (ex.: motor recusou o perfil) mantém o erro: antes o resultado antigo voltava como se fosse deste perfil
+                    if (r["resultado"] != null) { resultado = r["resultado"]; erro = null; } seq++; realces.Clear();
                     status = "Sem solução — nada foi alterado.";
                     return;
                 }
@@ -368,7 +369,7 @@ namespace NovoFtool
                     var c = Campos(Tipo()).FirstOrDefault(x => S(x, "nome") == kv.Key);
                     partes.Add(Rotulo(c, kv.Key) + " " + Valor(c, kv.Value?[0]) + " → " + Valor(c, kv.Value?[1]));
                 }
-                resultado = r?["resultado"] ?? resultado; erro = null; seq++;
+                if (r?["resultado"] != null) { resultado = r["resultado"]; erro = null; } seq++;
                 status = (Bool(r, "ok") ? "Otimizado (menor detalhe que passa): " : "Nenhum aumento resolve sozinho — melhor encontrado: ") + (partes.Count > 0 ? string.Join(" · ", partes) : "sem mudanças");
             });
             Montar();
@@ -859,6 +860,7 @@ namespace NovoFtool
             if (suf.Success) return "Barra " + suf.Groups[1].Value;
             if (n.StartsWith("perfil_") || n == "apoio") return "barras";
             if (n.StartsWith("recorte") || n == "desnivel") return "Recortes";
+            if (n == "estendida") return "Chapa";   // posição (centralizada / alinhada em cima / embaixo) junto da chapa, não em opções
             if (n.StartsWith("aco_")) return "Materiais e opções";
             if (n.Contains("enrij") || n == "t_enr_pilar" || n == "t_reforco") return "Enrijecedores";
             if (n.StartsWith("folga") || new[] { "x_face", "x_max", "abertura_y", "sobra", "excentricidade_apoio", "recuo" }.Contains(n)) return "Folgas";
@@ -872,7 +874,7 @@ namespace NovoFtool
         static bool Largo(JsonNode c)
         {
             string n = S(c, "nome");
-            if ((n == "d" || n == "d_mm") && S(c, "unidade") == "mm") return true;
+            if ((n == "d" || n == "d_mm") && S(c, "unidade") == "mm" || n == "estendida") return true;
             if (c["opcoes"] is JsonArray op && op.Count <= 3 && op.Sum(x => x.ToString().Length) <= 34 && op.Count > 0) return op.Sum(x => x.ToString().Length) > 16;
             return n.StartsWith("perfil_") && false;
         }
@@ -900,6 +902,13 @@ namespace NovoFtool
             bool Dentro(double mm) => (double.IsNaN(mn) || mm / k >= mn - 1e-9) && (double.IsNaN(mx) || mm / k <= mx + 1e-9);
             void Gravar(JsonNode v) { Dados[nome] = v; Mudou(nome); }
 
+            // posição da chapa de topo estendida: nomes do motor (superior/ambas/inferior) em termos de alinhamento
+            if (nome == "estendida" && c["opcoes"] is JsonArray ope)
+            {
+                string sel = atual?.ToString() ?? "superior";
+                var nomes = new[] { ("ambas", "Centralizada"), ("inferior", "Alinhada em cima"), ("superior", "Alinhada embaixo") };
+                return Segmentado(nomes.Where(x => ope.Any(o => o.ToString() == x.Item1)).Select(x => (x.Item2, x.Item1 == sel, (Action)(() => Gravar(x.Item1)), dica)).ToList(), 28, 11.5);
+            }
             if (c["opcoes"] is JsonArray op)
             {
                 var ops = op.Select(x => x.ToString()).ToList();

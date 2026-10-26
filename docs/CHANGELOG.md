@@ -1,6 +1,12 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 26/10/2026 — v0.6.10 (pedido do usuário, caso `chapa_topo_estendida.pcon`, viga UPN 50 em pilar UPN 120):
+  - Perfil U na chapa de topo continua recusado (G5). A mensagem agora indica solda direta ou ligação flexível.
+  - Corrigido: o Otimizar sem solução trazia de volta o resultado e o desenho anteriores (W310) e apagava o erro. Por isso os perfis "não trocavam" no desenho.
+  - Posição da chapa estendida: Centralizada (`ambas`), Alinhada em cima (`inferior`, nova) e Alinhada embaixo (`superior`), na seção Chapa.
+  - Revisão independente da verificação 3D, com correções: Ip pelo centroide; penetração com cisalhamento contra 0,6·fy; interação da viga com N; pressão de contato com as bordas superior e lateral.
+  - Motor: 1.235 testes OK. Ver [v3/LIGACOES-ESFORCOS-3D.md](v3/LIGACOES-ESFORCOS-3D.md).
 - 26/10/2026 — v0.6.9 (release no GitHub, alvo `unificacao`): 6 esforços no projetista e chapa de topo com Fy/Mz/Mx. `publicar.ps1 -Versao 0.6.9` RELEASE OK (motor 0.9.1); assets: zip, .sha256 e `Estructto-Setup-0.6.9.exe`; `Estructto.exe` + `motor\` copiados para a raiz.
 - 26/10/2026 — Projetista (pedido do usuário): ligação entre barras mostra sempre os 6 esforços no Passo 1 — Fx (N), Fy (Vz), Fz (V), Mx (T), My (M), Mz — e cada vista (elevação, planta, lateral, 3D) desenha o triedro x/y/z (x = eixo da viga, z = vertical; ⊙/⊗ quando o eixo é perpendicular à tela). Motor não mudou: o tipo que não verifica um esforço avisa "não considerados"/"ignorados". Depois, no mesmo dia: a chapa de topo verifica Fy, Mz e Mx. Os parafusos usam grupo elástico; o Mz entra como binário nas colunas (braço g); a viga tem a verificação de flexão oblíqua; a chapa, o cisalhamento horizontal; a solda das mesas recebe Mz, Fy e Mx. O pilar continua só com My e N. Ver [v3/LIGACOES-ESFORCOS-3D.md](v3/LIGACOES-ESFORCOS-3D.md). Motor 1.231 testes OK (6 novos em `test_chapa_topo_3d.py`).
 - 26/10/2026 — v0.6.8 (release no GitHub): junta o `unificacao` remoto (arquivos .pstr/.pcon, instalador, tela inicial, v0.6.6/0.6.7) com as correções de 23–26/10 (bateria `interf3d`, gusset de W, nó de 4 vigas, viga mais larga que o pilar, combo de perfil do projetista, solda direta nas mesas). O build local que eu tinha chamado de 0.6.6 não foi publicado: a v0.6.6 e a v0.6.7 já existiam, feitas em outra máquina. Assets: zip, .sha256 e `Estructto-Setup-0.6.8.exe`.
