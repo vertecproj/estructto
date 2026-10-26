@@ -234,6 +234,10 @@ namespace NovoFtool
                     if (continuas.Contains(q) && double.IsNaN(fixo)) continue;
                     double fd = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max();
                     double recuo = double.IsNaN(fixo) ? fd + folga(q.B, q.EmI) : fixo;
+                    // viga contra pilar mais estreito que ela: recua também até sair da caixa das outras vigas do nó (não paralelas), senão as
+                    // vigas a 90° se cruzam no canto (pilar tubo 100x50 com W de mesa 165; bateria interf3d)
+                    if (q.Rank == 2 && top.Rank == 3 && double.IsNaN(fixo))
+                        recuo = Math.Max(recuo, ord.Where(t => t != q && t.Rank == 2 && !continuas.Contains(t) && Math.Abs(Vector3D.DotProduct(t.D, q.D)) < 0.98).Select(t => RecuoDiag(q, t)).DefaultIfEmpty(0).Max());
                     if (q.Rank == 1 && double.IsNaN(fixo))   // diagonal: corte ⟂ à barra; o canto da seção do lado do apoio não pode passar da face
                         recuo = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => RecuoDiag(q, t)).DefaultIfEmpty(0).Max() + folga(q.B, q.EmI);
                     if (q.Rank == 1 && double.IsNaN(fixo)) recuo = Math.Min(recuo, 0.3 * q.L);   // só diagonal: viga curta demais some (cortada até a chapa) em vez de entrar no apoio
@@ -731,6 +735,10 @@ namespace NovoFtool
                     if (continuas.Contains(q) && double.IsNaN(fixo)) continue;
                     double fd = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => FaceDist(q.D, t)).DefaultIfEmpty(0).Max();
                     double recuo = double.IsNaN(fixo) ? fd + folga(q.B, q.EmI) : fixo;
+                    // viga contra pilar mais estreito que ela: recua também até sair da caixa das outras vigas do nó (não paralelas), senão as
+                    // vigas a 90° se cruzam no canto (pilar tubo 100x50 com W de mesa 165; bateria interf3d)
+                    if (q.Rank == 2 && top.Rank == 3 && double.IsNaN(fixo))
+                        recuo = Math.Max(recuo, ord.Where(t => t != q && t.Rank == 2 && !continuas.Contains(t) && Math.Abs(Vector3D.DotProduct(t.D, q.D)) < 0.98).Select(t => RecuoDiag(q, t)).DefaultIfEmpty(0).Max());
                     if (q.Rank == 1 && double.IsNaN(fixo))   // mesma regra da Juntas (o teste compara as duas)
                         recuo = ord.Where(t => continuas.Contains(t) || t.Rank > q.Rank).Select(t => RecuoDiag(q, t)).DefaultIfEmpty(0).Max() + folga(q.B, q.EmI);
                     recuo = Math.Min(recuo, 0.3 * q.L);

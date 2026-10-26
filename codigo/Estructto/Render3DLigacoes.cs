@@ -449,6 +449,7 @@ namespace NovoFtool
                 if (c.Raio > 0) continue;   // v0.6 A3: tubo em tubo = solda direta com boca de peixe (motor tubo_tubo_soldado), sem chapa
                 bool horiz = Math.Abs(nos[b.Nj].Z - nos[b.Ni].Z) < 0.2 * (P(nos[b.Nj]) - P(nos[b.Ni])).Length;
                 if (!horiz) r.Add(Gusset(no, b, emI, f, c.Recuo, NormalEmV(mod, b, emI, c.Contra)));
+                else if (vert.Contains(c.Contra) && c.Recuo > c.Face + 0.03 && MaisLarga(mod, b, c.Contra, forma)) continue;   // viga mais larga que a face do pilar: sem chapa
                 else if (vert.Contains(c.Contra) && c.NaMesa) { Contorno fp = forma(c.Contra); r.Add(ChapaDeTopo(no, b, emI, f, face, fp.Tf, fp.B / 2, fp.Forma == "I", fp.B, fp.Tw)); }
                 else r.Add(ChapaSimples(no, b, emI, f, face, forma(c.Contra), vert.Contains(c.Contra), Enrijecedores(mod, cortes, forma, no, b)));
             }
@@ -515,6 +516,7 @@ namespace NovoFtool
             string tipo = p.Pendente ?? "";
             double face = c.Face;
             if (tipo.StartsWith("gusset") || tipo.StartsWith("no_trelica") || dz > 0.2) r.Add(Gusset(p.No, b, emI, f, c.Recuo, NormalEmV(mod, b, emI, c.Contra)));
+            else if (Vertical(mod, c.Contra) && c.Recuo > c.Face + 0.03 && MaisLarga(mod, b, c.Contra, forma)) return r;   // viga mais larga que a face do pilar: sem chapa
             else if (tipo.StartsWith("viga_pilar_mesa") && tipo.Contains("rigida") && fc.Lacos.Count == 1 && c.NaMesa) r.Add(ChapaDeTopo(p.No, b, emI, f, face, fc.Tf, fc.B / 2, fc.Forma == "I", fc.B, fc.Tw));
             else r.Add(ChapaSimples(p.No, b, emI, f, face, fc, Vertical(mod, c.Contra), Enrijecedores(mod, cortes, forma, p.No, b)));
             return r;
@@ -563,6 +565,24 @@ namespace NovoFtool
                 }
             }
             return r;
+        }
+
+        // A viga b é mais larga que a face do pilar c por onde chega (largura na direção ⟂ às duas barras)? Junto com o recuo da
+        // Juntas além da face (as outras vigas do nó a empurraram: Corte.Recuo > Face + 30 mm), o nó não tem como ser montado com
+        // chapa: não se propõe chapa (bateria interf3d: pilar tubo 100x50 com W de mesa 140-165 mm). Só a largura não basta: W310
+        // (mesa 165) em pilar W250 (mesa 146) é comum e a chapa de topo monta.
+        static bool MaisLarga(Modelo3D mod, Barra3D b, Barra3D c, Func<Barra3D, Contorno> forma)
+        {
+            var nos = mod.Nos.ToDictionary(n => n.Id);
+            if (!new[] { b.Ni, b.Nj, c.Ni, c.Nj }.All(nos.ContainsKey)) return false;
+            Vector3D eb = P(nos[b.Nj]) - P(nos[b.Ni]), ec = P(nos[c.Nj]) - P(nos[c.Ni]); eb.Normalize(); ec.Normalize();
+            Vector3D l = Vector3D.CrossProduct(eb, ec); if (l.Length < 1e-6) return false; l.Normalize();
+            double Largura(Barra3D x, Vector3D e)
+            {
+                Vector3D v = Modelo3D.EixoY(e, x.Rot + x.RotPerfil), u = Vector3D.CrossProduct(v, e); Contorno f = forma(x);
+                return Math.Abs(Vector3D.DotProduct(l, u)) * f.B + Math.Abs(Vector3D.DotProduct(l, v)) * f.H;
+            }
+            return Largura(b, eb) > Largura(c, ec) + 1e-3;
         }
 
         static bool Vertical(Modelo3D mod, Barra3D b)

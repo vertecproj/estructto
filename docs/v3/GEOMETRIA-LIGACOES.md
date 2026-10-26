@@ -124,10 +124,17 @@ Defeitos achados e corrigidos (733 → 32 reprovadas):
 | 7 | Gusset no nó viga-pilar-diagonal atravessava a viga e a chapa de topo (lado obtuso, +90 mm) | A chapa é recortada pelo semiplano de cada peça do nó no plano dela (caixa da peça + o que as chapas da ligação dela passam da caixa); os filetes são recortados junto |
 | 8 | Gusset no pé do pilar atravessava a placa de base | Recorte pela face de cima da placa de base do apoio |
 
-Ficou: 32 cenas, todas pilar tubo 100×50 com 4 vigas W de mesa 140–165 mm (mais largas que a face do pilar). As vigas a 90° se tocam fisicamente: o nó não tem como ser montado assim e precisa de outro detalhe (capitel, consolo). A decisão é do usuário.
+Restavam 32 cenas, todas pilar tubo 100×50 com 4 vigas W de mesa 140–165 mm (mais largas que a face do pilar): as vigas a 90° se cruzavam no canto. Decisão do usuário (26/10/2026): as vigas recuam até não se tocarem e não se propõe chapa.
+
+| # | Defeito | Correção |
+|---|---|---|
+| 9 | Viga contra pilar mais estreito que ela cruzava as outras vigas do nó no canto | `Juntas` e `JuntasV04`: a viga (que não é contínua, contra pilar) recua também até sair da caixa das outras vigas não paralelas do nó (`RecuoDiag`) |
+| 10 | Chapa proposta numa viga que não chega ao pilar | `Gerar` e `Proposta`: sem chapa quando a viga é mais larga que a face do pilar (`MaisLarga`, largura ⟂ às duas barras) **e** o recuo passa da face em mais de 30 mm. Só a largura não basta: W310 (mesa 165) em pilar W250 (mesa 146) é comum, a chapa de topo monta e continua proposta |
+
+A bateria `interf3d` fica com 2.958/2.958 cenas aprovadas.
 
 Provas desta rodada:
-- `interf3d`: 2.958 cenas, 2.926 aprovadas (diagonais 960/960, mistas todas, pórticos sem par).
+- `interf3d`: 2.958 cenas, todas aprovadas (2.926 antes das regras 9 e 10).
 - `--testes-exportar`: 0 falhas.
 - `--testes-interferencia` com o motor empacotado: galpão, edifício, pórtico, treliça, mezanino e `testes-aceite/PLATAFORMA.ed3`, todos com 0 pares. O teste aceita agora qualquer chave de modelo inicial, não só `galpao`.
 
