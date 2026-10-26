@@ -982,6 +982,19 @@ namespace NovoFtool
         static void FluxoRobustez(MainWindow w, Rel r)
         {
             var v = w.vista3D;
+            // --- arquivo de conexão (.pcon): ida e volta e arquivos inválidos (ConexaoArquivo.cs)
+            {
+                var lido = ConexaoArquivo.Ler(ConexaoArquivo.Serializar("Chapa V1", "chapa_simples", new JsonObject { ["h"] = 0.3, ["aco"] = "A-36" }, new JsonObject { ["V"] = 120 }));
+                r.Checar(lido.nome == "Chapa V1" && lido.tipo == "chapa_simples" && (double)lido.dados["h"] == 0.3 && (string)lido.dados["aco"] == "A-36" && (double)lido.esforcos["V"] == 120, ".pcon: salvar e ler devolve os mesmos dados");
+                foreach (var (ruim, motivo) in new[] { ("{}", "sem formato"), ("isso não é json", "texto solto"),
+                    ("{\"formato\":\"estructto-conexao\",\"versao\":99,\"tipo\":\"x\",\"dados\":{},\"esforcos\":{}}", "versão futura"),
+                    ("{\"formato\":\"estructto-conexao\",\"versao\":1,\"dados\":{},\"esforcos\":{}}", "sem tipo") })
+                {
+                    bool recusouPcon = false; try { ConexaoArquivo.Ler(ruim); } catch (FormatException) { recusouPcon = true; }
+                    r.Checar(recusouPcon, ".pcon: recusa arquivo inválido (" + motivo + ")");
+                }
+                r.Checar(ConexaoArquivo.EhConexao("a\\b\\Chapa.PCON") && !ConexaoArquivo.EhConexao("Modelo.pstr"), ".pcon: extensão reconhecida sem diferenciar maiúsculas");
+            }
             // --- o motor morre no meio da sessão
             Esperar(w.AbrirEspacial(() => DocumentoEspacial.Exemplo("galpao_aco"), "exemplo"));
             Esperar(w.CalcularEspacial());

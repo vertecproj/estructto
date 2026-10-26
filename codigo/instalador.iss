@@ -25,12 +25,24 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
+ChangesAssociations=yes
 
 [Languages]
 Name: "pt"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Files]
 Source: "{#Publicado}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Duplo clique abre o arquivo no Estructto: .pstr = modelo, .pcon = calculadora de conexão (docs/ARQUIVOS.md). Por usuário (HKCU).
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\.pstr"; ValueType: string; ValueData: "Estructto.Modelo"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\Estructto.Modelo"; ValueType: string; ValueData: "Modelo do Estructto"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Estructto.Modelo\DefaultIcon"; ValueType: string; ValueData: "{app}\Estructto.exe,0"
+Root: HKCU; Subkey: "Software\Classes\Estructto.Modelo\shell\open\command"; ValueType: string; ValueData: """{app}\Estructto.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\.pcon"; ValueType: string; ValueData: "Estructto.Conexao"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\Estructto.Conexao"; ValueType: string; ValueData: "Conexão do Estructto"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Estructto.Conexao\DefaultIcon"; ValueType: string; ValueData: "{app}\Estructto.exe,0"
+Root: HKCU; Subkey: "Software\Classes\Estructto.Conexao\shell\open\command"; ValueType: string; ValueData: """{app}\Estructto.exe"" ""%1"""
 
 [Icons]
 Name: "{autodesktop}\Estructto"; Filename: "{app}\Estructto.exe"

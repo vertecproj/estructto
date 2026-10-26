@@ -251,6 +251,36 @@ namespace NovoFtool
         }
         public void DefinirEsforcos(JsonObject e) { foreach (var kv in e) Esf[kv.Key] = kv.Value?.DeepClone(); membroSel = ""; Montar(); }
         public void DefinirDados(JsonObject d) { foreach (var kv in d) Dados[kv.Key] = kv.Value?.DeepClone(); Montar(); }
+        // Arquivo de conexão (.pcon, ConexaoArquivo.cs): salvar/abrir a entrada desta ligação. Sem caminho, pergunta.
+        string arquivoConexao;
+        public void SalvarConexao()
+        {
+            if (tipo == null) return;
+            var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Conexão do Estructto (*" + ConexaoArquivo.Ext + ")|*" + ConexaoArquivo.Ext, FileName = arquivoConexao != null ? Path.GetFileName(arquivoConexao) : tipo + ConexaoArquivo.Ext };
+            if (dlg.ShowDialog(this) != true) return;
+            try { ConexaoArquivo.Gravar(dlg.FileName, Path.GetFileNameWithoutExtension(dlg.FileName), tipo, Dados, Esf); arquivoConexao = dlg.FileName; status = "Conexão salva em " + dlg.FileName; }
+            catch (Exception ex) { status = "Nenhuma conexão salva: " + ex.Message; }
+            MontarRodape();
+        }
+        public async Task AbrirConexao(string caminho = null)
+        {
+            if (caminho == null)
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Conexão do Estructto (*" + ConexaoArquivo.Ext + ")|*" + ConexaoArquivo.Ext };
+                if (dlg.ShowDialog(this) != true) return;
+                caminho = dlg.FileName;
+            }
+            try
+            {
+                var c = ConexaoArquivo.Ler(File.ReadAllText(caminho));
+                if (Tipo(c.tipo) == null) { status = "Nenhuma conexão aberta: o tipo '" + c.tipo + "' não existe nesta versão do motor."; MontarRodape(); return; }
+                await Escolher(c.tipo, false);
+                DefinirDados(c.dados); DefinirEsforcos(c.esforcos);
+                arquivoConexao = caminho; status = "Conexão aberta: " + Path.GetFileName(caminho);
+                await CalcularAgora();
+            }
+            catch (Exception ex) when (ex is FormatException || ex is IOException || ex is UnauthorizedAccessException) { status = "Nenhuma conexão aberta: " + ex.Message; MontarRodape(); }
+        }
         public void MostrarVista(int v) { vistaAtiva = v; Montar(); }
         public void MostrarBiblioteca() { tipo = null; Montar(); }
         public void Buscar(string s) { busca = s ?? ""; Montar(); }
@@ -1180,6 +1210,13 @@ namespace NovoFtool
                     mem.Margin = new Thickness(0, 0, 8, 0); esq.Children.Add(mem);
                 }
             }
+            var abrC = Botao(grupo != null ? "Importar .pcon" : "Abrir .pcon", "abrir", () => _ = AbrirConexao(), grupo != null ? "Importa uma conexão salva (.pcon) para a ligação do grupo " + S(grupo, "nome") + ": tipo, dados e esforços do arquivo preenchem este projeto; depois \"Aplicar ao grupo\" grava no modelo." : "Abre uma conexão salva (.pcon) nesta calculadora.");
+            abrC.Margin = new Thickness(0, 0, 8, 0); esq.Children.Add(abrC);
+            if (tipo != null)
+            {
+                var salC = Botao("Salvar .pcon", "salvar", SalvarConexao, "Salva tipo, dados e esforços desta ligação num arquivo .pcon (calculadora de conexão, sem modelo).");
+                salC.Margin = new Thickness(0, 0, 8, 0); esq.Children.Add(salC);
+            }
             if (ocupado) { var br = Anim.Brilho(80, 3); br.VerticalAlignment = VerticalAlignment.Center; br.Margin = new Thickness(4, 0, 10, 0); esq.Children.Add(br); }
             var st = Tx(status != "" ? status : tipo == null ? "Resultado do motor; exige conferência do engenheiro (ART)." : "Ligação isolada pela NBR 8800:2008. Resultado do motor; exige conferência do engenheiro (ART).",
                         11.5, status.StartsWith("Motor:") || status.StartsWith("Nenhum") ? TemaPlant.BAlertaClaro : status != "" ? TemaPlant.BTexto1 : TemaPlant.BTexto3);
@@ -1203,13 +1240,14 @@ namespace NovoFtool
     public partial class MainWindow
     {
         // Ligações e bases › Projetar ligação (Ctrl+K "Projetar ligação"); tipo = abre direto no tipo
-        internal async void AbrirProjetistaLigacao(string tipo = null)
+        internal async void AbrirProjetistaLigacao(string tipo = null, string conexao = null)   // conexao: .pcon a abrir na calculadora
         {
             var d = await ComandosAnalise.BuscarTipos(this);
             if (d == null) return;
             var j = new JanelaLigacaoProjeto(d, tipo) { Owner = this };
             j.AbrirPlaca = jp => { Activate(); _ = AbrirPlacaEsp(null); };   // placa do pé de pilar (Legado3D.cs): nó selecionado ou pede o clique
             j.Show();
+            if (conexao != null) await j.AbrirConexao(conexao);
         }
 
         // clique numa chapa da Vista3D: abre o projetista do grupo daquela ligação, na seção e no campo da peça

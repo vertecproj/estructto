@@ -161,7 +161,7 @@ namespace NovoFtool
                 df.Avisos.AddRange(avFtl.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
                 return df;
             }
-            if (ext == ".estructto" || ext == ".portico")
+            if (ext == ".pstr" || ext == ".estructto" || ext == ".portico")
             {
                 string txt = File.ReadAllText(caminho);
                 if (txt.TrimStart().StartsWith("<")) return await DeModelo2D(Modelo.DeXml(txt), caminho);   // formato antigo (XML do Nucleo.cs)
@@ -512,8 +512,8 @@ namespace NovoFtool
             foreach (string a in d.Avisos) Log("  aviso: " + a, false);
             if (d.Origem != null)
             {
-                Log("Convertido para 3D: " + Path.GetFileName(d.Origem) + " (Y do 2D virou Z; fora do plano travado). Salvar grava o formato novo (.estructto 3D).", false);
-                StatusMsg.Text = "Modelo 2D convertido para 3D (Y do 2D virou Z); salvar grava .estructto 3D, o original fica intacto.";   // onda final: linha de status, não toast sobre a vista
+                Log("Convertido para 3D: " + Path.GetFileName(d.Origem) + " (Y do 2D virou Z; fora do plano travado). Salvar grava o formato novo (.pstr 3D).", false);
+                StatusMsg.Text = "Modelo 2D convertido para 3D (Y do 2D virou Z); salvar grava .pstr 3D, o original fica intacto.";   // onda final: linha de status, não toast sobre a vista
             }
             string semApoios = d.Avisos.FirstOrDefault(a => a.StartsWith("Apoios e cargas"));   // .ftl (E2E-10): não deixa o F5 achar o mecanismo sozinho
             if (semApoios != null && !silencioso) MostrarToast(semApoios, true);
@@ -561,7 +561,7 @@ namespace NovoFtool
                 MostrarVista3D(true);
                 vista3D.Ferramenta = Ferramenta3D.Navegar;
                 vista3D.Carregar(new Modelo3D(), true);
-                painelEsp.Content = new TextBlock { Text = "Nenhum modelo aberto. Ctrl+N cria um modelo em branco (em planta, no térreo); Ctrl+O abre um arquivo (.estructto, .json, .ed3, .ftl).", Foreground = TemaPlant.BTexto2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
+                painelEsp.Content = new TextBlock { Text = "Nenhum modelo aberto. Ctrl+N cria um modelo em branco (em planta, no térreo); Ctrl+O abre um arquivo (.pstr, .pcon, .estructto, .json, .ed3, .ftl).", Foreground = TemaPlant.BTexto2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
                 PainelProp.Content = painelEsp;
                 return;
             }
@@ -725,7 +725,7 @@ namespace NovoFtool
             {
                 string pasta = d.Origem != null ? Path.GetDirectoryName(d.Origem) : null;
                 string nome = d.Origem != null ? Path.GetFileNameWithoutExtension(d.Origem) + " (3D)" : c == null ? d.Nome : Path.GetFileNameWithoutExtension(c);
-                var dlg = new SaveFileDialog { Filter = "Estructto (*.estructto)|*.estructto|Modelo do motor, sem placas nem grade (*.json)|*.json", FileName = nome + ".estructto", InitialDirectory = pasta ?? "" };
+                var dlg = new SaveFileDialog { Filter = "Estructto (*.pstr)|*.pstr|Estructto antigo (*.estructto)|*.estructto|Modelo do motor, sem placas nem grade (*.json)|*.json", FileName = nome + ".pstr", InitialDirectory = pasta ?? "" };
                 if (dlg.ShowDialog(this) != true) return false;
                 c = dlg.FileName;
             }
@@ -739,7 +739,7 @@ namespace NovoFtool
             {
                 bool json = c.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
                 Config.GravarAtomico(c, json ? d.JsonFormatado() : d.ParaContainer());   // Json = último GET /api/modelo; temporário + troca
-                if (json && d.Placas.Count > 0) Log("Aviso: o .json do motor não leva as placas de base do arquivo antigo; use .estructto para guardar tudo.");
+                if (json && d.Placas.Count > 0) Log("Aviso: o .json do motor não leva as placas de base do arquivo antigo; use .pstr para guardar tudo.");
                 d.Arquivo = c; d.Origem = null; arquivo = c; alterado = false;
                 Config.AdicionarRecente(c);
                 Config.ApagarRecuperacao(d.Chave);   // só a cópia deste documento: as das outras abas não salvas ficam
