@@ -229,14 +229,52 @@ _TIRANTE = {
     "deformacao_limitada": _e("Deformação limitada", "-", True),
 }
 
+# W7-LIG (docs/v3/W7-LIG.md §2): a cantoneira vem do catálogo (abas, t, A, x̄); as medidas soltas (dim_a, t_perfil...) só
+# valem nos dados antigos sem `perfil_cantoneira` (legado, lidos por _CANT_MEDIDAS)
+_MEDIDAS_L = ("dim_a", "dim_b", "t_perfil", "A_perfil", "xg_perfil")
+_CANT_MEDIDAS = {k: v for k, v in _campos_membro(secoes=["L"]).items() if k in _MEDIDAS_L}
 _CANT = {
-    **_campos_membro(secoes=["L"]),
+    "perfil_cantoneira": _e("Cantoneira", "-", 'L 3" x 1/4"',
+                            ajuda="perfil L do catálogo: abas, espessura, área e x̄ (excentricidade) vêm dele"),
+    "aba_ligada": _e("Aba ligada ao gusset", "-", "maior", opcoes=["maior", "menor"],
+                     ajuda="só muda alguma coisa em cantoneira de abas desiguais"),
+    **{k: v for k, v in _campos_membro(secoes=["L"]).items() if k not in _MEDIDAS_L + ("secao", "tf_perfil")},
     **_COMUNS,
     "trelica": _e("Treliça", "-", "plana", opcoes=["plana", "espacial"]),
-    "comprimento": _e("Comprimento da barra", "mm", 0.0, min=0.0, max=1e5,
-                      ajuda="entre pontos de trabalho; > 0 verifica a compressão por E.1.4"),
+    "comprimento": _e("Comprimento da barra", "mm", 1500.0, min=0.0, max=1e5,
+                      ajuda="entre pontos de trabalho; compressão: verifica a barra por E.1.4; 0 = não verifica"),
     "fadiga": _e("Sujeita à fadiga", "-", False),
 }
+_CANT["g_aba"] = dict(_CANT["g_aba"], ajuda="do talão (canto) à linha de furos; 0 = gabarito usual da aba (AISC/Gerdau)")
+# gabaritos usuais na aba (pol): AISC Manual tab. 1-7A "workable gages" [conferir]; Gerdau 2.4.5: 45 mm em L76, 65 mm em
+# L102 (= arredondados para cima a 5 mm)
+_GABARITOS_POL = ((8, 4.5), (7, 4.0), (6, 3.5), (5, 3.0), (4, 2.5), (3.5, 2.0), (3, 1.75), (2.5, 1.375), (2, 1.125),
+                  (1.75, 1.0), (1.5, 0.875), (1.25, 0.75), (1, 0.625))
+
+
+def gabarito_usual(aba_mm):
+    """Linha de furos a partir do talão (mm) para a aba `aba_mm`: maior aba tabelada ≤ a aba, para cima a 5 mm."""
+    g = next((g for b, g in _GABARITOS_POL if aba_mm >= b * 25.4 - 0.5), None)
+    return aba_mm / 2 if g is None else math.ceil(g * 25.4 / 5 - 1e-9) * 5
+
+
+def cantoneira_catalogo(nome, aba="maior"):
+    """Cantoneira do catálogo → medidas da ligação (mm): dim_a (aba ligada), dim_b, t_perfil, A_perfil (mm², tabelada) e
+    xg_perfil = ec (face da aba ligada → centroide, 5.2.5), mais a Secao (m) para a E.1.4."""
+    try:
+        s = secoes.catalogo(str(nome))
+    except KeyError:
+        raise ValueError(f"perfil_cantoneira: '{nome}' não está no catálogo") from None
+    p = s.props
+    if p.get("tipo") != "L":
+        raise ValueError(f"perfil_cantoneira: '{nome}' não é cantoneira (L)")
+    b, h, t = p["b"], p["h"], p["t"]
+    lig_h = (h >= b) == (aba == "maior")   # a aba h (vertical no catálogo) é a ligada?
+    # secao_cantoneira: x0 = t/2 − xg (xg ao longo de b, da face da aba h), y0 = t/2 − yg
+    ec = (t / 2 - p["x0"]) if lig_h else (t / 2 - p["y0"])
+    a, o = (h, b) if lig_h else (b, h)
+    return dict(dim_a=a / MM, dim_b=o / MM, t_perfil=t / MM, A_perfil=(p.get("A_catalogo") or s.A) / MM ** 2,
+                xg_perfil=ec / MM), s
 
 
 def _ler(entradas, dados, tipo):
@@ -249,7 +287,9 @@ def _ler(entradas, dados, tipo):
             if pad is None:
                 erros.append(f"{k}: obrigatório")
             continue
-        if "opcoes" in c:
+        if isinstance(pad, str) and "opcoes" not in c:   # nome de perfil do catálogo (perfil_cantoneira)
+            out[k] = str(v).strip()
+        elif "opcoes" in c:
             achado = next((o for o in c["opcoes"] if str(o).upper() == str(v).upper()), None)
             if achado is None:
                 erros.append(f"{k}: '{v}' inválido ({', '.join(map(str, c['opcoes']))})")
@@ -956,7 +996,20 @@ def verificar_tirante(dados, esforcos):
 # ---------------------------------------------------------------- 4. cantoneira simples em treliça leve
 
 def verificar_cantoneira_simples(dados, esforcos):
-    d = _ler(_CANT, dados, "cantoneira_simples_trelica")
+    bruto = dict(dados or {})
+    legado = not bruto.get("perfil_cantoneira") and bool(bruto.get("dim_a"))   # dados antigos: medidas informadas
+    d = _ler(_CANT, bruto, "cantoneira_simples_trelica")
+    sec_cat = None
+    if legado:
+        d.update(_ler(_CANT_MEDIDAS, bruto, "cantoneira_simples_trelica"))
+        d["aba_ligada"] = "maior" if d["dim_a"] >= (d["dim_b"] or d["dim_a"]) else "menor"
+        d["perfil_cantoneira"] = f"L{d['dim_a']:g}x{d['dim_b'] or d['dim_a']:g}x{d['t_perfil']:g}"
+    else:
+        med, sec_cat = cantoneira_catalogo(d["perfil_cantoneira"], d["aba_ligada"])
+        d.update(med)
+        if not d["g_aba"]:
+            d["g_aba"] = gabarito_usual(d["dim_a"])
+    d.update(secao="L", tf_perfil=0.0)
     N = _esf(esforcos)["N"]
     c = _comum(d)
     v, av = [], list(c["avisos"])
@@ -974,33 +1027,51 @@ def verificar_cantoneira_simples(dados, esforcos):
                   "e Ct (tração)")
     a, t = d["dim_a"] * MM, d["t_perfil"] * MM
     b = (d["dim_b"] or d["dim_a"]) * MM
-    aba = "maior" if a >= b else "menor"           # dim_a é a aba ligada
+    aba = d["aba_ligada"] if abs(a - b) > 1e-9 else "maior"   # dim_a é a aba ligada
     dica = dict(ligacao_uma_aba=dict(aba=aba, trelica=d["trelica"]), item="E.1.4", **info["dica"])
     if d["comprimento"] > 0:
         Lb = d["comprimento"] * MM
         dica["ligacao_uma_aba"]["L"] = Lb
         if N < 0:
-            if d["A_perfil"]:
+            if legado and d["A_perfil"]:
                 av.append("E.1.4 com as propriedades de cantos vivos (A_perfil só entra na ligação)")
-            rc = compressao(secoes.secao_cantoneira(a, b, t), materiais.aco(d["aco_perfil"]), Lb, Lb,
+            rc = compressao(sec_cat or secoes.secao_cantoneira(a, b, t), materiais.aco(d["aco_perfil"]), Lb, Lb,
                             ligacao_uma_aba=dict(L=Lb, aba=aba, trelica=d["trelica"]))
             if "E14" in rc:
                 v.append(_vf(f"barra: compressão com a excentricidade (E.1.4, KL = {rc['E14']['KxLx'] / MM:.0f} mm)",
                              -N, rc["NcRd"], "kN", "5.3 / E.1.4"))
                 dica["E14"] = dict(KxLx_mm=rc["E14"]["KxLx"] / MM, Ne=rc["Ne"], NcRd=rc["NcRd"], chi=rc["chi"])
             av += rc.get("avisos", [])
-    tg = c["tg"]
+    geo = _geo_cantoneira(d, info, c)
+    return _resultado(v, av, geo, dica_barra=dica)
+
+
+def _geo_cantoneira(d, info, c):
+    """W7-LIG: gusset no plano xz (y ∈ [−tg/2, tg/2]); a aba ligada encosta na face +y do gusset e desce do talão; a aba
+    saliente sai do talão para +y. A linha de furos (gabarito g_aba do talão) é a linha de trabalho z = 0 (6.1.8.2:
+    excentricidade desprezada); na soldada, os filetes ficam no talão e na ponta da aba. O gusset cobre a aba ± 10 mm e
+    vai do nó até a borda e_gusset além do último furo; a cantoneira passa além do gusset (é a barra)."""
+    tg, a, b, t = c["tg"], info["a"], info["b"], info["t"]
     dirv, perp = (1.0, 0.0), (0.0, 1.0)
     recuo = d["recuo"] * MM or 2 * tg
-    pts = _regiao(info, recuo, dirv, perp)
-    cont = _hull(pts + [(0.0, info["meia"]), (0.0, -info["meia"])])
-    par, sol = _geo_membro(info, recuo, dirv, perp, dirv, perp, tg, d["d_mm"])
-    geo = dict(chapas=[_chapa("chapa de nó", cont, tg)],
-               cantoneiras=[dict(perfil=f"L{d['dim_a']:g}x{d['dim_b'] or d['dim_a']:g}x{d['t_perfil']:g}",
-                                 origem=[recuo / MM, tg / 2 / MM, 0.0], eixo=[1.0, 0.0, 0.0], u=[0.0, 0.0, 1.0],
-                                 comprimento=info["comp"] / MM)],
-               parafusos=par, soldas=sol, recortes=[], ponto_trabalho=[0.0, 0.0, 0.0])
-    return _resultado(v, av, geo, dica_barra=dica)
+    parafusada = d["ligacao"] == "parafusada"
+    if parafusada:
+        nl, gg = d["n_linhas"], d["g"] * MM
+        z_talao = (nl - 1) / 2 * gg + (d["g_aba"] * MM or a / 2)
+    else:   # filetes de comprimento l1 (talão, z = +a/2) e l2 (ponta, z = −a/2), como em _membro
+        z_talao = a / 2
+    par, sol = _geo_membro(info, recuo, dirv, perp, dirv, perp, tg, d["d_mm"])   # filetes da L: lado +y (face da aba)
+    folga = 10 * MM
+    x_fim = recuo + info["comp"]
+    cont = [(0.0, z_talao + folga), (x_fim, z_talao + folga), (x_fim, z_talao - a - folga), (0.0, z_talao - a - folga)]
+    ext = max(0.15, 2 * a)   # trecho da barra além do gusset (desenho)
+    nome = d.get("perfil_cantoneira") or f"L{a / MM:g}x{b / MM:g}x{t / MM:g}"
+    return dict(chapas=[_chapa("chapa de nó", cont, tg)],
+                cantoneiras=[dict(perfil=nome, abas=[a / MM, b / MM], espessura=t / MM,
+                                  origem=[recuo / MM, tg / 2 / MM, z_talao / MM], eixo=[1.0, 0.0, 0.0],
+                                  u=[0.0, 0.0, -1.0], w=[0.0, 1.0, 0.0], comprimento=(info["comp"] + ext) / MM,
+                                  talao_z=z_talao / MM, ec=info["ec"] / MM)],
+                parafusos=par, soldas=sol, recortes=[], ponto_trabalho=[0.0, 0.0, 0.0])
 
 
 # ---------------------------------------------------------------- sugerir (pré-dimensionamento)
@@ -1103,9 +1174,25 @@ def sugerir_tirante(perfis, esforcos):
 
 def sugerir_cantoneira(perfis, esforcos):
     d = _base(_CANT, perfis)
-    d["t_gusset"] = d.get("t_gusset") or 6.3
+    legado = not (perfis or {}).get("perfil_cantoneira") and (perfis or {}).get("dim_a")
+    if legado:
+        d.update({k: perfis[k] for k in _MEDIDAS_L if k in perfis})
+        d.pop("perfil_cantoneira", None)
+    else:   # W7-LIG: medidas do catálogo, gabarito usual e gusset nunca mais fino que a aba
+        med, _ = cantoneira_catalogo(d["perfil_cantoneira"], d["aba_ligada"])
+        d["g_aba"] = d.get("g_aba") or gabarito_usual(med["dim_a"])
+        d["t_perfil"] = med["t_perfil"]   # só para o filete de _std_parafuso (não é campo de _CANT)
+    tmin = d.get("t_perfil") or 0.0
+    d["t_gusset"] = d.get("t_gusset") or next((x for x in _TG if x >= tmin - 0.1), 6.3)   # 6,3 serve na aba de 1/4"
     _std_parafuso(d, [""])
-    return _buscar(verificar_cantoneira_simples, d, _passos([""], {"": d["ligacao"]}), esforcos)
+    if not legado:
+        d.pop("t_perfil", None)
+        # W7-LIG: bordas com 3 mm de tolerância de corte sobre a Tab. 14 (o padrão não nasce "no limite" por 1 mm)
+        emin = L.distancia_min_borda(d["d_mm"] * MM, d.get("borda_laminada", False)) / MM
+        for k in ("e1", "e_gusset"):
+            d[k] = max(d[k], math.ceil((emin + 3) / 5) * 5)
+    passos = [p for p in _passos([""], {"": d["ligacao"]}) if p["t_gusset"] >= tmin - 0.1]
+    return _buscar(verificar_cantoneira_simples, d, passos, esforcos)
 
 
 # ---------------------------------------------------------------- registro

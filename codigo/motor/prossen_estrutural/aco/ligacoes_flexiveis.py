@@ -30,6 +30,11 @@ E_ACO = 200e6          # kN/m² — NBR 8800 4.5.2.9
 RAIO_RECORTE = 12.0    # mm — [GD] 3.1.1 (canto reentrante do recorte)
 FOLGA_RECORTE = 10 * MM  # [GD] 2.4.6: recorte = interferência + 10 mm
 _INF = float("inf")
+# W7-LIG (docs/v3/W7-LIG.md §1): chapa de extremidade flexível
+ALTURA_MIN_CE = 0.6     # Lp ≥ 0,6·h da viga (SCI P358 4.2: travamento à torção no apoio)
+ESPESSURAS_CE = (8.0, 9.5)   # mm: 8–10 mm usuais; ≤ 0,65·db (ductilidade, SCI P358) e ≤ 10 mm (rótula, [GD] 4.1)
+FOLGA_APERTO = 1.25     # × db: meia diagonal da porca pesada (≈ 0,87 db + 2 mm) + parede do soquete. ponytail: regra de
+#                         oficina, não da NBR; tabela de folgas do AISC (Manual parte 7) se precisar de mais precisão
 
 COBERTURA = [
     dict(norma="NBR 8800", edicao="2008", item="6.3 / 6.5 / 6.2",
@@ -917,7 +922,17 @@ def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
     r.bordas("chapa, lateral", el, t, db, lam)
     if n > 1:
         r.espacamento(s, db, t)
+    # W7-LIG: folga de montagem — porca/arruela + soquete da chave entre o furo e o pé da solda da alma e, na mesa do
+    # pilar, entre o furo e a alma + raio do pilar (docs/v3/W7-LIG.md §1)
+    r.minimo("parafusos: folga de aperto até a solda da alma", FOLGA_APERTO * db, (gch - tw) / 2 - d["b_solda"],
+             "geometria (folga de montagem)", "gabarito")
+    if apoio == "mesa_pilar":
+        r.minimo("parafusos: folga de aperto até a alma do pilar", FOLGA_APERTO * db, gch / 2 - sp["tw"] / 2 - sp["r"],
+                 "geometria (folga de montagem)", "gabarito")
     topo = d["dist_topo_chapa"]
+    if Lp < ALTURA_MIN_CE * vg["d"] - 1e-9:
+        r.avisos.append(f"chapa de extremidade com {Lp / MM:.0f} mm < 0,6·h = {ALTURA_MIN_CE * vg['d'] / MM:.0f} mm: "
+                        "travamento à torção da viga no apoio duvidoso (SCI P358) — aumente as fileiras")
     _cabe_na_alma(r, {}, vg, topo, topo + Lp, "chapa")
     _cabe_no_apoio(r, sp, apoio, bp, "chapa", topo=topo)
     if t > 10 * MM:
@@ -1277,11 +1292,14 @@ def _sug_ce(perfis, esforcos):
     gch = min(0.120, bp - 2 * emin)
     topo = vg["tf"] + vg["r"] + 5 * MM
     cands = []
+    cabe = lambda n: topo + (n - 1) * pd["s"] * MM + 2 * pd["e_v"] * MM <= vg["d"] - vg["tf"] - vg["r"]  # noqa: E731
     for n in range(1, 13):
         Lp = (n - 1) * pd["s"] * MM + 2 * pd["e_v"] * MM
-        if topo + Lp > vg["d"] - vg["tf"] - vg["r"]:
+        if not cabe(n):
             break
-        for t in (6.3, 8.0, 9.5):
+        if Lp < ALTURA_MIN_CE * vg["d"] and cabe(n + 1):
+            continue   # W7-LIG: chapa ≥ 0,6·h sempre que couber (SCI P358; Gerdau LCHE tem 6 parafusos no W310)
+        for t in ESPESSURAS_CE:
             cands.append(dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, d=pd["d"], s=pd["s"], e_v=pd["e_v"], n=n,
                               t_chapa=t, largura_chapa=round(bp / MM), gabarito=round(gch / MM),
                               dist_topo_chapa=round(topo / MM)))

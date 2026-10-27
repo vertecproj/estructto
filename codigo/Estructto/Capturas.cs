@@ -1211,6 +1211,7 @@ namespace NovoFtool
                 if (so == "a1") so1(() => CapturasA1(w, caminhoModelo));          // só as 54) do produto 3D único (A1)
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
+                if (so == "w7lig") so1(() => CapturasW7Lig(w));                   // só as 70) padrões de fábrica de todos os tipos (W7-LIG)
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
                 if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)

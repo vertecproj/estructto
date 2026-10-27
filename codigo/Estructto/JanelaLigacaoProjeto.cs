@@ -926,7 +926,8 @@ namespace NovoFtool
             bool texto = c["padrao"] is JsonValue ps && ps.TryGetValue(out string _) || atual is JsonValue at && at.TryGetValue(out string _) || nome.StartsWith("perfil_");
             if (texto)
             {
-                if (nome.StartsWith("perfil_")) return CaixaPerfil(nome, atual?.ToString() ?? "", dica, x => Gravar(x));
+                // W7-LIG: trocar a cantoneira refaz o pré-dimensionamento (gabarito, bordas e parafusos vêm do perfil)
+                if (nome.StartsWith("perfil_")) return CaixaPerfil(nome, atual?.ToString() ?? "", dica, x => { Gravar(x); if (nome == "perfil_cantoneira" && Bool(Tipo(), "sugerir")) _ = Sugerir(); });
                 var tb = new TextBox { Text = atual?.ToString() ?? "", Width = 176, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, Background = TemaPlant.BSup3, Foreground = TemaPlant.BTexto1, BorderBrush = TemaPlant.BBorda, CaretBrush = TemaPlant.BTexto1, Padding = new Thickness(6, 0, 6, 0) };
                 string ini = tb.Text;
                 void Ok() { if (tb.Text != ini) { ini = tb.Text; Gravar(tb.Text.Trim()); } }
@@ -984,12 +985,15 @@ namespace NovoFtool
         static readonly HashSet<string> FamiliasI = new HashSet<string> { "W", "HP", "IPE", "HEA", "HEB" };
         bool SoPerfilI => S(Tipo(), "familia") is "rigida" or "emenda";
         IEnumerable<string> PerfisDoTipo() => Lista(catalogo).Where(x => !SoPerfilI || FamiliasI.Contains(S(x, "familia"))).Select(x => S(x, "nome")).Where(x => x != "");
+        // W7-LIG: campo de cantoneira (perfil_cantoneira) só lista perfis L do catálogo
+        static readonly HashSet<string> FamiliasL = new HashSet<string> { "Cantoneira L", "L desigual" };
+        IEnumerable<string> PerfisDoCampo(string campo) => campo.Contains("cantoneira") ? Lista(catalogo).Where(x => FamiliasL.Contains(S(x, "familia"))).Select(x => S(x, "nome")).Where(x => x != "") : PerfisDoTipo();
 
         FrameworkElement CaixaPerfil(string nome, string atual, string dica, Action<string> gravar)
         {
             SeletorPerfil sel = null;
-            sel = new SeletorPerfil(PerfisDoTipo, () => atual, s => { if (s != atual) { atual = s; sel.Mostrar(s); gravar(s); } })
-            { AceitaDigitado = false, RotuloContagem = SoPerfilI ? " perfis I/H (ligação rígida)" : " perfis no catálogo", Width = 176, Tag = nome };
+            sel = new SeletorPerfil(() => PerfisDoCampo(nome), () => atual, s => { if (s != atual) { atual = s; sel.Mostrar(s); gravar(s); } })
+            { AceitaDigitado = false, RotuloContagem = nome.Contains("cantoneira") ? " cantoneiras no catálogo" : SoPerfilI ? " perfis I/H (ligação rígida)" : " perfis no catálogo", Width = 176, Tag = nome };
             sel.Mostrar(atual);
             // catálogo vem do motor (assíncrono): carrega já; a abertura do seletor usa o que tiver chegado
             if (!Capturas.Ativo) _ = CarregarCatalogo();
@@ -1004,7 +1008,7 @@ namespace NovoFtool
             IEnumerable<DependencyObject> Filhos(DependencyObject o) { for (int i = 0; i < VisualTreeHelper.GetChildrenCount(o); i++) { var f = VisualTreeHelper.GetChild(o, i); yield return f; foreach (var x in Filhos(f)) yield return x; } }
             var sel = Filhos(this).OfType<SeletorPerfil>().FirstOrDefault(c => (c.Tag as string) == campo) ?? throw new InvalidOperationException("sem seletor " + campo);
             await CarregarCatalogo();
-            int n = PerfisDoTipo().Count();
+            int n = PerfisDoCampo(campo).Count();
             sel.Preparar(novo); sel.EscolherPrimeiro();
             return (n, S(dados[tipo], campo));
         }
