@@ -57,6 +57,22 @@ Em mm, no **referencial local da ligação**: origem no nó; eixo x ao longo da 
 - `parafusos`: `[{"d", "comprimento", "origem", "eixo"}]` (eixo = direção do fuste, da cabeça para a porca)
 - `soldas`: `[{"tipo": "filete"|"penetracao", "perna", "pontos": [[x,y,z],...]}]` (cordão como polilinha)
 - `recortes`: `[{"barra": "viga"|"pilar", "tipo": "cope"|"chanfro"|"recuo", "parametros": {...}}]` — cope: altura e comprimento do recorte no topo/base; recuo: folga da ponta.
+- `tubos` (W7, `ligacoes_tubos.py`: `tubo_tubo_soldado` e `perfil_tubo_soldado` com tubo circular): tubos circulares
+  ligados, para o desenho mostrar as barras e não só a solda. Tipos sem tubo mandam `[]` ou não mandam a chave.
+  ```
+  {"nome": "ramal" | "receptor",
+   "grupo": "viga" (ramal = barra que chega) | "suporte" (receptor = barra que passa),
+   "campo": campo editável ("perfil_viga", "perfil_suporte", "D_receptor", "h_ramal"…) ou "",
+   "origem": [x,y,z] (mm, ponto no eixo do tubo), "eixo": [ex,ey,ez] (unitário),
+   "comprimento": L (mm; o tubo vai de origem até origem + eixo·L),
+   "d": diâmetro externo (mm), "t": parede (mm),
+   "corte": null | {"origem": [x,y,z], "eixo": [ax,ay,az], "r": raio (mm)}}
+  ```
+  `corte` = boca de peixe: só há material do tubo onde a distância ao eixo do cilindro de corte é ≥ `r` (o cilindro
+  externo do receptor). Receptor: um trecho de cada lado do nó (projeção da curva de contato no eixo + d0), sem corte.
+  Ramal: começa no ponto mais baixo da curva de contato e vai até 2·d1 além do mais alto; a curva da solda (`soldas[0]`)
+  fica sobre a superfície do receptor e sobre o ramal cortado (teste `test_ligacoes_tubos.TestNoTubular.test_contrato_tubos`).
+  No `perfil_tubo_soldado`, o receptor aparece se for circular e o ramal só se também for tubo circular.
 
 ## Testes
 Cada tipo tem pelo menos 1 exemplo resolvido de livro (`docs/v3/ligacoes/*.md`, com página) reproduzido no teste, ou cálculo à mão documentado no próprio teste.

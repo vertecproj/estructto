@@ -137,6 +137,8 @@ namespace NovoFtool
         {
             string n = Norm(nome);
             if (n.Contains("solda") || n.Contains("filete") || n.Contains("metal base")) return "soldas";
+            if (n.StartsWith("ramal")) return "viga";   // tubo–tubo: ramal = barra que chega, receptor = apoio
+            if (n.StartsWith("receptor")) return "suporte";
             if (n.Contains("alma da viga") || n.Contains("na alma") || n.Contains("viga recortada") || n.Contains("viga:") || n.StartsWith("viga")) return "viga";
             if (n.Contains("cantoneira")) return "cantoneiras";
             if (n.Contains("pilar") || n.Contains("suporte") || n.Contains("apoio")) return "suporte";
@@ -674,7 +676,7 @@ namespace NovoFtool
 
             // ② parâmetros
             var p2 = new StackPanel();
-            var ordem = new List<string> { "Chapa", "Parafusos", "Soldas", "Enrijecedores", "Recortes", "Folgas" };
+            var ordem = new List<string> { "Tubos", "Perfil", "Tubo", "Chapa", "Parafusos", "Soldas", "Enrijecedores", "Recortes", "Folgas" };
             var secoes = campos.Where(c => Secao(c) != "barras").GroupBy(Secao).OrderBy(g => g.Key.StartsWith("Barra") ? 10 + g.Key[g.Key.Length - 1] : ordem.IndexOf(g.Key) < 0 ? 99 : ordem.IndexOf(g.Key)).ToList();
             foreach (var s in secoes)
             {
@@ -859,6 +861,7 @@ namespace NovoFtool
             var suf = System.Text.RegularExpressions.Regex.Match(n, @"_(\d)$");
             if (suf.Success) return "Barra " + suf.Groups[1].Value;
             if (n.StartsWith("perfil_") || n == "apoio") return "barras";
+            if (S(c, "secao") != "") return S(c, "secao");   // seção dada pelo motor (tubos: "Tubos", "Perfil", "Tubo")
             if (n.StartsWith("recorte") || n == "desnivel") return "Recortes";
             if (n == "estendida") return "Chapa";   // posição (centralizada / alinhada em cima / embaixo) junto da chapa, não em opções
             if (n.StartsWith("aco_")) return "Materiais e opções";
@@ -926,7 +929,7 @@ namespace NovoFtool
             bool texto = c["padrao"] is JsonValue ps && ps.TryGetValue(out string _) || atual is JsonValue at && at.TryGetValue(out string _) || nome.StartsWith("perfil_");
             if (texto)
             {
-                if (nome.StartsWith("perfil_")) return CaixaPerfil(nome, atual?.ToString() ?? "", dica, x => Gravar(x));
+                if (nome.StartsWith("perfil_")) return CaixaPerfil(nome, atual?.ToString() ?? "", dica, x => Gravar(x), c["perfis"] as JsonArray);
                 var tb = new TextBox { Text = atual?.ToString() ?? "", Width = 176, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, Background = TemaPlant.BSup3, Foreground = TemaPlant.BTexto1, BorderBrush = TemaPlant.BBorda, CaretBrush = TemaPlant.BTexto1, Padding = new Thickness(6, 0, 6, 0) };
                 string ini = tb.Text;
                 void Ok() { if (tb.Text != ini) { ini = tb.Text; Gravar(tb.Text.Trim()); } }
@@ -985,11 +988,13 @@ namespace NovoFtool
         bool SoPerfilI => S(Tipo(), "familia") is "rigida" or "emenda";
         IEnumerable<string> PerfisDoTipo() => Lista(catalogo).Where(x => !SoPerfilI || FamiliasI.Contains(S(x, "familia"))).Select(x => S(x, "nome")).Where(x => x != "");
 
-        FrameworkElement CaixaPerfil(string nome, string atual, string dica, Action<string> gravar)
+        // `so` = nomes aceitos pelo campo (o motor manda em `perfis`; tubo–tubo: só tubos circulares)
+        FrameworkElement CaixaPerfil(string nome, string atual, string dica, Action<string> gravar, JsonArray so = null)
         {
             SeletorPerfil sel = null;
-            sel = new SeletorPerfil(PerfisDoTipo, () => atual, s => { if (s != atual) { atual = s; sel.Mostrar(s); gravar(s); } })
-            { AceitaDigitado = false, RotuloContagem = SoPerfilI ? " perfis I/H (ligação rígida)" : " perfis no catálogo", Width = 176, Tag = nome };
+            Func<IEnumerable<string>> fonte = so != null ? () => so.Select(x => x?.ToString() ?? "").Where(x => x != "") : PerfisDoTipo;
+            sel = new SeletorPerfil(fonte, () => atual, s => { if (s != atual) { atual = s; sel.Mostrar(s); gravar(s); } })
+            { AceitaDigitado = false, RotuloContagem = so != null ? " perfis aceitos" : SoPerfilI ? " perfis I/H (ligação rígida)" : " perfis no catálogo", Width = 176, Tag = nome };
             sel.Mostrar(atual);
             // catálogo vem do motor (assíncrono): carrega já; a abertura do seletor usa o que tiver chegado
             if (!Capturas.Ativo) _ = CarregarCatalogo();
@@ -1489,7 +1494,7 @@ namespace NovoFtool
             Esperar(j.Otimizar()); EsperarIdle();
             if (!j.SemSolucao) throw new InvalidOperationException("projetista: V = 5000 kN deveria dar sem solução");
             CapturarDialogo(j, "51-projetista-sem-solucao.png");
-            foreach (var t in new[] { "chapa_topo_estendida", "emenda_viga", "gusset_contraventamento", "cantoneira_dupla_alma" })
+            foreach (var t in new[] { "chapa_topo_estendida", "emenda_viga", "gusset_contraventamento", "cantoneira_dupla_alma", "tubo_tubo_soldado", "perfil_tubo_soldado" })
             {
                 if (Lista(tipos).All(x => S(x, "tipo") != t)) continue;
                 Esperar(j.Escolher(t, false)); EsperarIdle();

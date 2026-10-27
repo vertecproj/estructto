@@ -76,7 +76,9 @@ class TestTuboTubo(unittest.TestCase):
     def test_beta_maior_que_1_reprova(self):
         r = L.registro("tubo_tubo_soldado")["verificar"](dict(DADOS, d_ramal=200), dict(N=10))
         self.assertFalse(r["ok"])
-        self.assertFalse(next(x for x in r["verificacoes"] if x["nome"].startswith("geometria: β"))["ok"])
+        # W7: "ramal: β" (era "geometria: β"): o projetista agrupa pelo nome e "geometria" caía no chip "Chapa", que
+        # esta ligação não tem
+        self.assertFalse(next(x for x in r["verificacoes"] if x["nome"].startswith("ramal: β"))["ok"])
 
     def test_classificacao_tubo_tubo(self):
         m = P.novo_modelo()
@@ -88,6 +90,127 @@ class TestTuboTubo(unittest.TestCase):
         m.add(Barra("D1", "N2", "N4", "TC114", "A-572 GR.50"))
         tipos = {(x["no"], x["barra"]): x["tipo"] for x in lm.membros(m)}
         self.assertEqual(tipos[("N2", "D1")], "tubo_tubo_soldado")
+
+
+class TestNoTubular(unittest.TestCase):
+    """W7: nó T/Y pela NBR 16239 (tabelas 2 e 4; = EN 1993-1-8:2005 tab. 7.2/7.5 com γM5 = 1). Conta à mão para o padrão
+    de fábrica: ramal TC 114,3x5,6 a 45° no receptor TC 168,3x6,4, A-572 GR.50 (fy 345 MPa), γa1 = 1,10.
+    β = 114,3/168,3 = 0,67914; γ = 168,3/12,8 = 13,1484 (γ^0,2 = 1,6741; √γ = 3,6261); fy0·t0² = 345000·0,0064² = 14,1312 kN;
+    sen 45° = 0,70711.
+    Modo A: N = 1,6741·14,1312·(3,08 + 15,62·0,46124)/(1,1·0,70711) = 1,6741·14,1312·10,2845/0,77782 = 312,8 kN.
+    Modo D: N = 0,66·345000·0,0064/1,1·π·0,1143·(1 + 0,70711)/(2·0,5) = 1324,8·0,35908·1,70711 = 812,1 kN.
+    Mip,A = 5,34·14,1312·0,1143·3,6261·0,67914/0,77782 = 27,31; Mip,D = 1324,8·0,1143²·(1 + 3·0,70711)/(4·0,5) = 27,01 kN·m.
+    Mop,A = 2,97·14,1312·0,1143/(0,77782·(1 − 0,81·0,67914)) = 4,7971/0,34994 = 13,71 kN·m.
+    N = 100 kN, M = 5 kN·m (no plano): 100/312,8 + (5/27,01)² = 0,3197 + 0,0343 = 0,354.
+    Ramal: A = π/4·(114,3² − 103,1²) = 1912,4 mm², NRd = 1912,4e-6·345000/1,1 = 599,8 kN (n = 0,167 < 0,2);
+    Z = (114,3³ − 103,1³)/6 = 66227 mm³, D/t = 20,4 ≤ 0,07E/fy = 40,6 ⇒ MRd = 66227e-9·345000/1,1 = 20,77 kN·m;
+    0,167/2 + 5/20,77 = 0,324. Solda: garganta ≥ 1,1·5,6 = 6,16 mm (fy 345 ≤ 350) ⇒ perna 6,16/0,707 = 8,71 → 10 mm."""
+
+    E = dict(N=100.0, V=0.0, Vz=0.0, M=5.0, Mz=0.0, T=0.0)
+
+    def _r(self, dados=None, esf=None):
+        return L.registro("tubo_tubo_soldado")["verificar"](dict(dados or {}), esf or self.E)
+
+    def _v(self, r, inicio):
+        return next(x for x in r["verificacoes"] if x["nome"].startswith(inicio))
+
+    def test_formulas_a_mao(self):
+        from prossen_estrutural.aco.ligacoes_tubos import no_tubular
+        no = no_tubular(0.1683, 0.0064, 0.1143, math.pi / 4, 345000.0)
+        self.assertAlmostEqual(no["N_A"], 312.8, delta=0.1)
+        self.assertAlmostEqual(no["N_D"], 812.1, delta=0.1)
+        self.assertAlmostEqual(no["Mip_A"], 27.31, delta=0.01)
+        self.assertAlmostEqual(no["Mip_D"], 27.01, delta=0.01)
+        self.assertAlmostEqual(no["Mop_A"], 13.71, delta=0.01)
+        # NBR 16239 (coef. × 1,1 e γa1 = 1,1) = EN 1993-1-8:2005 tab. 7.2 com γM5 = 1,0
+        b, g = 0.1143 / 0.1683, 0.1683 / 0.0128
+        en = g ** 0.2 * 345000 * 0.0064 ** 2 * (2.8 + 14.2 * b * b) / math.sin(math.pi / 4)
+        self.assertAlmostEqual(no["N_A"], en, places=6)
+        # punção só com d1 ≤ d0 − 2t0
+        self.assertNotIn("N_D", no_tubular(0.1683, 0.0064, 0.160, math.pi / 4, 345000.0))
+
+    def test_kp_receptor_comprimido(self):
+        from prossen_estrutural.aco.ligacoes_tubos import kp, props_tubo
+        self.assertAlmostEqual(kp(-0.5), 1 - 0.15 - 0.075)
+        self.assertEqual(kp(0.3), 1.0)
+        # N0 = −500 kN no TC 168,3x6,4: σ = −500/A0; np = σ/fy0; modo A cai por kp
+        A0 = props_tubo(0.1683, 0.0064)["A"]
+        np_ = -500 / A0 / 345000
+        r = self._r(dict(N_receptor=-500))
+        self.assertAlmostEqual(r["valores"]["kp"], kp(np_), places=9)
+        self.assertAlmostEqual(self._v(r, "receptor: plastificação")["resistente"], 312.8 * kp(np_), delta=0.1)
+
+    def test_padrao_de_fabrica(self):
+        r = self._r()
+        self.assertTrue(r["ok"])
+        self.assertAlmostEqual(self._v(r, "receptor: plastificação")["resistente"], 312.8, delta=0.1)
+        self.assertAlmostEqual(self._v(r, "receptor: interação")["solicitante"], 0.354, delta=0.001)
+        self.assertAlmostEqual(self._v(r, "ramal: seção")["solicitante"], 0.324, delta=0.001)
+        self.assertAlmostEqual(self._v(r, "solda: garganta")["solicitante"], 6.16, places=6)
+        self.assertEqual(self._v(r, "solda: garganta")["item"], "NBR 16239 6.1.5.7")
+        resist = [x["taxa"] for x in r["verificacoes"] if x["unidade"] in ("kN", "kN/m") or x["nome"].startswith(("receptor: inter", "ramal"))]
+        self.assertTrue(0.3 < max(resist) < 0.7, resist)   # folga razoável nas resistências
+        self.assertFalse(any("dimensão máxima" in x["nome"] for x in r["verificacoes"]))   # 6.2.6.2.2 não vale (junta em T)
+        # o padrão antigo (Fz 100 kN, My 60 kN·m) passa do momento plástico do ramal: reprova pela seção do ramal
+        self.assertFalse(self._v(self._r(esf=dict(V=100, M=60)), "ramal: seção")["ok"])
+
+    def test_validade(self):
+        r = self._r(dict(theta=25))
+        self.assertFalse(self._v(r, "ramal: ângulo")["ok"])
+        r = self._r(dict(perfil_viga="TC 33,4x3,2"))   # β = 0,198 < 0,2
+        v = self._v(r, "ramal: β")
+        self.assertFalse(v["ok"])
+        self.assertEqual((v["solicitante"], v["item"]), (0.2, "NBR 16239 6.2.1"))
+        with self.assertRaises(ValueError):
+            self._r(dict(perfil_viga="W310x38.7"))   # não é tubo circular
+
+    def test_exemplo_campos_e_sugerir(self):
+        t = next(x for x in P.tipos_ligacao() if x["tipo"] == "tubo_tubo_soldado")
+        c = {x["nome"]: x for x in t["campos"]}
+        self.assertIn("TC 168,3x6,4", c["perfil_suporte"]["perfis"])
+        self.assertTrue(all(secoes.catalogo(n).props["tipo"] == "tubo_circular" for n in c["perfil_viga"]["perfis"][::40]))
+        self.assertEqual((c["theta"]["secao"], c["N_receptor"]["secao"]), ("Tubos", "Tubos"))
+        ex = t["exemplo"]
+        self.assertEqual((ex["dados"]["perfil_viga"], ex["esforcos"]["M"], ex["dados"]["b_solda"]), ("TC 114,3x5,6", 5.0, 10.0))
+        self.assertTrue(P.verificar_ligacao("tubo_tubo_soldado", ex["dados"], ex["esforcos"])["ok"])
+        self.assertEqual(P.sugerir_ligacao("tubo_tubo_soldado", dict(perfil_viga="TC 114,3x5,6"), self.E)["b_solda"], 10)
+        o = P.otimizar_ligacao("tubo_tubo_soldado", dict(ex["dados"], b_solda=4), ex["esforcos"])
+        self.assertTrue(o["ok"])
+        self.assertEqual(o["dados"]["b_solda"], 10)
+
+    def test_contrato_tubos(self):
+        r = self._r()
+        g = r["geometria"]
+        tb = {t["nome"]: t for t in g["tubos"]}
+        self.assertEqual(set(tb), {"ramal", "receptor"})
+        ra, rc = tb["ramal"], tb["receptor"]
+        self.assertEqual((ra["grupo"], ra["campo"], rc["grupo"], rc["campo"]), ("viga", "perfil_viga", "suporte", "perfil_suporte"))
+        self.assertEqual((ra["d"], ra["t"], rc["d"], rc["t"], rc["corte"]), (114.3, 5.6, 168.3, 6.4, None))
+        a = [math.cos(math.pi / 4), 0, math.sin(math.pi / 4)]
+        self.assertEqual((ra["corte"]["eixo"], ra["corte"]["r"]), (rc["eixo"], 84.15))
+        # receptor centrado no nó; ramal começa no ponto mais baixo da sela (61,9 mm a 45°; √(R² − r²) = 61,8 só a 90°)
+        self.assertAlmostEqual(math.dist([x + rc["comprimento"] / 2 * e for x, e in zip(rc["origem"], rc["eixo"])], [0, 0, 0]), 0, places=2)
+        self.assertAlmostEqual(ra["origem"][0], min(p[0] for p in g["soldas"][0]["pontos"]), places=2)
+        self.assertAlmostEqual(ra["origem"][0], 61.9, delta=0.1)
+        dist_eixo = lambda p, o, e: math.dist(p, [oi + sum((pj - oj) * ej for pj, oj, ej in zip(p, o, e)) * ei for oi, ei in zip(o, e)])
+        for p in g["soldas"][0]["pontos"]:
+            self.assertAlmostEqual(dist_eixo(p, rc["origem"], rc["eixo"]), 84.15, places=4)   # na superfície do receptor
+            self.assertAlmostEqual(math.hypot(p[1], p[2]), 57.15, places=4)                   # na superfície do ramal
+            self.assertTrue(ra["origem"][0] - 1e-6 <= p[0] <= ra["origem"][0] + ra["comprimento"])   # dentro do trecho
+            self.assertGreaterEqual(dist_eixo(p, ra["corte"]["origem"], ra["corte"]["eixo"]), ra["corte"]["r"] - 1e-3)
+            t = sum(x * y for x, y in zip(p, a))
+            self.assertLess(abs(t), rc["comprimento"] / 2)   # o receptor cobre a sela
+
+    def test_perfil_tubo_manda_tubos(self):
+        g = L.registro("perfil_tubo_soldado")["verificar"](dict(PT), dict(N=10))["geometria"]
+        self.assertEqual([t["nome"] for t in g["tubos"]], ["receptor"])   # I: só o receptor é tubo
+        g = L.registro("perfil_tubo_soldado")["verificar"](dict(PT, forma_ramal="tubo_circular", h_ramal=168.3, tw_ramal=6.4),
+                                                           dict(N=10))["geometria"]
+        self.assertEqual([t["nome"] for t in g["tubos"]], ["ramal", "receptor"])
+        self.assertEqual(g["tubos"][0]["corte"]["r"], 161.9)
+        g = L.registro("perfil_tubo_soldado")["verificar"](dict(PT, forma_receptor="tubo_retangular", D_receptor=200),
+                                                           dict(N=10))["geometria"]
+        self.assertEqual(g["tubos"], [])   # contrato `tubos` só tem tubo circular
 
 
 PT = dict(forma_ramal="I", h_ramal=310, b_ramal=165, tw_ramal=5.8, tf_ramal=9.7, forma_receptor="tubo_circular",
