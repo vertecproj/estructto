@@ -102,6 +102,8 @@ namespace NovoFtool
             {
                 int k = i;
                 bool at = i == docAtivo && LigacaoAtiva == null;   // aba de ligação na frente (LigacaoAbas.cs)
+                var dv = docs[i];
+                if (dv.Esp == null && dv.Arquivo == null && !dv.Alterado && (dv.M == null || (dv.M.Barras.Count == 0 && dv.M.Nos.Count == 0))) continue;   // documento vazio = tela Início, não ganha aba "Sem título"
                 var sp = new StackPanel { Orientation = Orientation.Horizontal };
                 sp.Children.Add(new TextBlock { Text = docs[i].Nome + (docs[i].Alterado ? " *" : ""), Foreground = at ? TemaPlant.BTexto1 : TemaPlant.BTexto2, FontWeight = at ? FontWeights.SemiBold : FontWeights.Normal, VerticalAlignment = VerticalAlignment.Center });
                 var x = new Button { Content = "✕", Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = TemaPlant.BTexto2, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(4, 0, 4, 0), Cursor = Cursors.Hand, ToolTip = "Fecha esta aba de modelo (pergunta se deseja salvar caso haja alterações pendentes)." };
