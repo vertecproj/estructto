@@ -1213,6 +1213,7 @@ namespace NovoFtool
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
+                if (so == "w7ui") so1(() => CapturasW7Ui(w));                     // só as W7-) ícones de perfil e rolagem do seletor
                 if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)
                 if (so == "interf3d") { int np = CapturasInterf3D(w); w.alterado = false; w.Close(); Environment.Exit(np); }   // só as 62) bateria de interferência das ligações locais
                 if (so == "geo") so1(() => CapturasGeo(w));                     // só as 61) da geometria das ligações (solda, enrijecedores, placa)
@@ -1428,6 +1429,7 @@ namespace NovoFtool
                 CapturasLigacoes(w);
                 // 51) Projetista de ligações (biblioteca, chapa simples ao vivo, falha, otimizado, aplicar ao grupo)
                 CapturasProjetista(w);
+                CapturasW7Ui(w);
                 // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
                 CapturasSnap(w);
                 // 56) Pivô automático da órbita e zoom no cursor
