@@ -2,7 +2,8 @@
 
 Tipos: chapa de topo ajustada (flush) e estendida (com/sem enrijecedor), flange plate soldada ou
 parafusada, painel de alma do pilar (com enrijecedores e chapa de reforço), emenda de viga e emenda
-de pilar com talas parafusadas (com ou sem contato). Documentação: docs/v3/ligacoes/IMPL-RIGIDAS.md.
+de pilar com talas parafusadas (com ou sem contato), emenda flangeada de viga e de pilar (I/H/U, W9-FLANGE-PERFIL.md).
+Documentação: docs/v3/ligacoes/IMPL-RIGIDAS.md.
 
 Entradas em mm, kN, kN·m (contrato); cálculo interno em m, kN e kN/m² como `aco.ligacoes`, cujas
 primitivas são reutilizadas (parafuso, solda, chapa, bordas).
@@ -46,6 +47,11 @@ COBERTURA = [
     dict(norma="NBR 8800", edicao="2008", item="6.5.3 / 6.5.4 / 6.5.6", verificacao="flange plate soldada ou "
          "parafusada; emendas de viga e pilar com talas parafusadas (divisão do momento de Pfeil 9.1–9.3)",
          limitacao="emenda só de perfis iguais; talas internas da mesa não previstas; ligação por atrito não tratada"),
+    dict(norma="NBR 8800", edicao="2008", item="6.3.3 / 6.3.4.3 / 6.3.5 / 6.2.5 / 6.6.1", verificacao="emenda flangeada "
+         "de viga e de pilar (I/H/U): chapas de topo dos dois lados (T-stub), cortante por grupo elástico, atrito "
+         "opcional, soldas perfil–chapa e contato usinado (docs/v3/W9-FLANGE-PERFIL.md)",
+         limitacao="compressão não alivia a tração dos parafusos; U dobrado: pernas na parede fina não verificadas; "
+                   "torção do U (centro de cisalhamento) só em aviso"),
 ]
 _PERFIS_PADRAO = "A-572 GR.50"
 
@@ -1123,6 +1129,330 @@ def verificar_emenda_pilar(dados, esforcos):
     return _emenda(d, esforcos, True)
 
 
+# ---------------------------------------------------------------- emenda flangeada (W9, docs/v3/W9-FLANGE-PERFIL.md)
+# Em cada ponta uma chapa de topo ("chapa de flange") soldada ao perfil; as duas chapas aparafusadas entre si. É a chapa
+# de topo dos dois lados: os componentes (tstub, momento_efetivo, grupo elástico) são os da chapa de topo, com as duas
+# chapas iguais (a verificação de uma vale para a outra). Perfis I/H e U (UPN, U laminado, U dobrado); metalon e tubo
+# redondo ficam em ligacoes_tubos.
+
+_U_FLANGE = ("U laminado", "UPN", "U formado a frio")   # U dobrado simples; Ue (enrijecido) fora: os enrijecedores
+PERFIS_FLANGE = list(dict.fromkeys(lin["nome"] for lin in secoes._carrega_catalogo().values()
+                                   if lin["forma"] == "I" or lin["forma"] == "U" and lin["familia"] in _U_FLANGE))
+
+
+def _perfil_iu(v, campo):
+    """I/H (como _perfil, inclusive dict {d, bf, tw, tf}) ou U do catálogo → props em m com `forma` ("I"/"U"), `xg`
+    (centroide → costas da alma), `r` e `formado` (U dobrado: tw = tf = t, r = ri + t; laminado: r = tf, LIGACOES-U)."""
+    if isinstance(v, dict) or not v:
+        return dict(_perfil(v, campo), forma="I", xg=0.0, formado=False)
+    try:
+        s = secoes.catalogo(str(v))
+    except KeyError as ex:
+        raise ValueError(f"{campo}: {ex.args[0]}") from None
+    p = s.props
+    if p.get("tipo") == "I":
+        return dict(_perfil(v, campo), forma="I", xg=0.0, formado=False)
+    if p.get("tipo") != "U":
+        raise ValueError(f"{campo}: emenda flangeada só com perfil I/H ou U (UPN, U laminado, U dobrado) — recebido "
+                         f"{s.nome}" + (" (U enrijecido: os enrijecedores de borda impedem a chapa)" if p.get("tipo") == "Ue"
+                                        else "; metalon e tubo: emenda flangeada de tubos"))
+    t = p.get("t")
+    tw, tf = p.get("tw") or t, p.get("tf") or t
+    return dict(p, nome=s.nome, forma="U", tw=tw, tf=tf, r=p.get("r") or ((p.get("ri") or 0.0) + t if t else tf),
+                formado=bool(t))
+
+
+def _esf_flange(esforcos, braco, av):
+    e = _esforcos(esforcos, av, usados=("N", "V", "Vz", "M", "Mz", "T"))
+    _minimo_6152(e, braco, av)
+    return e
+
+
+def _forcas_mesa(e, braco, bf, contato):
+    """Força normal na solda da mesa mais solicitada (tração: M/braço + N⁺/2; compressão: M/braço + N⁻/2, que com faces
+    usinadas passa por contato e sai da solda) + Mz no plano da mesa (3·Mz/bf, como na chapa de topo) e a parcela de
+    cisalhamento Fy/2 + T/braço. → (normal, cisalhamento), kN."""
+    extra = 3 * abs(e["Mz"]) / bf
+    Ft = momento_efetivo(e["M"], e["N"], braco) / braco + extra
+    Fc = 0.0 if contato else abs(e["M"]) / braco + max(-e["N"], 0.0) / 2 + extra
+    return max(Ft, Fc), abs(e["Vz"]) / 2 + abs(e["T"]) / braco
+
+
+def _g_flange(pf_, dmm):
+    """Gabarito automático (mm), com a folga de 10 % do W8-RIG nas duas disposições que ele controla: folga de chave
+    para a alma (g − tw)/2 ≥ d e espaçamento 2,7d → g ≥ max(2d/0,9 + tw; 2,7d/0,9), para cima a 5. I: no mínimo bf/2
+    arredondado a 5 (como a chapa de topo). U: só o mínimo (as duas colunas simétricas ao plano médio da alma)."""
+    tw = pf_["tw"] / MM
+    gmin = math.ceil(max(2 * dmm / ALVO + tw, 2.7 * dmm / ALVO) / 5 - 1e-9) * 5
+    return gmin if pf_["forma"] == "U" else max(round(pf_["b"] / MM / 2 / 5) * 5, gmin)
+
+
+def _flange(d, esforcos, pilar, dados):
+    R = _R()
+    av = R.avisos
+    chave = "perfil_pilar" if pilar else "perfil_viga"
+    pf_ = _perfil_iu(d[chave], chave)
+    H, bf, tw, tf, U = pf_["h"], pf_["b"], pf_["tw"], pf_["tf"], pf_["forma"] == "U"
+    ab = -1.0 if U and float((dados or {}).get("abertura_y") or 1) < 0 else 1.0
+    # referencial do contrato (x ao longo da barra, z = altura): U abre para +y·ab, costas da alma em y = −ab·xg
+    yw = ab * (tw / 2 - pf_["xg"]) if U else 0.0                          # plano médio da alma = centro da chapa
+    yf = tuple(sorted((-ab * pf_["xg"], ab * (bf - pf_["xg"])))) if U else (-bf / 2, bf / 2)   # mesas em y
+    fyb, fub_v = _aco(d["aco_pilar" if pilar else "aco_viga"])
+    fyp, fup = _aco(d["aco_chapa"])
+    db, fub, alta, dh, FtRd, FvRd, a0 = _par(d)
+    av += a0
+    dn = dh + lg.FURO_DANO
+    tp = d["tp"] * MM
+    braco = H - tf
+    e = _esf_flange(esforcos, braco, av)
+    M, N, V, Vh, Mz, Tx = e["M"], e["N"], e["V"], e["Vz"], e["Mz"], e["T"]
+    # colunas (y) simétricas ao plano médio da alma
+    nc = int(d["n_colunas"])
+    g = (d["g"] or _g_flange(pf_, d["d_mm"])) * MM
+    g2 = (d["g2"] or g / MM + 2 * _passo(d["d_mm"])) * MM
+    ys = sorted([yw - g / 2, yw + g / 2] + ([yw - g2 / 2, yw + g2 / 2] if nc == 4 else []))
+    if nc == 4 and g2 <= g:
+        raise ValueError(f"g2 = {g2 / MM:g} mm ≤ g = {g / MM:g} mm: as colunas externas ficam por fora das internas")
+    # linhas (z): fora das mesas (estendida) a pf da face externa; dentro, a pf da face interna e depois a cada s_linhas
+    pf_min = next((p for dd, p in _PF_MIN if d["d_mm"] <= dd + 0.05), 1.6 * db)
+    pf = d["pf"] * MM if d["pf"] else pf_min
+    de, sobra, sl, nd = d["de"] * MM, d["sobra"] * MM, d["s_linhas"] * MM, int(d["linhas_dentro"])
+    est = d["estendida"]
+    fora = {s: est == "ambas" or (est, s) in (("superior", 1), ("inferior", -1)) for s in (1, -1)}
+    if nd == 0 and not any(fora.values()):
+        raise ValueError("sem parafusos: linhas_dentro = 0 e nenhuma linha fora das mesas")
+    if nd and H / 2 - tf - pf - (nd - 1) * sl <= 0:
+        raise ValueError(f"linhas_dentro = {nd}: as linhas passam do meio da alma (H/2 − tf − pf − (n − 1)·s ≤ 0)")
+    linhas = []
+    for s in (1, -1):
+        if fora[s]:
+            linhas.append(dict(z=s * (H / 2 + pf), tipo="ext", lado=s))
+        linhas += [dict(z=s * (H / 2 - tf - pf - k * sl), tipo="int" if k == 0 else "alma", lado=s) for k in range(nd)]
+    # chapa: envolve o perfil com a sobra e os furos com a borda (folga de 10 % do pré-dimensionamento); medidas
+    # informadas maiores crescem em volta do mesmo centro; quadrada = lado maior nas duas direções
+    e_lat = _borda(d["d_mm"]) * MM
+    meia = max(max(abs(y - yw) for y in ys) + e_lat, max(yf[1] - yw, yw - yf[0]) + sobra)
+    y0, y1 = yw - meia, yw + meia
+    zt = H / 2 + (pf + de if fora[1] else sobra)
+    zb = -(H / 2 + (pf + de if fora[-1] else sobra))
+    if d["b_chapa"]:
+        y0, y1 = yw - d["b_chapa"] * MM / 2, yw + d["b_chapa"] * MM / 2
+    if d["h_chapa"]:
+        zm = (zt + zb) / 2
+        zb, zt = zm - d["h_chapa"] * MM / 2, zm + d["h_chapa"] * MM / 2
+    if d["forma"] == "quadrada":
+        lado = max(y1 - y0, zt - zb)
+        ym, zm = (y0 + y1) / 2, (zb + zt) / 2
+        y0, y1, zb, zt = ym - lado / 2, ym + lado / 2, zm - lado / 2, zm + lado / 2
+    bp, hp = y1 - y0, zt - zb
+    if d["b_chapa"]:
+        R.minimo("chapa cobre o perfil (largura)", "geometria", 2 * max(yf[1] - yw, yw - yf[0]), bp)
+    if d["h_chapa"]:
+        R.minimo("chapa cobre o perfil (altura)", "geometria", H, hp)
+
+    def tstub_furo(L, y, T=0.0):
+        """T-stub de um parafuso (Struik–de Back, `tstub`): b até a mesa (pf) ou até a alma ((|y − yw| − tw/2)), o que
+        estiver mais perto; fora da largura da mesa (U: coluna atrás da alma; 4 colunas além da mesa), b soma a
+        distância até a mesa (a favor). a = borda livre do lado oposto; p = largura da chapa / colunas."""
+        sob = yf[0] - 1e-9 <= y <= yf[1] + 1e-9
+        bw = abs(y - yw) - tw / 2
+        if L["tipo"] == "ext":
+            b = pf + (0.0 if sob else min(abs(y - yf[0]), abs(y - yf[1])))
+            a = (zt if L["lado"] == 1 else -zb) - abs(L["z"])
+        elif L["tipo"] == "int" and sob and pf <= bw:
+            b, a = pf, 1.25 * pf
+        else:
+            b, a = bw, min(y1 - y, y - y0)
+        p = bp / nc if L["tipo"] != "alma" else min(sl, bp / nc)
+        return tstub(T, p, tp, b, a, db, dh, fyp, FtRd)
+
+    s_t = 1 if M >= 0 else -1
+    zc = -s_t * (H / 2 - tf / 2)                       # centro da mesa comprimida
+    tr = [L for L in linhas if L["z"] * s_t > 0]
+    F_op = N / 2 - abs(M) / braco                      # tração axial maior que o binário: a outra mesa também traciona
+    co = [L for L in linhas if L["z"] * s_t < 0] if N > 0 and F_op > 1e-9 else []
+    for L in tr + co:
+        L["h"] = abs(L["z"] - zc)
+        L["Tcap"] = [tstub_furo(L, y)["Tcap"] for y in ys]
+    Mef = momento_efetivo(M, N, braco)
+    MRd = sum(sum(L["Tcap"]) * L["h"] for L in tr)
+    R.res("momento: parafusos tracionados + chapas de flange (T-stub, alavanca)", "6.3.3.1 / 6.3.5", Mef, MRd, "kN·m")
+    fator = Mef / MRd if MRd > 0 else 0.0
+    fator_op = 0.0
+    if co:
+        Rop = sum(sum(L["Tcap"]) for L in co)
+        R.res("tração axial: linhas da mesa oposta (N/2 − |M|/braço)", "6.3.3.1 / 6.3.5", F_op, Rop)
+        fator_op = F_op / Rop
+    furos = [(y, L["z"]) for L in linhas for y in ys]
+    n_tot = len(furos)
+    # cortante por parafuso: grupo elástico no plano da chapa com Fy (Vz), Fz (V) e a torção (Ip = Σ r²); sem Fy e T = V/n
+    zg = sum(z for _, z in furos) / n_tot
+    Ip = sum((y - yw) ** 2 + (z - zg) ** 2 for y, z in furos)
+    Vb = max(math.hypot(Vh / n_tot - Tx * (z - zg) / Ip, V / n_tot + Tx * (y - yw) / Ip) for y, z in furos)
+    # Mz: distribuição linear em torno do plano médio da alma (sem contar o contato na borda: a favor)
+    Iy = sum((y - yw) ** 2 for y, _ in furos)
+    dT = [abs(Mz) * abs(y - yw) / Iy for y in ys]
+    Tmax = 0.0
+    nomes = dict(ext="fora da mesa", int="junto à mesa", alma="junto à alma")
+    for i, L in enumerate(tr + co, 1):
+        f = fator if i <= len(tr) else fator_op
+        cs = []
+        for k, y in enumerate(ys):
+            T = L["Tcap"][k] * f + dT[k]
+            cs.append((T, tstub_furo(L, y, T)))
+            Tmax = max(Tmax, T)
+        nome = f"linha {i} ({nomes[L['tipo']]}, h = {L['h'] / MM:.0f} mm)"
+        T, c = max(cs, key=lambda x: x[0] / x[1]["T_chapa"])
+        R.res(f"{nome}: flexão das chapas de flange (T-stub, α = {min(max(c['alfa'], 0), 1):.2f})", "6.3.5",
+              T, c["T_chapa"])
+        T, c = max(cs, key=lambda x: x[1]["B"])
+        R.res(f"{nome}: tração no parafuso com alavanca B = T + Q (Q = {c['Q']:.1f} kN)", "6.3.3.1 / 6.3.5",
+              c["B"], FtRd)
+        if Vb > 0:
+            R.res(f"{nome}: tração + cisalhamento no parafuso", "6.3.3.4",
+                  lg.interacao_tracao_cisalhamento(c["B"], FtRd, Vb, FvRd), 1.0, "-")
+    if max(dT) > 0 and len(tr + co) < len(linhas):   # linhas comprimidas pelo My também tracionam pelo Mz
+        R.res("parafusos fora da zona tracionada: tração por Mz", "6.3.3.1", max(dT), FtRd)
+        R.res("parafusos fora da zona tracionada: tração (Mz) + cisalhamento", "6.3.3.4",
+              lg.interacao_tracao_cisalhamento(max(dT), FtRd, Vb, FvRd), 1.0, "-")
+        Tmax = max(Tmax, max(dT))
+    tem3d = any(abs(x) > 1e-9 for x in (Vh, Mz, Tx))
+    R.res("parafusos: cisalhamento (grupo elástico: Fz, Fy e Mx)" if tem3d else
+          "parafusos: cisalhamento (V/n, todos os parafusos)", "6.3.3.2", Vb, FvRd)
+    if d["atrito"]:
+        if not alta:
+            raise ValueError("ligação por atrito: só com parafuso de alta resistência (A325, A490, ISO 8.8/10.9)")
+        # 6.3.4.3: Ff,Rd = 1,13·μ·Ch·FTb·ns·(1 − Ft,Sd/(1,13·FTb))/γe, Ch = 1 (furo-padrão), ns = 1 (um plano entre as
+        # chapas), γe = 1,20. FTb ≈ 70 % de fub na área efetiva 0,75·Ab (a tabela 15 dá até 4 % mais: a favor)
+        FTb = 0.70 * fub * 0.75 * lg.area_parafuso(db)
+        FfRd = 1.13 * d["mu"] * FTb * max(1 - Tmax / (1.13 * FTb), 0.0) / 1.20
+        R.res(f"parafusos: deslizamento (atrito, μ = {d['mu']:.2f}, FTb = {FTb:.0f} kN)", "6.3.4.3", Vb, max(FfRd, 1e-9))
+    zs = sorted({L["z"] for L in linhas})
+    gaps = [zs[i + 1] - zs[i] for i in range(len(zs) - 1)]
+    lf = min([x - dh for x in gaps] + [zs[0] - zb - dh / 2, zt - zs[-1] - dh / 2]
+             + ([ys[0] - y0 - dh / 2, y1 - ys[-1] - dh / 2] if abs(Vh) > 1e-9 else []))
+    R.res("pressão de contato nas chapas de flange", "6.3.3.3", Vb, lg.pressao_contato(lf, tp, db, fup))
+    c = lg.cisalhamento_chapa(bp * tp, (bp - nc * dn) * tp, fyp, fup)
+    R.res("chapa de flange: escoamento por cisalhamento", "6.5.5", abs(V), c["escoamento"])
+    R.res("chapa de flange: ruptura por cisalhamento", "6.5.5", abs(V), c["ruptura"])
+    if abs(Vh) > 1e-9:
+        c = lg.cisalhamento_chapa(hp * tp, (hp - len(zs) * dn) * tp, fyp, fup)
+        R.res("chapa de flange: escoamento por cisalhamento horizontal (Fy)", "6.5.5", abs(Vh), c["escoamento"])
+        R.res("chapa de flange: ruptura por cisalhamento horizontal (Fy)", "6.5.5", abs(Vh), c["ruptura"])
+    R.res("perfil: momento resistente (Zx·fy/γa1 ≤ 1,5·Wx·fy/γa1)", "5.4.2.2", abs(M),
+          min(pf_["Zx"], 1.5 * pf_["Wx"]) * fyb / GA1, "kN·m")
+    # contato: com faces usinadas a compressão da mesa passa da ponta do perfil para a chapa por contato (6.6.1); a
+    # compressão de uma chapa para a outra é sempre por contato (chapas encostadas)
+    if d["contato"]:
+        Fcc = abs(M) / braco + max(-N, 0.0) / 2
+        if Fcc > 0:
+            R.res("contato usinado: compressão da mesa no topo do perfil (1,8·fy·Apb/γa2)", "6.6.1", Fcc,
+                  1.8 * min(fyb, fyp) * bf * tf / GA2)
+        av.append("faces usinadas: a compressão das mesas passa por contato (6.6.1) — usinar a ponta do perfil antes de "
+                  "soldar; soldas e parafusos levam tração, cortante e posicionamento")
+    elif pilar and N < 0:
+        av.append("sem contato usinado: a compressão passa pelas soldas das mesas")
+    # soldas perfil–chapa (iguais nas duas chapas)
+    fw = lg.ELETRODOS[d["eletrodo"]] * MPa
+    Fn, Fcis = _forcas_mesa(e, braco, bf, d["contato"])
+    Lf = bf + (bf - tw)                                   # filete das duas faces da mesa (dentro, menos a alma)
+    if d["solda_mesa"] == "penetracao":
+        R.res("solda das mesas (penetração total): metal base", "6.2.5 / tabela 8", Fn, bf * tf * min(fyb, fyp) / GA1)
+        if Fcis > 1e-9:
+            R.res("solda das mesas (penetração total): cisalhamento (Fy, Mx)", "6.2.5 / tabela 8", Fcis,
+                  0.6 * bf * tf * min(fyb, fyp) / GA1)
+    else:
+        bm = d["b_mesa"] * MM
+        r = lg.resistencia_filete(bm, fw, min(fyb, fyp), min(fub_v, fup))
+        R.res("solda das mesas (filetes nas duas faces)", "6.2.5 / tabela 8", Fn + Fcis, Lf * r["FwRd"])
+    bw = d["b_alma"] * MM
+    lw = (H - 2 * tf) / 2                                 # CBCA 6.4: só a metade comprimida da alma (como a chapa de topo)
+    r = lg.resistencia_filete(bw, fw, min(fyb, fyp), min(fub_v, fup))
+    R.res("solda da alma ao cortante (2 filetes, meia altura)", "6.2.5 / tabela 8", abs(V) / (2 * lw), r["FwRd"], "kN/m")
+    if pf_["formado"]:   # parede fina: tabela 10 pede 3 mm e 6.2.6.2.2 limita a t; vale a NBR 14762
+        av.append(f"U dobrado (t = {tw / MM:.2f} mm): barra pela NBR 14762 e pernas das soldas na parede fina não "
+                  "verificadas aqui (use perna = t); a resistência dos filetes está verificada pelo metal base")
+    else:
+        if d["solda_mesa"] != "penetracao":
+            _filete(R, d["b_mesa"] * MM, min(tf, tp), "das mesas", "b_mesa")
+        _filete(R, bw, min(tw, tp), "da alma", "b_alma")
+    # disposições
+    _bordas(R, db, tp, min(ys[0] - y0, y1 - ys[-1]), "lateral da chapa", d["borda_laminada"])
+    if any(fora.values()):
+        _bordas(R, db, tp, min(zt - zs[-1], zs[0] - zb), "extremidade da chapa", d["borda_laminada"])
+    gc = [ys[i + 1] - ys[i] for i in range(len(ys) - 1)]
+    for nome, s in (("colunas", gc), ("linhas", gaps)):
+        if s:
+            R.minimo(f"espaçamento mínimo 2,7db ({nome})", "6.3.9", 2.7 * db, min(s))
+            R.maximo(f"espaçamento máximo 24t ≤ 300 mm ({nome})", "6.3.10", max(s), min(24 * tp, 0.300))
+    R.minimo("gabarito: folga para a alma (g − tw)/2 ≥ db", "CBCA 6.1.1", db, (g - tw) / 2)
+    if any(L["tipo"] in ("ext", "int") for L in linhas):
+        R.minimo("furo → face da mesa (pf) ≥ mínimo de aperto", "CBCA 6.1.1", pf_min, pf)
+    if U:
+        x0 = abs(pf_.get("x0") or 0.0)
+        av.append(f"perfil U: centro de cisalhamento a {(x0 - pf_['xg'] + tw / 2) / MM:.0f} mm do plano médio da alma, "
+                  "onde ficam a chapa e o grupo de parafusos: a torção V·e na barra não é verificada aqui (LIGACOES-U)")
+    av.append("modelo: chapa de topo dos dois lados (T-stub de Struik–de Back por parafuso, distribuição plástica Σ T·h); "
+              "as duas chapas são iguais, a verificação de uma vale para a outra; a compressão N não alivia a tração "
+              "dos parafusos (a favor)")
+    # geometria (mm no contrato; origem no plano da junta, x ao longo da barra)
+    cont = [[y0, zb], [y1, zb], [y1, zt], [y0, zt]]
+    geo = dict(chapas=[dict(_chapa("chapa de flange", cont, [x, 0, 0], [1, 0, 0], [0, 1, 0], tp), campo="tp")
+                       for x in (-tp, 0.0)],
+               cantoneiras=[], recortes=[], soldas=[],
+               parafusos=[dict(_paraf(db, _comprimento_parafuso(2 * tp, db), [-tp, y, L["z"]], [1, 0, 0]), campo="d_mm")
+                          for L in linhas for y in ys])
+    tipo_m = "penetracao" if d["solda_mesa"] == "penetracao" else "filete"
+    perna_m = tf if tipo_m == "penetracao" else d["b_mesa"] * MM
+    yi = yw + ab * tw / 2 if U else None                 # U: face interna da alma
+    for xs in (-tp, tp):
+        for s in (1, -1):
+            zo, zi = s * H / 2, s * (H / 2 - tf)
+            trechos = [((yf[0], zo), (yf[1], zo))]
+            if U:
+                ponta = yf[1] if ab > 0 else yf[0]
+                trechos.append(((yi, zi), (ponta, zi)))
+            else:
+                trechos += [((yf[0], zi), (-tw / 2, zi)), ((tw / 2, zi), (yf[1], zi))]
+            for (ya, za), (yb, zb_) in trechos:
+                geo["soldas"].append(dict(_solda(tipo_m, perna_m, [[xs, ya, za], [xs, yb, zb_]]),
+                                          campo="b_mesa" if tipo_m == "filete" else "solda_mesa"))
+        for y in (yw - tw / 2, yw + tw / 2):
+            costas = U and abs(y - yi) > 1e-12             # U: costas da alma na altura toda
+            hz = H / 2 if costas else H / 2 - tf
+            geo["soldas"].append(dict(_solda("filete", bw, [[xs, y, -hz], [xs, y, hz]]), campo="b_alma"))
+    Lm = max(H, 0.250)
+
+    def pecas(xa, xb):
+        hw = H / 2 - tf
+        out = [dict(base=[[_mm(xa), _mm(yw), _mm(-hw)], [_mm(xb), _mm(yw), _mm(-hw)], [_mm(xb), _mm(yw), _mm(hw)],
+                          [_mm(xa), _mm(yw), _mm(hw)]], normal=[0, 1, 0], espessura=_mm(tw))]
+        for zm in (H / 2 - tf / 2, -(H / 2 - tf / 2)):
+            out.append(dict(base=[[_mm(xa), _mm(yf[0]), _mm(zm)], [_mm(xb), _mm(yf[0]), _mm(zm)],
+                                  [_mm(xb), _mm(yf[1]), _mm(zm)], [_mm(xa), _mm(yf[1]), _mm(zm)]],
+                            normal=[0, 0, 1], espessura=_mm(tf)))
+        return out
+    geo["membros"] = [dict(barra="pilar" if pilar else "viga", perfil=pf_["nome"], campo=chave, d=_mm(H), bf=_mm(bf),
+                           tw=_mm(tw), tf=_mm(tf), pecas=pecas(*xx)) for xx in ((-tp - Lm, -tp), (tp, tp + Lm))]
+    if U:
+        geo["abertura_y"] = int(ab)
+    if pilar:   # W8-CONTRAV: eixos da elevação no referencial local — pilar em pé (x da barra na vertical)
+        geo["vista"] = dict(x=[0, 0, -1], z=[1, 0, 0])
+    out = R.resultado(geo)
+    out["intermediarios"] = dict(MRd=MRd, Mef=Mef, FtRd=FtRd, FvRd=FvRd, Vb=Vb, g=_mm(g), pf=_mm(pf), b_chapa=_mm(bp),
+                                 h_chapa=_mm(hp), linhas=[dict(z=_mm(L["z"]), tipo=L["tipo"], h=_mm(L.get("h", 0.0)),
+                                                               Tcap=L.get("Tcap")) for L in linhas])
+    return out
+
+
+def verificar_emenda_flangeada_viga(dados, esforcos):
+    return _flange(_ler("emenda_flangeada_viga", dados), esforcos, False, dados)
+
+
+def verificar_emenda_flangeada_pilar(dados, esforcos):
+    return _flange(_ler("emenda_flangeada_pilar", dados), esforcos, True, dados)
+
+
 # ---------------------------------------------------------------- sugerir (pré-dimensionamento por busca)
 
 ALVO = 0.90   # W8-RIG: taxa governante do pré-dimensionamento (a interface mostra "no limite" acima de 0,90)
@@ -1133,7 +1463,8 @@ def _buscar(tipo, base, grade, esforcos, alvo=ALVO):
     senão a primeira que passa; senão a de menor taxa (o verificar mostra a falha).
     Com pilar, cada combinação tenta também enrijecedores e chapa de reforço (do mais leve ao mais pesado)."""
     pilar = [{}] + ([dict(t_enr_pilar=12.5), dict(t_enr_pilar=16.0, t_reforco=9.5),
-                     dict(t_enr_pilar=19.0, t_reforco=16.0)] if base.get("perfil_pilar") else [])
+                     dict(t_enr_pilar=19.0, t_reforco=16.0)]
+                    if base.get("perfil_pilar") and "t_enr_pilar" in TIPOS[tipo]["entradas"] else [])
     melhor = passa = None
     for extra in grade:
         for pp in pilar:
@@ -1254,6 +1585,60 @@ def _sugerir_painel(perfis, esforcos):
     return _buscar("painel_alma_pilar", _base(perfis), [{}], esforcos)
 
 
+def _perna_folga(F, L, tmin, fy, fu, fw):
+    """W9: menor perna da lista do otimizador com resistência e mínimo da tabela 10 a ≤ 90 % (F em kN, L em m);
+    None se passa de 90 % do máximo de 6.2.6.2.2 (o chamador troca por penetração)."""
+    k = lg.resistencia_filete(MM, fw, fy, fu)["FwRd"] / MM          # kN/m por m de perna (linear em b)
+    need = max(F / (ALVO * L * k) if L > 0 else 0.0, lg.filete_minimo(tmin) / ALVO) / MM
+    b = next((x for x in lg._B_MM if x >= need - 1e-9), None)
+    return b if b is not None and b * MM <= ALVO * lg.filete_maximo(tmin) + 1e-12 else None
+
+
+def _sugerir_flange_emenda(tipo, chave, pilar):
+    """W9 (docs/v3/W9-FLANGE-PERFIL.md): busca do W8-RIG (_buscar, 1ª com taxa ≤ 0,90) — sem linhas fora das mesas
+    primeiro, depois estendida (viga: do lado tracionado pelo M; pilar e inversão: as duas), 2 e 4 colunas, linhas dentro
+    (1 a 3; 0 só com as duas estendidas), diâmetro e espessura. Bordas, passo e pf com a folga de 10 % (_borda, _passo,
+    _com_folga); pernas das soldas pela força (_perna_folga), penetração nas mesas quando o filete não cabe."""
+    def f(perfis, esforcos):
+        base = {chave: perfis.get(chave) or perfis.get("perfil_viga") or perfis.get("perfil_pilar")}
+        p = _perfil_iu(base[chave], chave)
+        ents = TIPOS[tipo]["entradas"]
+        contato = bool(ents["contato"]["padrao"])
+        H, bf, tw, tf = p["h"], p["b"], p["tw"], p["tf"]
+        fyb, fub_v = _aco(ents["aco_pilar" if pilar else "aco_viga"]["padrao"])
+        fyp, fup = _aco(ents["aco_chapa"]["padrao"])
+        fw = lg.ELETRODOS[ents["eletrodo"]["padrao"]] * MPa
+        e = _esf_flange(esforcos, H - tf, [])
+        Fn, Fcis = _forcas_mesa(e, H - tf, bf, contato)
+        M = e["M"]
+        ests = ("nao", "ambas") if pilar else ("nao", "superior" if M >= 0 else "inferior", "ambas")
+        grade = []
+        for est in ests:
+            for nc in (2, 4):
+                for nd in (0, 1, 2, 3):
+                    if nd == 0 and est != "ambas":
+                        continue
+                    for dd in _DS:
+                        s = _passo(dd)
+                        g = _g_flange(p, dd)
+                        for t in _TS:
+                            x = dict(d_mm=dd, tp=t, estendida=est, n_colunas=nc, linhas_dentro=nd, s_linhas=s, g=g,
+                                     g2=g + 2 * s if nc == 4 else 0.0, de=max(40, _borda(dd)),
+                                     pf=_com_folga(next((q for d0, q in _PF_MIN if dd <= d0 + 0.05), 1.6 * dd * MM) / MM))
+                            if p["formado"]:   # parede fina: perna = t (sem tabela 10 / 6.2.6.2.2, aviso no verificar)
+                                x.update(solda_mesa="filete", b_mesa=round(tf / MM, 2), b_alma=round(tw / MM, 2))
+                            else:
+                                bm = _perna_folga(Fn + Fcis, bf + bf - tw, min(tf, t * MM), min(fyb, fyp),
+                                                  min(fub_v, fup), fw)
+                                x.update(solda_mesa="filete", b_mesa=bm) if bm else x.update(solda_mesa="penetracao")
+                                x["b_alma"] = _perna_folga(abs(e["V"]) / 2, (H - 2 * tf) / 2, min(tw, t * MM),
+                                                           min(fyb, fyp), min(fub_v, fup), fw) or \
+                                    math.floor(lg.filete_maximo(min(tw, t * MM)) / MM)
+                            grade.append(x)
+        return _buscar(tipo, base, grade, esforcos)
+    return f
+
+
 # ---------------------------------------------------------------- registro (contrato)
 
 _E_CHAPA_TOPO = dict(
@@ -1343,6 +1728,50 @@ _E_EMENDA_PILAR = dict(_e_emenda("perfil_pilar", "aco_pilar", "do pilar"),
                                     descricao="superfícies usinadas: compressão por contato (Pfeil 9.1)"))
 _ESF = ["N", "V", "M"]
 
+
+def _e_flange(chave, aco_chave, rot, pilar):
+    return {
+        chave: dict(_ent(f"Perfil {rot}", "-", None, descricao="I/H (W, HP, IPE, HEA, HEB) ou U (UPN, U laminado, "
+                         "U dobrado) do catálogo; as duas pontas iguais"), perfis=PERFIS_FLANGE, resugerir=True),
+        aco_chave: _ent(f"Aço {rot}", "-", _PERFIS_PADRAO, opcoes=_ACOS),
+        **_E_PAR, **_E_CHAPA,
+        "tp": _ent("Espessura das chapas", "mm", 19.0, 6.3, 100.0, descricao="as duas chapas iguais"),
+        "forma": _ent("Forma da chapa", "-", "retangular", opcoes=["retangular", "quadrada"],
+                      descricao="retangular = perfil + sobra e furos + borda; quadrada = o lado maior nas duas direções"),
+        "b_chapa": _ent("Largura da chapa (0 = auto)", "mm", 0.0, 0.0, 2000.0,
+                        descricao="centrada no plano médio da alma; 0 = envolve o perfil e os furos com as bordas"),
+        "h_chapa": _ent("Altura da chapa (0 = auto)", "mm", 0.0, 0.0, 3000.0),
+        "sobra": _ent("Sobra além do perfil", "mm", 15.0, 0.0, 100.0,
+                      descricao="borda da chapa além da mesa (lados sem parafuso)"),
+        "estendida": _ent("Parafusos fora das mesas", "-", "ambas" if pilar else "nao",
+                          opcoes=["nao", "superior", "inferior", "ambas"],
+                          descricao="linhas fora das mesas (chapa estendida): nao, só na mesa superior (z+) ou inferior, "
+                                    "ou nas duas (momento que inverte)"),
+        "linhas_dentro": _ent("Linhas dentro (por mesa)", "-", 1, 0, 6,
+                              descricao="linhas entre as mesas, a pf da face interna de cada mesa e depois a cada passo"),
+        "s_linhas": _ent("Passo das linhas dentro", "mm", 75.0, 30.0, 300.0),
+        "n_colunas": _ent("Colunas de parafusos", "-", 2, opcoes=[2, 4],
+                          descricao="simétricas ao plano médio da alma (U: uma coluna dentro do U e outra atrás da alma)"),
+        "g": _ent("Gabarito (0 = auto)", "mm", 0.0, 0.0, 600.0, descricao="entre as colunas junto à alma"),
+        "g2": _ent("Gabarito externo (0 = auto)", "mm", 0.0, 0.0, 1000.0, descricao="entre as colunas externas (4 colunas)"),
+        "pf": _ent("Furo → face mesa (0 = auto)", "mm", 0.0, 0.0, 200.0, descricao="0 = CBCA 6.1.1 (30/35/40 mm)"),
+        "de": _ent("Furo → extremidade da chapa", "mm", 40.0, 15.0, 200.0, descricao="linhas fora das mesas"),
+        "solda_mesa": _ent("Solda das mesas", "-", "filete", opcoes=["filete", "penetracao"]),
+        "b_mesa": _ent("Filete das mesas (perna)", "mm", 8.0, 2.0, 25.0),
+        "b_alma": _ent("Filete da alma (perna)", "mm", 5.0, 2.0, 25.0),
+        "contato": _ent("Faces usinadas (contato)", "-", pilar,
+                        descricao="ponta do perfil usinada antes de soldar: a compressão das mesas passa por contato "
+                                  "(NBR 8800 6.6.1) e sai da solda"),
+        "atrito": _ent("Ligação por atrito", "-", False,
+                       descricao="parafusos protendidos: verifica o deslizamento entre as chapas (6.3.4.3)"),
+        "mu": _ent("Coeficiente de atrito μ", "-", 0.35, 0.2, 0.5,
+                   descricao="0,35 superfície laminada limpa; 0,50 jateada; 0,20 galvanizada (6.3.4.3)")}
+
+
+_E_FLANGE_VIGA = _e_flange("perfil_viga", "aco_viga", "da viga", False)
+_E_FLANGE_PILAR = _e_flange("perfil_pilar", "aco_pilar", "do pilar", True)
+_ESF6 = ["N", "V", "Vz", "M", "Mz", "T"]
+
 TIPOS = {
     "chapa_topo_ajustada": dict(
         nome="Chapa de topo ajustada", familia="rigida", liga=["viga-pilar-mesa"],
@@ -1376,6 +1805,19 @@ TIPOS = {
         descricao="Emenda parafusada de pilar com talas nas mesas e na alma, com ou sem contato usinado",
         entradas=_E_EMENDA_PILAR, verificar=verificar_emenda_pilar,
         sugerir=_sugerir_emenda("emenda_pilar", "perfil_pilar"), esforcos=_ESF),
+    "emenda_flangeada_viga": dict(
+        nome="Emenda flangeada de viga (perfil I/H/U)", familia="emenda", liga=["emenda-viga"],
+        descricao="Flange aparafusada: chapa de topo soldada em cada ponta da viga (I, H, U), quadrada ou retangular, "
+                  "e as duas chapas aparafusadas; parafusos dentro e fora das mesas; T-stub com alavanca",
+        entradas=_E_FLANGE_VIGA, verificar=verificar_emenda_flangeada_viga,
+        sugerir=_sugerir_flange_emenda("emenda_flangeada_viga", "perfil_viga", False), esforcos=_ESF6),
+    "emenda_flangeada_pilar": dict(
+        nome="Emenda flangeada de pilar (perfil I/H/U)", familia="emenda", liga=["emenda-pilar"],
+        descricao="Flange aparafusada de pilar: chapa de topo soldada em cada trecho (I, H, U) e as duas chapas "
+                  "aparafusadas; compressão por contato com faces usinadas; T-stub com alavanca",
+        entradas=_E_FLANGE_PILAR, verificar=verificar_emenda_flangeada_pilar,
+        sugerir=_sugerir_flange_emenda("emenda_flangeada_pilar", "perfil_pilar", True), esforcos=_ESF6,
+        exemplo=dict(esforcos=dict(N=-400.0, V=40.0, Vz=0.0, M=60.0, Mz=0.0, T=0.0))),
 }
 
 

@@ -934,7 +934,8 @@ namespace NovoFtool
             if (nome == "estendida" && c["opcoes"] is JsonArray ope)
             {
                 string sel = atual?.ToString() ?? "superior";
-                var nomes = new[] { ("ambas", "Centralizada"), ("inferior", "Alinhada em cima"), ("superior", "Alinhada embaixo") };
+                // W9: emenda flangeada também tem "nao" (só parafusos entre as mesas = ajustada)
+                var nomes = new[] { ("nao", "Ajustada"), ("ambas", "Centralizada"), ("inferior", "Alinhada em cima"), ("superior", "Alinhada embaixo") };
                 return Segmentado(nomes.Where(x => ope.Any(o => o.ToString() == x.Item1)).Select(x => (x.Item2, x.Item1 == sel, (Action)(() => Gravar(x.Item1)), dica)).ToList(), 28, 11.5);
             }
             if (c["opcoes"] is JsonArray op)
