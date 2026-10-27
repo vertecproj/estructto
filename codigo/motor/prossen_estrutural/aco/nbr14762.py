@@ -465,9 +465,15 @@ def flexao_y(sec, mat, Mdist=None):
     """9.8.2.1 em torno de y (menor inércia): menor dos dois sentidos. FLT não se aplica. Ue: distorcional
     (9.8.2.3) com os enrijecedores comprimidos — sentido desconhecido no modelo, aplicada a |My| (a favor);
     Mdist: Mdist,y de análise de estabilidade elástica (opcional; ver distorcional, caso "flexao_y")."""
-    if sec.props["tipo"] == "dupla":  # mesma decisão da NBR 8800 (nbr8800.flexao_y): reprova com o motivo
-        raise NotImplementedError("flexão de barra composta aberta em torno do eixo de simetria (ação conjunta "
-                                  "pelas presilhas): sem item na NBR 14762:2010")
+    if sec.props["tipo"] == "dupla":  # W9: 2 × perfil isolado, sem ação conjunta (= nbr8800.flexao_y; a favor da segurança)
+        r = flexao_y(_componente(sec), mat, Mdist / 2 if Mdist else None)
+        r["MRd"] *= 2
+        if "MRd_dist" in r.get("distorcional", {}):
+            r["distorcional"]["MRd_dist"] *= 2
+        r["item"] += " (barra composta: 2 × perfil isolado, sem ação conjunta — critério adotado, a favor da segurança)"
+        r["avisos"] = r["avisos"] + [f"barra composta: My,Rd = 2 × {r['MRd'] / 2:.2f} kN·m do perfil isolado, sem ação conjunta "
+                                     "das chapas (critério adotado, a favor da segurança; a NBR 14762 não tem item)"]
+        return r
     p, E, fy = sec.props, mat.E, mat.fy
     res = []
     for sentido in (1, -1):
@@ -529,7 +535,7 @@ def verificar_pff(secao, material, esforcos, Lx, Ly, Lz, Lb, Cb=1.0, An=None, Ct
                      dict(Lb=Lb, Ndist=Ndist or 0.0, Mdist=Mdist or 0.0, Mdist_y=Mdist_y or 0.0))
     d = dict(tracao=tracao(secao, material, An, Ct), flexao_x=flexao_x(secao, material, Lb, Cb, Mdist or None),
              cortante=cortante(secao, material))
-    sem_item = []   # barra composta fora do escopo (9.7.5, flexão em y): NotImplementedError → reprova com o motivo
+    sem_item = []   # barra composta fora do 9.7.5: NotImplementedError → reprova com o motivo
     if any(e.get("N", 0.0) < 0 for e in pts):
         try:
             d["compressao"] = compressao(secao, material, Lx, Ly, Lz, Ndist or None)
@@ -539,13 +545,8 @@ def verificar_pff(secao, material, esforcos, Lx, Ly, Lz, Lb, Cb=1.0, An=None, Ct
     Tmax = max(abs(float(e.get("T", 0.0))) for e in pts)
     if Tmax > 0:
         d["torcao"] = torcao(secao, material, gama=G_CORT)
-    # composta: My de ruído numérico (≤ 1e-6·Wy·fy) não exige a flexão em y
-    tol_my = 1e-6 * secao.props["Wy"] * material.fy if secao.props["tipo"] == "dupla" else 0.0
-    if any(abs(float(e.get("My", 0.0))) > tol_my for e in pts):
-        try:
-            d["flexao_y"] = flexao_y(secao, material, Mdist_y or None)
-        except NotImplementedError as ex:
-            sem_item.append(f"flexão em y: {ex}")
+    if any(e.get("My", 0.0) for e in pts):
+        d["flexao_y"] = flexao_y(secao, material, Mdist_y or None)
     MxRd, VRd = d["flexao_x"]["MRd"], d["cortante"]["VRd"]
     MyRd = d["flexao_y"]["MRd"] if "flexao_y" in d else 1.0
     avisos = set(d["flexao_x"]["avisos"]) | set(d.get("compressao", {}).get("avisos", [])) \

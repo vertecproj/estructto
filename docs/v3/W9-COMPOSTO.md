@@ -25,7 +25,7 @@ Pedido: "ainda não tem a função de usar perfis U como tubo ou invertidos para
   `Simples | Caixão | Costas com costas` para U (UPN, U laminado, U e Ue dobrados); `Simples | Costas com costas | Cruz` para
   L; `Simples | Lado a lado` para I. Ligação (solda contínua ou chapas espaçadoras), afastamento s e distância entre chapas a
   (mm). O desenho mostra os dois perfis sobre o eixo, com giro/espelho/cardinal, e o nome da seção que vai ser usada. Uma
-  linha explica o que acontece (caixão soldado vira tubo; chapas: 5.3.4/9.7.5; flexão em y não verificada).
+  linha explica o que acontece (caixão soldado vira tubo; chapas: 5.3.4/9.7.5; My = 2 × perfil isolado).
 - **Aplicar** troca a seção das barras escolhidas: a seção nova é calculada pelo motor sem mexer no modelo
   (`POST /api/secao/previa`) e entra no **mesmo PUT** das barras, giro, cardinal e espelho → **um Ctrl+Z desfaz tudo**. Se a
   barra já é composta, a janela abre no arranjo dela e "Simples" volta ao perfil base.
@@ -52,8 +52,7 @@ Pedido: "ainda não tem a função de usar perfis U como tubo ou invertidos para
     indiretamente (literatura que cita "recomendações para composição e limitação do índice de esbeltez" da NBR 14762:2010);
     confira na norma;
   - flexão em x: 2 × perfil isolado (como na NBR 8800); cortante: 2 almas;
-  - flexão em torno do eixo de simetria (My): **não verificada**, igual à decisão da Frente D na NBR 8800; My acima de
-    1e-6·Wy·fy reprova com o motivo (ruído numérico não).
+  - flexão em torno do eixo de simetria (My): 2 × perfil isolado (abaixo).
 - `projeto._tipo_padrao` reconhece a composta de PFF como `pff`; `validar` não acusa mais `secao_incompativel` nela.
 - `projeto.previa_secao` + rota `POST /api/secao/previa` (não muda o modelo, não entra no desfazer).
 
@@ -65,13 +64,20 @@ projetista: (1) usa a ligação proposta só como ponto de partida e confere à 
 as ligações de extremidade e intermediárias); (3) em 2U costas com chapa de ligação entre as almas, modela a chapa como
 gusset no projetista de ligações.
 
-## Limite que aparece em pórtico espacial (decisão pendente)
-Barra composta **aberta** (2U costas com chapas, 2Ue, 2L) com qualquer My sai `nao_verificado` (decisão da Frente D,
-mantida aqui e copiada na NBR 14762). No pórtico das capturas, com um balanço que tira a simetria, as vigas 2U costas têm
-My = 0,017 kN·m contra 2 × MRd,y do UPN isolado = 22 kN·m (0,08 %) e mesmo assim reprovam. Opções para o usuário:
-(a) manter (hoje); (b) verificar My como 2 × perfil isolado (limite inferior: ignora a ação conjunta pelas chapas, a favor
-da segurança), nas duas normas, mudando o teste `test_presilhas_flexao_x_dobro_e_y_reprova`. Enquanto isso, a janela avisa
-e sugere 2U laminado costas soldado (s = 0), que vira I e verifica My.
+## My de composta aberta: 2 × perfil isolado (decisão do usuário, 27/10/2026)
+Antes (Frente D) a barra composta **aberta** (tipo `dupla`: 2U/2Ue/2L costas com chapas, caixão afastado, 2I lado a lado)
+com qualquer My saía `nao_verificado`, por falta de item na NBR 8800:2008. Num pórtico espacial isso reprovava as vigas
+2U costas das capturas com My = 0,017 kN·m contra uma resistência de 22 kN·m. O usuário escolheu:
+
+- **Critério:** MRd,y do conjunto = 2 × MRd,y do perfil isolado, cada um fletido no próprio eixo y, **sem** a ação conjunta
+  pelas chapas espaçadoras. NBR 8800: G.1 do U (FLM, FLA, ≤ 1,5·W·fy); NBR 14762: 9.8.2.1 (Wef em y, distorcional do Ue).
+- **Por que é a favor da segurança:** as chapas só acrescentam o binário entre os dois perfis (Iy do conjunto =
+  2·(Iy1 + A1·d²) ≫ 2·Iy1); somar as resistências isoladas é limite inferior da resistência do conjunto ligado.
+- O item aparece na verificação: `5.4.2 / anexo G (barra composta: 2 × perfil isolado, sem ação conjunta — critério
+  adotado, a favor da segurança)` e `9.8.2.1 (…)`.
+- 2L: o perfil isolado (cantoneira) segue fora da G.1, então My em 2L continua não verificado.
+- Testes: `test_presilhas_flexao_x_e_y_dobro_do_isolado` (substitui o da Frente D que exigia reprovar; conta à mão do
+  UPN 160: MRd,y = 7,387 kN·m, conjunto 14,775 kN·m) e `TestCompostasPFF.test_presilhas_longe_e_sem_l_reprovam_my_dobro_do_isolado`.
 
 ## Outros limites
 - Analítico desenha barras como linhas (por projeto da Vista3D); os dois perfis aparecem no Realista e no Sombreado.
@@ -85,4 +91,5 @@ e sugere 2U laminado costas soldado (s = 0), que vira I e verifica My.
 - Capturas `ESTRUCTTO_CAPTURAS=w9comp` (`CapturasW9Comp.cs`): pórtico 6 × 5 × 4 m; pilares UPN 200 → caixão soldado,
   vigas X UPN 200 → costas com chapas (s 10, a 500), vigas Y Ue 150x60x20x2,00 → costas com chapas (NBR 14762).
   Asserções: seção e tipo de cada barra, um Ctrl+Z desfaz a troca das 4 barras (refazer volta), .pstr salvo e reaberto
-  com as composições, cálculo com norma certa por barra, 5.3.4 na verificação da viga. Log em `w9-comp.txt`.
+  com as composições, cálculo com norma certa por barra, **todas as 9 barras passam** (antes do critério de My, 4 vigas
+  saíam não verificadas por My = 0,017 kN·m), 5.3.4 e o aviso do My na verificação da viga. Log em `w9-comp.txt`.

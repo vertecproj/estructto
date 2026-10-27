@@ -121,12 +121,26 @@ class TestVerificacao(unittest.TestCase):
         self.assertFalse(v["ok"])
         self.assertEqual(v["criterio"], "nao_verificado")
 
-    def test_presilhas_flexao_x_dobro_e_y_reprova(self):
+    def test_presilhas_flexao_x_e_y_dobro_do_isolado(self):
+        """Antes (Frente D) My em composta aberta reprovava por falta de item na NBR 8800. W9, escolha do usuário em
+        27/10/2026: em pórtico espacial qualquer My (0,017 kN·m contra 22 kN·m) reprovava a barra; agora My usa
+        2 × MRd,y do perfil isolado, sem a ação conjunta das chapas (limite inferior, a favor da segurança).
+        À mão, UPN 160 (cantos vivos), A-36, eixo y: A = 2·65·10,5 + 139·7,5 = 2407,5 mm²; LN plástica: h·tw = 1200 <
+        A/2 = 1203,75 → xp = (1203,75 − 1042,5)/21 = 7,679 mm; Zy = 1042,5·(7,679 − 3,75) + 10,5·(7,679² + 57,321²)
+        = 39 215 mm³; xg = (2·682,5·32,5 + 1042,5·3,75)/2407,5 = 20,05 mm; Iy = 2·(10,5·65³/12 + 682,5·12,45²)
+        + 139·7,5³/12 + 1042,5·16,30² = 974 040 mm⁴; Wy = Iy/(65 − 20,05) = 21 670 mm³. Compacto (bf/tf = 6,2;
+        h/tw = 18,5) → Mn = min(Zy·fy, 1,5·Wy·fy) = 1,5·21 670·250e-6 = 8,126 kN·m; MRd = 8,126/1,10 = 7,387 kN·m;
+        conjunto = 14,775 kN·m."""
         u = upn()
         conj = secoes.secao_dupla(u, "I", "presilhas", l_ligacoes=0.5)
         self.assertAlmostEqual(nbr8800.flexao_x(conj, A36, 2.0)["MRd"], 2 * nbr8800.flexao_x(u, A36, 2.0)["MRd"])
-        v = nbr8800.verificar_barra_aco(conj, A36, dict(My=1.0), 3.0, 3.0, 3.0)
+        fy = nbr8800.flexao_y(conj, A36)
+        self.assertAlmostEqual(fy["MRd"], 14.775, delta=0.005 * 14.775)
+        self.assertIn("2 × perfil isolado", fy["item"])
+        self.assertTrue(nbr8800.verificar_barra_aco(conj, A36, dict(My=1.0), 3.0, 3.0, 3.0)["ok"])
+        v = nbr8800.verificar_barra_aco(conj, A36, dict(My=16.0), 3.0, 3.0, 3.0)
         self.assertFalse(v["ok"])
+        self.assertAlmostEqual(v["taxa_max"], 16.0 / 14.775, delta=0.01)
 
 
 class TestCompostasV06(unittest.TestCase):
@@ -287,18 +301,20 @@ class TestCompostasPFF(unittest.TestCase):
         self.assertTrue(ok["ok"], ok)
         self.assertEqual(ok["detalhes"]["compressao"]["item"], "9.7.2 / 9.7.5")
 
-    def test_presilhas_longe_sem_l_e_my_reprovam(self):
+    def test_presilhas_longe_e_sem_l_reprovam_my_dobro_do_isolado(self):
         u = secoes.catalogo("U 150x50x3,00")
         for c in (secoes.secao_dupla(u, "I", "presilhas", s=0.01, l_ligacoes=2.0, chapas_espacadoras=True),
                   secoes.secao_dupla(u, "I", "presilhas", s=0.01, chapas_espacadoras=True)):
             v = nbr14762.verificar_pff(c, A36, [dict(N=-5.0)], 3.0, 3.0, 3.0, 3.0)
             self.assertFalse(v["ok"])
             self.assertEqual(v["criterio"], "nao_verificado")
+        # My: 2 × MRd,y do U isolado (W9), sem ação conjunta das chapas
         c = secoes.secao_dupla(u, "I", "presilhas", s=0.01, l_ligacoes=0.5, chapas_espacadoras=True)
-        v = nbr14762.verificar_pff(c, A36, [dict(My=0.5)], 3.0, 3.0, 3.0, 3.0)
-        self.assertEqual(v["criterio"], "nao_verificado")
-        v = nbr14762.verificar_pff(c, A36, [dict(Mx=0.5, My=1e-12)], 3.0, 3.0, 3.0, 3.0)   # ruído não reprova
+        fy1 = nbr14762.flexao_y(u, A36)["MRd"]
+        self.assertAlmostEqual(nbr14762.flexao_y(c, A36)["MRd"], 2 * fy1)
+        v = nbr14762.verificar_pff(c, A36, [dict(My=0.5 * fy1)], 3.0, 3.0, 3.0, 3.0)
         self.assertTrue(v["ok"])
+        self.assertAlmostEqual(v["detalhes"]["taxas"]["flexao_y"], 0.25)
 
     def test_portico_salva_reabre_e_calcula(self):
         """Pilares 2U caixão soldado (tubo, NBR 8800) e viga 2Ue costas com chapas (NBR 14762): o .pstr guarda a

@@ -273,8 +273,7 @@ namespace NovoFtool
                     else if (Ligacao == "soldada") t = "Afastados sem chapas espaçadoras: a norma não cobre (a barra reprova na compressão). Use chapas espaçadoras.";
                     else t = "Chapas espaçadoras: l/r de cada perfil entre chapas ≤ ½ do KL/r do conjunto (NBR 8800 5.3.4 / NBR 14762 9.7.5)."
                              + (A > 0 ? "" : " Informe a distância: sem ela a compressão não é verificada.")
-                             + " Flexão em torno do eixo de simetria (My) não é verificada (sem item na norma): com My a barra sai não verificada."
-                             + (forma == "U" && Arranjo == "I" ? " Em pórtico espacial, 2U laminado costas com solda contínua (s = 0) vira um I e verifica My." : "");
+                             + " My (eixo de simetria): 2 × o perfil isolado, sem ação conjunta das chapas (a favor da segurança).";
                     msg.Text = t;
                     Prever();
                 }

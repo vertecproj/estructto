@@ -96,6 +96,8 @@ namespace NovoFtool
                 bool esperado14762 = b.StartsWith("VY");
                 if (norma == null || norma.Contains("14762") != esperado14762) Falha("barra " + b + " verificada por " + norma);
                 log.AppendLine($"{b}: {(string)l["secao"]} · {norma} · taxa {DocumentoEspacial.Taxa(l):0.000} · {(string)l["criterio"]} {(string)l["item"]} · ok {l["ok"]}");
+                // W9: My pequeno de pórtico espacial não reprova mais composta aberta (2 × perfil isolado)
+                if (l["ok"] == null || !(bool)l["ok"]) Falha("barra " + b + " não passa: " + (string)l["criterio"] + " " + string.Join(" | ", l["avisos"]?.AsArray().Select(a => (string)a) ?? new string[0]));
             }
             var vv = Esperar2(D().Consultar("/api/verificacao/VX1"));
             if (vv?["detalhes"]?["compressao"]?["composta"] == null && vv?["detalhes"]?["compressao"] != null) Falha("verificação da viga sem o 5.3.4");

@@ -20,6 +20,8 @@ contato (I soldado), s > 0 dá almas afastadas com chapas espaçadoras/presilhas
   afastamento sem chapas espaçadoras; fora disso a barra reprova com aviso.
 - Z em torno do eixo de simetria: cada perfil fica inteiro de um lado da linha neutra plástica, então Z = 2·A1·d. Não se soma o Z
   próprio de cada perfil, porque ele já está contido em A1·d.
+- My (eixo de simetria) de composta aberta: 2 × MRd,y do perfil isolado, sem ação conjunta das chapas (W9, a favor da
+  segurança; ver [W9-COMPOSTO.md](W9-COMPOSTO.md)). Antes reprovava.
 - 2L em cruz: a flexão NÃO é verificada (só esforço normal); use a barra só como escora/tirante ou verifique a flexão à parte.
 - I + chapa: flexão fora da tabela G.1, então NotImplementedError (reprova). Q é o do I; chapa mais larga que a mesa também reprova.
 
