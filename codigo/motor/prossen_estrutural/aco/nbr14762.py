@@ -23,6 +23,7 @@ import math
 
 from .nbr8800 import _json, _validar_entrada, torcao, von_mises_aberta
 from .nbr8800 import forca_flambagem  # NBR 14762 9.7.2.1 = mesmas expressões de Nex, Ney, Nez, Nexz
+from .nbr8800 import _componente  # perfil isolado de uma barra composta (secoes.secao_dupla)
 
 EDICAO = "NBR 14762:2010"
 G_ESC, G_RUP0, G_RUP = 1.10, 1.35, 1.65  # 9.6.2 a), b), c)
@@ -363,20 +364,56 @@ def compressao(sec, mat, KLx, KLy, KLz, Ndist=None):
     """9.7.2: Nc,Rd = χ·Aef·fy/γ (γ = 1,20), Aef por 9.2 com σ = χ·fy. Distorcional (9.7.3) em
     distorcional.NRd_dist quando a tabela 11 não dispensa (Ndist: ver distorcional)."""
     p, E, fy = sec.props, mat.E, mat.fy
+    dupla = p["tipo"] == "dupla"
+    composta = _dupla_9_7_5(sec, KLx, KLy) if dupla else None   # NotImplementedError → verificar_pff reprova
     ne = {k: float(v) for k, v in forca_flambagem(sec, mat, KLx, KLy, KLz).items()}
     l0 = math.sqrt(sec.A * fy / ne["Ne"])
     chi = 0.658 ** (l0 ** 2) if l0 <= 1.5 else 0.877 / l0 ** 2
-    Aef_lin, A_lin, det, avisos = _area_efetiva(p, E, chi * fy)
-    Aef = sec.A * Aef_lin / A_lin  # ponytail: razão do modelo linear aplicada à área bruta da Secao
-    dist = dispensa_distorcional(sec, "compressao")
+    # barra composta (W9): χ da flambagem global do conjunto; Aef e distorcional de cada perfil isolado × 2
+    um, n = (_componente(sec), 2) if dupla else (sec, 1)
+    Aef_lin, A_lin, det, avisos = _area_efetiva(um.props, E, chi * fy)
+    Aef = n * um.A * Aef_lin / A_lin  # ponytail: razão do modelo linear aplicada à área bruta da Secao
+    dist = dispensa_distorcional(um, "compressao")
     if dist["dispensada"] is False:
-        dist.update(distorcional(sec, mat, "compressao", Ndist))
+        dist.update(distorcional(um, mat, "compressao", Ndist / n if Ndist else None))
+        if "NRd_dist" in dist:
+            dist["NRd_dist"] *= n
         if "nao_calculado" in dist:
             avisos = avisos + [f"distorcional (compressão, 9.7.3): {dist['nao_calculado']}"]
     esb = max(KLx / p["rx"], KLy / p["ry"])
-    return dict(NcRd=chi * Aef * fy / G_COMP, chi=chi, lambda0=l0, Aef=Aef, A=sec.A, sigma=chi * fy,
-                elementos=det, distorcional=dist, esbeltez=esb, esbeltez_ok=esb <= 200,
-                avisos=avisos, item="9.7.2", **ne)
+    r = dict(NcRd=chi * Aef * fy / G_COMP, chi=chi, lambda0=l0, Aef=Aef, A=sec.A, sigma=chi * fy,
+             elementos=det, distorcional=dist, esbeltez=esb, esbeltez_ok=esb <= 200,
+             avisos=avisos, item="9.7.2", **ne)
+    if dupla:
+        r.update(composta=composta, item="9.7.2 / 9.7.5")
+    return r
+
+
+def _dupla_9_7_5(sec, KLx, KLy):
+    """NBR 14762:2010 9.7.5, barras compostas comprimidas: com presilhas (chapas separadoras), l/r de cada perfil
+    entre ligações < 1/2 do índice de esbeltez máximo do conjunto (o mesmo critério da NBR 8800 5.3.4); solda
+    contínua sem afastamento dispensa (perfis em contato trabalham juntos). Ligação
+    genérica, afastamento sem chapas ou sem a distância entre elas → NotImplementedError (a barra reprova)."""
+    c, p = sec.props["composicao"], sec.props
+    if c["ligacao"] == "soldada" and c["s"] == 0:
+        return dict(item="9.7.5", dispensa="solda contínua: perfis em contato trabalham juntos")
+    if c["ligacao"] == "generica":
+        raise NotImplementedError("barra composta com ligação genérica entre perfis: sem item na NBR 14762:2010")
+    if c["s"] > 0 and not c.get("chapas_espacadoras"):
+        raise NotImplementedError(f"barra composta com afastamento {c['s'] * 1e3:g} mm entre perfis sem chapas "
+                                  "espaçadoras: fora da NBR 14762:2010 9.7.5")
+    l = c.get("l_ligacoes")
+    if not l:
+        raise NotImplementedError("barra composta sem a distância entre presilhas/chapas (composicao.l_ligacoes): "
+                                  "9.7.5 não verificável")
+    cp = _componente(sec).props
+    ri = min(cp["rx"], cp["ry"])
+    conj = max(KLx / p["rx"], KLy / p["ry"])
+    li = l / ri
+    if li > conj / 2:
+        raise NotImplementedError(f"9.7.5: l/r de cada perfil entre ligações = {li:.0f} > 1/2 do KL/r do conjunto "
+                                  f"({conj:.0f}/2): aproxime as presilhas")
+    return dict(l_ri=li, KL_r_conjunto=conj, item="9.7.5")
 
 
 def _chi_flt(l0):
@@ -386,7 +423,17 @@ def _chi_flt(l0):
 
 def flexao_x(sec, mat, Lb, Cb=1.0, Mdist=None):
     """9.8.2: menor entre início de escoamento da seção efetiva (9.8.2.1) e FLT (9.8.2.2). Distorcional
-    (9.8.2.3) em distorcional.MRd_dist quando a tabela 14 não dispensa (Mdist: ver distorcional)."""
+    (9.8.2.3) em distorcional.MRd_dist quando a tabela 14 não dispensa (Mdist: ver distorcional).
+    Barra composta (W9): cada perfil fletido no seu eixo x (comum aos dois) = 2 × perfil isolado, como na NBR 8800."""
+    if sec.props["tipo"] == "dupla":
+        r = flexao_x(_componente(sec), mat, Lb, Cb, Mdist / 2 if Mdist else None)
+        for k in ("MRd", "MRd_esc", "MRd_FLT", "Wef", "Wc_ef"):
+            if r.get(k) is not None:
+                r[k] *= 2
+        if "MRd_dist" in r["distorcional"]:
+            r["distorcional"]["MRd_dist"] *= 2
+        r["item"] += " (barra composta: 2 × perfil isolado)"
+        return r
     p, E, G, fy = sec.props, mat.E, mat.G, mat.fy
     Wl, Wb, det, avisos = _modulo_efetivo(p, E, fy, "x")
     Wef = p["Wx"] * Wl / Wb  # ponytail: razão do modelo linear aplicada ao W bruto da Secao
@@ -418,6 +465,15 @@ def flexao_y(sec, mat, Mdist=None):
     """9.8.2.1 em torno de y (menor inércia): menor dos dois sentidos. FLT não se aplica. Ue: distorcional
     (9.8.2.3) com os enrijecedores comprimidos — sentido desconhecido no modelo, aplicada a |My| (a favor);
     Mdist: Mdist,y de análise de estabilidade elástica (opcional; ver distorcional, caso "flexao_y")."""
+    if sec.props["tipo"] == "dupla":  # W9: 2 × perfil isolado, sem ação conjunta (= nbr8800.flexao_y; a favor da segurança)
+        r = flexao_y(_componente(sec), mat, Mdist / 2 if Mdist else None)
+        r["MRd"] *= 2
+        if "MRd_dist" in r.get("distorcional", {}):
+            r["distorcional"]["MRd_dist"] *= 2
+        r["item"] += " (barra composta: 2 × perfil isolado, sem ação conjunta — critério adotado, a favor da segurança)"
+        r["avisos"] = r["avisos"] + [f"barra composta: My,Rd = 2 × {r['MRd'] / 2:.2f} kN·m do perfil isolado, sem ação conjunta "
+                                     "das chapas (critério adotado, a favor da segurança; a NBR 14762 não tem item)"]
+        return r
     p, E, fy = sec.props, mat.E, mat.fy
     res = []
     for sentido in (1, -1):
@@ -439,7 +495,11 @@ def flexao_y(sec, mat, Mdist=None):
 
 
 def cortante(sec, mat, kv=5.0):
-    """9.8.3: força cortante paralela à alma, h = altura da parte plana da alma."""
+    """9.8.3: força cortante paralela à alma, h = altura da parte plana da alma. Barra composta: 2 almas."""
+    if sec.props["tipo"] == "dupla":
+        r = cortante(_componente(sec), mat, kv)
+        r["VRd"] *= 2
+        return r
     p, E, fy = sec.props, mat.E, mat.fy
     t = p["t"]
     h = p["h"] - 2 * (t + p.get("ri", 0.0))
@@ -475,8 +535,13 @@ def verificar_pff(secao, material, esforcos, Lx, Ly, Lz, Lb, Cb=1.0, An=None, Ct
                      dict(Lb=Lb, Ndist=Ndist or 0.0, Mdist=Mdist or 0.0, Mdist_y=Mdist_y or 0.0))
     d = dict(tracao=tracao(secao, material, An, Ct), flexao_x=flexao_x(secao, material, Lb, Cb, Mdist or None),
              cortante=cortante(secao, material))
+    sem_item = []   # barra composta fora do 9.7.5: NotImplementedError → reprova com o motivo
     if any(e.get("N", 0.0) < 0 for e in pts):
-        d["compressao"] = compressao(secao, material, Lx, Ly, Lz, Ndist or None)
+        try:
+            d["compressao"] = compressao(secao, material, Lx, Ly, Lz, Ndist or None)
+        except NotImplementedError as ex:
+            sem_item.append(f"compressão: {ex}")
+            d["compressao"] = dict(NcRd=math.inf, esbeltez=0.0, avisos=[], distorcional={})
     Tmax = max(abs(float(e.get("T", 0.0))) for e in pts)
     if Tmax > 0:
         d["torcao"] = torcao(secao, material, gama=G_CORT)
@@ -536,8 +601,9 @@ def verificar_pff(secao, material, esforcos, Lx, Ly, Lz, Lb, Cb=1.0, An=None, Ct
         d["von_mises"] = vm_pior
         avisos.add("torção > 0,2·TRd com outros esforços: Von Mises por envelope (critério adicional, não é da "
                    "NBR 14762), com empenamento majorado (B ≤ T·a, AISC Design Guide 9)")
-    if sem_dist or sem_vm:  # verificação exigida e não feita: conservador, reprova
+    if sem_dist or sem_vm or sem_item:  # verificação exigida e não feita: conservador, reprova
         ok, crit = False, "nao_verificado"
+    avisos.update(f"{a} — verificação não feita: barra reprovada (nao_verificado)" for a in sem_item)
     if sem_dist:
         avisos.add("flambagem distorcional exigida (tabela 11/14 não dispensa) e não calculada: barra reprovada "
                    "(nao_verificado)")

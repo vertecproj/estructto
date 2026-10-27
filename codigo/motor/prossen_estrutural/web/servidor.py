@@ -215,6 +215,7 @@ ROTAS = {
     ("GET", r"/api/exemplos"): lambda s, a, q, c: projeto.exemplos(),
     ("POST", r"/api/exemplos/(?P<nome>[^/]+)"): lambda s, a, q, c: _novo(s, projeto.abrir_exemplo(a["nome"])),
     ("POST", r"/api/modelo/lote"): lambda s, a, q, c: projeto.adicionar_lote(_modelo(s), (c or {}).get("itens", [])),
+    ("POST", r"/api/secao/previa"): lambda s, a, q, c: projeto.previa_secao(c or {}),
     ("POST", r"/api/modelo/(?P<tipo>[a-z_]+)"): lambda s, a, q, c: projeto.adicionar(_modelo(s), a["tipo"], c or {}),
     ("GET", r"/api/modelo/(?P<tipo>[a-z_]+)"): lambda s, a, q, c: projeto.listar(_modelo(s), a["tipo"], dict(q) or None),
     ("PATCH", r"/api/modelo/(?P<tipo>[a-z_]+)/(?P<id>[^/]+)"): lambda s, a, q, c: projeto.editar(_modelo(s), a["tipo"], a["id"], c or {}),

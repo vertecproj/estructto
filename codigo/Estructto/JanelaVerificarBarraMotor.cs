@@ -77,6 +77,15 @@ namespace NovoFtool
                     }
                     l.Add(it);
                 }
+                // barra composta (W9): esbeltez de cada perfil entre chapas espaçadoras ≤ ½ da do conjunto (NBR 8800 5.3.4 / NBR 14762 9.7.5)
+                if (det["compressao"]?["composta"] is JsonObject cp)
+                {
+                    double li = D(cp, "l_ri"), conj = D(cp, "KL_r_conjunto");
+                    bool disp = cp["dispensa"] != null;
+                    l.Add(new Item { Criterio = "barra composta", NomeItem = S(cp, "item"), Comb = disp ? S(cp, "dispensa") : combDet,
+                                     Taxa = disp || double.IsNaN(li) ? 0 : li / (conj / 2),
+                                     Valor = disp ? "dispensada" : "l/r perfil = " + F(li, 0) + "  ≤  ½·KL/r conjunto = " + F(conj / 2, 0) });
+                }
             }
             return l.OrderByDescending(x => x.Taxa).ToList();
         }

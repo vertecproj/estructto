@@ -68,7 +68,7 @@ namespace NovoFtool
             if (p?["composicao"]?["componente"] is JsonObject cp)   // composta: os dois perfis (GeometriaPerfis.Dupla)
             {
                 var co = p["composicao"] as JsonObject; var ch = co["chapa"] as JsonObject;
-                string fc = (string)cp["forma"] == "cantoneira" ? "L" : (string)cp["forma"];
+                string fc = (string)cp["forma"] == "cantoneira" ? "L" : (string)cp["forma"] is "U_pf" or "Ue" ? "U" : (string)cp["forma"];   // W9: U/Ue dobrados
                 double ct = V(cp, "t");
                 return new Perfil3D { Forma = "DUPLA", H = h, B = b, Arranjo = (string)co["arranjo"], S = V(co, "s"), ChapaB = V(ch, "b"), ChapaT = V(ch, "t"),
                                       Comp = new Perfil3D { Forma = fc, H = V(cp, "h"), B = V(cp, "b"), Tw = ct > 0 ? ct : V(cp, "tw"), Tf = ct > 0 ? ct : V(cp, "tf") } };

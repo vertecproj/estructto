@@ -1217,6 +1217,7 @@ namespace NovoFtool
                 if (so == "w73d") so1(() => CapturasW73d(w));                     // só as w73d-*: 3D do projetista (z-buffer), tubo, teste dos parafusos
                 if (so == "w7lig") so1(() => CapturasW7Lig(w));                   // só as 70) padrões de fábrica de todos os tipos (W7-LIG)
                 if (so == "w8rig") so1(() => CapturasW8Rig(w));                   // só as 80) rígidas e emendas revistas (W8-RIG)
+                if (so == "w9comp") so1(() => CapturasW9Comp(w));                 // só as w9) do perfil duplo (CapturasW9Comp.cs)
                 if (so == "w8tubo") so1(() => CapturasW8Tubo(w));                 // só as 80) perfil–tubo (parede do tubo, desenho) e solda direta (W8)
                 if (so == "w8contrav") so1(() => CapturasW8Contrav(w));           // só as 80) gusset, nó de treliça e tirante (W8-CONTRAV)
                 if (so == "w9fi") so1(() => CapturasW9Fi(w));                     // só as 90) emenda flangeada de perfil I/H/U (W9)

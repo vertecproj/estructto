@@ -184,7 +184,6 @@ namespace NovoFtool
             Style = (Style)Application.Current.FindResource(typeof(Button));
             Background = TemaPlant.BSup3; BorderBrush = TemaPlant.BBordaSutil; Height = 28; HorizontalContentAlignment = HorizontalAlignment.Stretch; Padding = new Thickness(8, 2, 8, 2);
             Rotular(atual);
-            ToolTip = "Escolha o perfil: busca, seções do modelo, recentes e a árvore do catálogo.";
             pop.PlacementTarget = this;
             Seletor = new SeletorSecao(noModelo, atual, n => { pop.IsOpen = false; Rotular(n); aoEscolher(n); });
             pop.Child = Seletor;
@@ -193,10 +192,12 @@ namespace NovoFtool
         void Rotular(string nome)
         {
             var g = new Grid();
-            g.ColumnDefinitions.Add(new ColumnDefinition()); g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); g.ColumnDefinitions.Add(new ColumnDefinition()); g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var mini = new Image { Width = 18, Height = 18, Margin = new Thickness(0, 0, 6, 0), Source = MiniaturaPerfil.Criar(nome, 18), SnapsToDevicePixels = true };   // W9: 2U/caixão/I também
             var t = Tx(nome ?? "(escolher)", 12, TemaPlant.BTexto1); t.TextTrimming = TextTrimming.CharacterEllipsis; t.VerticalAlignment = VerticalAlignment.Center;
             var seta = new System.Windows.Shapes.Path { Data = Geometry.Parse("M0,0 L4,4 L8,0"), Stroke = TemaPlant.BTexto2, StrokeThickness = 1.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
-            Grid.SetColumn(seta, 1); g.Children.Add(t); g.Children.Add(seta);
+            Grid.SetColumn(t, 1); Grid.SetColumn(seta, 2); g.Children.Add(mini); g.Children.Add(t); g.Children.Add(seta);
+            ToolTip = (nome != null ? nome + " — " : "") + "Escolha o perfil: busca, seções do modelo, recentes e a árvore do catálogo.";
             Content = g;
         }
         public void Abrir() { Seletor.Montar(); pop.IsOpen = true; }

@@ -148,9 +148,47 @@ namespace NovoFtool
             string chave = nome + "|" + tam;
             ImageSource r;
             if (cache.TryGetValue(chave, out r)) return r;
-            r = Desenhar(nome, Resolver(nome), tam);
+            r = Dupla(nome, tam) ?? Desenhar(nome, Resolver(nome), tam);
             cache[chave] = r;
             return r;
+        }
+
+        // W9: perfil duplo pelo nome (Composto.Nome: "2UPN 200 caixao soldado", "2U 150x50x3,00 costas chapas a=500 s=10";
+        // JanelaComposto antiga: "2UPN 200 I presilhas"): os dois perfis da base na posição do arranjo.
+        static readonly Regex RxDupla = new Regex(@"^2\s*(?<base>.+?)\s+(?<arr>caixao|caixão|costas|I|cruz|lado-a-lado|lado_a_lado)(?=\s|$)(?:.*?\bs=(?<s>\d+(?:[.,]\d+)?))?", RegexOptions.IgnoreCase);
+        static ImageSource Dupla(string nome, double tam)
+        {
+            var m = nome == null ? null : RxDupla.Match(nome.Trim());
+            if (m == null || !m.Success) return null;
+            string bn = m.Groups["base"].Value;
+            var bs = Resolver(bn);
+            if (bs == null || !(bs.Value.tipo is "U" or "Ue" or "L" or "I")) return null;
+            var (tipo, h, b, tw, tf) = bs.Value;
+            double s = m.Groups["s"].Success ? double.Parse(m.Groups["s"].Value.Replace(',', '.'), CultureInfo.InvariantCulture) : 0;
+            string arr = m.Groups["arr"].Value.ToLowerInvariant();
+            bool cruz = arr == "cruz";
+            double esc = (tam - 2) / Math.Max(2 * b + s, cruz ? 2 * h + s : h);
+            double w1 = b * esc, h1 = h * esc, sp = s * esc;
+            var g1 = DesenhoSecaoForma.Forma(tipo, bn, w1, h1, Math.Max(tw * esc, 1.5), Math.Max(tf * esc, 1.5), Math.Max(tw * esc, 1.5), esc);
+            var grupo = new DrawingGroup();
+            grupo.Children.Add(new GeometryDrawing(new SolidColorBrush(Colors.Transparent), null, new RectangleGeometry(new Rect(0, 0, tam, tam))));
+            double x0 = (tam - (2 * w1 + sp)) / 2, y0 = (tam - (cruz ? 2 * h1 + sp : h1)) / 2;
+            void Poe(double sx, double sy, double x, double y)
+            {
+                var tg = new TransformGroup();
+                tg.Children.Add(new ScaleTransform(sx, sy));
+                tg.Children.Add(new TranslateTransform(x + (sx < 0 ? w1 : 0), y + (sy < 0 ? h1 : 0)));
+                var dg = new DrawingGroup { Transform = tg };
+                dg.Children.Add(new GeometryDrawing(TemaPlant.BTexto2, null, g1));
+                grupo.Children.Add(dg);
+            }
+            if (arr.StartsWith("caix")) { Poe(1, 1, x0, y0); Poe(-1, 1, x0 + w1 + sp, y0); }               // almas por fora, abas para dentro
+            else if (cruz) { Poe(1, 1, x0 + w1 + sp, y0); Poe(-1, -1, x0, y0 + h1 + sp); }              // quinas opostas
+            else { Poe(-1, 1, x0, y0); Poe(1, 1, x0 + w1 + sp, y0); }                                    // costas com costas / lado a lado
+            grupo.Freeze();
+            var di = new DrawingImage(grupo);
+            di.Freeze();
+            return di;
         }
 
         static ImageSource Desenhar(string nome, (string tipo, double h, double b, double tw, double tf)? m, double tam)

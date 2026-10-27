@@ -1,9 +1,11 @@
 # Perfis compostos e disposição (v0.6 Frente D)
 
+W9: U e Ue dobrados, perfil duplo na janela Disposição do perfil e NBR 14762 em [W9-COMPOSTO.md](W9-COMPOSTO.md).
+
 ## Arranjos (`secoes.secao_dupla`, spec `{"forma": "dupla", "base": ..., "arranjo": ...}`)
 | arranjo | perfil base | forma |
 |---|---|---|
-| `caixao` | 2U (2L só soldado, s = 0) | abas para dentro, almas por fora (tubo) |
+| `caixao` | 2U, 2Ue (2L só soldado, s = 0) | abas para dentro, almas por fora (tubo) |
 | `I` | 2U, 2L | costas com costas: almas juntas (afastadas s), abas para fora (2U → I/W; 2L → T) |
 | `cruz` | 2L | estrela: quinas opostas, afastadas s nos dois sentidos |
 | `lado_a_lado` | 2I | mesas afastadas s |
@@ -18,6 +20,8 @@ contato (I soldado), s > 0 dá almas afastadas com chapas espaçadoras/presilhas
   afastamento sem chapas espaçadoras; fora disso a barra reprova com aviso.
 - Z em torno do eixo de simetria: cada perfil fica inteiro de um lado da linha neutra plástica, então Z = 2·A1·d. Não se soma o Z
   próprio de cada perfil, porque ele já está contido em A1·d.
+- My (eixo de simetria) de composta aberta: 2 × MRd,y do perfil isolado, sem ação conjunta das chapas (W9, a favor da
+  segurança; ver [W9-COMPOSTO.md](W9-COMPOSTO.md)). Antes reprovava.
 - 2L em cruz: a flexão NÃO é verificada (só esforço normal); use a barra só como escora/tirante ou verifique a flexão à parte.
 - I + chapa: flexão fora da tabela G.1, então NotImplementedError (reprova). Q é o do I; chapa mais larga que a mesa também reprova.
 

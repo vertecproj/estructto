@@ -926,11 +926,17 @@ namespace NovoFtool
                 secao("Barra");
                 // seções do modelo + perfis do catálogo do motor; perfil novo entra no modelo antes do PATCH
                 _ = SeletorSecao.Carregar();
-                linha("Seção", new BotaoSecao(() => d.Json["secoes"].AsObject().Select(x => x.Key), (string)el["secao"], v => { if (v != (string)el["secao"]) _ = Espacial(async dd =>
+                var bSec = new BotaoSecao(() => d.Json["secoes"].AsObject().Select(x => x.Key), (string)el["secao"], v => { if (v != (string)el["secao"]) _ = Espacial(async dd =>
                 {
                     await dd.GarantirSecao(v);
                     await dd.Editar("barra", id, new JsonObject { ["secao"] = v });
-                }, "Barra " + id + ": seção " + v + (d.Json["secoes"][v] != null ? "." : " (do catálogo, adicionada ao modelo).")); }));
+                }, "Barra " + id + ": seção " + v + (d.Json["secoes"][v] != null ? "." : " (do catálogo, adicionada ao modelo).")); });
+                // W9: atalho para o perfil duplo (2U caixão/costas, 2L, 2I) na mesma janela da Disposição do perfil
+                var bDuplo = new Button { Content = "Duplo…", Height = 28, Padding = new Thickness(8, 0, 8, 0), Margin = new Thickness(6, 0, 0, 0),
+                                          ToolTip = "Perfil duplo: 2U em caixão (vira tubo) ou costas com costas (vira I), 2L, 2I. Abre a Disposição do perfil." };
+                bDuplo.Click += (s, e) => AbrirDisposicao(new List<string> { id });
+                var lnSec = new DockPanel(); DockPanel.SetDock(bDuplo, Dock.Right); lnSec.Children.Add(bDuplo); lnSec.Children.Add(bSec);
+                linha("Seção", lnSec);
                 linha("Material", combo(d.Json["materiais"].AsObject().Select(x => x.Key), (string)el["material"], v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["material"] = v }), "Barra " + id + ": material " + v + ".")));
                 linha("Giro (°)", num((double)(el["rot"] ?? 0.0) * 180 / Math.PI, v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["rot"] = v * Math.PI / 180 }), "Barra " + id + ": giro " + Num.Fmt(v, 1) + "°.")));
                 linha("Papel", leitura((string)el["params"]?["papel"] ?? "—"));
@@ -1147,6 +1153,7 @@ namespace NovoFtool
         internal bool OcupadoEsp => espRodando;   // capturas: operação no motor em andamento
         internal Task EditarEspacial(string tipo, string id, JsonObject campos) => Espacial(d => d.Editar(tipo, id, campos), "Editado: " + tipo + " " + id + ".");
         internal Task DesfazerEspacial() => TrocarEspacial(true);
+        internal Task RefazerEspacial() => TrocarEspacial(false);
         internal Task OperarEspacial(Func<DocumentoEspacial, Task> f, string msg) => Espacial(f, msg);
         internal Task MostrarCombinacaoEspacial(string comb) => MudarResultadoEsp(comb ?? "");
         internal string TextoResultado => NomeResultado();

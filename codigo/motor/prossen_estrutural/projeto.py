@@ -314,9 +314,14 @@ def _tipo_padrao(sec, mat):
     if mat.fck is not None:
         return "concreto"
     p = sec.props or {}
-    if p.get("tipo") == "Ue" or (p.get("tipo") == "U" and "t" in p and "tw" not in p):
+    if p.get("tipo") == "Ue" or (p.get("tipo") == "U" and "t" in p and "tw" not in p) or _dupla_pff(p):
         return "pff"
     return "aco"
+
+
+def _dupla_pff(p):
+    """Barra composta (secoes.secao_dupla, tipo 'dupla') de dois U/Ue formados a frio: NBR 14762 (W9)."""
+    return p.get("tipo") == "dupla" and ((p.get("composicao") or {}).get("componente") or {}).get("forma") in ("U_pf", "Ue")
 
 
 def _val_trechos_cortante(p, err, comprimento=None, secao=None):
@@ -646,6 +651,16 @@ def _copiar_para(destino, origem):
               "cargas_pontuais", "pavimentos", "peso_proprio", "config", "nome"):
         setattr(destino, c, getattr(origem, c))
     destino._ultimo_id = origem._ultimo_id
+
+
+def previa_secao(dados):
+    """W9: seção calculada pela spec (ESPEC §6.3, inclusive {"forma": "dupla"}) sem mexer no modelo, no formato de
+    modelo.secoes (nome, A, Iy, Iz, J, props), para a interface trocar a seção das barras num PUT só (um desfazer).
+    pff: true se a barra com essa seção é verificada pela NBR 14762 (_tipo_padrao)."""
+    sec = _construir(novo_modelo(), "secao", dados)
+    p = sec.props or {}
+    return {"secao": _puro(asdict(sec)),
+            "pff": p.get("tipo") == "Ue" or (p.get("tipo") == "U" and "t" in p and "tw" not in p) or _dupla_pff(p)}
 
 
 def adicionar_lote(modelo, itens):
@@ -1053,7 +1068,7 @@ def validar(modelo):
                     "(troque o material ou o tipo da barra)", ref)
             if p.get("tipo") == "I" and not ("tw" in p and "tf" in p):
                 add("aviso", "secao_incompativel", f"barra {b.id}: seção I '{sec.nome}' sem tw/tf", ref)
-            if b.tipo == "pff" and p.get("tipo") not in ("Ue", "U"):
+            if b.tipo == "pff" and p.get("tipo") not in ("Ue", "U") and not _dupla_pff(p):
                 add("aviso", "secao_incompativel", f"barra {b.id}: perfil formado a frio exige seção Ue/U "
                     f"(seção '{sec.nome}')", ref)
         _val_trechos_cortante(

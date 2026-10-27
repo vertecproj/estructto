@@ -404,8 +404,16 @@ def flexao_y(sec, mat):
     p, E, fy = sec.props, mat.E, mat.fy
     tipo = p["tipo"]
     if tipo == "dupla":
-        raise NotImplementedError("flexão de barra composta aberta em torno do eixo de simetria (ação conjunta "
-                                  "pelas presilhas): sem item na NBR 8800:2008")
+        # W9 (escolha do usuário, 27/10/2026): My em torno do eixo de simetria de composta aberta = 2 × MRd,y do perfil
+        # isolado, cada um fletido no próprio eixo y, sem a ação conjunta pelas chapas espaçadoras. A NBR 8800:2008 não
+        # tem item para a ação conjunta; somar as resistências isoladas é limite inferior (as chapas só acrescentam o
+        # binário entre os perfis), a favor da segurança. Ver docs/v3/W9-COMPOSTO.md.
+        r = flexao_y(_componente(sec), mat)
+        r.update(MRd=2 * r["MRd"], item=r["item"] + " (barra composta: 2 × perfil isolado, sem ação conjunta — critério "
+                 "adotado, a favor da segurança)",
+                 aviso=f"barra composta: My,Rd = 2 × {r['MRd'] / 2:.2f} kN·m do perfil isolado, sem ação conjunta das chapas "
+                       "(critério adotado, a favor da segurança; a NBR 8800 não tem item)")
+        return r
     if tipo in ("tubo_retangular", "retangular"):
         return _flexao_caixao(sec, mat, "y", 0.0, 1.0)
     if tipo == "tubo_circular":
