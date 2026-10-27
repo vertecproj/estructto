@@ -2,7 +2,8 @@
 // GeoLig = peças como prismas (chapa = contorno × espessura; cantoneira = duas abas; perfis = caixas e alma com recortes),
 // parafusos e cordões de solda, no referencial local da ligação (mm). DesenhoLigacao projeta numa vista ortogonal
 // (Elevação, Planta, Lateral: contorno, hachura da espessura, parafuso com cruz, símbolo de solda, cotas de passo,
-// gabarito e bordas) ou isométrica (faces sombreadas, pintor), e anima a troca de geometria (Anim.Valor na propriedade Prog).
+// gabarito e bordas; tubo com geratrizes, bordas e a curva da sela) ou em 3D sólido com z-buffer (LigacaoDesenho3D.cs), e anima
+// a troca de geometria (Anim.Valor na propriedade Prog).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -24,12 +25,37 @@ namespace NovoFtool
     {
         // Camada: 0 perfil ligado, 1 chapa, 2 cantoneira. Grupo de falha: viga, suporte, chapas, cantoneiras.
         public class Prisma { public string Nome = "", Grupo = ""; public Point3D[] Base; public Vector3D N; public double T; public int Camada; public bool Falha; public string Tag = ""; }
-        public class Paraf { public Point3D O; public Vector3D E; public double D, L, Pega; public bool Falha; public string Tag = ""; }
-        public class Cordao { public Point3D[] P; public double Perna; public bool Falha; public string Tag = ""; }
+        // Ref: aresta da chapa mais próxima (Ligacao3D.ArestaMaisPerto), para o sextavado do 3D ficar alinhado a ela
+        public class Paraf { public Point3D O; public Vector3D E; public double D, L, Pega; public bool Falha; public string Tag = ""; public Vector3D? Ref; }
+        // Ax/Lados/Face: onde o cordão assenta (Ligacao3D.Apoio), para o prisma do filete no 3D; Ax null = ao longo da barra que chega
+        public class Cordao { public Point3D[] P; public double Perna; public bool Falha; public string Tag = ""; public Vector3D? Ax; public List<(Vector3D n, double desl)> Lados; public Ligacao3D.Chapa Face; }
+        // Tubo redondo (contrato "tubos"): de O até O + E·L, diâmetro externo D, parede T. Corte (boca de peixe): só há material
+        // onde a distância ao eixo (CO, CE) é ≥ CR.
+        public class Tubo
+        {
+            public string Nome = "", Grupo = "", Tag = ""; public Point3D O; public Vector3D E; public double L, D, T; public bool Falha;
+            public bool Corta; public Point3D CO; public Vector3D CE; public double CR;
+            public (Vector3D u, Vector3D w) Base()
+            {
+                Vector3D u = Vector3D.CrossProduct(E, Math.Abs(E.Z) > 0.9 ? new Vector3D(1, 0, 0) : new Vector3D(0, 0, 1)); u.Normalize();
+                return (u, Vector3D.CrossProduct(E, u));   // (u, w, E) direito
+            }
+            // onde começa o material na geratriz que passa por p (p na seção s = 0): saída do cilindro de corte (maior raiz), ou 0.
+            // Mesma conta do Render3DGeometria.Extrudar (Corte.Raio).
+            public double Inicio(Point3D p)
+            {
+                if (!Corta || CR <= 0) return 0;
+                Vector3D A = CE; A.Normalize(); Vector3D w = p - CO;
+                Vector3D wp = w - Vector3D.DotProduct(w, A) * A, ep = E - Vector3D.DotProduct(E, A) * A;
+                double qa = ep.LengthSquared, qb = 2 * Vector3D.DotProduct(wp, ep), qc = wp.LengthSquared - CR * CR, disc = qb * qb - 4 * qa * qc;
+                return qa > 1e-12 && disc >= 0 ? Math.Max(0, (Math.Sqrt(disc) - qb) / (2 * qa)) : 0;
+            }
+        }
 
         public readonly List<Prisma> Pecas = new List<Prisma>();
         public readonly List<Paraf> Parafs = new List<Paraf>();
         public readonly List<Cordao> Soldas = new List<Cordao>();
+        public readonly List<Tubo> Tubos = new List<Tubo>();
         public bool Parede; public double XParede;          // apoio genérico (tipo sem perfil de apoio): face x = XParede
         public string NomeViga = "", NomeSuporte = "";
 
@@ -95,6 +121,36 @@ namespace NovoFtool
                 var pts = Lista(s["pontos"]).OfType<JsonArray>().Select(P3).ToArray();
                 if (pts.Length >= 2) r.Soldas.Add(new Cordao { P = pts, Perna = Ok(D(s, "perna")) ? D(s, "perna") : 5, Falha = F("soldas"), Tag = S(s, "campo") });
             }
+            foreach (var t in Lista(g["tubos"]))
+            {
+                var e = V3(t["eixo"], new Vector3D(1, 0, 0)); if (e.Length < 1e-9) continue; e.Normalize();
+                double L = D(t, "comprimento"), d = D(t, "d"), esp = D(t, "t");
+                if (!Ok(L) || !Ok(d) || L <= 0 || d <= 0 || t["origem"] is not JsonArray) continue;
+                if (!Ok(esp) || esp <= 0 || esp > d / 2) esp = d / 2;   // sem parede: maciço
+                var tb = new Tubo { Nome = S(t, "nome"), Grupo = S(t, "grupo"), Tag = S(t, "campo"), O = P3(t["origem"]), E = e, L = L, D = d, T = esp };
+                tb.Falha = F(tb.Grupo == "suporte" ? "suporte" : "viga");
+                var c = t["corte"];
+                if (c is JsonObject && c["origem"] is JsonArray && Ok(D(c, "r")) && D(c, "r") > 0)
+                {
+                    tb.CO = P3(c["origem"]); tb.CE = V3(c["eixo"], new Vector3D(0, 0, 1)); tb.CR = D(c, "r");
+                    tb.Corta = tb.CE.Length > 1e-9;
+                }
+                r.Tubos.Add(tb);
+            }
+            // assentamento do 3D (mesmas regras do Render3D principal): aresta da chapa para o sextavado, apoio do cordão
+            Ligacao3D lig = null;
+            try { lig = Ligacao3D.DoJson(0, 0, g as JsonObject); } catch { }
+            if (lig != null)
+            {
+                foreach (var b in r.Parafs) b.Ref = lig.ArestaMaisPerto(new Ligacao3D.Parafuso { Origem = (Vector3D)b.O, Eixo = b.E, D = b.D });
+                foreach (var s in r.Soldas)
+                {
+                    var (ax, lados, face) = Ligacao3D.Apoio(lig, new Ligacao3D.Solda { Perna = s.Perna, Pontos = s.P.Select(q => (Vector3D)q).ToArray() });
+                    s.Ax = ax; s.Lados = lados; s.Face = face;
+                }
+            }
+            var ramal = r.Tubos.FirstOrDefault(q => q.Grupo != "suporte");
+            if (ramal != null) foreach (var s in r.Soldas) if (s.Ax == null) s.Ax = ramal.E;   // sela: uma perna ao longo do ramal
             // perfis ligados (projeto.verificar_ligacao → geometria.membros) posicionados pelo contrato
             double xPonta = double.NaN, cs = 0, hs = 0, ci = 0, hi = 0;
             foreach (var rc in Lista(g["recortes"]))
@@ -192,7 +248,7 @@ namespace NovoFtool
         // interpolação (mesma estrutura) para animar a troca; null = estrutura diferente (o desenho faz fade)
         public static GeoLig Misturar(GeoLig a, GeoLig b, double t)
         {
-            if (a == null || b == null || a.Pecas.Count != b.Pecas.Count || a.Parafs.Count != b.Parafs.Count || a.Soldas.Count != b.Soldas.Count) return null;
+            if (a == null || b == null || a.Pecas.Count != b.Pecas.Count || a.Parafs.Count != b.Parafs.Count || a.Soldas.Count != b.Soldas.Count || a.Tubos.Count != b.Tubos.Count) return null;
             for (int i = 0; i < a.Pecas.Count; i++) if (a.Pecas[i].Base.Length != b.Pecas[i].Base.Length) return null;
             for (int i = 0; i < a.Soldas.Count; i++) if (a.Soldas[i].P.Length != b.Soldas[i].P.Length) return null;
             Point3D LP(Point3D p, Point3D q) => new Point3D(p.X + (q.X - p.X) * t, p.Y + (q.Y - p.Y) * t, p.Z + (q.Z - p.Z) * t);
@@ -206,11 +262,32 @@ namespace NovoFtool
             for (int i = 0; i < b.Parafs.Count; i++)
             {
                 var pa = a.Parafs[i]; var pb = b.Parafs[i];
-                r.Parafs.Add(new Paraf { O = LP(pa.O, pb.O), E = pb.E, D = L(pa.D, pb.D), L = L(pa.L, pb.L), Pega = L(pa.Pega, pb.Pega), Falha = pb.Falha, Tag = pb.Tag });
+                r.Parafs.Add(new Paraf { O = LP(pa.O, pb.O), E = pb.E, D = L(pa.D, pb.D), L = L(pa.L, pb.L), Pega = L(pa.Pega, pb.Pega), Falha = pb.Falha, Tag = pb.Tag, Ref = pb.Ref });
             }
             for (int i = 0; i < b.Soldas.Count; i++)
-                r.Soldas.Add(new Cordao { P = b.Soldas[i].P.Select((q, k) => LP(a.Soldas[i].P[k], q)).ToArray(), Perna = L(a.Soldas[i].Perna, b.Soldas[i].Perna), Falha = b.Soldas[i].Falha, Tag = b.Soldas[i].Tag });
+            {
+                var sb = b.Soldas[i];
+                r.Soldas.Add(new Cordao { P = sb.P.Select((q, k) => LP(a.Soldas[i].P[k], q)).ToArray(), Perna = L(a.Soldas[i].Perna, sb.Perna), Falha = sb.Falha, Tag = sb.Tag, Ax = sb.Ax, Lados = sb.Lados, Face = sb.Face });
+            }
+            for (int i = 0; i < b.Tubos.Count; i++)
+            {
+                var ta = a.Tubos[i]; var tb = b.Tubos[i];
+                r.Tubos.Add(new Tubo { Nome = tb.Nome, Grupo = tb.Grupo, Tag = tb.Tag, Falha = tb.Falha, O = LP(ta.O, tb.O), E = tb.E, L = L(ta.L, tb.L), D = L(ta.D, tb.D), T = L(ta.T, tb.T),
+                                       Corta = tb.Corta, CO = tb.CO, CE = tb.CE, CR = tb.Corta && ta.Corta ? L(ta.CR, tb.CR) : tb.CR });
+            }
             return r;
+        }
+
+        // trecho do tubo junto ao nó (origem local): a ligação de tubo não tem chapa, o enquadramento vem daqui
+        static IEnumerable<Point3D> PertoDoNo(Tubo t)
+        {
+            double s = Math.Max(0, Math.Min(t.L, Vector3D.DotProduct(new Point3D() - t.O, t.E)));
+            var (u, w) = t.Base();
+            foreach (double ds in new[] { -t.D, t.D })
+            {
+                var c = t.O + t.E * Math.Max(0, Math.Min(t.L, s + ds));
+                yield return c + u * t.D / 2; yield return c - u * t.D / 2; yield return c + w * t.D / 2; yield return c - w * t.D / 2;
+            }
         }
 
         public IEnumerable<Point3D> Foco()
@@ -218,6 +295,7 @@ namespace NovoFtool
             foreach (var p in Pecas.Where(q => q.Camada > 0)) foreach (var q in p.Base) yield return q;
             foreach (var b in Parafs) { yield return b.O; yield return b.O + b.E * b.Pega; }
             foreach (var s in Soldas) foreach (var q in s.P) yield return q;
+            foreach (var t in Tubos) foreach (var q in PertoDoNo(t)) yield return q;
         }
 
         public IEnumerable<Point3D> Pontos()
@@ -225,31 +303,41 @@ namespace NovoFtool
             foreach (var p in Pecas) foreach (var q in p.Base) { yield return q + p.N * p.T / 2; yield return q - p.N * p.T / 2; }
             foreach (var b in Parafs) { yield return b.O - b.E * 0.7 * b.D; yield return b.O + b.E * b.L; }
             foreach (var s in Soldas) foreach (var q in s.P) yield return q;
+            foreach (var t in Tubos)
+            {
+                var (u, w) = t.Base();
+                foreach (var c in new[] { t.O, t.O + t.E * t.L }) { yield return c + u * t.D / 2; yield return c - u * t.D / 2; yield return c + w * t.D / 2; yield return c - w * t.D / 2; }
+            }
         }
     }
 
     public enum VistaLig { Elevacao, Planta, Lateral, Iso }
 
-    public class DesenhoLigacao : FrameworkElement
+    // Elevação, Planta e Lateral: desenho técnico 2D (este arquivo). 3D (VistaLig.Iso): cena sólida com z-buffer num Viewport3D
+    // (LigacaoDesenho3D.cs).
+    public partial class DesenhoLigacao : FrameworkElement
     {
         public static readonly DependencyProperty ProgProperty = DependencyProperty.Register("Prog", typeof(double), typeof(DesenhoLigacao),
-            new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsRender, (d, _) => ((DesenhoLigacao)d).ProgMudou()));
         public double Prog { get => (double)GetValue(ProgProperty); set => SetValue(ProgProperty, value); }
 
         public VistaLig Vista;
         public bool Miniatura;
         public string Titulo;
         GeoLig geo, anterior;
-        double yaw = 104, pitch = 24;
+        // vista inicial do 3D: do lado da viga (+x) e da face da alma (+y), de cima: cabeças da chapa de topo e da chapa simples à vista
+        const double YawIni = 50, PitchIni = 22;
+        double yaw = YawIni, pitch = PitchIni;
         Point? arrasto; double yawIni, pitchIni;
 
         public DesenhoLigacao(VistaLig v, bool miniatura = false)
         {
             Vista = v; Miniatura = miniatura; ClipToBounds = true; SnapsToDevicePixels = true;
+            if (v == VistaLig.Iso) Iniciar3D();
             if (v == VistaLig.Iso && !miniatura)
             {
                 Cursor = Cursors.SizeAll;
-                ToolTip = "Arraste para girar · clique numa peça = vai ao campo · duplo clique = vista inicial";
+                ToolTip = "Arraste para girar · roda = zoom · clique numa peça = vai ao campo · duplo clique = vista inicial";
                 System.Windows.Controls.ToolTipService.SetInitialShowDelay(this, 900);
             }
         }
@@ -263,6 +351,7 @@ namespace NovoFtool
             geo = g;
             if (animar && anterior != null) Anim.Valor(this, ProgProperty, 0, 1, 260);
             else { anterior = null; Prog = 1; InvalidateVisual(); }
+            if (Vista == VistaLig.Iso) Reconstruir();
         }
 
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -270,7 +359,7 @@ namespace NovoFtool
             if (Miniatura) return;
             descida = e.GetPosition(this);
             if (Vista != VistaLig.Iso) { CaptureMouse(); e.Handled = true; return; }
-            if (e.ClickCount == 2) { yaw = 104; pitch = 24; InvalidateVisual(); e.Handled = true; return; }
+            if (e.ClickCount == 2) { yaw = YawIni; pitch = PitchIni; zoom = 1; AtualizarCamera(); e.Handled = true; return; }
             arrasto = e.GetPosition(this); yawIni = yaw; pitchIni = pitch; CaptureMouse(); e.Handled = true;
         }
         protected override void OnMouseMove(MouseEventArgs e)
@@ -280,7 +369,7 @@ namespace NovoFtool
             if (arrasto == null || !IsMouseCaptured) return;
             yaw = yawIni - (p.X - arrasto.Value.X) * 0.45;
             pitch = Math.Max(-80, Math.Min(85, pitchIni + (p.Y - arrasto.Value.Y) * 0.45));
-            InvalidateVisual();
+            AtualizarCamera();
         }
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
@@ -310,6 +399,7 @@ namespace NovoFtool
         {
             double W = ActualWidth, H = ActualHeight;
             dc.DrawRectangle(TemaPlant.BBgCanvas, null, new Rect(0, 0, W, H));
+            if (Vista == VistaLig.Iso) return;   // o 3D é o Viewport3D filho; título e triedro na sobreposição
             if (geo == null || W < 40 || H < 40) return;
             double t = Prog;
             var mix = anterior == null || t >= 1 ? null : GeoLig.Misturar(anterior, geo, t);
@@ -343,6 +433,7 @@ namespace NovoFtool
 
         public string PecaEm(Point p)
         {
+            if (Vista == VistaLig.Iso) return PecaEm3D(p);
             if (geo == null || proj == null) return null;
             foreach (var b in geo.Parafs)
             {
@@ -362,6 +453,12 @@ namespace NovoFtool
                 if (poly.Count < 3 || !Dentro(poly, p)) continue;
                 double z = pc.Base.Average(q => Dot(q, bs.F)) + pc.Camada * 1e4;   // pecas da ligacao por cima dos perfis
                 if (z > zm) { zm = z; melhor = pc.Tag; }
+            }
+            foreach (var tb in geo.Tubos.Where(q => !string.IsNullOrEmpty(q.Tag)))
+            {
+                if (!FaixasTubo(tb, proj, out _, out _, out _).Any(f => Dentro(f.ToList(), p))) continue;
+                double z = Dot(tb.O + tb.E * tb.L / 2, bs.F);   // como perfil (camada 0)
+                if (z > zm) { zm = z; melhor = tb.Tag; }
             }
             return melhor;
         }
@@ -402,8 +499,7 @@ namespace NovoFtool
             Point P(Point3D p) => new Point(ox + Dot(p, R) * esc, oy - Dot(p, U) * esc);
             if (g == geo) { proj = P; bs = (R, U, F); escUlt = esc; }
             if (opac < 1) dc.PushOpacity(opac);
-            if (Vista == VistaLig.Iso) Iso(dc, g, R, U, F, P, esc);
-            else Orto(dc, g, R, U, F, P, esc);
+            Orto(dc, g, R, U, F, P, esc);
             if (!Miniatura && Titulo != null)
             {
                 var tt = Txt(Titulo.ToUpperInvariant(), 10.5, TemaPlant.BTexto2, FontWeights.SemiBold);
@@ -476,6 +572,8 @@ namespace NovoFtool
             double lw = Miniatura ? 0.8 : 1;
             // perfis, depois chapas e cantoneiras (as peças da ligação ficam por cima)
             foreach (var camada in new[] { 0, 1, 2 })
+            {
+                if (camada == 1) foreach (var tb in g.Tubos.OrderBy(q => q.Grupo == "suporte" ? 0 : 1)) DesenharTubo(dc, tb, P, lw);   // tubos com os perfis
                 foreach (var pc in g.Pecas.Where(q => q.Camada == camada))
                 {
                     bool frente = Math.Abs(Vector3D.DotProduct(pc.N, F)) > 0.85;
@@ -495,6 +593,7 @@ namespace NovoFtool
                     }
                     dc.DrawGeometry(null, new Pen(traco, (camada == 0 ? 1.2 : 1.7) * lw) { LineJoin = PenLineJoin.Round }, geom);
                 }
+            }
             if (g.Parede && !Miniatura && Math.Abs(R.X) > 0.9)
             {
                 double x = P(new Point3D(g.XParede, 0, 0)).X;
@@ -569,6 +668,56 @@ namespace NovoFtool
                 }
             }
             if (!Miniatura) { Cotas(dc, g, R, U, F, P, esc); Rotulos(dc, g, R, U, F, P, esc); }
+        }
+
+        // Tubo na vista ortogonal: faixas entre geratrizes vizinhas (a união é a silhueta, inclusive a ponta em sela), as duas
+        // geratrizes de contorno, a curva de interseção (início de cada geratriz, GeoLig.Tubo.Inicio) e as bordas da ponta livre.
+        const int NTubo = 72;
+        static List<Point[]> FaixasTubo(GeoLig.Tubo t, Func<Point3D, Point> P, out List<Point> ini, out List<Point> fim, out List<Point> fimInt)
+        {
+            var (u, w) = t.Base(); double R0 = t.D / 2, Ri = R0 - t.T;
+            ini = new List<Point>(); fim = new List<Point>(); fimInt = new List<Point>();
+            for (int k = 0; k < NTubo; k++)
+            {
+                double th = 2 * Math.PI * k / NTubo; var rad = u * Math.Cos(th) + w * Math.Sin(th);
+                var p0 = t.O + rad * R0;
+                ini.Add(P(p0 + t.E * t.Inicio(p0))); fim.Add(P(p0 + t.E * t.L)); fimInt.Add(P(t.O + rad * Ri + t.E * t.L));
+            }
+            var r = new List<Point[]>();
+            for (int k = 0; k < NTubo; k++)
+            {
+                int j = (k + 1) % NTubo;
+                var q = new[] { ini[k], ini[j], fim[j], fim[k] };
+                double a = 0; for (int i = 0; i < 4; i++) a += q[i].X * q[(i + 1) % 4].Y - q[(i + 1) % 4].X * q[i].Y;
+                if (a < 0) Array.Reverse(q);   // todas no mesmo sentido: a regra não nula faz a união
+                r.Add(q);
+            }
+            return r;
+        }
+
+        void DesenharTubo(DrawingContext dc, GeoLig.Tubo t, Func<Point3D, Point> P, double lw)
+        {
+            var faixas = FaixasTubo(t, P, out var ini, out var fim, out var fimInt);
+            var g = new StreamGeometry { FillRule = FillRule.Nonzero };
+            using (var c = g.Open()) foreach (var f in faixas) { c.BeginFigure(f[0], true, true); c.PolyLineTo(f.Skip(1).ToList(), false, false); }
+            g.Freeze();
+            Brush fundo = t.Falha ? TemaPlant.BErroFundo : TemaPlant.BLigPerfil, traco = t.Falha ? TemaPlant.BErro : TemaPlant.BTexto2;
+            dc.DrawGeometry(fundo, null, g);
+            var ponta = new StreamGeometry { FillRule = FillRule.EvenOdd };   // anel da ponta livre (aparece de topo)
+            using (var c = ponta.Open()) foreach (var l in new[] { fim, fimInt }) { c.BeginFigure(l[0], true, true); c.PolyLineTo(l.Skip(1).ToList(), false, false); }
+            ponta.Freeze();
+            var pen = new Pen(traco, 1.2 * lw) { LineJoin = PenLineJoin.Round };
+            dc.DrawGeometry(fundo, pen, ponta);
+            dc.DrawGeometry(null, pen, Poli(ini));
+            var e2 = P(t.O + t.E * t.L) - P(t.O);
+            if (e2.Length > 1)   // geratrizes de contorno: as mais afastadas do eixo na tela
+            {
+                var n = new Vector(-e2.Y, e2.X); n.Normalize();
+                int kmax = 0, kmin = 0;
+                double Dn(int k) => (Vector)fim[k] * n;
+                for (int k = 1; k < NTubo; k++) { if (Dn(k) > Dn(kmax)) kmax = k; if (Dn(k) < Dn(kmin)) kmin = k; }
+                foreach (int k in new[] { kmax, kmin }) dc.DrawLine(pen, ini[k], fim[k]);
+            }
         }
 
         // cotas: cadeias de borda → furos → borda na horizontal (embaixo) e na vertical (à direita) da chapa com mais furos
@@ -700,62 +849,6 @@ namespace NovoFtool
                     dc.DrawText(ft, new Point(fim.X - ft.Width - 4, cotov.Y - ft.Height / 2));
                 }
             }
-        }
-
-        // ---------------------------------------------------------------- isométrica (pintor + sombreamento plano)
-        struct Face { public Point[] P; public double Z; public Color C; public bool Linha; public byte A; public int Plano; }
-
-        void Iso(DrawingContext dc, GeoLig g, Vector3D R, Vector3D U, Vector3D F, Func<Point3D, Point> P, double esc)
-        {
-            var faces = new List<Face>();
-            var luz = F + new Vector3D(0.35, -0.25, 0.85); luz.Normalize();
-            Color Tom(Color c, Vector3D n) { double k = 0.52 + 0.48 * Math.Abs(Vector3D.DotProduct(n, luz)); return Color.FromRgb((byte)(c.R * k), (byte)(c.G * k), (byte)(c.B * k)); }
-            Color Cor(Brush b) => ((SolidColorBrush)b).Color;
-            void Prisma(IList<Point3D> base_, Vector3D n, double t, Color c, byte alfa = 255, int plano = 1)
-            {
-                if (base_.Count < 3) return;
-                var cen = new Point3D(base_.Average(q => q.X), base_.Average(q => q.Y), base_.Average(q => q.Z));
-                var a = base_.Select(q => q + n * t / 2).ToArray(); var b = base_.Select(q => q - n * t / 2).ToArray();
-                void Add(Point3D[] f, Vector3D nn)
-                {
-                    if (Vector3D.DotProduct(nn, F) <= 1e-6) return;
-                    faces.Add(new Face { P = f.Select(P).ToArray(), Z = f.Average(q => Dot(q, F)), C = Tom(c, nn), Linha = true, A = alfa, Plano = plano });
-                }
-                Add(a, n); Add(b.Reverse().ToArray(), -n);
-                for (int i = 0; i < base_.Count; i++)
-                {
-                    int j = (i + 1) % base_.Count;
-                    var e = base_[j] - base_[i]; var nn = Vector3D.CrossProduct(e, n);
-                    if (nn.Length < 1e-9) continue; nn.Normalize();
-                    var mid = base_[i] + e / 2; if (Vector3D.DotProduct(nn, mid - cen) < 0) nn = -nn;
-                    Add(new[] { a[i], a[j], b[j], b[i] }, nn);
-                }
-            }
-            Color cPerfil = TemaPlant.LigPerfil3D, cPlaca = TemaPlant.LigChapa3D, cErro = TemaPlant.Erro, cPar = TemaPlant.Realce;
-            foreach (var pc in g.Pecas) Prisma(pc.Base, pc.N, pc.T, pc.Falha ? cErro : pc.Camada == 0 ? cPerfil : cPlaca, pc.Camada == 0 ? (byte)215 : (byte)255, pc.Camada == 0 ? 0 : 1);   // perfis atrás e translúcidos: a ligação sempre aparece
-            foreach (var b in g.Parafs)
-            {
-                var e = b.E; var ax = Vector3D.CrossProduct(e, Math.Abs(e.Z) < 0.9 ? new Vector3D(0, 0, 1) : new Vector3D(1, 0, 0)); ax.Normalize();
-                var ay = Vector3D.CrossProduct(e, ax);
-                Point3D[] Anel(Point3D c, double r, int k) => Enumerable.Range(0, k).Select(i => c + ax * r * Math.Cos(2 * Math.PI * i / k) + ay * r * Math.Sin(2 * Math.PI * i / k)).ToArray();
-                Color c = b.Falha ? cErro : cPar;
-                // só o lado do observador (cabeça ou porca + ponta da rosca), por cima das chapas: o pintor não erra
-                if (Vector3D.DotProduct(-e, F) > 0) Prisma(Anel(b.O - e * 0.33 * b.D, 0.85 * b.D, 6), e, 0.65 * b.D, c, 255, 2);
-                else
-                {
-                    Prisma(Anel(b.O + e * (b.Pega + 0.4 * b.D), 0.85 * b.D, 6), e, 0.8 * b.D, c, 255, 2);
-                    double ponta = b.L - b.Pega - 0.8 * b.D;
-                    if (ponta > 1) Prisma(Anel(b.O + e * (b.Pega + 0.8 * b.D + ponta / 2), b.D / 2, 8), e, ponta, Color.FromRgb((byte)(c.R * 0.8), (byte)(c.G * 0.8), (byte)(c.B * 0.8)), 255, 2);
-                }
-            }
-            foreach (var f in faces.OrderBy(f => f.Plano).ThenBy(f => f.Z))
-            {
-                var geo = Poli(f.P);
-                var br = new SolidColorBrush(Color.FromArgb(f.A, f.C.R, f.C.G, f.C.B)); br.Freeze();
-                dc.DrawGeometry(br, Miniatura ? null : new Pen(TemaPlant.B(TemaPlant.BgCanvas, 140), 0.6), geo);
-            }
-            foreach (var s in g.Soldas)
-                dc.DrawGeometry(null, new Pen(s.Falha ? TemaPlant.BErro : TemaPlant.BLigSolda, Miniatura ? 1.6 : 3) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }, Poli(s.P.Select(P).ToList(), false));
         }
     }
 }

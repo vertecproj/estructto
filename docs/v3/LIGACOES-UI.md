@@ -64,8 +64,8 @@ Vistas: Elevação (x, z), Planta (x, y), Lateral (y, z) e 3D (girável), juntas
 contorno, de topo com hachura da espessura; parafuso de frente = círculo com cruz (sextavado da cabeça), de lado = fuste, cabeça e
 porca; solda = cordão com triângulos do filete e chamada (linha de referência + triângulo + perna); cotas em cadeia borda →
 furos → borda nos dois eixos da chapa com mais furos (trechos iguais viram "n × s"; texto que não cabe sai e a cota total vai uma
-linha para fora); rótulos dos perfis e da chapa (espessura × altura). 3D: pintor com faces sombreadas, perfis translúcidos atrás,
-chapas por cima e parafusos só do lado do observador. Enquadramento na ligação com folga; os perfis seguem além da borda.
+linha para fora); rótulos dos perfis e da chapa (espessura × altura). 3D: sólidos com z-buffer num Viewport3D (perfis, chapas, cantoneiras,
+parafusos completos, filetes, tubos; malhas do Render3D) — `docs/v3/W7-3D.md`. Enquadramento na ligação com folga; os perfis seguem além da borda.
 Componentes reprovados em vermelho. Troca de geometria animada (`Anim.Valor` em `Prog`, 260 ms): mesma estrutura = posições
 interpoladas, senão fade.
 
@@ -108,5 +108,5 @@ viga, gusset, cantoneira dupla) e, no galpão, `-grupo-biblioteca`, `-grupo-proj
 
 - Grupo de componente (cor e chips) pelas palavras do nome da verificação.
 - Tipo sem `membros` (contraventamento) desenha só as peças da ligação; a diagonal não aparece.
-- 3D por pintor (sem z-buffer): perfis sempre atrás das peças da ligação, de propósito.
+- 3D sem transparência: perfis opacos escondem as peças atrás deles (gire a vista).
 - Placa de base continua na janela própria (núcleo C#), não no esquema do motor.
