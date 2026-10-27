@@ -1204,20 +1204,32 @@ def _padrao_gerdau(dv):
 
 
 _CTX = ("x_face", "x_max", "abertura_y")   # G6 r4: geometria do chamador que muda a escolha (cabe na barra?)
+ALVO = 0.90   # W8-FLEX (= W8-RIG): taxa governante do pré-dimensionamento (a interface mostra "no limite" acima de 0,90)
+
+
+def _com_folga(minimo_mm):
+    """W8-FLEX (= W8-RIG `_com_folga`): mínimo de detalhamento / ALVO, para cima a 5 mm."""
+    return math.ceil(minimo_mm / ALVO / 5 - 1e-9) * 5
 
 
 def _tentar(tipo, candidatos, esforcos, perfis=None):
+    """W8-FLEX (critério do W8-RIG): a primeira candidata com taxa ≤ ALVO em todas as verificações (inclusive as
+    disposições construtivas); senão a primeira que passa; senão a última verificável (como antes)."""
     ctx = {k: perfis[k] for k in _CTX if (perfis or {}).get(k) is not None}
     candidatos = [dict(c, **ctx) for c in candidatos]
-    ult = None
+    ult = passa = None
     for c in candidatos:
         try:
-            if TIPOS[tipo]["verificar"](c, esforcos)["ok"]:
-                return c
+            r = TIPOS[tipo]["verificar"](c, esforcos)
         except ValueError:
             continue
-        ult = c
-    return ult or candidatos[-1]
+        if r["ok"] and r["taxa"] <= ALVO + 1e-9:
+            return c
+        if r["ok"]:
+            passa = passa or c
+        else:
+            ult = c
+    return passa or ult or candidatos[-1]
 
 
 def _furos_viga(vg, pd, n, rec_sup=0.0, rec_inf=0.0):
@@ -1246,11 +1258,15 @@ def _sug_cd(perfis, esforcos, tipo="cantoneira_dupla_alma", extra=None):
             nxt = _furos_viga(vg, pd, n + 1, extra.get("_rs", 0.0), extra.get("_ri", 0.0))
             if nxt is not None:
                 continue                                    # [GD] 3.1.2: Lc ≥ d/2 sempre que couber
-        c = dict(perfil_viga=v, perfil_suporte=s_, d=pd["d"], s=pd["s"], e_v=pd["e_v"], n=n,
-                 dist_topo_furo=dt, cantoneira=pd["cantoneira"], g_viga=pd["g"], g_apoio=pd["g"])
-        if tipo != "viga_viga_recorte":
-            c["apoio"] = apoio
-        cands.append(c)
+        # W8-FLEX: L76 com g 45 e folga 10 deixa a ponta da viga a 35 mm, ¾" na tabela 14 = 32 (0,91): vem depois a
+        # L102 com o gabarito Gerdau 2.4.5 (65 mm; ponta 55). Na alma do pilar a L102 não cabe e fica a L76 (passa).
+        cants = [(pd["cantoneira"], pd["g"])] + ([("L102x102x6.35", 65)] if pd["cantoneira"] == "L76x76x6.35" else [])
+        for cant, g in cants:
+            c = dict(perfil_viga=v, perfil_suporte=s_, d=pd["d"], s=pd["s"], e_v=pd["e_v"], n=n,
+                     dist_topo_furo=dt, cantoneira=cant, g_viga=g, g_apoio=g)
+            if tipo != "viga_viga_recorte":
+                c["apoio"] = apoio
+            cands.append(c)
     if not cands:
         raise ValueError(f"sugerir: perfil {v} baixo demais para {tipo}")
     return _tentar(tipo, cands, esforcos, perfis)
@@ -1262,6 +1278,9 @@ def _sug_cs(perfis, esforcos):
     pd = _padrao_gerdau(vg["d"])
     cands, compactas = [], []
     emin = L.distancia_min_borda(pd["d"] * MM) / MM
+    # W8-FLEX: a = 75 (Gerdau/AISC) com folga 10 põe a ponta da viga a 65 mm, acima de 0,9 × 12tw (6.3.12) em alma fina
+    # (W310×38,7: 65/69,6 = 0,93) → a com a ponta ≤ 0,9 × máximo, para baixo a 5 mm, e ≥ borda mínima com folga
+    a = max(10 + _com_folga(emin), min(75, 10 + math.floor(ALVO * min(12 * vg["tw"], 0.150) / MM / 5) * 5))
     # G5: U baixo (UPN 100: altura útil 66 mm) não leva 2 parafusos → 1 parafuso
     for n in range(2, 13) if _furos_viga(vg, pd, 2) is not None else (1,):
         dt = _furos_viga(vg, pd, n)
@@ -1271,7 +1290,7 @@ def _sug_cs(perfis, esforcos):
             if t * MM > pd["d"] * MM / 2 + 2 * MM:
                 break
             c = dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, d=pd["d"], s=pd["s"], e_v=pd["e_v"],
-                     n=n, dist_topo_furo=dt, t_chapa=t, b_solda=max(5, math.ceil(5 * t / 8)))
+                     n=n, dist_topo_furo=dt, t_chapa=t, b_solda=max(5, math.ceil(5 * t / 8)), a=a)
             cands.append(c)
             # G6 r4: barra curta (x_max) → chapa compacta: furo e borda nas mínimas da Tab. 14 (a = folga 10 + emin)
             if (perfis or {}).get("x_max"):
@@ -1316,8 +1335,12 @@ def _sug_ce(perfis, esforcos):
 
 def _sug_ap(perfis, esforcos):
     v, s_, apoio = _perfis_de(perfis)
+    # W8-FLEX: 150 mm com gabarito 80 deixava 35 mm de borda lateral (¾" tabela 14 = 32: 0,91) → comprimento = g + 2 bordas
+    # com folga de 10 % (80 + 2 × 40 = 160; ~ bf da W310); depois os 150 antigos (mesa estreita: W460×52, bf 152)
+    lcs = (max(150, 80 + 2 * _com_folga(L.distancia_min_borda(19.05 * MM) / MM)), 150)
     cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, assento="cantoneira", cantoneira=f"L102x152x{t}",
-                  d=19.05, s=60, e_v=30) for t in (9.5, 12.7, 15.9, 19.0, 22.2, 25.4)]
+                  d=19.05, s=60, e_v=30, g_colunas=80, comprimento=lc)
+             for t in (9.5, 12.7, 15.9, 19.0, 22.2, 25.4) for lc in lcs]
     cands += [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, assento="enrijecido", t_enrijecedor=t,
                    h_enrijecedor=h, b_enrijecedor=125, largura_assento=150, t_assento=t, b_solda=b)
               for t in (12.5, 16.0, 19.0) for h in (200, 250, 300, 400) for b in (6, 8, 10)]

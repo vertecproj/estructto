@@ -373,7 +373,9 @@ class TestChapaFaceContrato(unittest.TestCase):
         parafuso 19,05 serrado) ~78 mm."""
         pf = dict(perfil_viga="W310x38.7", perfil_suporte="W360x51", apoio="alma_viga")
         livre = P.sugerir_ligacao("chapa_simples_alma", pf, {"V": 50})
-        self.assertEqual(livre["a"] if "a" in livre else 75, 75)   # sem x_max: nada muda
+        # sem x_max: não é a compacta. W8-FLEX (docs/v3/W8-FLEX.md): o sugerir passou a gravar `a`, 70 e não 75 nesta
+        # alma de 5,8 mm (ponta 60 ≤ 0,9 × 12tw = 62,6; com 75 a borda máxima 6.3.12 dava 0,93)
+        self.assertEqual(livre["a"] if "a" in livre else 75, 70)
         sug = P.sugerir_ligacao("chapa_simples_alma", dict(pf, x_max=100), {"V": 50})
         self.assertNotIn("tipo_ligacao", sug)
         self.assertEqual((sug["a"], sug["e_h"]), (10 + 32, 32))
