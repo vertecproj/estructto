@@ -360,13 +360,111 @@ _ENT_PT = {
     "t_receptor": _sec(F._e("Parede do tubo", "mm", 9.5, mn=1, mx=100), "Tubo"),
     "theta": _sec(F._e("Ângulo perfil–tubo", "°", 90, mn=1, mx=90), "Tubo"),
     "giro": _sec(F._e("Giro do tubo (0 = plano h)", "°", 0, mn=-180, mx=180), "Tubo"),
-    "b_solda": F._e("Perna do filete", "mm", 5, mn=2, mx=30),
+    "N_receptor": _sec(F._e("Tubo: N no nó (+tração)", "kN", 0, mn=-1e5, mx=1e5), "Tubo"),
+    "M_receptor": _sec(F._e("Tubo: M no nó", "kN·m", 0, mn=-1e4, mx=1e4), "Tubo"),
+    "b_solda": F._e("Perna do filete", "mm", 8, mn=2, mx=30),
     "eletrodo": F._e("Eletrodo", "-", "E70", list(L.ELETRODOS)),
     "aco_ramal": F._e("Aço do perfil", "-", "A-572 GR.50", F._ACOS),
     "aco_receptor": F._e("Aço do tubo", "-", "A-572 GR.50", F._ACOS),
 }
-# padrão de fábrica: W310 (padrões acima) na parede do tubo 323,8 × 9,5 com cortante e momento moderados
-_EXEMPLO_PT = dict(esforcos=dict(N=0.0, V=60.0, Vz=0.0, M=15.0, Mz=0.0, T=0.0))
+# W8 (docs/v3/W8-TUBO.md): padrão de fábrica = viga W310×38,7 de 6 m com ligação rígida num pilar Ø323,8 × 9,5:
+# V = 60 kN e M = 40 kN·m (ELU; ~ q·L²/12 com q ≈ 13 kN/m), sem esforço no pilar; a perna sai do sugerir (6 mm)
+_EXEMPLO_PT = dict(esforcos=dict(N=0.0, V=60.0, Vz=0.0, M=40.0, Mz=0.0, T=0.0))
+GM5 = 1.00        # EN 1993-1-8 2.2 (recomendado); = forma da NBR 16239 (coeficientes × 1,10 com γa1 = 1,10)
+_GIRO_TOL = math.sin(math.radians(10))   # perfil "alinhado" ao eixo do tubo (giro 0/180) ou atravessado (±90) até 10°
+
+
+def _retangulos(p):
+    """Chapas da seção do perfil (m) como retângulos (yb0, yb1, zh0, zh1), no referencial de pontas.contorno (raios
+    ignorados); tubo circular: []."""
+    h, b, tw, tf, f = p["h"], p["b"], p["tw"], p["tf"], p["tipo"]
+    if f == "retangular":
+        return [(-b / 2, b / 2, -h / 2, h / 2)]
+    if f == "tubo_retangular":
+        return [(-b / 2, b / 2, h / 2 - tw, h / 2), (-b / 2, b / 2, -h / 2, -h / 2 + tw),
+                (-b / 2, -b / 2 + tw, -h / 2 + tw, h / 2 - tw), (b / 2 - tw, b / 2, -h / 2 + tw, h / 2 - tw)]
+    if f in ("I", "H", "U"):
+        y0 = -b / 2 if f == "U" else -tw / 2   # U: alma em yb = −b/2 (pontas.contorno)
+        return [(-b / 2, b / 2, h / 2 - tf, h / 2), (-b / 2, b / 2, -h / 2, -h / 2 + tf), (y0, y0 + tw, -h / 2 + tf, h / 2 - tf)]
+    return []
+
+
+def _props_ret(rets):
+    """A, Wy (eixo forte, flexão no plano de h) e Wz (fraco) da seção feita de retângulos (m², m³)."""
+    a = [(y1 - y0) * (z1 - z0) for y0, y1, z0, z1 in rets]
+    A = sum(a)
+    cy = sum(ai * (r[0] + r[1]) / 2 for ai, r in zip(a, rets)) / A
+    cz = sum(ai * (r[2] + r[3]) / 2 for ai, r in zip(a, rets)) / A
+    Iy = sum((r[1] - r[0]) * (r[3] - r[2]) ** 3 / 12 + ai * ((r[2] + r[3]) / 2 - cz) ** 2 for ai, r in zip(a, rets))
+    Iz = sum((r[3] - r[2]) * (r[1] - r[0]) ** 3 / 12 + ai * ((r[0] + r[1]) / 2 - cy) ** 2 for ai, r in zip(a, rets))
+    zm = max(max(abs(r[2] - cz), abs(r[3] - cz)) for r in rets)
+    ym = max(max(abs(r[0] - cy), abs(r[1] - cy)) for r in rets)
+    return dict(A=A, Wy=Iy / zm, Wz=Iz / ym)
+
+
+def no_perfil_chs(caso, d0, t0, fy0, b1, h1, kp_=1.0):
+    """Resistências do nó T de chapa, I/H ou tubo retangular soldado num tubo circular (kN, kN·m; entradas m, kN/m²),
+    EN 1993-1-8:2005 tabelas 7.3 e 7.4, γM5 = 1,0; β = b1/d0, η = h1/d0 (h1 ao longo do eixo do tubo, b1 atravessado):
+      "chapa_transversal": N = kp·fy0·t0²·(4 + 20β²); Mip = 0; Mop = 0,5·b1·N   (7.3, 1ª linha)
+      "chapa_longitudinal": N = 5·kp·fy0·t0²·(1 + 0,25η); Mip = h1·N; Mop = 0   (7.3, 3ª linha)
+      "I": N = kp·fy0·t0²·(4 + 20β²)·(1 + 0,25η); Mip = h1·N/(1 + 0,25η); Mop = 0,5·b1·N   (7.4, 1ª linha)
+      "tubo_retangular": N igual ao I; Mip = h1·N; Mop = 0,5·b1·N   (7.4, 3ª linha)
+    Conferência à mão: test_ligacoes_tubos.TestPerfilTubo.test_parede_conta_a_mao."""
+    b, e = b1 / d0, h1 / d0
+    f = kp_ * fy0 * t0 * t0 / GM5
+    if caso == "chapa_transversal":
+        N = f * (4 + 20 * b * b)
+        return dict(beta=b, eta=e, N=N, Mip=0.0, Mop=0.5 * b1 * N)
+    if caso == "chapa_longitudinal":
+        N = 5 * f * (1 + 0.25 * e)
+        return dict(beta=b, eta=e, N=N, Mip=h1 * N, Mop=0.0)
+    N = f * (4 + 20 * b * b) * (1 + 0.25 * e)
+    return dict(beta=b, eta=e, N=N, Mip=h1 * N / (1 + 0.25 * e) if caso == "I" else h1 * N, Mop=0.5 * b1 * N)
+
+
+def _densa(cont, passo=0.010):
+    """Contorno [(yb, zh)] com cada lado dividido em trechos ≤ passo (m): o cordão segue a sela entre os cantos."""
+    out = []
+    for k, p in enumerate(cont):
+        q = cont[(k + 1) % len(cont)]
+        n = max(1, math.ceil(math.dist(p, q) / passo))
+        out += [(p[0] + (q[0] - p[0]) * i / n, p[1] + (q[1] - p[1]) * i / n) for i in range(n)]
+    return out
+
+
+def _razao(sd, rd):
+    return sd / rd if rd > 0 else (F._INF if sd > 0 else 0.0)
+
+
+def _pecas(ramal, rec, rets, n=16):
+    """Chapas do perfil para o desenho (geometria.membros[viga].pecas, mm): cada retângulo da seção vira um prisma no
+    plano médio cuja borda da ponta segue a superfície do tubo (n + 1 pontos levados ao longo de x até o tubo, mesma
+    conta da solda), até 1,25·h além do contato mais distante."""
+    bordas = []
+    for y0, y1, z0, z1 in rets:
+        fino_y = y1 - y0 <= z1 - z0   # alma/parede lateral: espessura em y; mesa: em z
+        sec = ([((y0 + y1) / 2, z0 + (z1 - z0) * k / n) for k in range(n + 1)] if fino_y
+               else [(y0 + (y1 - y0) * k / n, (z0 + z1) / 2) for k in range(n + 1)])
+        pts, _ts, _b = P.contato_tubo(ramal, rec, sec)
+        bordas.append((pts, fino_y, (y1 - y0) if fino_y else (z1 - z0)))
+    h = ramal["perfil"]["h"]
+    xf = max(p[0] for pts, _f, _e in bordas for p in pts) + 1.25 * h
+    mm = lambda v: [round(x / MM, 3) for x in v]   # noqa: E731
+    return [dict(base=[mm(p) for p in pts] + [mm([xf, pts[-1][1], pts[-1][2]]), mm([xf, pts[0][1], pts[0][2]])],
+                 normal=[0.0, 1.0, 0.0] if fy else [0.0, 0.0, 1.0], espessura=round(e / MM, 3)) for pts, fy, e in bordas]
+
+
+def _pecas_rhs(rec, D, B, t, meio):
+    """Paredes do tubo retangular receptor (mm, plano médio) de −meio a +meio no eixo: o contrato `tubos` só tem tubo
+    circular, então o receptor retangular vai como chapas do membro (geometria.membros[pilar].pecas)."""
+    a, ed = rec["dir"], rec["eixo_d"]
+    lat = P._cross(a, ed)
+    q = lambda s, sd, sl: [round((s * a[i] + sd * ed[i] + sl * lat[i]) / MM, 3) for i in range(3)]   # noqa: E731
+    out = [dict(base=[q(-meio, sd, -B / 2), q(meio, sd, -B / 2), q(meio, sd, B / 2), q(-meio, sd, B / 2)],
+                normal=list(ed), espessura=t / MM) for sd in (D / 2 - t / 2, -D / 2 + t / 2)]
+    out += [dict(base=[q(-meio, -D / 2 + t, sl), q(meio, -D / 2 + t, sl), q(meio, D / 2 - t, sl), q(-meio, D / 2 - t, sl)],
+                 normal=list(lat), espessura=t / MM) for sl in (B / 2 - t / 2, -B / 2 + t / 2)]
+    return out
 
 
 def _linha_solda(cont):
@@ -390,7 +488,8 @@ def _verificar_pt(dados, esforcos):
     d = _ler_pt(dados)
     r = F._Col()
     e = dict(esforcos or {})
-    N = abs(float(e.get("N", 0.0) or 0.0))
+    Ns = float(e.get("N", 0.0) or 0.0)   # + tração
+    N = abs(Ns)
     V, Vb = abs(float(e.get("V", 0.0) or 0.0)), abs(float(e.get("Vz", 0.0) or 0.0))   # V no plano da alma (h), Vz na largura
     M, Mz = abs(float(e.get("M", 0.0) or 0.0)), abs(float(e.get("Mz", 0.0) or 0.0))  # M eixo forte, Mz eixo fraco
     T = abs(float(e.get("T", 0.0) or 0.0))
@@ -409,14 +508,26 @@ def _verificar_pt(dados, esforcos):
                eixo_d=[s, -c * math.sin(g), -c * math.cos(g)], continuo=True, comprimento=math.inf,
                perfil=dict(tipo=d["forma_receptor"], h=Dr, b=Br))
     vazio = dict(_VAZIO)
-    try:
-        pts, _ts, beta = P.contato_tubo(ramal, rec)
+    nome_b = "receptor: β = largura do perfil / largura do tubo ≤ 1 (geometria)"
+    try:   # W8: contorno com os lados subdivididos — só nos cantos, a corda da mesa ficava dentro do tubo (desenho)
+        pts, _ts, beta = P.contato_tubo(ramal, rec, _densa(P.contorno(perfil)))
     except ValueError as ex:
-        r.res("geometria: β = largura do perfil / largura do tubo ≤ 1", math.inf, 1.0, "-", "geometria")
+        r.res(nome_b, math.inf, 1.0, "-", "geometria")
         r.avisos.append(str(ex))
         return r.resultado(vazio)
     r.val.update(beta=beta)
-    r.res("geometria: β = largura do perfil / largura do tubo ≤ 1", beta, 1.0, "-", "geometria (perfil apoiado no tubo)")
+    r.res(nome_b, beta, 1.0, "-", "geometria (perfil apoiado no tubo)")
+    fyr, fur = F._aco(d["aco_ramal"])
+    fyc, fuc = F._aco(d["aco_receptor"])
+    t0 = d["t_receptor"]
+    if circ:
+        _parede_chs(r, d, perfil, Dr, t0, fyc, th, g, Ns, M, Mz)
+        if V or Vb:
+            r.avisos.append("cortante do perfil: passa pela solda (verificada); a EN 1993-1-8 7.4 não tem critério de V "
+                            "para a parede do tubo — o cisalhamento do tubo é verificação da barra")
+    else:
+        r.avisos.append("parede do tubo retangular (EN 1993-1-8 tabelas 7.13 e 7.14; NBR 16239) não verificada — "
+                        "conferir; só a solda, o metal base e β verificados")
     ls = _linha_solda(P.contorno(perfil))
     r.val.update(Lw_mm=ls["Lw"] / MM, W_forte_mm2=ls["I_forte"] / ls["zmax"] / 1e-6, W_fraco_mm2=ls["I_fraco"] / ls["ymax"] / 1e-6)
     # solda como linha (método elástico, mesmo critério de modulo_sela): normal = N/Lw + M/W_forte + Mz/W_fraco;
@@ -424,28 +535,135 @@ def _verificar_pt(dados, esforcos):
     qn = N / ls["Lw"] + M * ls["zmax"] / ls["I_forte"] + Mz * ls["ymax"] / ls["I_fraco"]
     qv = math.hypot(V / ls["Lv_h"], Vb / ls["Lv_b"]) + T * ls["rmax"] / (ls["I_forte"] + ls["I_fraco"])
     q = math.hypot(qn, qv)
-    fyr, fur = F._aco(d["aco_ramal"])
-    fyc, fuc = F._aco(d["aco_receptor"])
     bs, fw = d["b_solda"], L.ELETRODOS[d["eletrodo"]] * F.MPa
     r.res("solda perfil–tubo (filete em todo o contorno)", q, L.resistencia_filete(bs, fw, fyr, fur)["FwRd"], "kN/m",
           "6.2.5 / tabela 8")
-    r.res("tubo: metal base junto à solda", q, L.resistencia_filete(bs, fw, fyc, fuc)["metal_base"], "kN/m",
+    r.res("receptor: metal base junto à solda", q, L.resistencia_filete(bs, fw, fyc, fuc)["metal_base"], "kN/m",
           "6.2.5 / tabela 8")
-    r.minimo("solda: dimensão mínima", L.filete_minimo(min(max(perfil["tw"], perfil["tf"]), d["t_receptor"])), bs,
+    r.minimo("solda: dimensão mínima", L.filete_minimo(min(max(perfil["tw"], perfil["tf"]), t0)), bs,
              "6.2.6.2.1 / tabela 10", "b_solda")
-    r.maximo("solda: dimensão máxima (chapa mais fina do perfil)", bs, L.filete_maximo(min(perfil["tw"], perfil["tf"])),
-             "6.2.6.2.2", "b_solda")
-    r.avisos.append("parede do tubo: plastificação, punção e cisalhamento (NBR 16239 / CIDECT) não verificados — "
-                    "conferir; só a solda, o metal base e β verificados")
+    # W8: sem perna máxima (6.2.6.2.2), como no tubo–tubo: a regra é do filete AO LONGO da borda de uma chapa (junta
+    # sobreposta); aqui a ponta das chapas do perfil encosta no tubo (junta em T)
+    if tubo_r:   # parede de perfil tubular: garganta da NBR 16239 6.1.5.7 (como no tubo–tubo)
+        _v(r, "solda: garganta ≥ k·t do perfil tubular (resistência da parede)", garganta_minima(perfil["tw"], fyr),
+           0.707 * bs, "mm", "NBR 16239 6.1.5.7", "sobe", "b_solda")
+    else:
+        r.avisos.append("solda: dimensionada pelos esforços (método elástico); a EN 1993-1-8 7.3.1(6) recomenda, "
+                        "normalmente, solda com a resistência da chapa do perfil (ex.: penetração total nas mesas)")
     tubos = []
-    if circ:   # contrato `tubos` só tem tubo circular: o receptor retangular (e o ramal não circular) ficam nos membros
-        tubos = tubos_geo(pts, rec["dir"], (Dr, d["t_receptor"], "D_receptor"),
+    if circ:   # contrato `tubos` só tem tubo circular: o receptor retangular vai como chapas do membro (pecas)
+        tubos = tubos_geo(pts, rec["dir"], (Dr, t0, "D_receptor"),
                           (perfil["h"], perfil["tw"], "h_ramal") if d["forma_ramal"] == "tubo_circular" else None)
-    geo = dict(vazio, membros=[dict(barra="viga", perfil=f"{d['forma_ramal']} {perfil['h'] / MM:g}×{perfil['b'] / MM:g}"),
-                               dict(barra="pilar", perfil=f"{d['forma_receptor']} {Dr / MM:g}", theta=d["theta"])],
+    rets = _retangulos(perfil)
+    viga = dict(barra="viga", perfil=f"{d['forma_ramal']} {perfil['h'] / MM:g}×{perfil['b'] / MM:g}", campo="h_ramal")
+    if rets:   # W8: perfil com a ponta na superfície do tubo (o desenho monta o I/U/caixão por estas chapas)
+        viga["pecas"] = _pecas(ramal, rec, rets)
+    pilar = dict(barra="pilar", perfil=f"{d['forma_receptor']} {Dr / MM:g}", theta=d["theta"], campo="D_receptor")
+    if not circ:
+        ts = [P._dot(p, rec["dir"]) for p in pts]
+        pilar["pecas"] = _pecas_rhs(rec, Dr, Br, t0, max(-min(ts), max(ts)) + Dr)
+    geo = dict(vazio, membros=[viga, pilar],
                soldas=[dict(tipo="filete", campo="b_solda", perna=bs / MM, pontos=[[x / MM for x in p] for p in pts + pts[:1]])],
                tubos=tubos, pontas=P.pontas_do_no([0.0, 0.0, 0.0], [ramal, rec], "solda_em_tubo"))
     return r.resultado(geo)
+
+
+def _parede_chs(r, d, perfil, d0, t0, fy0, th, g, Ns, M, Mz):
+    """Parede do tubo circular receptor (docs/v3/W8-TUBO.md). Chapa, I/H/U e tubo retangular: EN 1993-1-8:2005
+    tabelas 7.1, 7.3 e 7.4 (no_perfil_chs) — validade d0/t0, β ≥ 0,4, η ≤ 4, θ ≥ 30°; kp com N e M do tubo no nó;
+    plastificação da face com a componente de N normal ao tubo (N·sen θ); punção σmax·t1 ≤ 2·t0·(0,66·fy0/γa1)
+    (t0·… no tubo retangular e no I com η > 2 sob compressão ou Mop); interação N + M (7.4.2). Giro (h ao longo do eixo do
+    tubo, ou atravessado) até 10°; fora disso a tabela não cobre (aviso). Tubo circular: no_tubular (NBR 16239)."""
+    f, h, b = perfil["tipo"], perfil["h"], perfil["b"]
+    N = abs(Ns)
+    lon, tra = abs(math.sin(g)) < _GIRO_TOL, abs(math.cos(g)) < _GIRO_TOL   # h ao longo do eixo do tubo / atravessado
+    _faixa(r, "receptor: d0/t0 (10 a 50)", d0 / t0, 10.0, 50.0, "EN 1993-1-8 tabela 7.1 (NBR 16239 6.2.1)")
+    _faixa(r, "ramal: ângulo θ ≥ 30°", d["theta"], 30.0, None, "EN 1993-1-8 tabela 7.1")
+    p0 = props_tubo(d0, t0)
+    N0, M0 = d["N_receptor"], d["M_receptor"]
+    np_ = min(0.0, N0 / p0["A"] - abs(M0) / p0["W"]) / fy0
+    k = kp(np_)
+    r.val.update(np=np_, kp=k)
+    if N0 or M0:
+        _v(r, "receptor: tensão no nó |σ0| ≤ fy0/γa1", (abs(N0) / p0["A"] + abs(M0) / p0["W"]) / F.MPa,
+           fy0 / GA1 / F.MPa, "MPa", "NBR 8800 5.5.1.2 (seção do receptor)")
+    else:
+        r.avisos.append("tubo sem esforços no nó (N e M do tubo = 0): kp = 1 — informe a compressão do tubo, que reduz a "
+                        "resistência da parede (função kp)")
+    if f == "tubo_circular":   # tubo no tubo: o nó T/Y da NBR 16239 (mesmo cálculo do tubo_tubo_soldado)
+        d1 = h
+        _faixa(r, "ramal: β = d1/d0 (0,2 a 1,0)", d1 / d0, 0.2, 1.0, _VAL)
+        _faixa(r, "ramal: d1/t1 (10 a 50)", d1 / perfil["tw"], 10.0, 50.0, _VAL)
+        no = no_tubular(d0, t0, d1, th, fy0, k)
+        _v(r, "receptor: plastificação da face (modo A)", N, no["N_A"], "kN", "NBR 16239 tabela 2 (modo A)")
+        if "N_D" in no:
+            _v(r, "receptor: punção da parede (modo D)", N, no["N_D"], "kN", "NBR 16239 tabela 2 (modo D)")
+        if M or Mz:   # sem sinal: limite superior das componentes no plano do nó / fora dele
+            mip, mop = M * abs(math.cos(g)) + Mz * abs(math.sin(g)), M * abs(math.sin(g)) + Mz * abs(math.cos(g))
+            NRd = min(no["N_A"], no.get("N_D", math.inf))
+            _v(r, "receptor: interação N + M no nó", N / NRd + (mip / min(no["Mip_A"], no.get("Mip_D", math.inf))) ** 2
+               + mop / min(no["Mop_A"], no.get("Mop_D", math.inf)), 1.0, "-", "NBR 16239 tabela 4 (EN 1993-1-8 7.4.2)")
+        return
+    if f in ("I", "H", "U") and lon:
+        caso, h1, b1, mip, mop, t1 = "I", h, b, M, Mz, perfil["tf"]
+        if f == "U":
+            r.avisos.append("perfil U tratado como I (EN 1993-1-8 tabela 7.4 é de I, H e tubo retangular)")
+    elif f == "tubo_retangular" and (lon or tra):
+        caso, t1 = "tubo_retangular", perfil["tw"]
+        h1, b1, mip, mop = (h, b, M, Mz) if lon else (b, h, Mz, M)
+    elif f == "retangular" and (lon or tra):   # chapa: espessura b; h ao longo do tubo (longitudinal) ou atravessado
+        caso, t1 = ("chapa_longitudinal" if lon else "chapa_transversal"), b
+        h1, b1, mip, mop = (h, b, M, Mz) if lon else (b, h, Mz, M)
+    else:
+        r.avisos.append(f"parede do tubo não verificada: perfil {f} com giro {d['giro']:g}° fora das tabelas 7.3/7.4 da "
+                        "EN 1993-1-8 (I/H: alma no plano do eixo do tubo, giro 0° ou 180°; chapa e tubo retangular: "
+                        "0°, 90° ou 180°) — conferir")
+        return
+    tab = "EN 1993-1-8 tabela " + ("7.3" if caso.startswith("chapa") else "7.4")
+    res = no_perfil_chs(caso, d0, t0, fy0, b1, h1, k)
+    r.val.update(eta=res["eta"], N1_Rd_kN=res["N"], Mip_Rd=res["Mip"], Mop_Rd=res["Mop"])
+    if caso != "chapa_longitudinal":
+        _faixa(r, "receptor: β = b1/d0 ≥ 0,4", res["beta"], 0.4, None, tab)
+    if caso != "chapa_transversal":
+        _faixa(r, "receptor: η = h1/d0 ≤ 4", res["eta"], None, 4.0, tab)
+    if d["theta"] < 89.9:
+        r.avisos.append("θ < 90°: as tabelas 7.3/7.4 são de nó T; usada a componente de N normal ao tubo (N·sen θ) e "
+                        "η = h1/d0 (sem o alongamento da sela) — conferir")
+    Nn = N * math.sin(th)
+    _v(r, "receptor: plastificação da face (N·sen θ ≤ N1,Rd)", Nn, res["N"], "kN", tab + " (plastificação da face)")
+    sp = _props_ret(_retangulos(perfil))
+    sig = N / sp["A"] + M / sp["Wy"] + Mz / sp["Wz"]
+    fat = 1.0 if caso == "tubo_retangular" or (caso == "I" and res["eta"] > 2 and (Ns < 0 or mop > 0)) else 2.0
+    r.val.update(sigma_max_MPa=sig / F.MPa)
+    _v(r, "receptor: punção da parede (σmax·t1)", sig * t1, fat * t0 * 0.66 * fy0 / GA1, "kN/m",
+       tab + " (punção; 0,66·fy0/γa1 da NBR 16239)")
+    if M or Mz:
+        sem = [(k_, x) for k_, x in (("Mip", mip), ("Mop", mop)) if x > 0 and res[k_] <= 0]
+        for k_, x in sem:   # chapa: a tabela 7.3 dá Mip,Rd = 0 (transversal) ou Mop,Rd = 0 (longitudinal)
+            r.v.append(dict(nome=f"receptor: {k_} numa {caso.replace('_', ' ')} ({k_},Rd = 0)", item=tab, solicitante=x,
+                            resistente=0.0, unidade="kN·m", taxa=F._INF, ok=False))
+        if not sem:
+            _v(r, "receptor: interação N + M no nó", _razao(Nn, res["N"]) + _razao(mip, res["Mip"]) ** 2
+               + _razao(mop, res["Mop"]), 1.0, "-", "EN 1993-1-8 7.4.2 (7.3)")
+
+
+def _sugerir_pt(perfis, esforcos):
+    """Mantém perfil e tubo (vêm do modelo) e escolhe a menor perna comercial ACIMA da mínima da tabela 10 que passa
+    nas verificações da solda (W8: a perna igual à mínima deixava o padrão "no limite" 100 % só pela disposição
+    construtiva); a mínima só se nenhuma maior passar; nenhuma passa → a maior da lista."""
+    base = {k: v for k, v in dict(perfis or {}).items() if k in _ENT_PT}
+    try:
+        r0 = _verificar_pt(base, esforcos)
+    except ValueError:
+        return base
+    bmin = next((v["solicitante"] for v in r0["verificacoes"] if v["nome"] == "solda: dimensão mínima"), None)
+    if bmin is None:   # perfil não cabe no tubo: nada a escolher
+        return base
+    for b in [x for x in L._B_MM if x > bmin + 1e-9] + [bmin]:
+        res = _verificar_pt(dict(base, b_solda=b), esforcos)
+        if all(x["ok"] for x in res["verificacoes"] if x["nome"].startswith(("solda", "receptor: metal base"))):
+            return dict(base, b_solda=b)
+    return dict(base, b_solda=L._B_MM[-1])
 
 
 def _ler_pt(dados):
@@ -464,8 +682,8 @@ TIPOS = {
         esforcos=["N", "V", "Vz", "M", "Mz", "T"],
         descricao="Perfil I/H, U, tubo ou barra retangular encostado num tubo (redondo: ponta em boca de peixe; "
                   "retangular: corte na face) com filete em todo o contorno de contato. Solda pela NBR 8800 6.2.5; "
-                  "parede do tubo (NBR 16239) não verificada.",
-        verificar=_verificar_pt, exemplo=_EXEMPLO_PT,
-        sugerir=lambda perfis, esforcos: {k: v for k, v in dict(perfis or {}).items() if k in _ENT_PT}),
+                  "parede do tubo redondo pela EN 1993-1-8 tabelas 7.3/7.4 (plastificação da face, punção, N + M); "
+                  "tubo retangular: parede não verificada.",
+        verificar=_verificar_pt, exemplo=_EXEMPLO_PT, sugerir=_sugerir_pt),
 }
 L.registrar_pontas(TIPOS)

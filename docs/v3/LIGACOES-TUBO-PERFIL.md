@@ -49,10 +49,11 @@ já nasce com projeto e é dimensionado direto.
 | Solda | Filete em todo o contorno de contato. Solda tratada como linha no plano da seção do perfil (comprimento projetado, conservador). Normal: qn = N/Lw + M·z/I_forte + Mz·y/I_fraco. Cortante: qv = V/Lv_h ⊕ Vz/Lv_b + T·r/Ip, em que Lv = soma das projeções dos trechos na direção do cortante. Combinação: q = √(qn² + qv²) ≤ FwRd | NBR 8800 6.2.5 / tabela 8 (`ligacoes.resistencia_filete`). Método elástico da solda como linha, o mesmo critério de `modulo_sela`. Segmento reto: ∫y² ds = l(y1² + y1y2 + y2²)/3 |
 | Metal base do tubo | Junto à solda | NBR 8800 6.2.5 / tabela 8 |
 | Filete mínimo | Tabela 10, menor entre a chapa mais grossa do perfil e a parede do tubo | 6.2.6.2.1 |
-| Filete máximo | Chapa mais fina do perfil | 6.2.6.2.2 |
+| ~~Filete máximo~~ | W8: retirado (junta em T, como no tubo–tubo) | ~~6.2.6.2.2~~ |
+| Parede do tubo redondo | W8: plastificação da face, punção, N + M, validade — EN 1993-1-8 tabelas 7.3/7.4 | [W8-TUBO.md](W8-TUBO.md) |
 
-**Não verificado.** A parede do tubo (plastificação, punção e cisalhamento; NBR 16239 / CIDECT) não é verificada, porque
-o repositório não tem base para essas fórmulas. O resultado traz um aviso.
+**Não verificado.** Parede do tubo **retangular** (EN 1993-1-8 tabelas 7.13/7.14) e I com a alma atravessada no tubo
+redondo (giro 90°): aviso. Cisalhamento do tubo: verificação da barra.
 
 ## Contrato de geometria para o 3D (Render3D* é de outro agente)
 

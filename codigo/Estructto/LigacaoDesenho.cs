@@ -173,6 +173,17 @@ namespace NovoFtool
             double dv = D(viga, "d");
             foreach (var mb in Lista(g["membros"]))
             {
+                if (mb["pecas"] is JsonArray pcs)   // W8 (perfil_tubo_soldado): chapas do perfil prontas no motor (plano médio, ponta na sela)
+                {
+                    string gp = S(mb, "barra") == "viga" ? "viga" : "suporte";
+                    if (gp == "viga") r.NomeViga = S(mb, "perfil"); else r.NomeSuporte = S(mb, "perfil");
+                    foreach (var pc in pcs)
+                    {
+                        var bs = Lista(pc["base"]).OfType<JsonArray>().Select(P3).ToArray(); var n = V3(pc["normal"], new Vector3D(0, 0, 1)); double t = D(pc, "espessura");
+                        if (bs.Length >= 3 && n.Length > 1e-9 && Ok(t) && t > 0) { n.Normalize(); r.Pecas.Add(new Prisma { Base = bs, N = n, T = t, Camada = 0, Grupo = gp, Nome = S(mb, "perfil"), Falha = F(gp), Tag = S(mb, "campo") }); }
+                    }
+                    continue;
+                }
                 double d = D(mb, "d"), bf = D(mb, "bf"), tw = D(mb, "tw"), tf = D(mb, "tf");
                 if (!Ok(d) || !Ok(bf) || !Ok(tw) || !Ok(tf)) continue;
                 string papel = S(mb, "barra");
@@ -582,7 +593,9 @@ namespace NovoFtool
             // perfis, depois chapas e cantoneiras (as peças da ligação ficam por cima)
             foreach (var camada in new[] { 0, 1, 2 })
             {
-                if (camada == 1) foreach (var tb in g.Tubos.OrderBy(q => q.Grupo == "suporte" ? 0 : 1)) DesenharTubo(dc, tb, P, lw);   // tubos com os perfis
+                // tubos com os perfis; W8: o receptor antes dos perfis (o perfil que encosta nele fica na frente na lateral)
+                if (camada == 0) foreach (var tb in g.Tubos.Where(q => q.Grupo == "suporte")) DesenharTubo(dc, tb, P, lw);
+                if (camada == 1) foreach (var tb in g.Tubos.Where(q => q.Grupo != "suporte")) DesenharTubo(dc, tb, P, lw);
                 foreach (var pc in g.Pecas.Where(q => q.Camada == camada))
                 {
                     bool frente = Math.Abs(Vector3D.DotProduct(pc.N, F)) > 0.85;

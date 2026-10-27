@@ -238,14 +238,18 @@ class TestPerfilTubo(unittest.TestCase):
         self.assertAlmostEqual(v["solicitante"], q, places=6)
         self.assertAlmostEqual(v["resistente"], 0.6 * 0.707 * 5 * 485 / 1.35, places=3)
         self.assertTrue(r["ok"])
-        self.assertTrue(any("NBR 16239" in a for a in r["avisos"]))
+        # W8: a parede do tubo passou a ser verificada (EN 1993-1-8 tabela 7.4); antes o teste conferia o aviso
+        # "parede do tubo … (NBR 16239) não verificados", que saiu
+        self.assertTrue(any(v["nome"].startswith("receptor: plastificação") for v in r["verificacoes"]))
         g = r["geometria"]
         p = g["pontas"][0]
         # fundo da boca de peixe: canto da mesa (±82,5) no cilindro R = 161,9 → √(161,9² − 82,5²)
         self.assertAlmostEqual(p["plano"]["ponto"][0], math.sqrt(0.1619 ** 2 - 0.0825 ** 2), places=9)
         self.assertEqual([c["tipo"] for c in p["recortes"]], ["boca_peixe"])
         pts = g["soldas"][0]["pontos"]
-        self.assertEqual(len(pts), 13)   # 12 cantos + fecho
+        # W8: os 12 lados são subdivididos em trechos ≤ 10 mm (antes só os 12 cantos + fecho: a corda de cada mesa
+        # ficava dentro do tubo e o cordão sumia no 3D). Mesas 165 → 17, (165 − 5,8)/2 = 79,6 → 8, tf 9,7 → 1, alma 290,6 → 30
+        self.assertEqual(len(pts), 2 * 17 + 4 * 8 + 4 * 1 + 2 * 30 + 1)
         for x, y, z in pts:   # todos no cilindro (eixo z, raio 161,9 mm)
             self.assertAlmostEqual(math.hypot(x, y), 161.9, places=6)
 
