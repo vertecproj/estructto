@@ -565,18 +565,37 @@ namespace NovoFtool
         void CmdDisposicao() => ComEscolha("DISPOSIÇÃO DO PERFIL", "barra", (nn, bs) => AbrirDisposicao(bs));
 
         // Janela Disposição do perfil (v0.6 D2): giro e cardinal da 1ª barra como ponto de partida, aplicados a todas (um Ctrl+Z).
-        internal void AbrirDisposicao(List<string> bs)
+        internal void AbrirDisposicao(List<string> bs) => CriarDisposicao(bs)?.ShowDialog();
+
+        // W9: a janela também troca a seção pelo perfil duplo (ou de volta ao simples): a seção nova é calculada pelo motor sem
+        // mexer no modelo (POST /api/secao/previa) e entra no mesmo PUT das barras, então um Ctrl+Z desfaz tudo. O tipo da barra
+        // acompanha a seção (2U/2Ue dobrados com chapas = pff, NBR 14762; os demais = aço). UltimaDisposicao: testes/capturas.
+        internal Task UltimaDisposicao = Task.CompletedTask;
+        internal JanelaDisposicao CriarDisposicao(List<string> bs)
         {
-            var d0 = Esp; if (d0 == null || bs.Count == 0) return;
+            var d0 = Esp; if (d0 == null || bs.Count == 0) return null;
             var b0 = d0.Json["barras"]?[bs[0]];
-            if (b0 == null) return;
+            if (b0 == null) return null;
             double g0 = (double)(b0["rot"] ?? 0.0) * 180 / Math.PI;
             int c0 = b0["params"]?["cardinal"] is JsonValue cv && cv.TryGetValue(out int ci) ? ci : 5;
             bool e0 = b0["params"]?["espelho"] is JsonValue ev && ev.TryGetValue(out bool eb) && eb;
-            var j = new JanelaDisposicao(PerfilDaSecao((string)b0["secao"]), g0, c0, bs.Count, e0) { Owner = this };
-            j.Aplicar += (g, c, es) => _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Espelho(GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, bs, null, null, g, null), bs, c), bs, es)),
-                                                "Disposição em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + "): giro " + Num.Fmt(g, 1) + "°, cardinal " + c + (es ? ", espelhado." : "."));
-            j.ShowDialog();
+            string sec0 = (string)b0["secao"];
+            var j = new JanelaDisposicao(PerfilDaSecao(sec0), g0, c0, bs.Count, e0, sec0, d0.Json["secoes"]?[sec0]) { Owner = this };
+            j.Aplicar += (g, c, es) => UltimaDisposicao = Espacial(async d =>
+            {
+                string sec = j.NovaSecao;
+                JsonObject nova = sec != null && d.Json["secoes"]?[sec] == null ? await Composto.Calcular(j.SpecsNova) : null;
+                bool pff = sec != null && Composto.Pff((nova ?? d.Json["secoes"][sec])["props"]);
+                await d.Aplicar(m =>
+                {
+                    if (nova != null) m["secoes"][sec] = nova.DeepClone();
+                    if (sec != null)
+                        foreach (string id in bs)
+                            if (m["barras"][id] is JsonObject b && (string)b["tipo"] != "concreto") b["tipo"] = pff ? "pff" : "aco";
+                    return GeometriaEdicao.Espelho(GeometriaEdicao.Cardinal(GeometriaEdicao.Propriedades(m, Nada, bs, sec, null, g, null), bs, c), bs, es);
+                });
+            }, "Disposição em " + Pl.N(bs.Count, "barra", "barras") + " (" + Ids(bs) + "): " + (j.NovaSecao != null ? "seção " + j.NovaSecao + ", " : "") + "giro " + Num.Fmt(g, 1) + "°, cardinal " + c + (es ? ", espelhado." : "."));
+            return j;
         }
 
         // Desenhar › Configurações nas barras escolhidas: seção, material, giro e cardinal de uma vez (um Ctrl+Z).

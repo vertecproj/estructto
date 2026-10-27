@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from prossen_estrutural import importar_cype as ic, materiais, secoes
-from prossen_estrutural.aco import nbr8800
+from prossen_estrutural.aco import nbr8800, nbr14762
 
 UPN160 = dict(h=0.160, b=0.065, tw=0.0075, tf=0.0105)
 A36 = materiais.aco("A-36")  # fy 250 MPa, E 200 GPa
@@ -227,6 +227,117 @@ class TestCompostasV06(unittest.TestCase):
         with self.assertRaises(ValueError):
             secoes.secao_de_spec({"forma": "dupla", "base": {"forma": "U", "h": 0.2, "b": 0.075, "tw": 0.0085,
                                   "tf": 0.0115}, "arranjo": "cruz"})
+
+
+class TestCompostasPFF(unittest.TestCase):
+    """W9: 2U simples e 2Ue formados a frio (secao_U_pf / secao_Ue). Contas à mão (mm), cantos vivos (ri = 0):
+    U 150x50x3 pela linha média: alma 147·3 = 441 em x = 0; mesas 2·48,5·3 = 291 com centro em x = 24,25
+      → A1 = 732; xg = 291·24,25/732 = 9,640 da linha média da alma = 11,140 das costas.
+    Caixão (abas para dentro), s = 20: costas a ±(2·50 + 20)/2 = ±60 → d = 60 − 11,140 = 48,860.
+    Costas com costas, s = 10: d = 5 + 11,140 = 16,140. Iy = 2·(Iy1 + A1·d²) (Steiner), A = 2·A1, Ix = 2·Ix1.
+    Caixão soldado s = 0 com ri = t: tubo 150 × 100 × 3 de cantos externos r = 2t; A = 2·A1 (os 4 cantos do tubo
+    são os cantos alma-mesa dos dois U)."""
+
+    def u(self, ri=0.0):
+        return secoes.secao_U_pf(0.150, 0.050, 0.003, nome="U 150x50x3,00", ri=ri)
+
+    def test_steiner_a_mao(self):
+        u = self.u()
+        self.assertAlmostEqual(u.A * 1e6, 732.0, places=6)
+        self.assertAlmostEqual(u.props["xg"] * 1e3, 291 * 24.25 / 732, places=6)
+        for arr, s, d in (("caixao", 0.020, 60 - 11.1404), ("I", 0.010, 5 + 11.1404)):
+            c = secoes.secao_dupla(u, arr, "presilhas", s=s, l_ligacoes=0.5, chapas_espacadoras=True)
+            self.assertEqual(c.props["tipo"], "dupla")
+            self.assertAlmostEqual(c.A, 2 * u.A, places=12)
+            self.assertAlmostEqual(c.props["Ix"], 2 * u.props["Ix"], places=14)
+            self.assertAlmostEqual(c.props["Iy"] * 1e12, 2 * (u.props["Iy"] * 1e12 + 732 * d * d), delta=50)
+            self.assertEqual(c.props["composicao"]["componente"]["forma"], "U_pf")
+
+    def test_componente_ida_e_volta(self):
+        for base in (secoes.catalogo("U 150x50x3,00"), secoes.catalogo("Ue 150x60x20x2,00")):
+            c = secoes.secao_dupla(base, "I", "presilhas", s=0.01, l_ligacoes=0.5, chapas_espacadoras=True)
+            iso = nbr14762._componente(c)
+            self.assertAlmostEqual(iso.A, base.A, places=14)
+            self.assertAlmostEqual(iso.props["Cw"], base.props["Cw"], places=20)
+
+    def test_caixao_soldado_vira_tubo_com_a_area_dos_dois(self):
+        u = self.u(ri=0.003)
+        c = secoes.secao_dupla(u, "caixao", "soldada")
+        self.assertEqual(c.props["tipo"], "tubo_retangular")
+        self.assertAlmostEqual(c.props["b"], 0.100)
+        self.assertAlmostEqual(c.A, 2 * u.A, delta=0.002 * u.A)
+        # costas com costas soldado segue aberto (NBR 14762), 9.7.5 dispensado pela solda contínua
+        i = secoes.secao_dupla(u, "I", "soldada")
+        self.assertEqual(i.props["tipo"], "dupla")
+        r = nbr14762.compressao(i, A36, 3.0, 3.0, 3.0)
+        self.assertIn("dispensa", r["composta"])
+
+    def test_verificacao_14762(self):
+        u = secoes.catalogo("Ue 150x60x20x2,00")
+        c = secoes.secao_dupla(u, "I", "presilhas", s=0.01, l_ligacoes=0.5, chapas_espacadoras=True)
+        fx, fu = nbr14762.flexao_x(c, A36, 2.0), nbr14762.flexao_x(u, A36, 2.0)
+        self.assertAlmostEqual(fx["MRd"], 2 * fu["MRd"])
+        self.assertAlmostEqual(nbr14762.cortante(c, A36)["VRd"], 2 * nbr14762.cortante(u, A36)["VRd"])
+        # compressão: χ do conjunto (Ne global) com Aef de cada perfil a σ = χ·fy
+        r = nbr14762.compressao(c, A36, 3.0, 3.0, 3.0)
+        Aef_l, A_l, _, _ = nbr14762._area_efetiva(u.props, A36.E, r["chi"] * A36.fy)
+        self.assertAlmostEqual(r["NcRd"], r["chi"] * 2 * u.A * Aef_l / A_l * A36.fy / 1.20, places=6)
+        self.assertLess(r["composta"]["l_ri"], r["composta"]["KL_r_conjunto"] / 2)
+        ok = nbr14762.verificar_pff(c, A36, [dict(N=-20.0, Mx=2.0, Vy=2.0)], 3.0, 3.0, 3.0, 3.0)
+        self.assertTrue(ok["ok"], ok)
+        self.assertEqual(ok["detalhes"]["compressao"]["item"], "9.7.2 / 9.7.5")
+
+    def test_presilhas_longe_sem_l_e_my_reprovam(self):
+        u = secoes.catalogo("U 150x50x3,00")
+        for c in (secoes.secao_dupla(u, "I", "presilhas", s=0.01, l_ligacoes=2.0, chapas_espacadoras=True),
+                  secoes.secao_dupla(u, "I", "presilhas", s=0.01, chapas_espacadoras=True)):
+            v = nbr14762.verificar_pff(c, A36, [dict(N=-5.0)], 3.0, 3.0, 3.0, 3.0)
+            self.assertFalse(v["ok"])
+            self.assertEqual(v["criterio"], "nao_verificado")
+        c = secoes.secao_dupla(u, "I", "presilhas", s=0.01, l_ligacoes=0.5, chapas_espacadoras=True)
+        v = nbr14762.verificar_pff(c, A36, [dict(My=0.5)], 3.0, 3.0, 3.0, 3.0)
+        self.assertEqual(v["criterio"], "nao_verificado")
+        v = nbr14762.verificar_pff(c, A36, [dict(Mx=0.5, My=1e-12)], 3.0, 3.0, 3.0, 3.0)   # ruído não reprova
+        self.assertTrue(v["ok"])
+
+    def test_portico_salva_reabre_e_calcula(self):
+        """Pilares 2U caixão soldado (tubo, NBR 8800) e viga 2Ue costas com chapas (NBR 14762): o .pstr guarda a
+        composição, reabre igual e o cálculo verifica as duas."""
+        import tempfile
+        from prossen_estrutural import projeto as P
+        eng = [True, True, True, True, True, True]
+        m = P.novo_modelo("compostos")
+        pil = {"forma": "dupla", "base": {"perfil": "U 150x50x3,00"}, "arranjo": "caixao", "ligacao": "soldada",
+               "s": 0, "nome": "2U 150x50x3,00 caixao"}
+        vig = {"forma": "dupla", "base": {"perfil": "Ue 150x60x20x2,00"}, "arranjo": "I", "ligacao": "presilhas",
+               "s": 0.01, "l_ligacoes": 0.4, "chapas_espacadoras": True, "nome": "2Ue 150x60x20x2,00 costas"}
+        P.adicionar_lote(m, [
+            {"tipo": "material", "dados": {"aco": "A-36"}},
+            {"tipo": "secao", "dados": pil}, {"tipo": "secao", "dados": vig},
+            {"tipo": "no", "dados": {"id": "n1", "x": 0, "y": 0, "z": 0, "apoio": eng}},
+            {"tipo": "no", "dados": {"id": "n2", "x": 0, "y": 0, "z": 3}},
+            {"tipo": "no", "dados": {"id": "n3", "x": 4, "y": 0, "z": 3}},
+            {"tipo": "no", "dados": {"id": "n4", "x": 4, "y": 0, "z": 0, "apoio": eng}},
+            {"tipo": "barra", "dados": {"id": "b1", "ni": "n1", "nj": "n2", "secao": pil["nome"], "material": "A-36"}},
+            {"tipo": "barra", "dados": {"id": "b2", "ni": "n2", "nj": "n3", "secao": vig["nome"], "material": "A-36"}},
+            {"tipo": "barra", "dados": {"id": "b3", "ni": "n4", "nj": "n3", "secao": pil["nome"], "material": "A-36"}},
+            {"tipo": "caso", "dados": {"nome": "G1", "tipo": "G"}},
+            {"tipo": "carga_distribuida", "dados": {"caso": "G1", "barra": "b2", "q": [0, 0, -1.0]}},
+        ])
+        self.assertEqual((m.barras["b1"].tipo, m.barras["b2"].tipo), ("aco", "pff"))
+        with tempfile.TemporaryDirectory() as t:
+            cam = os.path.join(t, "comp.pstr")
+            P.salvar(m, cam)
+            m2 = P.carregar(cam)
+        self.assertEqual(m2.secoes[vig["nome"]].props["composicao"], m.secoes[vig["nome"]].props["composicao"])
+        self.assertEqual(m2.barras["b2"].tipo, "pff")
+        self.assertFalse([e for e in P.validar(m2) if e["codigo"] == "secao_incompativel"])
+        linhas = {l["barra"]: l for l in P.verificacao(P.calcular(m2))}
+        self.assertIn("8800", linhas["b1"]["norma"])
+        self.assertIn("14762", linhas["b2"]["norma"])
+        for b in ("b1", "b2", "b3"):
+            self.assertIsNotNone(linhas[b]["taxa"], linhas[b])
+            self.assertTrue(linhas[b]["ok"], linhas[b])
 
 
 class TestPainel(unittest.TestCase):

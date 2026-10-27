@@ -323,7 +323,7 @@ LIGACOES = ("soldada", "presilhas", "generica")
 
 
 def secao_dupla(comp, arranjo, ligacao, s=0.0, nome=None, l_ligacoes=None, chapas_espacadoras=False):
-    """Barra composta de dois perfis iguais `comp` (Secao de secao_U ou secao_cantoneira).
+    """Barra composta de dois perfis iguais `comp` (Secao de secao_U, secao_U_pf, secao_Ue, secao_cantoneira ou I).
     arranjo: 'caixao' (abas para dentro, unidas pelas pontas; afastamento s entre as pontas) ou 'I' (costas
     com costas, afastamento s entre as almas/abas). ligacao: 'soldada' (cordão contínuo), 'presilhas' (ou
     chapas espaçadoras: os perfis trabalham isolados entre ligações) ou 'generica' (desconhecida).
@@ -338,19 +338,36 @@ def secao_dupla(comp, arranjo, ligacao, s=0.0, nome=None, l_ligacoes=None, chapa
         raise ValueError("secao_dupla: afastamento s deve ser >= 0")
     p = comp.props
     forma = p["tipo"]
-    validos = {"U": ("caixao", "I"), "L": ("caixao", "I", "cruz"), "I": ("lado_a_lado",)}
-    if forma not in validos or (forma == "U" and "tw" not in p) or arranjo not in validos[forma]:
+    # W9: U simples e Ue formados a frio (secao_U_pf / secao_Ue: espessura única t, linha média, xg da linha média da alma)
+    pff = forma == "Ue" or (forma == "U" and "tw" not in p)
+    validos = {"U": ("caixao", "I"), "Ue": ("caixao", "I"), "L": ("caixao", "I", "cruz"), "I": ("lado_a_lado",)}
+    if forma not in validos or arranjo not in validos[forma]:
         raise ValueError(f"secao_dupla: componente '{forma}' com arranjo '{arranjo}' não suportado "
-                         f"(U: caixao/I; L: caixao/I/cruz; I: lado_a_lado)")
-    comp_spec = ({"forma": forma, **{k: p[k] for k in ("h", "b", "tw", "tf")}} if forma in ("U", "I") else
-                 {"forma": "cantoneira", **{k: p[k] for k in ("b", "h", "t")}})
+                         f"(U/Ue: caixao/I; L: caixao/I/cruz; I: lado_a_lado)")
+    if pff:
+        comp_spec = {"forma": "Ue" if forma == "Ue" else "U_pf", **{k: p[k] for k in ("h", "b", "t")},
+                     "ri": p.get("ri", 0.0)}
+        if forma == "Ue":
+            comp_spec["D"] = p["D"]
+    else:
+        comp_spec = ({"forma": forma, **{k: p[k] for k in ("h", "b", "tw", "tf")}} if forma in ("U", "I") else
+                     {"forma": "cantoneira", **{k: p[k] for k in ("b", "h", "t")}})
     if forma == "I" and p.get("r"):
         comp_spec["r"] = p["r"]
     nome = nome or f"2{comp.nome} {arranjo} {ligacao}" + (f" s={s * 1e3:g}" if s else "")
     compos = dict(arranjo=arranjo, ligacao=ligacao, s=s, l_ligacoes=l_ligacoes, componente=comp_spec,
                   nome_componente=comp.nome, chapas_espacadoras=bool(chapas_espacadoras))
     unica = ligacao == "soldada" and s == 0
-    if forma == "U" and unica:
+    if pff and unica and arranjo == "caixao":
+        # 2U/2Ue formados a frio soldados boca a boca em toda a extensão = tubo h × 2b de parede t (cantos externos com
+        # raio ri + t: os cantos alma-mesa de cada U), como o 2L em caixão. Enrijecedores do Ue desprezados (a favor).
+        # Verificação pela NBR 8800 (tubo), como o metalon do catálogo. Costas com costas soldado segue aberto (abaixo,
+        # NBR 14762 com 9.7.5 dispensado). Ver docs/v3/W9-COMPOSTO.md.
+        h, b, t, ri = p["h"], p["b"], p["t"], p.get("ri", 0.0)
+        sec = secao_tubo_retangular(h, 2 * b, t, nome=nome, re=ri + t if ri > 0 else None)
+        sec.props["composicao"] = compos
+        return sec
+    if forma == "U" and unica and not pff:
         h, b, tw, tf = p["h"], p["b"], p["tw"], p["tf"]
         if arranjo == "I":
             sec = secao_I(h, 2 * b, 2 * tw, tf, nome=nome, soldado=False)
@@ -363,12 +380,13 @@ def secao_dupla(comp, arranjo, ligacao, s=0.0, nome=None, l_ligacoes=None, chapa
         sec.props["composicao"] = compos
         return sec
     A1 = comp.A
-    if forma == "U":
+    if forma in ("U", "Ue"):
         B = 2 * p["b"] + s
-        d = B / 2 - p["xg"] if arranjo == "caixao" else s / 2 + p["xg"]   # centroide de cada U ao eixo y
+        xc = p["xg"] + p["t"] / 2 if pff else p["xg"]   # centroide de cada U às costas da alma (PFF: xg é da linha média)
+        d = B / 2 - xc if arranjo == "caixao" else s / 2 + xc   # centroide de cada U ao eixo y
         ymax, x0, y0 = p["h"] / 2, 0.0, 0.0
         Zx, Zy = 2 * p["Zx"], 2 * A1 * d    # LN plástica no eixo de simetria: Z = 2·A₁·d
-        extra = dict(h=p["h"], b=B, tw=p["tw"], tf=p["tf"])
+        extra = dict(h=p["h"], b=B, t=p["t"]) if pff else dict(h=p["h"], b=B, tw=p["tw"], tf=p["tf"])
     elif forma == "I":  # lado a lado: centroides afastados (b + s)
         B = 2 * p["b"] + s
         d = (p["b"] + s) / 2

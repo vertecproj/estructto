@@ -1,9 +1,11 @@
 # Perfis compostos e disposição (v0.6 Frente D)
 
+W9: U e Ue dobrados, perfil duplo na janela Disposição do perfil e NBR 14762 em [W9-COMPOSTO.md](W9-COMPOSTO.md).
+
 ## Arranjos (`secoes.secao_dupla`, spec `{"forma": "dupla", "base": ..., "arranjo": ...}`)
 | arranjo | perfil base | forma |
 |---|---|---|
-| `caixao` | 2U (2L só soldado, s = 0) | abas para dentro, almas por fora (tubo) |
+| `caixao` | 2U, 2Ue (2L só soldado, s = 0) | abas para dentro, almas por fora (tubo) |
 | `I` | 2U, 2L | costas com costas: almas juntas (afastadas s), abas para fora (2U → I/W; 2L → T) |
 | `cruz` | 2L | estrela: quinas opostas, afastadas s nos dois sentidos |
 | `lado_a_lado` | 2I | mesas afastadas s |
