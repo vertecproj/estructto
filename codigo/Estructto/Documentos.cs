@@ -101,14 +101,14 @@ namespace NovoFtool
             for (int i = 0; i < docs.Count; i++)
             {
                 int k = i;
-                bool at = i == docAtivo;
+                bool at = i == docAtivo && LigacaoAtiva == null;   // aba de ligação na frente (LigacaoAbas.cs)
                 var sp = new StackPanel { Orientation = Orientation.Horizontal };
                 sp.Children.Add(new TextBlock { Text = docs[i].Nome + (docs[i].Alterado ? " *" : ""), Foreground = at ? TemaPlant.BTexto1 : TemaPlant.BTexto2, FontWeight = at ? FontWeights.SemiBold : FontWeights.Normal, VerticalAlignment = VerticalAlignment.Center });
                 var x = new Button { Content = "✕", Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = TemaPlant.BTexto2, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(4, 0, 4, 0), Cursor = Cursors.Hand, ToolTip = "Fecha esta aba de modelo (pergunta se deseja salvar caso haja alterações pendentes)." };
                 x.Click += (s, e) => { FecharDoc(k); e.Handled = true; };
                 sp.Children.Add(x);
                 var aba = new Border { Background = at ? TemaPlant.BSup1 : TemaPlant.BSup0, Padding = new Thickness(12, 0, 6, 0), Margin = new Thickness(0, 0, 1, 0), Child = sp, Cursor = Cursors.Hand, ToolTip = (docs[i].Arquivo ?? "Modelo sem título") + " — clique para alternar para este modelo; clique com o botão do meio para fechar." };
-                aba.MouseLeftButtonUp += (s, e) => TrocarDoc(k);
+                aba.MouseLeftButtonUp += (s, e) => { MostrarLigacao(null); TrocarDoc(k); };
                 aba.MouseDown += (s, e) => { if (e.ChangedButton == MouseButton.Middle) FecharDoc(k); };   // roda do mouse fecha, como no navegador
                 AbasDocs.Children.Add(aba);
             }

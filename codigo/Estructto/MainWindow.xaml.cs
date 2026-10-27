@@ -46,7 +46,7 @@ namespace NovoFtool
             TitleBarHeight = 32;                                       // linha do titulo do Plant 3D: 32 px
             // barra das abas de arquivo (a do AvalonDock fica escondida; ver EsconderAbaDocumento)
             ArqMenu.Click += (s, e) => Bastidor.IsOpen = true;
-            ArqInicio.Click += (s, e) => { MontarTelaInicial(); TelaInicial.Visibility = TelaInicial.Visibility == Visibility.Visible && M.Barras.Count > 0 ? Visibility.Collapsed : Visibility.Visible; };
+            ArqInicio.Click += (s, e) => { MostrarLigacao(null); MontarTelaInicial(); TelaInicial.Visibility = TelaInicial.Visibility == Visibility.Visible && M.Barras.Count > 0 ? Visibility.Collapsed : Visibility.Visible; };
             ArqNovo.Click += (s, e) => NovoProjeto();
             Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(EsconderAbaDocumento), System.Windows.Threading.DispatcherPriority.Loaded);
             var selo = TemaPlant.Selo(24);
