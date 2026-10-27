@@ -1,6 +1,12 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 27/10/2026 — v0.6.12 (relato do usuário: "clico para trocar o perfil, a janela abre e fecha"):
+  - Causa: o `SeletorPerfil` abria a lista no MouseDown. O MouseUp caía no botão, fora do popup, e o WPF tratava isso como clique fora e fechava a lista.
+  - Correção: abre no MouseUp, com o mouse capturado no botão. A abertura espera a soltura da captura, que também fechava a lista.
+  - O 1º clique antes de o catálogo chegar agora espera o catálogo e abre a lista já preenchida (antes abria vazia).
+  - Captura nova: clique real do mouse (`CliqueRealNoSeletor`). A contraprova com o código antigo reprova.
+  - UPN continua fora da lista nas ligações rígidas e emendas (G5).
 - 26/10/2026 — v0.6.11 (pedido do usuário: troca de perfil igual à do programa): o seletor do inspetor (botão com miniatura, busca, lista) virou o controle `SeletorPerfil` (`Inspector.cs`) e substitui o combo do projetista de ligações. Nas rígidas e emendas, a lista mostra só I/H (W, HP, IPE, HEA, HEB), porque o motor recusa U (G5). Capturas OK, incluindo a troca de perfil.
 - 26/10/2026 — v0.6.10 (pedido do usuário, caso `chapa_topo_estendida.pcon`, viga UPN 50 em pilar UPN 120):
   - Perfil U na chapa de topo continua recusado (G5). A mensagem agora indica solda direta ou ligação flexível.

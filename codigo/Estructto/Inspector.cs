@@ -587,7 +587,10 @@ namespace NovoFtool
             botao.MouseLeave += (s, e) => botao.BorderBrush = botao.IsKeyboardFocusWithin || pop.IsOpen ? TemaPlant.BBordaFoco : TemaPlant.BBordaSutil;
             botao.GotKeyboardFocus += (s, e) => botao.BorderBrush = TemaPlant.BBordaFoco;
             botao.LostKeyboardFocus += (s, e) => { if (!pop.IsOpen) botao.BorderBrush = TemaPlant.BBordaSutil; };
-            botao.MouseLeftButtonDown += (s, e) => { botao.Focus(); Abrir(); e.Handled = true; };
+            // abre ao SOLTAR: aberto no MouseDown, o MouseUp sobre o botão (fora do popup) contava como clique fora e fechava a lista (27/10/2026)
+            botao.MouseLeftButtonDown += (s, e) => { botao.Focus(); botao.CaptureMouse(); e.Handled = true; };
+            botao.MouseLeftButtonUp += (s, e) => { if (!botao.IsMouseCaptured) return; botao.ReleaseMouseCapture(); e.Handled = true;
+                Dispatcher.BeginInvoke(new Action(Abrir), System.Windows.Threading.DispatcherPriority.Input); };   // depois da soltura da captura, senão ela fecha o popup
             botao.KeyDown += (s, e) => { if (e.Key == Key.Enter || e.Key == Key.Space || e.Key == Key.Down) { Abrir(); e.Handled = true; } };
 
             busca = new TextBox { Height = 28, Margin = new Thickness(0, 0, 0, 4), VerticalContentAlignment = VerticalAlignment.Center };
@@ -637,7 +640,7 @@ namespace NovoFtool
             Children.Add(botao); Children.Add(pop);
         }
 
-        public FrameworkElement RetirarConteudo() { var c = (FrameworkElement)pop.Child; pop.Child = null; return c; }
+        public bool Aberto => pop.IsOpen;        public FrameworkElement RetirarConteudo() { var c = (FrameworkElement)pop.Child; pop.Child = null; return c; }
         public void DevolverConteudo(FrameworkElement c) { pop.Child = c; }
 
         public void Abrir()

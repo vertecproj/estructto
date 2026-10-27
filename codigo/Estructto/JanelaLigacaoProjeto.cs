@@ -993,7 +993,8 @@ namespace NovoFtool
             sel.Mostrar(atual);
             // catálogo vem do motor (assíncrono): carrega já; a abertura do seletor usa o que tiver chegado
             if (!Capturas.Ativo) _ = CarregarCatalogo();
-            sel.PreviewMouseLeftButtonDown += async (s, e) => { if (!Lista(catalogo).Any()) await CarregarCatalogo(); };
+            // 1º clique antes do catálogo chegar: espera e abre já com a lista (senão abria vazia)
+            sel.PreviewMouseLeftButtonUp += async (s, e) => { if (Lista(catalogo).Any()) return; e.Handled = true; await CarregarCatalogo(); sel.Abrir(); };
             return Dica(sel, dica + "\nPerfil do catálogo do motor (digite para filtrar).");
         }
 
@@ -1006,6 +1007,22 @@ namespace NovoFtool
             int n = PerfisDoTipo().Count();
             sel.Preparar(novo); sel.EscolherPrimeiro();
             return (n, S(dados[tipo], campo));
+        }
+
+        // capturas: clique REAL do mouse no seletor (janela na tela) e confere se a lista continua aberta depois de parar o mouse sobre ela
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern void mouse_event(uint f, int x, int y, uint d, UIntPtr e);
+        internal bool CliqueRealNoSeletor(string campo, Action esperar)
+        {
+            IEnumerable<DependencyObject> Filhos(DependencyObject o) { for (int i = 0; i < VisualTreeHelper.GetChildrenCount(o); i++) { var f = VisualTreeHelper.GetChild(o, i); yield return f; foreach (var x in Filhos(f)) yield return x; } }
+            var sel = Filhos(this).OfType<SeletorPerfil>().First(c => (c.Tag as string) == campo);
+            sel.BringIntoView(); esperar();
+            var p = sel.PointToScreen(new Point(sel.ActualWidth / 2, sel.ActualHeight / 2));
+            SetCursorPos((int)p.X, (int)p.Y); mouse_event(2, 0, 0, 0, UIntPtr.Zero); mouse_event(4, 0, 0, 0, UIntPtr.Zero);
+            for (int i = 0; i < 6; i++) { esperar(); System.Threading.Thread.Sleep(100); }
+            SetCursorPos((int)p.X, (int)p.Y + 120);   // mouse parado sobre a lista: a dica antiga aparecia aqui e fechava o popup
+            for (int i = 0; i < 15; i++) { esperar(); System.Threading.Thread.Sleep(100); }
+            return sel.Aberto;
         }
 
         Task cargaCatalogo;
@@ -1428,6 +1445,14 @@ namespace NovoFtool
                 var tp2 = j.TrocarPerfil("perfil_suporte", "W250x73"); Esperar(tp2); EsperarIdle(); var (n2, g2) = tp2.Result;
                 if (n1 < 50 || n2 < 50 || g1 != "W360x51" || g2 != "W250x73")
                     throw new InvalidOperationException($"projetista: troca de perfil no combo: itens {n1}/{n2}, gravado '{g1}'/'{g2}'");
+                {   // 27/10/2026: a lista do seletor abria e fechava sozinha (clique real, janela na tela)
+                    double l0 = j.Left, t0 = j.Top; j.Left = 0; j.Top = 0; j.Topmost = true; j.Activate(); EsperarIdle();
+                    bool aberto = j.CliqueRealNoSeletor("perfil_viga", EsperarIdle);
+                    bool ativa = j.IsActive;
+                    j.Topmost = false; j.Left = l0; j.Top = t0; EsperarIdle();
+
+                    if (!aberto) throw new InvalidOperationException("projetista: a lista de perfis fechou sozinha depois do clique; janela ativa: " + ativa);
+                }
                 j.DefinirEsforcos(new JsonObject { ["V"] = 100, ["N"] = 0 }); Esperar(j.CalcularAgora()); EsperarIdle();
                 var sd = j.Resultado?["geometria"]?["soldas"]?.AsArray();
                 if (sd == null || sd.Count != 1 || sd[0]["pontos"].AsArray().Count != 13)
