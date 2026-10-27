@@ -35,7 +35,7 @@ class TestFlexiveisU(unittest.TestCase):
     def test_shear_tab_upn(self):
         """UPN 120 (h 120, alma reta tabelada d = 82 mm, DIN 1026) na alma de W200, V = 45 kN (mínimo de 6.1.5.2,
         viga de piso, sem isenção). Chapa simples com 2 parafusos de 1/2" (o que cabe em 82 mm): o cisalhamento dos
-        parafusos reprova (grupo excêntrico). O sugerir troca para solda direta da alma, que passa."""
+        parafusos reprova (grupo excêntrico). O sugerir troca para solda direta, que passa."""
         pf = dict(perfil_viga="UPN 120", perfil_suporte="W 200 x 26,6", apoio="alma_viga")
         esf = {"V": 45.0}
         r = P.verificar_ligacao("chapa_simples_alma", F._sug_cs(pf, esf), esf)

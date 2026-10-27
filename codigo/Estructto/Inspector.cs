@@ -98,77 +98,82 @@ namespace NovoFtool
     }
 
     // ---------- miniatura vetorial da secao, desenhada pelos dados do perfil ----------
+    // A forma é a do motor (tipo de DesenhoSecaoForma: I, U, Ue, L, T, retangular, tubo_retangular, tubo_circular, circular), a mesma do desenho
+    // cotado do catálogo. O núcleo (Biblioteca) só conhece parte do catálogo do motor e com outro formato de nome ("W 250 x 73,0" x "W250x73"),
+    // então o que ele não acha é lido do nome do motor. Só nome livre ("A=.. I=..") e "(vários)" caem na reserva tracejada.
     public static class MiniaturaPerfil
     {
         static readonly Dictionary<string, ImageSource> cache = new Dictionary<string, ImageSource>();
+
+        // nome do motor -> forma; dims: true = "h x b x t" do nome (mm); false = proporção típica (b = h * bPorH)
+        static readonly (Regex rx, string tipo, double bPorH, bool dimsDoNome)[] Nomes =
+        {
+            (new Regex(@"^(W|HP|IPE|HE[ABM]?)\s*\d", RegexOptions.IgnoreCase), "I", 0.5, false),
+            (new Regex(@"^(TQ|TR)\s*\d|^Tubo\s*\d", RegexOptions.IgnoreCase), "tubo_retangular", 1, true),
+            (new Regex(@"^TC\s*\d|^Tubo\s*[\u00D8\u00F8\u2300]", RegexOptions.IgnoreCase), "tubo_circular", 1, true),
+            (new Regex(@"^Ue\s*\d", RegexOptions.IgnoreCase), "Ue", 0.5, true),
+            (new Regex(@"^UPN\s*\d", RegexOptions.IgnoreCase), "U", 0.4, false),
+            (new Regex(@"^U\s*\d", RegexOptions.IgnoreCase), "U", 0.4, true),     // U dobrado "U 50x25x2,00"; U laminado "U 3\" x 6,1" (sem dims: o 6,1 é kg/m)
+            (new Regex(@"^L\s*\d", RegexOptions.IgnoreCase), "L", 1, true),
+            (new Regex(@"^T\s*\d", RegexOptions.IgnoreCase), "T", 1, false),
+            (new Regex(@"^BC\s*\d", RegexOptions.IgnoreCase), "retangular", 0.25, false),
+        };
+
+        // (tipo, h, b, tw, tf) em mm; null = sem forma (reserva)
+        static (string tipo, double h, double b, double tw, double tf)? Resolver(string nome)
+        {
+            if (string.IsNullOrWhiteSpace(nome)) return null;
+            Secao s = null; try { s = Biblioteca.AcharSecao(nome); } catch { }
+            string t = s == null ? null : s.Forma == "I" ? "I" : s.Forma == "U" ? "U" : s.Forma == "L" ? "L" : s.Forma == "TR" ? "tubo_retangular" : s.Forma == "TC" ? "tubo_circular"
+                     : s.Forma == "RET" ? "retangular" : s.Forma == "CIRC" ? "circular" : null;
+            if (t != null && s.H > 0) return (t, s.H * 1000, s.Bf > 0 ? s.Bf * 1000 : s.H * 1000, s.Tw * 1000, s.Tf * 1000);
+            string n = nome.Trim();
+            foreach (var (rx, tipo, bPorH, dimsDoNome) in Nomes)
+            {
+                if (!rx.IsMatch(n)) continue;
+                var num = dimsDoNome && n.IndexOfAny(new[] { '"', '/' }) < 0
+                    ? Regex.Matches(n, @"\d+(?:[.,]\d+)?").Cast<Match>().Select(m => double.Parse(m.Value.Replace(',', '.'), CultureInfo.InvariantCulture)).ToList() : new List<double>();
+                double h = num.Count > 0 ? num[0] : 100, b = tipo == "tubo_circular" ? h : num.Count > 1 ? num[1] : h * bPorH;
+                double e = num.Count >= (tipo == "tubo_circular" ? 2 : 3) ? num[num.Count - 1] : 0;
+                return (tipo, h, b, e, e);
+            }
+            return null;
+        }
+
+        // forma de um nome (testes: nenhuma família do catálogo do motor pode cair na reserva = null)
+        public static string Tipo(string nome) => Resolver(nome)?.tipo;
 
         public static ImageSource Criar(string nome, double tam)
         {
             string chave = nome + "|" + tam;
             ImageSource r;
             if (cache.TryGetValue(chave, out r)) return r;
-            Secao s = null;
-            try { s = Biblioteca.AcharSecao(nome); } catch { }
-            r = Desenhar(s, tam);
+            r = Desenhar(nome, Resolver(nome), tam);
             cache[chave] = r;
             return r;
         }
 
-        static ImageSource Desenhar(Secao s, double tam)
+        static ImageSource Desenhar(string nome, (string tipo, double h, double b, double tw, double tf)? m, double tam)
         {
-            var corpo = TemaPlant.BTexto2;
             var grupo = new DrawingGroup();
-            var geo = new GeometryGroup { FillRule = FillRule.Nonzero };
-            Pen contorno = null;
-            double H = s != null && s.H > 0 ? s.H : 1, B = s != null && s.Bf > 0 ? s.Bf : H;
-            string forma = s != null ? s.Forma : "GEN";
-            double esc = (tam - 2) / Math.Max(H, B);
-            double h = H * esc, b = B * esc;
-            double x0 = (tam - b) / 2, y0 = (tam - h) / 2;
-            Func<double, double> esp = m => Math.Max(m * esc, 1.5);
-            double tw = s != null ? esp(s.Tw > 0 ? s.Tw : (s.Tf > 0 ? s.Tf : 0.004)) : 2, tf = s != null ? esp(s.Tf > 0 ? s.Tf : (s.Tw > 0 ? s.Tw : 0.004)) : 2;
-            switch (forma)
-            {
-                case "I":
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0, b, tf)));
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0 + h - tf, b, tf)));
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0 + (b - tw) / 2, y0, tw, h)));
-                    break;
-                case "U":
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0, tw, h)));
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0, b, tf)));
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0 + h - tf, b, tf)));
-                    break;
-                case "L":
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0, tw, h)));
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0 + h - tw, b, tw)));
-                    break;
-                case "TR":
-                    geo.FillRule = FillRule.EvenOdd;
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0, b, h), 1.5, 1.5));
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0 + tw, y0 + tw, Math.Max(b - 2 * tw, 0.5), Math.Max(h - 2 * tw, 0.5))));
-                    break;
-                case "TC":
-                    geo.FillRule = FillRule.EvenOdd;
-                    geo.Children.Add(new EllipseGeometry(new Rect(x0, y0, b, h)));
-                    geo.Children.Add(new EllipseGeometry(new Rect(x0 + tw, y0 + tw, Math.Max(b - 2 * tw, 0.5), Math.Max(h - 2 * tw, 0.5))));
-                    break;
-                case "RET":
-                    geo.Children.Add(new RectangleGeometry(new Rect(x0, y0, b, h)));
-                    break;
-                case "CIRC":
-                    geo.Children.Add(new EllipseGeometry(new Rect(x0, y0, b, h)));
-                    break;
-                default:
-                    double l = tam - 6;
-                    geo.Children.Add(new RectangleGeometry(new Rect(3, 3, l, l), 2, 2));
-                    contorno = new Pen(TemaPlant.BTexto3, 1.2) { DashStyle = DashStyles.Dash };
-                    contorno.Freeze();
-                    break;
-            }
-            geo.Freeze();
             grupo.Children.Add(new GeometryDrawing(new SolidColorBrush(Colors.Transparent), null, new RectangleGeometry(new Rect(0, 0, tam, tam))));
-            grupo.Children.Add(new GeometryDrawing(contorno == null ? corpo : null, contorno, geo));
+            if (m == null)
+            {
+                double l = tam - 6;
+                var pena = new Pen(TemaPlant.BTexto3, 1.2) { DashStyle = DashStyles.Dash };
+                pena.Freeze();
+                grupo.Children.Add(new GeometryDrawing(null, pena, new RectangleGeometry(new Rect(3, 3, l, l), 2, 2)));
+            }
+            else
+            {
+                var (tipo, h, b, tw, tf) = m.Value;
+                double esc = (tam - 2) / Math.Max(h, b), W = b * esc, H = h * esc;
+                double Tw = Math.Max(tw * esc, 1.5), Tf = Math.Max(tf * esc, 1.5);
+                Geometry geo = tipo == "circular" ? new EllipseGeometry(new Rect(0, 0, W, H)) : DesenhoSecaoForma.Forma(tipo, nome ?? "", W, H, Tw, Tf, Tw, esc);
+                var g = new DrawingGroup { Transform = new TranslateTransform((tam - W) / 2, (tam - H) / 2) };
+                g.Children.Add(new GeometryDrawing(TemaPlant.BTexto2, null, geo));
+                grupo.Children.Add(g);
+            }
             grupo.Freeze();
             var di = new DrawingImage(grupo);
             di.Freeze();
@@ -563,6 +568,7 @@ namespace NovoFtool
         public string RotuloContagem = " nesta família";
         readonly Border botao; readonly Image mini; readonly TextBlock nome; readonly Popup pop; readonly TextBox busca; readonly ListBox lista; readonly TextBlock contagem;
         List<string> todos = new List<string>();
+        int rolarPara;   // item que fica perto do topo quando a lista aparece (0 = topo)
 
         sealed class ConvMini : IValueConverter
         {
@@ -613,6 +619,7 @@ namespace NovoFtool
             fp.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
             fp.AppendChild(fi); fp.AppendChild(ft);
             lista.ItemTemplate = new DataTemplate { VisualTree = fp };
+            lista.Loaded += (s, e) => Rolar();   // o popup só mede a lista ao abrir
             lista.PreviewMouseLeftButtonUp += (s, e) =>
             {
                 var it = ItemsControl.ContainerFromElement(lista, e.OriginalSource as DependencyObject) as ListBoxItem;
@@ -640,6 +647,7 @@ namespace NovoFtool
             Children.Add(botao); Children.Add(pop);
         }
 
+        internal ListBox ListaInterna => lista; internal TextBox BuscaInterna => busca; internal void Fechar() => pop.IsOpen = false;   // testes (CapturasW7Ui)
         public bool Aberto => pop.IsOpen;        public FrameworkElement RetirarConteudo() { var c = (FrameworkElement)pop.Child; pop.Child = null; return c; }
         public void DevolverConteudo(FrameworkElement c) { pop.Child = c; }
 
@@ -649,7 +657,7 @@ namespace NovoFtool
             ((FrameworkElement)pop.Child).Width = Math.Max(280, botao.ActualWidth + 8);
             busca.Text = "";
             Filtrar();
-            if (atual() is string v) { lista.SelectedItem = v; if (lista.SelectedItem != null) lista.ScrollIntoView(lista.SelectedItem); }
+            if (atual() is string v) { lista.SelectedItem = v; rolarPara = Math.Max(0, lista.Items.IndexOf(v)); }
             pop.IsOpen = true;
             busca.Dispatcher.BeginInvoke(new Action(() => { busca.Focus(); Keyboard.Focus(busca); }), System.Windows.Threading.DispatcherPriority.Input);
         }
@@ -660,7 +668,31 @@ namespace NovoFtool
             ((FrameworkElement)pop.Child).Width = 296;
             busca.Text = textoBusca ?? "";
             Filtrar();
-            if (atual() is string v) lista.SelectedItem = v;
+            if (atual() is string v) { lista.SelectedItem = v; rolarPara = Math.Max(0, lista.Items.IndexOf(v)); }
+        }
+
+        // ListBox virtualizado (Recycling): ao trocar o ItemsSource o deslocamento antigo é só limitado ao novo fim (a lista "começava no fim"
+        // e, ao filtrar, ficava rolada) e o ScrollIntoView antes de o popup medir não faz nada. Por isso a posição é dada depois do layout,
+        // em unidades lógicas (1 = um item), por um único caminho: abrir (item atual perto do topo) e filtrar (topo).
+        void Rolar()
+        {
+            lista.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!lista.IsLoaded) return;   // ainda fechado: o Loaded da abertura chama de novo
+                lista.UpdateLayout();
+                Rolagem(lista)?.ScrollToVerticalOffset(Math.Max(0, rolarPara - 2));
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        static ScrollViewer Rolagem(DependencyObject o)
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(o); i++)
+            {
+                var f = VisualTreeHelper.GetChild(o, i);
+                var r = f as ScrollViewer ?? Rolagem(f);
+                if (r != null) return r;
+            }
+            return null;
         }
 
         public void Filtrar()
@@ -675,6 +707,7 @@ namespace NovoFtool
                 if (s != null) r.Insert(0, q);
             }
             lista.ItemsSource = r;
+            rolarPara = 0; Rolar();
             contagem.Text = r.Count + (r.Count == 1 ? " perfil" : " perfis") + (q.Length == 0 ? RotuloContagem : "");
             if (r.Count > 0 && q.Length > 0) lista.SelectedIndex = 0;
         }

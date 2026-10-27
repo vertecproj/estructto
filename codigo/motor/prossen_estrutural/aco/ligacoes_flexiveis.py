@@ -1350,12 +1350,12 @@ def _com_solda_direta(tipo, sug):
                 gv = _governa(TIPOS["solda_direta_alma"]["verificar"](dd, esforcos))
             except ValueError:
                 gv = "—"
-            alt["motivo"] = f"{ex}: solda direta da alma; governa: {gv}"
+            alt["motivo"] = f"{ex}: solda direta; governa: {gv}"
             return alt
         try:
             r1 = TIPOS[tipo]["verificar"](c, esforcos)
         except ValueError as ex:   # G6 r4: dados impossíveis (ex.: UPN 50: resistência ≤ 0) → solda direta
-            alt = solda(perfis, esforcos, f"{tipo} impossível ({ex}): solda direta da alma")
+            alt = solda(perfis, esforcos, f"{tipo} impossível ({ex}): solda direta")
             dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
             try:
                 return alt if TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)["ok"] else c
@@ -1367,7 +1367,7 @@ def _com_solda_direta(tipo, sug):
             dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
             r2 = TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)
             alt["motivo"] = (f"{tipo} não cabe na barra (precisa {cb['solicitante']:.0f} mm, disponível "
-                             f"{cb['resistente']:.0f} mm): solda direta da alma; governa: {_governa(r2)}")
+                             f"{cb['resistente']:.0f} mm): solda direta; governa: {_governa(r2)}")
             return alt if r2["ok"] else c
         try:
             if _perfil(_perfis_de(perfis)[0], "perfil_viga").get("forma") != "U" or r1["ok"]:
@@ -1375,7 +1375,7 @@ def _com_solda_direta(tipo, sug):
             alt = solda(perfis, esforcos, "")
             dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
             r2 = TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)
-            alt["motivo"] = (f"{tipo} não passa com viga U ({_governa(r1)}): solda direta da alma; "
+            alt["motivo"] = (f"{tipo} não passa com viga U ({_governa(r1)}): solda direta; "
                              f"governa: {_governa(r2)}")
             return alt if r2["ok"] else c
         except ValueError:
@@ -1447,7 +1447,7 @@ TIPOS = {
         descricao="Viga secundária na alma da principal, topos alinhados, recortes calculados (Gerdau 3.3), com "
                   "dupla cantoneira ou chapa simples; escoamento, flambagem local e rasgamento da viga recortada."),
     "solda_direta_alma": dict(
-        nome="Solda direta da alma", familia="flexivel", liga=_LIGA_VP, entradas=_ENT_SD, esforcos=["V", "N"],
+        nome="Solda direta", familia="flexivel", liga=_LIGA_VP, entradas=_ENT_SD, esforcos=["V", "N"],
         descricao="Viga soldada direto no apoio, sem chapa nem parafusos: dois filetes na alma e, com 'soldar as "
                   "mesas' (padrão no I), o contorno das mesas. NBR 8800 6.2.5 / tabela 10."),
 }

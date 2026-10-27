@@ -967,7 +967,7 @@ def _solda_direta_reserva(tipo, dados, esforcos):
     if not r2["ok"]:
         return None
     from .ligacoes_flexiveis import _governa
-    r2.update(tipo="solda_direta_alma", motivo=f"{tipo} sem solução com viga U: trocado por solda direta da alma; "
+    r2.update(tipo="solda_direta_alma", motivo=f"{tipo} sem solução com viga U: trocado por solda direta;"
                                                f"governa: {_governa(r2.get('resultado'))}")
     return r2
 
