@@ -750,18 +750,44 @@ namespace NovoFtool
                 }
                 // empate de furos: a chapa (gusset) antes da cantoneira que passa por ela (W7-LIG: a cantoneira segue além do gusset)
                 var cands = placas.Select(pc => (pc, f: Faixa(pc))).Where(x => x.f.n > 0).ToList();
-                var cand = cands.OrderByDescending(x => x.f.n).ThenBy(x => x.pc.Camada == 1 ? 0 : 1).ThenByDescending(x => x.f.frente).ThenBy(x => x.f.area).FirstOrDefault();
+                // W8-RIG: empate final (talas de mesa de cima e de baixo da emenda): a peça mais para fora do lado da cadeia
+                // (mais embaixo na horizontal, mais à direita na vertical); antes a de cima punha a cadeia no meio do perfil
+                double Fora(GeoLig.Prisma pc) => pc.Base.SelectMany(q => new[] { P(q + pc.N * pc.T / 2), P(q - pc.N * pc.T / 2) }).Max(q => horizontal ? q.Y : q.X);
+                var cand = cands.OrderByDescending(x => x.f.n).ThenBy(x => x.pc.Camada == 1 ? 0 : 1).ThenByDescending(x => x.f.frente).ThenBy(x => x.f.area).ThenByDescending(x => Fora(x.pc)).FirstOrDefault();
                 if (cand.pc == null) continue;
                 var pl = cand.pc;
                 var vals = new List<double> { cand.f.a, cand.f.b };
                 // bordas das outras peças furadas dentro da faixa (ponta da cantoneira, talão e ponta da aba): recuo, e1, g e b − g na cadeia
                 foreach (var o in cands.Where(o => o.pc.Camada != pl.Camada && Math.Abs(Vector3D.DotProduct(o.pc.N, eixo)) < 0.85))
                     foreach (var v in new[] { o.f.a, o.f.b }) if (v > cand.f.a + 0.5 && v < cand.f.b - 0.5) vals.Add(v);
-                foreach (var f in furos) { double v = Dot(f.O, eixo); if (v > cand.f.a - 0.5 && v < cand.f.b + 0.5) vals.Add(v); }
+                // W8-RIG: só os furos que atravessam a chapa (fuste dentro dela nos outros dois eixos); na emenda, os parafusos
+                // da mesa entravam na cadeia da tala da alma ("55 80 55" com total 270)
+                bool Atravessa(GeoLig.Paraf f)
+                {
+                    var cc = pl.Base.SelectMany(q => new[] { q + pl.N * pl.T / 2, q - pl.N * pl.T / 2 }).ToList();
+                    foreach (var ax in new[] { horizontal ? U : R, F })
+                    {
+                        double p0 = Dot(f.O, ax), p1 = Dot(f.O + f.E * f.L, ax), m = f.D / 2 * Math.Sqrt(Math.Max(0, 1 - Math.Pow(Vector3D.DotProduct(f.E, ax), 2))) + 0.5;
+                        if (Math.Max(p0, p1) + m < cc.Min(q => Dot(q, ax)) || Math.Min(p0, p1) - m > cc.Max(q => Dot(q, ax))) return false;
+                    }
+                    return true;
+                }
+                foreach (var f in furos) { double v = Dot(f.O, eixo); if (v > cand.f.a - 0.5 && v < cand.f.b + 0.5 && Atravessa(f)) vals.Add(v); }
                 vals = vals.OrderBy(v => v).Aggregate(new List<double>(), (l, v) => { if (l.Count == 0 || v - l[l.Count - 1] > 0.5) l.Add(v); return l; });
                 if (vals.Count < 3) continue;
                 var cs = pl.Base.SelectMany(q => new[] { P(q + pl.N * pl.T / 2), P(q - pl.N * pl.T / 2) }).ToList();
-                double pos = horizontal ? Math.Min(ActualHeight - 22, cs.Max(q => q.Y) + 26) : Math.Min(ActualWidth - 30, cs.Max(q => q.X) + 30);
+                // W8-RIG: a cadeia fica fora também das outras peças e parafusos da ligação na mesma faixa (na emenda, a
+                // tala da alma punha a cadeia em cima da tala da mesa de baixo e das porcas)
+                double fa = vals[0], fb = vals[vals.Count - 1];
+                var fora = new List<Point>(cs);
+                foreach (var o in placas)
+                {
+                    var oc = o.Base.SelectMany(q => new[] { q + o.N * o.T / 2, q - o.N * o.T / 2 }).ToList();
+                    if (oc.Max(q => Dot(q, eixo)) > fa + 0.5 && oc.Min(q => Dot(q, eixo)) < fb - 0.5) fora.AddRange(oc.Select(P));
+                }
+                foreach (var f in g.Parafs)
+                    if (Dot(f.O, eixo) > fa - 0.5 && Dot(f.O, eixo) < fb + 0.5) { fora.Add(P(f.O)); fora.Add(P(f.O + f.E * f.L)); }
+                double pos = horizontal ? Math.Min(ActualHeight - 22, fora.Max(q => q.Y) + 26) : Math.Min(ActualWidth - 30, fora.Max(q => q.X) + 30);
                 var pen = new Pen(TemaPlant.BTexto2, 1);
                 var penL = new Pen(TemaPlant.BTextoMudo, 0.8) { DashStyle = new DashStyle(new double[] { 2, 3 }, 0) };
                 Point Tela(double v) { var p = P(new Point3D(0, 0, 0) + eixo * v); return horizontal ? new Point(p.X, pos) : new Point(pos, p.Y); }
