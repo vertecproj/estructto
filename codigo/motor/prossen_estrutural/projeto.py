@@ -2464,6 +2464,7 @@ def tipos_ligacao():
 _AMOSTRA_LIG = {
     "perfil_viga": "W310x38.7", "perfil_suporte": "W250x73", "perfil_pilar": "W250x73",
     "dim_a": 76.2, "t_perfil": 6.35, "dim_a_1": 63.5, "t_perfil_1": 6.35,
+    ("viga_viga_recorte", "perfil_suporte"): "W460x52",   # W7: viga principal mais alta que a secundária W310 (W250 dava taxa 1,08)
     ("chapa_simples", "h"): 0.23, ("chapa_simples", "t"): 0.0095, ("chapa_simples", "d_mm"): 19.05,
     ("chapa_simples", "n"): 3, ("chapa_simples", "s"): 0.075, ("chapa_simples", "e"): 0.06, ("chapa_simples", "tw"): 0.0058,
     ("ligacao_tracao", "b"): 0.2, ("ligacao_tracao", "t"): 0.0095, ("ligacao_tracao", "d_mm"): 19.05,

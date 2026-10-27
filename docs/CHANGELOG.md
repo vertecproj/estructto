@@ -1,6 +1,23 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 27/10/2026 — v0.6.13 (relato do usuário com 10 capturas do projetista de ligações; 6 frentes em paralelo, branches `wt7-*` juntados em `wt7-int`):
+  - "Solda direta da alma" passa a se chamar "Solda direta"; o id `solda_direta_alma` não mudou e os .pcon antigos abrem. Ver [v3/W7-UI.md](v3/W7-UI.md).
+  - Ícone de perfil: o `MiniaturaPerfil` só achava os perfis da biblioteca do pórtico; agora lê a forma do nome do catálogo do motor (2199 nomes conferidos, nenhum na reserva).
+  - Seletor de perfil: a lista virtualizada abria rolada para o fim. Agora abre com o perfil atual perto do topo e volta ao topo ao filtrar.
+  - UPN/U nas ligações: `projeto._membros_geometria` só mandava perfis I para o desenho. Agora o U entra com alma, mesas e lado de abertura, em todas as vistas e no 3D. Também corrigidos: a chapa de extremidade com viga U, o U dobrado como apoio na viga-viga e o motivo da recusa nas rígidas. Ver [v3/W7-UPN.md](v3/W7-UPN.md).
+  - 3D do projetista: o pintor por camadas (parafuso sempre por cima, cabeça ou porca conforme o lado) foi trocado por `Viewport3D` com z-buffer (`LigacaoDesenho3D.cs`). O parafuso agora é completo (cabeça, arruela, fuste com rosca, porca) e assentado na chapa. Reconstruir a cena leva cerca de 1 ms. Também desenha os tubos (contrato `geometria.tubos`) em 2D e 3D. Ver [v3/W7-3D.md](v3/W7-3D.md).
+  - Biblioteca e projetista abrem em aba da janela principal (`LigacaoAbas.cs`; `JanelaLigacaoProjeto` virou `UserControl`), sem janela separada. Ver [v3/W7-ABA.md](v3/W7-ABA.md).
+  - Chapa de extremidade flexível: o número de fileiras sai de 40 + 75(n−1) + 40 ≥ 0,6·h (SCI P358), com espessura de 8 mm. No W310 fica 8 × 200 × 230 com 6 parafusos de ¾", e há verificação nova de folga de aperto. Cantoneira simples em treliça: o perfil L vem do catálogo, com seletor; área, x̄ e gabarito vêm do perfil, sem campo zerado, e o desenho mostra o gusset com as duas abas. Chapas de topo: o filete da alma no padrão passou de 6 para 5 mm (antes reprovavam a 1,03). Viga–viga com recorte: o apoio padrão agora é W460x52. Ver [v3/W7-LIG.md](v3/W7-LIG.md).
+  - Tubo–tubo soldado: os tubos vêm do catálogo e os esforços padrão são N = 100 kN e My = 5 kN·m (antes era 60 kN·m, acima do momento plástico do ramal). Entram as verificações da NBR 16239: validade, plastificação da face, punção e interação N + M, além da garganta mínima ≥ 1,1·t. A geometria agora inclui os tubos. Ver [v3/W7-TUBO.md](v3/W7-TUBO.md).
+  - Pendente:
+    - Gusset de contraventamento e nó de treliça têm campos zerados e as diagonais não são desenhadas.
+    - O tirante não é desenhado.
+    - O painel de alma não mostra peças.
+    - As emendas ficam a 97% na borda.
+    - O perfil–tubo dá 100% na perna da solda.
+    - A cantoneira dupla com UPN 200 sempre cai para solda direta.
+    - Itens da NBR 16239 a conferir na norma: √γ no Mip e 0,66 na punção.
 - 27/10/2026 — v0.6.12 (relato do usuário: "clico para trocar o perfil, a janela abre e fecha"):
   - Causa: o `SeletorPerfil` abria a lista no MouseDown. O MouseUp caía no botão, fora do popup, e o WPF tratava isso como clique fora e fechava a lista.
   - Correção: abre no MouseUp, com o mouse capturado no botão. A abertura espera a soltura da captura, que também fechava a lista.

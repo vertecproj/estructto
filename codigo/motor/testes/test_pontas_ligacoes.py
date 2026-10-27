@@ -116,7 +116,8 @@ class TestCopeNoCalculo(unittest.TestCase):
     def test_viga_viga_recorte_desenho_igual_calculo(self):
         """Recorte = max(Gerdau 3.3, cope da ponta); a ponta desenha o mesmo (W310x38.7 em W250x73, V = 100 kN)."""
         e = _EX["viga_viga_recorte"]
-        r = L.verificar_ligacao("viga_viga_recorte", e["dados"], e["esforcos"])
+        # W7: o exemplo de fábrica passou a apoiar em W460x52 (passa, 0,91); este caso fixa o W250x73 de propósito
+        r = L.verificar_ligacao("viga_viga_recorte", dict(e["dados"], perfil_suporte="W250x73"), e["esforcos"])
         # cope da ponta medido do plano: 254/2 − 8,6/2 − 10 + 12 = 124,7 mm (Gerdau: 122,7) → ≈ Gerdau (1,046)
         self.assertAlmostEqual(r["taxa"], 1.082, places=3)
         self.assertAlmostEqual(r["valores"]["recorte_sup_c_mm"], 124.7, places=1)

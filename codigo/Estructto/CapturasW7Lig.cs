@@ -15,8 +15,8 @@ namespace NovoFtool
         static void CapturasW7Lig(MainWindow w)
         {
             var tipos = Esperar2(Motor.Get("/api/ligacoes/tipos"));
-            var j = new JanelaLigacaoProjeto(tipos) { Owner = w, Width = 1460, Height = 880 };
-            PrepararDialogoForaDaTela(j); j.Show(); EsperarIdle();
+            var j = new JanelaLigacaoProjeto(tipos);
+            w.MostrarLigacao(j); EsperarIdle();   // W7: aba da janela principal
             var log = new StringBuilder();
             int i = 0;
             foreach (var t in tipos.AsArray())
