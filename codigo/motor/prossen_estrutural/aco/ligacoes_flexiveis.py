@@ -928,12 +928,18 @@ def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
     zt = vg["d"] / 2
     zb = zt - topo - Lp
     zs = [zt - topo - ev - i * s for i in range(n)]
-    ch = [_chapa("chapa de extremidade", (xf + t / 2, -bp / 2, zb), [0, 1, 0], [0, 0, 1], bp, Lp, t)]
-    par = [_paraf(p, (xf + t, sg * gch / 2, z), [-1, 0, 0], t + t_ap) for sg in (1, -1) for z in zs]
-    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf + t, sg * tw / 2, zb), _p(xf + t, sg * tw / 2, zb + Lp)])
+    # G5: viga U → chapa, parafusos e soldas centrados no plano médio da alma (centroide no eixo, costas em y = −ab·xg)
+    ab = _abertura(d, vg)
+    yw = ab * (tw / 2 - vg["xg"]) if vg.get("forma") == "U" else 0.0
+    ch = [_chapa("chapa de extremidade", (xf + t / 2, yw - bp / 2, zb), [0, 1, 0], [0, 0, 1], bp, Lp, t)]
+    par = [_paraf(p, (xf + t, yw + sg * gch / 2, z), [-1, 0, 0], t + t_ap) for sg in (1, -1) for z in zs]
+    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf + t, yw + sg * tw / 2, zb), _p(xf + t, yw + sg * tw / 2, zb + Lp)])
            for sg in (1, -1)]
-    return r.resultado(dict(chapas=ch, cantoneiras=[], parafusos=par, soldas=sol,
-                            recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=(xf + t) / MM))]))
+    geo = dict(chapas=ch, cantoneiras=[], parafusos=par, soldas=sol,
+               recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=(xf + t) / MM))])
+    if vg.get("forma") == "U":
+        geo["abertura_y"] = ab
+    return r.resultado(geo)
 
 
 # ---------------------------------------------------------------- apoio em cantoneira (com/sem enrijecedor)
@@ -1319,7 +1325,9 @@ def _governa(res):
     Onda final: resistências primeiro (kN, kN/m...); as disposições geométricas (mm: dimensão mínima da solda = 1,00 por
     definição) só se não houver resistência."""
     vs = [x for x in (res or {}).get("verificacoes") or [] if x.get("taxa") is not None]
-    v = max([x for x in vs if x.get("unidade") not in ("mm", "m", "-")] or vs, key=lambda x: x["taxa"], default=None)
+    # W7-UPN: resultado que não passa cita o que reprova (ex.: "cantoneira interna dentro da mesa do U"), não a maior resistência
+    v = max([x for x in vs if x.get("ok") is False] or [x for x in vs if x.get("unidade") not in ("mm", "m", "-")] or vs,
+            key=lambda x: x["taxa"], default=None)
     return f"{v['nome']} (taxa {v['taxa']:.2f})".replace(".", ",") if v else "—"
 
 

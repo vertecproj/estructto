@@ -43,6 +43,8 @@ def _unit(a, msg="vetor nulo"):
 
 def _perfil(m, *chaves):
     p = m["perfil"]
+    if p.get("tipo") in ("U", "Ue") and "t" in p and not ("tw" in p and "tf" in p):   # U/Ue formado a frio: só t (tw = tf = t)
+        p = dict(p, tw=p.get("tw", p["t"]), tf=p.get("tf", p["t"]))
     falta = [k for k in chaves if k not in p]
     if falta:
         raise ValueError(f"perfil da barra {m['barra']} sem {', '.join(falta)}")

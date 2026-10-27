@@ -121,6 +121,9 @@ namespace NovoFtool
                 if (!Ok(d) || !Ok(bf) || !Ok(tw) || !Ok(tf)) continue;
                 string papel = S(mb, "barra");
                 string tgm = S(mb, "campo");   // campo do perfil no padrão (motor); sem campo (viga esquemática) = não editável
+                // G5 (docs/v3/LIGACOES-U.md): U = alma + 2 mesas que saem das costas da alma para um lado só. ab = lado das mesas.
+                bool ehU = S(mb, "forma") == "U";
+                double ab = ehU && D(mb, "abertura_y") < 0 ? -1 : 1, xg = ehU && Ok(D(mb, "xg")) ? D(mb, "xg") : 0;
                 bool passante = Lista(g["membros"]).Count() == 1 && xMinLig < -1;   // emenda: a barra passa pelo nó (x < 0 e x > 0)
                 if (papel == "viga" || passante)
                 {
@@ -134,9 +137,11 @@ namespace NovoFtool
                     web.Add(new Point(x1, -d / 2 + tf)); web.Add(new Point(x1, d / 2 - tf));
                     if (hs > 0) { web.Add(new Point(x0 + cs, d / 2 - tf)); web.Add(new Point(x0 + cs, d / 2 - hs)); web.Add(new Point(x0, d / 2 - hs)); }
                     else web.Add(new Point(x0, d / 2 - tf));
-                    r.Pecas.Add(new Prisma { Base = web.Select(q => new Point3D(q.X, 0, q.Y)).ToArray(), N = new Vector3D(0, 1, 0), T = tw, Camada = 0, Grupo = "viga", Nome = r.NomeViga, Falha = fv, Tag = tgm });
-                    r.Pecas.Add(Caixa(x0 + (hs > 0 ? cs : 0), x1, -bf / 2, bf / 2, d / 2 - tf, d / 2, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = tgm;
-                    r.Pecas.Add(Caixa(x0 + (hi > 0 ? ci : 0), x1, -bf / 2, bf / 2, -d / 2, -d / 2 + tf, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = tgm;
+                    // viga U: centroide no eixo, costas da alma em y = −ab·xg (mesmo referencial das chapas do contrato)
+                    double yb = -ab * xg, yAlma = ehU ? yb + ab * tw / 2 : 0, yM0 = ehU ? Math.Min(yb, yb + ab * bf) : -bf / 2, yM1 = ehU ? Math.Max(yb, yb + ab * bf) : bf / 2;
+                    r.Pecas.Add(new Prisma { Base = web.Select(q => new Point3D(q.X, yAlma, q.Y)).ToArray(), N = new Vector3D(0, 1, 0), T = tw, Camada = 0, Grupo = "viga", Nome = r.NomeViga, Falha = fv, Tag = tgm });
+                    r.Pecas.Add(Caixa(x0 + (hs > 0 ? cs : 0), x1, yM0, yM1, d / 2 - tf, d / 2, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = tgm;
+                    r.Pecas.Add(Caixa(x0 + (hi > 0 ? ci : 0), x1, yM0, yM1, -d / 2, -d / 2 + tf, 0, "viga")); r.Pecas[r.Pecas.Count - 1].Tag = tgm;
                 }
                 else
                 {
@@ -145,22 +150,26 @@ namespace NovoFtool
                     double ext = Math.Max(Ok(dv) ? 0.95 * dv : 250, (zMaxLig - zMinLig) * 0.9);
                     double z0 = Math.Min(zMinLig, Ok(dv) ? -dv / 2 : zMinLig) - ext * 0.6, z1 = Math.Max(zMaxLig, Ok(dv) ? dv / 2 : zMaxLig) + ext * 0.6;
                     var lst = new List<Prisma>();
+                    // apoio U (G5): o motor mede a face como no I (alma: x_face = tw/2; mesa: largura bf centrada). Alma no eixo com as
+                    // costas para a ligação (+x) e as mesas para −x; na mesa, a mesa centrada em y e a alma em y = −ab·bf/2.
+                    double mx0 = ehU ? tw / 2 - bf : -bf / 2, mx1 = ehU ? tw / 2 : bf / 2;
                     if (apoio.Contains("viga"))
                     {
                         double zt = Ok(dv) ? dv / 2 : zMaxLig, Ly = Math.Max(2.2 * bf, 380);
                         lst.Add(Caixa(-tw / 2, tw / 2, -Ly, Ly, zt - d + tf, zt - tf, 0, "suporte"));
-                        lst.Add(Caixa(-bf / 2, bf / 2, -Ly, Ly, zt - tf, zt, 0, "suporte"));
-                        lst.Add(Caixa(-bf / 2, bf / 2, -Ly, Ly, zt - d, zt - d + tf, 0, "suporte"));
+                        lst.Add(Caixa(mx0, mx1, -Ly, Ly, zt - tf, zt, 0, "suporte"));
+                        lst.Add(Caixa(mx0, mx1, -Ly, Ly, zt - d, zt - d + tf, 0, "suporte"));
                     }
                     else if (apoio.Contains("alma"))
                     {
                         lst.Add(Caixa(-tw / 2, tw / 2, -d / 2 + tf, d / 2 - tf, z0, z1, 0, "suporte"));
-                        lst.Add(Caixa(-bf / 2, bf / 2, d / 2 - tf, d / 2, z0, z1, 0, "suporte"));
-                        lst.Add(Caixa(-bf / 2, bf / 2, -d / 2, -d / 2 + tf, z0, z1, 0, "suporte"));
+                        lst.Add(Caixa(mx0, mx1, d / 2 - tf, d / 2, z0, z1, 0, "suporte"));
+                        lst.Add(Caixa(mx0, mx1, -d / 2, -d / 2 + tf, z0, z1, 0, "suporte"));
                     }
                     else
                     {
-                        lst.Add(Caixa(-d / 2 + tf, d / 2 - tf, -tw / 2, tw / 2, z0, z1, 0, "suporte"));
+                        double ya = ehU ? -ab * (bf - tw) / 2 : 0;   // plano médio da alma do U
+                        lst.Add(Caixa(-d / 2 + tf, d / 2 - tf, ya - tw / 2, ya + tw / 2, z0, z1, 0, "suporte"));
                         lst.Add(Caixa(d / 2 - tf, d / 2, -bf / 2, bf / 2, z0, z1, 0, "suporte"));
                         lst.Add(Caixa(-d / 2, -d / 2 + tf, -bf / 2, bf / 2, z0, z1, 0, "suporte"));
                     }
