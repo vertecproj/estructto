@@ -65,6 +65,8 @@ def _ler(dados, ent=None, nome="tubo_tubo_soldado"):
             out[k] = next((o for o in c["opcoes"] if str(o).upper() == str(v).upper()), None)
             if out[k] is None:
                 erros.append(f"{k}: '{v}' inválido")
+        elif isinstance(c["padrao"], bool):   # sim/não (W8-RIG: a tela pode mandar o texto "false")
+            out[k] = v if isinstance(v, bool) else str(v).strip().lower() in ("true", "sim", "1")
         elif isinstance(c["padrao"], str):   # perfil do catálogo
             out[k] = str(v)
         else:
@@ -454,15 +456,16 @@ def _pecas(ramal, rec, rets, n=16):
                  normal=[0.0, 1.0, 0.0] if fy else [0.0, 0.0, 1.0], espessura=round(e / MM, 3)) for pts, fy, e in bordas]
 
 
-def _pecas_rhs(rec, D, B, t, meio):
-    """Paredes do tubo retangular receptor (mm, plano médio) de −meio a +meio no eixo: o contrato `tubos` só tem tubo
-    circular, então o receptor retangular vai como chapas do membro (geometria.membros[pilar].pecas)."""
+def _pecas_rhs(rec, D, B, t, meio, s0=None):
+    """Paredes do tubo retangular receptor (mm, plano médio) de −meio (ou s0) a +meio no eixo: o contrato `tubos` só
+    tem tubo circular, então o receptor retangular vai como chapas do membro (geometria.membros[pilar].pecas)."""
     a, ed = rec["dir"], rec["eixo_d"]
     lat = P._cross(a, ed)
+    s0 = -meio if s0 is None else s0
     q = lambda s, sd, sl: [round((s * a[i] + sd * ed[i] + sl * lat[i]) / MM, 3) for i in range(3)]   # noqa: E731
-    out = [dict(base=[q(-meio, sd, -B / 2), q(meio, sd, -B / 2), q(meio, sd, B / 2), q(-meio, sd, B / 2)],
+    out = [dict(base=[q(s0, sd, -B / 2), q(meio, sd, -B / 2), q(meio, sd, B / 2), q(s0, sd, B / 2)],
                 normal=list(ed), espessura=t / MM) for sd in (D / 2 - t / 2, -D / 2 + t / 2)]
-    out += [dict(base=[q(-meio, -D / 2 + t, sl), q(meio, -D / 2 + t, sl), q(meio, D / 2 - t, sl), q(-meio, D / 2 - t, sl)],
+    out += [dict(base=[q(s0, -D / 2 + t, sl), q(meio, -D / 2 + t, sl), q(meio, D / 2 - t, sl), q(s0, D / 2 - t, sl)],
                  normal=list(lat), espessura=t / MM) for sl in (B / 2 - t / 2, -B / 2 + t / 2)]
     return out
 
@@ -670,6 +673,381 @@ def _ler_pt(dados):
     return _ler(dados, _ENT_PT, "perfil_tubo_soldado")
 
 
+# ---------------------------------------------------------------- W9-FT: emenda flangeada de tubo (docs/v3/W9-FLANGE-TUBO.md)
+# Dois tubos iguais, cada um com um flange soldado na ponta; os flanges encostam (contato) e são aparafusados.
+# Referencial: origem no plano de contato dos flanges, x ao longo do tubo; flange "+x" de 0 a tp, "−x" de −tp a 0;
+# z = altura h do tubo retangular (M = My tensiona as fibras em ±z), y = largura b.
+
+_TR = list(dict.fromkeys(lin["nome"] for lin in secoes._carrega_catalogo().values() if lin["forma"] == "TR"))
+_DS_FL = (12.7, 15.875, 19.05, 22.225, 25.4)       # sugerir: ½" a 1"
+_TS_FL = (8.0, 9.5, 12.5, 16.0, 19.0, 22.4, 25.0, 31.5, 37.5, 44.5, 50.0)
+ALVO_FL = 0.90                                      # W8-RIG: pré-dimensionamento com taxa ≤ 0,90 em tudo
+T_MIN_CIDECT = 2.5 * MM                             # EN 1993-1-8 7.1.1(5): parede ≥ 2,5 mm (nós de perfis tubulares)
+T_FINA = 4.75 * MM                                  # parede fina (formado a frio): + verificação da NBR 14762
+GA_14762 = 1.65                                     # NBR 14762 (= AISI S100 J2.2): filete transversal em chapa fina
+
+
+def _perfil_tubo(rotulo, padrao, nomes):
+    return dict(F._e(rotulo, "-", padrao), perfis=nomes, resugerir=True)
+
+
+def _ent_flange(perfil, comum):
+    return dict(perfil, uso=F._e("Uso (desenho)", "-", "viga", ["viga", "pilar"]), **comum,
+                d=F._e("Diâmetro do parafuso", "mm", 19.05, mn=10, mx=40),
+                tipo_parafuso=F._e("Tipo de parafuso", "-", "A325", list(L.PARAFUSOS)),
+                rosca_no_plano=F._e("Rosca no plano de corte", "-", True),
+                solda=F._e("Solda tubo–flange", "-", "filete", ["filete", "penetracao"]),
+                b_solda=F._e("Perna do filete", "mm", 8, mn=2, mx=30),
+                eletrodo=F._e("Eletrodo", "-", "E70", list(L.ELETRODOS)))
+
+
+_ENT_FC = _ent_flange(
+    dict(perfil_viga=_perfil_tubo("Tubo emendado", "TC 168,3x6,4", _TC)),
+    dict(tp=_sec(F._e("Espessura do flange", "mm", 16, mn=4.75, mx=100), "Flange"),
+         D_flange=_sec(F._e("Diâmetro do flange", "mm", 330, mn=20, mx=5000), "Flange"),
+         D_furacao=_sec(F._e("Ø do círculo de furação", "mm", 250, mn=10, mx=5000), "Flange"),
+         n=F._e("Número de parafusos", "-", 6, mn=3, mx=48),
+         aco_tubo=F._e("Aço do tubo", "-", "A-572 GR.50", F._ACOS),
+         aco_flange=F._e("Aço do flange", "-", "A-36", F._ACOS)))
+_ENT_FR = _ent_flange(
+    dict(perfil_viga=_perfil_tubo("Tubo emendado", "Tubo 100x100x3,00", _TR)),
+    dict(lados=_sec(F._e("Parafusos em", "-", "2 lados", ["2 lados", "4 lados"]), "Flange"),
+         n=F._e("Parafusos por lado", "-", 2, mn=1, mx=12),
+         tp=_sec(F._e("Espessura do flange", "mm", 12.5, mn=4.75, mx=100), "Flange"),
+         e_parede=_sec(F._e("Parafuso → parede do tubo", "mm", 30, mn=5, mx=500), "Flange"),
+         e_borda=_sec(F._e("Parafuso → borda do flange", "mm", 35, mn=5, mx=500), "Flange"),
+         aco_tubo=F._e("Aço do tubo", "-", "CF-26", F._ACOS),
+         aco_flange=F._e("Aço do flange", "-", "A-36", F._ACOS)))
+# padrões de fábrica (docs/v3/W9-FLANGE-TUBO.md §padrões); o resto sai do sugerir
+_EXEMPLO_FC = dict(dados=dict(perfil_viga="TC 168,3x6,4", uso="pilar"),
+                   esforcos=dict(N=-150.0, V=15.0, Vz=0.0, M=25.0, Mz=0.0, T=0.0))
+_EXEMPLO_FR = dict(dados=dict(perfil_viga="Tubo 100x100x3,00", uso="viga"),
+                   esforcos=dict(N=0.0, V=6.0, Vz=0.0, M=6.0, Mz=0.0, T=0.0))
+
+
+def igarashi(D, t, Dp, Df):
+    """Flange circular em tração (Igarashi et al. 1985; CIDECT DG1 1991; Cao & Packer, AISC EJ 1997, tabela 1), em
+    qualquer unidade coerente: k1 = ln(Dp/(D − t)), k3 = k1 + 2, f3 = [k3 + √(k3² − 4k1)]/(2k1); flange NRd =
+    π·f3·tp²·fy/2; força total nos parafusos = fator·N, fator = 1 − 1/f3 + 1/(f3·ln(Df/Dp)). O método foi feito com
+    Df − Dp = Dp − D: Df maior conta como 2Dp − D (Cao & Packer 4.1: flange maior quase não ajuda; a favor)."""
+    k1 = math.log(Dp / (D - t))
+    k3 = k1 + 2
+    f3 = (k3 + math.sqrt(k3 * k3 - 4 * k1)) / (2 * k1)
+    df = min(Df, 2 * Dp - D)
+    return dict(k1=k1, k3=k3, f3=f3, Df_ef=df, fator=1 - 1 / f3 + 1 / (f3 * math.log(df / Dp)))
+
+
+def _tubo_cat(nome, circular):
+    try:
+        p = secoes.catalogo(str(nome)).props
+    except KeyError:
+        raise ValueError(f"perfil_viga: perfil '{nome}' não está no catálogo") from None
+    if p.get("tipo") != ("tubo_circular" if circular else "tubo_retangular"):
+        raise ValueError(f"perfil_viga: '{nome}' não é tubo {'redondo' if circular else 'quadrado/retangular'}")
+    return p["h"], p["b"], p.get("t", p.get("tw", 0.0))
+
+
+def _sobe5(x_mm):
+    return math.ceil(x_mm / 5 - 1e-9) * 5
+
+
+def _bolts_esforcos(xy, N, M, Mz, Vt, T):
+    """Grupo de parafusos (y, z em m) pelo método elástico com rotação no centroide (a favor: o contato na borda
+    comprimida não é contado). Tração de cada parafuso: N/n + |M|·|z|/Σz² + |Mz|·|y|/Σy²; cortante: Vt/n + |T|·r/Σr²."""
+    n = len(xy)
+    sz, sy = sum(z * z for _, z in xy), sum(y * y for y, _ in xy)
+    sr = sz + sy
+    ft = [N / n + (abs(M) * abs(z) / sz if sz else (math.inf if M else 0.0))
+          + (abs(Mz) * abs(y) / sy if sy else (math.inf if Mz else 0.0)) for y, z in xy]
+    fv = [Vt / n + (abs(T) * math.hypot(y, z) / sr if sr else 0.0) for y, z in xy]
+    return ft, fv
+
+
+def _verificar_flange(dados, esforcos, circular):
+    nome = "emenda_flangeada_tubo_" + ("circular" if circular else "retangular")
+    d = _ler(dados, _ENT_FC if circular else _ENT_FR, nome)
+    r = F._Col()
+    e = dict(esforcos or {})
+    N = float(e.get("N", 0.0) or 0.0)                                       # + tração
+    Vp, Vb = abs(float(e.get("V", 0.0) or 0.0)), abs(float(e.get("Vz", 0.0) or 0.0))   # V em z (plano de h), Vz em y
+    V = math.hypot(Vp, Vb)
+    M, Mz = abs(float(e.get("M", 0.0) or 0.0)), abs(float(e.get("Mz", 0.0) or 0.0))
+    Tt = abs(float(e.get("T", 0.0) or 0.0))
+    h, b, t0 = _tubo_cat(d["perfil_viga"], circular)
+    D = h
+    tp, n = d["tp"], int(round(d["n"]))
+    fyt, fut = F._aco(d["aco_tubo"])
+    fyp, fup = F._aco(d["aco_flange"])
+    pf = F._parafuso(d, r)
+    db, dh = pf["db"], pf["dh"]
+    filete = d["solda"] == "filete"
+    perna = d["b_solda"] if filete else 0.0
+
+    # geometria dos parafusos (y, z) e do flange
+    if circular:
+        Dp, Df = d["D_furacao"], d["D_flange"]
+        e1, e2 = (Dp - D) / 2, (Df - Dp) / 2
+        if e1 <= db / 2 or e2 <= dh / 2:
+            raise ValueError(f"ligação '{nome}': geometria impossível — furação Ø{Dp / MM:g} e flange Ø{Df / MM:g} mm "
+                             f"para o tubo Ø{D / MM:g} e parafuso Ø{db / MM:g} (o furo não cabe entre o tubo e a borda)")
+        xy = [(Dp / 2 * math.cos(math.pi / 2 + 2 * math.pi * k / n), Dp / 2 * math.sin(math.pi / 2 + 2 * math.pi * k / n))
+              for k in range(n)]
+        s_max = Dp * math.sin(math.pi / n)
+        braco = Dp
+    else:
+        e1, e2 = d["e_parede"], d["e_borda"]
+        quatro = d["lados"] == "4 lados"
+        cs = lambda w: [-w / 2 + w / (2 * n) + k * w / n for k in range(n)]   # noqa: E731 (centro da faixa de cada parafuso)
+        zr, yr = h / 2 + e1, b / 2 + e1
+        xy = [(y, s * zr) for s in (1, -1) for y in cs(b)]
+        if quatro:
+            xy += [(s * yr, z) for s in (1, -1) for z in cs(h)]
+        Hf = h + 2 * (e1 + e2)
+        Bf = b + 2 * (e1 + e2) if quatro else max(b, 2 * (max(cs(b)) + e2))
+        p_lin = [b / n] * n * 2 + [h / n] * n * 2 if quatro else [Bf / n] * n * 2   # largura tributária (T-stub)
+        s_max = max(b, h) / n if n > 1 else 0.0
+        braco = 2 * zr
+        if e1 <= db / 2 or e2 <= dh / 2:
+            raise ValueError(f"ligação '{nome}': geometria impossível — parafuso Ø{db / MM:g} com {e1 / MM:g} mm até a "
+                             f"parede e {e2 / MM:g} mm até a borda")
+    nb = len(xy)
+    r.val.update(n_parafusos=nb, braco_mm=braco / MM)
+
+    # NBR 8800 6.1.5.2 (como as emendas rígidas): força da ligação = max(√(V² + N²), M/braço) ≥ 45 kN
+    k6, aviso = L.fator_minimo_6152(max(math.hypot(V, N), math.hypot(M, Mz) / braco))
+    if aviso:
+        if math.isfinite(k6):
+            N, V, Vp, Vb, M, Mz, Tt = (x * k6 for x in (N, V, Vp, Vb, M, Mz, Tt))
+        else:
+            V = Vp = L.F_MINIMA
+        r.avisos.append(aviso)
+
+    # validade (CIDECT / EN 1993-1-8 cap. 7) e parede fina
+    _v(r, "tubo: parede t0 ≥ 2,5 mm (validade CIDECT)", T_MIN_CIDECT, t0, "mm", "EN 1993-1-8 7.1.1(5) / CIDECT")
+    if t0 <= T_FINA + 1e-9:
+        r.avisos.append(f"tubo de parede fina (t0 = {t0 / MM:g} mm ≤ 4,75 mm, formado a frio): solda verificada também "
+                        "pela parede (NBR 14762); a barra é da NBR 14762")
+
+    # tração nos parafusos e flexão do flange
+    Vt = V
+    if circular:
+        N_eq = N + 4 * math.hypot(M, Mz) / Dp     # máxima força por parafuso × n (distribuição elástica no círculo)
+        ig = igarashi(D, t0, Dp, Df)
+        r.val.update(N_eq_kN=N_eq, f3=ig["f3"], k1=ig["k1"], fator_alavanca=ig["fator"], Df_ef_mm=ig["Df_ef"] / MM)
+        ft_b = max(N_eq, 0.0) / n * ig["fator"]   # por parafuso, com alavanca
+        fv_b = Vt / n + Tt / (n * Dp / 2)
+        if N_eq > 0:
+            _v(r, "flange: flexão (Igarashi, tração equivalente)", N_eq, math.pi * ig["f3"] * tp * tp * fyp / (2 * GA1),
+               "kN", "CIDECT DG1 (Igarashi) / Cao & Packer 1997")
+            _v(r, "parafusos: tração com efeito alavanca (Σ, Igarashi)", N_eq * ig["fator"], n * pf["Ft"], "kN",
+               "NBR 8800 6.3.3.1 + CIDECT DG1 (Igarashi)")
+            if Df > 2 * Dp - D + 1e-9:
+                r.avisos.append(f"flange Ø{Df / MM:g} > 2·Dp − D = {(2 * Dp - D) / MM:g} mm: o excesso não reduz a "
+                                "alavanca no cálculo (Cao & Packer 1997, 4.1)")
+        else:
+            r.avisos.append("sem tração nos parafusos (N + 4M/Dp ≤ 0): flange e parafusos só levam o cortante")
+    else:
+        ft, fv = _bolts_esforcos(xy, N, M, Mz, Vt, Tt)
+        r.val.update(F_max_kN=max(ft))
+        pior = None
+        for fi, pi in zip(ft, p_lin):   # T-stub de cada parafuso (largura tributária pi)
+            if fi <= 0:
+                continue
+            al = F.alavanca(fi, tp, pi, e1 + t0, e2, db, dh, fyp)   # b + t0 → b' = b − db/2 + t0 (CIDECT DG3)
+            if pior is None or max(fi / al["Tmax"], al["B"] / pf["Ft"]) > max(pior[0] / pior[1]["Tmax"], pior[1]["B"] / pf["Ft"]):
+                pior = (fi, al, pi)
+        ft_b, fv_b = (pior[1]["B"] if pior else 0.0), max(fv)
+        if pior:
+            fi, al, pi = pior
+            r.val.update(alfa=al["alfa"], Q_kN=al["Q"], p_mm=pi / MM, b1_mm=al["b1"] / MM, a1_mm=al["a1"] / MM)
+            _v(r, "flange: flexão (T-stub, Tmax por parafuso)", fi, al["Tmax"], "kN",
+               "CIDECT DG3 cap. 8 (T-stub com alavanca, Struik/Kulak)")
+            _v(r, "parafusos: tração com efeito alavanca (B = T + Q)", al["B"], pf["Ft"], "kN",
+               "NBR 8800 6.3.3.1 + CIDECT DG3 (alavanca)")
+            if quatro:
+                r.avisos.append("parafusos nos 4 lados: cada parafuso como T-stub da sua face (largura = face/n), sem a "
+                                "ajuda dos cantos (a favor; Willibald, Packer & Puthli 2003 — conferir)")
+        else:
+            r.avisos.append("sem tração nos parafusos: flange e parafusos só levam o cortante")
+
+    # cortante (+ tração) nos parafusos e pressão de contato no flange
+    if fv_b > 0:
+        _v(r, "parafusos: cisalhamento (1 plano)", fv_b, pf["Fv"], "kN", "NBR 8800 6.3.3.2")
+        s_min = min(math.dist(a, c) for i, a in enumerate(xy) for c in xy[i + 1:])
+        lf = min(e2 - dh / 2, s_min - dh)
+        _v(r, "flange: pressão de contato / rasgamento", fv_b, L.pressao_contato(lf, tp, db, fup), "kN",
+           "NBR 8800 6.3.3.3")
+    if fv_b > 0 and ft_b > 0:
+        _v(r, "parafusos: tração + cisalhamento", L.interacao_tracao_cisalhamento(ft_b, pf["Ft"], fv_b, pf["Fv"]), 1.0,
+           "-", "NBR 8800 6.3.3.4")
+
+    # disposições construtivas
+    r.bordas("parafuso → borda do flange", e2, tp, db, False)
+    r.minimo("parafusos: folga de aperto até a solda do tubo", F.FOLGA_APERTO * db, e1 - perna,
+             "geometria (folga de montagem)", "D_furacao" if circular else "e_parede")
+    s_min = min(math.dist(a, c) for i, a in enumerate(xy) for c in xy[i + 1:])
+    if 2.7 * db <= s_min < 3 * db:
+        r.avisos.append(f"espaçamento {s_min / MM:.1f} mm < 3db = {3 * db / MM:.1f} mm (preferível, 6.3.9)")
+    r.minimo("espaçamento mínimo entre furos (2,7db)", 2.7 * db, s_min, "6.3.9")
+    if s_max > 0:
+        r.maximo("espaçamento máximo entre furos (24t ≤ 300 mm)", s_max, min(24 * tp, 0.300), "6.3.10")
+
+    # solda tubo–flange: fluxo por metro de cordão (tubo como linha: anel de raio D/2 ou retângulo b × h)
+    if circular:
+        rr = D / 2
+        qn = abs(N) / (math.pi * D) + math.hypot(M, Mz) / (math.pi * rr * rr)
+        qv = V / (math.pi * rr) + Tt / (2 * math.pi * rr * rr)
+    else:
+        ls = _linha_solda([(-b / 2, -h / 2), (b / 2, -h / 2), (b / 2, h / 2), (-b / 2, h / 2)])
+        qn = abs(N) / ls["Lw"] + M * ls["zmax"] / ls["I_forte"] + Mz * ls["ymax"] / ls["I_fraco"]
+        qv = math.hypot(Vp / ls["Lv_h"], Vb / ls["Lv_b"]) + Tt * ls["rmax"] / (ls["I_forte"] + ls["I_fraco"])
+    q = math.hypot(qn, qv)
+    r.val.update(q_solda_kN_m=q)
+    if filete:
+        fw = L.ELETRODOS[d["eletrodo"]] * F.MPa
+        r.res("solda tubo–flange (filete em todo o contorno)", q, L.resistencia_filete(perna, fw, fyt, fut)["FwRd"], "kN/m",
+              "6.2.5 / tabela 8")
+        r.res("flange: metal base junto à solda", q, L.resistencia_filete(perna, fw, fyp, fup)["metal_base"], "kN/m",
+              "6.2.5 / tabela 8")
+        _v(r, "solda: garganta ≥ k·t do tubo (resistência da parede)", garganta_minima(t0, fyt), 0.707 * perna, "mm",
+           "NBR 16239 6.1.5.7", "sobe", "b_solda")
+        r.minimo("solda: dimensão mínima", L.filete_minimo(min(t0, tp)), perna, "6.2.6.2.1 / tabela 10", "b_solda")
+        if t0 <= T_FINA + 1e-9:
+            _v(r, "tubo: parede fina junto ao filete (transversal, t·fu/1,65)", q, t0 * fut / GA_14762, "kN/m",
+               "NBR 14762:2010 (filete em chapa fina = AISI S100 J2.2; item a conferir)")
+    else:   # penetração total: resistência do metal base (tabela 8), parede do tubo
+        _v(r, "solda de penetração total: parede do tubo (tração e cisalhamento)",
+           math.hypot(qn / (t0 * fyt / GA1), qv / (0.6 * t0 * fyt / GA1)), 1.0, "-", "NBR 8800 6.2.5 / tabela 8")
+    # compressão: a fibra mais comprimida da ponta do tubo encosta no flange (flanges em contato)
+    if circular:
+        p0 = props_tubo(D, t0)
+    else:
+        pc = secoes.catalogo(d["perfil_viga"]).props
+        p0 = dict(A=pc["A"], W=min(pc["Wx"], pc["Wy"]))
+    sc = max(-N, 0.0) / p0["A"] + math.hypot(M, Mz) / p0["W"]
+    if sc > 0 and (N < 0 or M or Mz):
+        _v(r, "compressão: contato da ponta do tubo no flange (σ ≤ 1,8·fy/γa2)", sc / F.MPa,
+           1.8 * min(fyt, fyp) / L.GA2 / F.MPa, "MPa", "NBR 8800 6.6.1")
+    if N < 0:
+        r.avisos.append("compressão passa por contato entre os flanges: superfícies planas e encostadas na montagem")
+    r.avisos.append("tubo emendado (seção cheia, flexão, flambagem) é verificação da barra, não da ligação")
+
+    geo = _geo_flange(d, circular, D, b, h, t0, tp, xy, pf, perna,
+                      (Dp, Df) if circular else (Hf, Bf))
+    return r.resultado(geo)
+
+
+def _geo_flange(d, circular, D, b, h, t0, tp, xy, pf, perna, dim):
+    """Geometria (mm, contrato): tubos (redondo) ou membros com 4 paredes (retangular), 2 flanges, parafusos, 2 cordões
+    e cotas; `vista` no pilar (tubo em pé). Ver docs/v3/W9-FLANGE-TUBO.md §desenho."""
+    mm = lambda v: [round(x / MM, 3) for x in v]   # noqa: E731
+    nome = d["perfil_viga"]
+    tipo_s = "filete" if d["solda"] == "filete" else "penetracao"
+    perna_mm = (perna if perna > 0 else t0) / MM
+    if circular:
+        Dp, Df = dim
+        Lt = 1.2 * Df
+        cont = [[round(Df / 2 * math.cos(2 * math.pi * k / 72) / MM, 3), round(Df / 2 * math.sin(2 * math.pi * k / 72) / MM, 3)]
+                for k in range(72)]
+        tubos = [dict(nome=f"tubo {s}", grupo=g, campo="perfil_viga", origem=mm([sg * tp, 0.0, 0.0]),
+                      eixo=[float(sg), 0.0, 0.0], comprimento=round(Lt / MM, 3), d=D / MM, t=t0 / MM, corte=None)
+                     for s, g, sg in (("+x", "viga", 1), ("−x", "suporte", -1))]
+        membros = [dict(barra="viga", perfil=nome, campo="perfil_viga"), dict(barra="pilar", perfil=nome, campo="perfil_viga")]
+        anel = [(D / 2 * math.cos(2 * math.pi * k / 72), D / 2 * math.sin(2 * math.pi * k / 72)) for k in range(72)]
+        # Ø nos lados livres da vista de frente do flange (a cadeia automática do desenho fica embaixo e à direita):
+        # viga = lateral (y, z), pilar = planta (z, y); a componente em x do `lado` afasta a cota da cadeia nas vistas de topo
+        if d["uso"] == "pilar":
+            linhas = [dict(estilo="cota", pontos=[mm([tp, Df / 2, -Df / 2]), mm([tp, Df / 2, Df / 2])],
+                           texto=f"Ø{Df / MM:g} flange", lado=[0.3, 1.0, 0.0]),
+                      dict(estilo="cota", pontos=[mm([tp, -Dp / 2, -Df / 2]), mm([tp, Dp / 2, -Df / 2])],
+                           texto=f"Ø{Dp / MM:g} furação", lado=[0.3, 0.0, -1.0])]
+        else:
+            linhas = [dict(estilo="cota", pontos=[mm([tp, -Df / 2, Df / 2]), mm([tp, Df / 2, Df / 2])],
+                           texto=f"Ø{Df / MM:g} flange", lado=[-0.3, 0.0, 1.0]),
+                      dict(estilo="cota", pontos=[mm([tp, -Df / 2, -Dp / 2]), mm([tp, -Df / 2, Dp / 2])],
+                           texto=f"Ø{Dp / MM:g} furação", lado=[-0.3, -1.0, 0.0])]
+        ext = Df
+    else:
+        Hf, Bf = dim
+        Lt = 1.2 * max(Hf, Bf, 2 * h)
+        cont = [[-Bf / 2 / MM, -Hf / 2 / MM], [Bf / 2 / MM, -Hf / 2 / MM], [Bf / 2 / MM, Hf / 2 / MM], [-Bf / 2 / MM, Hf / 2 / MM]]
+        tubos = []
+        rec = dict(dir=[1.0, 0.0, 0.0], eixo_d=[0.0, 0.0, 1.0])
+        recm = dict(dir=[-1.0, 0.0, 0.0], eixo_d=[0.0, 0.0, 1.0])
+        membros = [dict(barra="viga", perfil=nome, campo="perfil_viga", pecas=_pecas_rhs(rec, h, b, t0, tp + Lt, tp)),
+                   dict(barra="pilar", perfil=nome, campo="perfil_viga", pecas=_pecas_rhs(recm, h, b, t0, tp + Lt, tp))]
+        anel = [(-b / 2, -h / 2), (b / 2, -h / 2), (b / 2, h / 2), (-b / 2, h / 2)]
+        linhas = []   # bordas, gabaritos e totais do flange: cadeia automática do desenho (chapa com furos)
+        ext = Hf
+    linhas.append(dict(estilo="cota", pontos=[mm([-tp, 0.0, ext / 2]), mm([tp, 0.0, ext / 2])],
+                       texto=f"2 × {tp / MM:g}", lado=[0.0, 0.0, 1.0]))
+    chapas = [dict(nome=f"flange {s}", campo="tp", contorno=cont, origem=[0.0, 0.0, 0.0], normal=[float(sg), 0.0, 0.0],
+                   u=[0.0, 1.0, 0.0], espessura=tp / MM) for s, sg in (("+x", 1), ("−x", -1))]
+    pega = 2 * tp
+    parafusos = [dict(F._paraf(pf, (-tp, y, z), [1.0, 0.0, 0.0], pega), campo="d") for y, z in xy]
+    soldas = [dict(tipo=tipo_s, campo="b_solda", perna=perna_mm, pontos=[mm([sg * tp, y, z]) for y, z in anel + anel[:1]])
+              for sg in (1, -1)]
+    geo = dict(_VAZIO, chapas=chapas, parafusos=parafusos, soldas=soldas, tubos=tubos, membros=membros, linhas=linhas)
+    del geo["pontas"]   # com_pontas põe as pontas da emenda (plano no nó)
+    if d["uso"] == "pilar":   # W8-CONTRAV: eixos da elevação no referencial local — tubo (x) na vertical
+        geo["vista"] = dict(x=[0.0, 0.0, 1.0], z=[1.0, 0.0, 0.0])
+    return geo
+
+
+def _sugerir_flange(circular):
+    """Mantém o tubo (e o uso) e procura, do mais leve ao mais pesado — lados (2 antes de 4), nº de parafusos, parafuso
+    (⅝"…1"; ½" só no retangular), espessura —,
+    a 1ª combinação com taxa ≤ 0,90 em todas as verificações (W8-RIG); sem nenhuma, a 1ª aprovada; senão a de menor
+    taxa. Distâncias com folga de 10 % (W8-RIG): até a parede = (1,25·db + perna)/0,9 e borda = tabela 14/0,9, para
+    cima a 5 mm; furação Ø = D + 2·e1 (a 5 mm). Perna: menor comercial com garganta ≥ k·t0 (NBR 16239 6.1.5.7) e ≥ a
+    mínima da tabela 10, as duas com a mesma folga."""
+    ent = _ENT_FC if circular else _ENT_FR
+
+    def sugerir(perfis, esforcos):
+        base = {k: v for k, v in dict(perfis or {}).items() if k in ent}
+        nome = base.get("perfil_viga") or ent["perfil_viga"]["padrao"]
+        try:
+            h, b, t0 = _tubo_cat(nome, circular)
+        except ValueError:
+            return base
+        fy = F._aco(base.get("aco_tubo") or ent["aco_tubo"]["padrao"])[0]
+        filete = (base.get("solda") or "filete") == "filete"
+        # ≥ 4 parafusos na emenda: 2 lados com 1 por lado deixaria a ligação sem braço para Mz e torção
+        ns = (4, 6, 8, 10, 12, 16, 20, 24) if circular else (1, 2, 3, 4)
+        lados = ("2 lados", "4 lados") if not circular and not base.get("lados") else (base.get("lados"),)
+        melhor = passa = None
+        for lado in lados:
+            for n in ns:
+                if not circular and n * (2 if lado == "2 lados" else 4) < 4:
+                    continue
+                for dmm in _DS_FL[1:] if circular else _DS_FL:   # ½" só no metalon (tubos pequenos)
+                    e2 = _sobe5(L.distancia_min_borda(dmm * MM) / MM / ALVO_FL)
+                    for tp in _TS_FL:
+                        perna = 0.0
+                        if filete:
+                            pmin = max(L.filete_minimo(min(t0, tp * MM)) / MM, garganta_minima(t0, fy) / MM / 0.707)
+                            perna = next((x for x in L._B_MM if x >= pmin / ALVO_FL - 1e-9), L._B_MM[-1])
+                        e1 = _sobe5((F.FOLGA_APERTO * dmm + perna) / ALVO_FL)
+                        cand = dict(base, d=dmm, n=n, tp=tp, **({"b_solda": perna} if filete else {}))
+                        if circular:
+                            Dp = _sobe5(h / MM + 2 * e1)
+                            cand.update(D_furacao=Dp, D_flange=Dp + 2 * e2)
+                        else:
+                            cand.update(lados=lado, e_parede=e1, e_borda=e2)
+                        try:
+                            res = _verificar_flange(cand, esforcos, circular)
+                        except ValueError:
+                            continue
+                        if res["ok"] and res["taxa"] <= ALVO_FL + 1e-9:
+                            return cand
+                        if res["ok"] and passa is None:
+                            passa = cand
+                        if melhor is None or res["taxa"] < melhor[0]:
+                            melhor = (res["taxa"], cand)
+        return passa or (melhor[1] if melhor else base)
+    return sugerir
+
+
 TIPOS = {
     "tubo_tubo_soldado": dict(
         nome="Tubo–tubo soldado (boca de peixe)", familia="tubo", liga=["tubo-tubo"], entradas=_ENT, esforcos=["N", "V", "Vz", "M", "Mz", "T"],
@@ -685,5 +1063,20 @@ TIPOS = {
                   "parede do tubo redondo pela EN 1993-1-8 tabelas 7.3/7.4 (plastificação da face, punção, N + M); "
                   "tubo retangular: parede não verificada.",
         verificar=_verificar_pt, exemplo=_EXEMPLO_PT, sugerir=_sugerir_pt),
+    # W9-FT: um tipo por forma (entradas diferentes: círculo de furação × parafusos por lado); viga e pilar pelo campo `uso`
+    "emenda_flangeada_tubo_circular": dict(
+        nome="Emenda flangeada de tubo redondo", familia="emenda", liga=["emenda-viga", "emenda-pilar"],
+        entradas=_ENT_FC, esforcos=["N", "V", "Vz", "M", "Mz", "T"],
+        descricao="Flange redondo soldado na ponta de cada tubo e parafusos num círculo (viga–viga ou pilar–pilar). "
+                  "Flange e nº de parafusos com efeito alavanca por Igarashi (CIDECT DG1), M convertido em tração "
+                  "equivalente; parafusos (NBR 8800 6.3.3), solda tubo–flange e bordas.",
+        verificar=lambda dd, ee: _verificar_flange(dd, ee, True), sugerir=_sugerir_flange(True), exemplo=_EXEMPLO_FC),
+    "emenda_flangeada_tubo_retangular": dict(
+        nome="Emenda flangeada de tubo quadrado/retangular (metalon)", familia="emenda",
+        liga=["emenda-viga", "emenda-pilar"], entradas=_ENT_FR, esforcos=["N", "V", "Vz", "M", "Mz", "T"],
+        descricao="Flange retangular soldado na ponta de cada tubo (metalon, TQ/TR) com parafusos fora do tubo em 2 ou "
+                  "4 lados (viga–viga ou pilar–pilar). Flange e parafusos como T-stub com efeito alavanca (CIDECT DG3), "
+                  "parafusos (NBR 8800 6.3.3), solda tubo–flange (e parede fina, NBR 14762) e bordas.",
+        verificar=lambda dd, ee: _verificar_flange(dd, ee, False), sugerir=_sugerir_flange(False), exemplo=_EXEMPLO_FR),
 }
 L.registrar_pontas(TIPOS)

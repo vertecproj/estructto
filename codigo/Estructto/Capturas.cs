@@ -1220,6 +1220,7 @@ namespace NovoFtool
                 if (so == "w8tubo") so1(() => CapturasW8Tubo(w));                 // só as 80) perfil–tubo (parede do tubo, desenho) e solda direta (W8)
                 if (so == "w8contrav") so1(() => CapturasW8Contrav(w));           // só as 80) gusset, nó de treliça e tirante (W8-CONTRAV)
                 if (so == "w9fi") so1(() => CapturasW9Fi(w));                     // só as 90) emenda flangeada de perfil I/H/U (W9)
+                if (so == "w9ft") so1(() => CapturasW9Ft(w));                     // só as 90) emenda flangeada de tubo redondo e metalon (W9-FT)
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
                 if (so == "inicio") so1(() => CapturasInicio(w));                 // só as 01-02) tela inicial e novo projeto (inclui Voltar/remontar passos)
