@@ -31,7 +31,7 @@ def anotar(tipo, geo, dados, nomes):
         sup = (dados or {}).get("cantoneira_superior")
         if tipo == "apoio_cantoneira" and sup and ca.get("perfil") == sup:
             pôr(ca, ["cantoneira_superior"])
-        pôr(ca, ["secao"] if tipo == "cantoneira_simples_trelica" else ["cantoneira"])
+        pôr(ca, ["perfil_cantoneira", "secao"] if tipo == "cantoneira_simples_trelica" else ["cantoneira"])
     for pf in (geo.get("parafusos") or []):
         pôr(pf, _PARAFUSO)
     for pf in geo.get("porcas") or []:

@@ -81,8 +81,8 @@ namespace NovoFtool
 
             // 2) padrões do motor
             var tipos = Esperar2(Motor.Get("/api/ligacoes/tipos"));
-            var j = new JanelaLigacaoProjeto(tipos) { Owner = mw, Width = 1460, Height = 880 };
-            PrepararDialogoForaDaTela(j); j.Show(); EsperarIdle();
+            var j = new JanelaLigacaoProjeto(tipos);
+            mw.MostrarLigacao(j); EsperarIdle();   // W7: aba da janela principal
             Esperar(j.CarregarMiniaturas()); EsperarIdle();
             CapturarDialogo(j, "w73d-biblioteca.png");
             foreach (var t in new[] { "chapa_topo_estendida", "chapa_simples_alma", "cantoneira_dupla_alma" })

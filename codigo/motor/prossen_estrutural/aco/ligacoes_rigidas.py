@@ -1146,7 +1146,11 @@ def _sugerir_chapa(tipo):
         base = _base(perfis)
         if tipo == "chapa_topo_estendida":
             base["estendida"] = "ambas" if (esforcos or {}).get("M", 0) < 0 else "superior"
-        bf = _perfil(base["perfil_viga"], "perfil_viga")["b"] / MM
+        pv = _perfil(base["perfil_viga"], "perfil_viga")
+        bf = pv["b"] / MM
+        # W7-LIG: filete da alma dentro da faixa da tabela 10 / 6.2.6.2.2 da alma (W310x38,7: tw 5,8 → 5 mm; o padrão 6 reprovava)
+        bmax = math.floor(lg.filete_maximo(pv["tw"]) / MM)
+        base["b_alma"] = max(math.ceil(lg.filete_minimo(pv["tw"]) / MM), min(6, bmax))
         grade = [dict(d_mm=dd, tp=t, de=max(40, _borda(dd)), bp=bf + 25, n_linhas_extras=nx,
                       s_linhas=max(75, math.ceil(3 * dd / 5) * 5),
                       g=max(round(bf / 2 / 5) * 5, math.ceil((2.7 * dd + 10) / 5) * 5))

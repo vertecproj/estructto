@@ -748,10 +748,15 @@ namespace NovoFtool
                     int n = furos.Count(f => Dot(f.O, eixo) > a - 0.5 && Dot(f.O, eixo) < b + 0.5 && Dot(f.O, outro) > oa - f.L && Dot(f.O, outro) < ob + f.L);
                     return (a, b, Math.Abs(Vector3D.DotProduct(pc.N, F)) > 0.85, (b - a) * (ob - oa), n);
                 }
-                var cand = placas.Select(pc => (pc, f: Faixa(pc))).Where(x => x.f.n > 0).OrderByDescending(x => x.f.n).ThenByDescending(x => x.f.frente).ThenBy(x => x.f.area).FirstOrDefault();
+                // empate de furos: a chapa (gusset) antes da cantoneira que passa por ela (W7-LIG: a cantoneira segue além do gusset)
+                var cands = placas.Select(pc => (pc, f: Faixa(pc))).Where(x => x.f.n > 0).ToList();
+                var cand = cands.OrderByDescending(x => x.f.n).ThenBy(x => x.pc.Camada == 1 ? 0 : 1).ThenByDescending(x => x.f.frente).ThenBy(x => x.f.area).FirstOrDefault();
                 if (cand.pc == null) continue;
                 var pl = cand.pc;
                 var vals = new List<double> { cand.f.a, cand.f.b };
+                // bordas das outras peças furadas dentro da faixa (ponta da cantoneira, talão e ponta da aba): recuo, e1, g e b − g na cadeia
+                foreach (var o in cands.Where(o => o.pc.Camada != pl.Camada && Math.Abs(Vector3D.DotProduct(o.pc.N, eixo)) < 0.85))
+                    foreach (var v in new[] { o.f.a, o.f.b }) if (v > cand.f.a + 0.5 && v < cand.f.b - 0.5) vals.Add(v);
                 foreach (var f in furos) { double v = Dot(f.O, eixo); if (v > cand.f.a - 0.5 && v < cand.f.b + 0.5) vals.Add(v); }
                 vals = vals.OrderBy(v => v).Aggregate(new List<double>(), (l, v) => { if (l.Count == 0 || v - l[l.Count - 1] > 0.5) l.Add(v); return l; });
                 if (vals.Count < 3) continue;
@@ -803,6 +808,23 @@ namespace NovoFtool
                     dc.DrawRoundedRectangle(TemaPlant.BFundoTextoCanvas, null, rr, 2, 2);
                     dc.DrawText(ft, new Point(rr.X + 3, rr.Y));
                 }
+                // W7-LIG: na elevação, topo da chapa/cantoneira ao topo da viga (campo "topo da chapa ao topo viga")
+                var vg = g.Pecas.Where(q => q.Grupo == "viga").SelectMany(q => q.Base.SelectMany(p => new[] { p + q.N * q.T / 2, p - q.N * q.T / 2 })).ToList();
+                if (!horizontal && Vista == VistaLig.Elevacao && vg.Count > 0)
+                {
+                    double vt = vg.Max(q => Dot(q, eixo)), b0 = vals[vals.Count - 1];
+                    if (vt > b0 + 0.5)
+                    {
+                        Point a = Tela(b0), b = Tela(vt);
+                        dc.DrawLine(pen, a, b);
+                        foreach (var q in new[] { a, b }) dc.DrawLine(new Pen(TemaPlant.BTexto2, 1.3), q - new Vector(4, -4), q + new Vector(4, -4));
+                        dc.DrawLine(penL, new Point(vg.Select(P).Min(q => q.X), b.Y), b);
+                        var ft = Txt(Fmt(vt - b0), 11, TemaPlant.BTexto1);
+                        Rect rr = new Rect(a.X + 5, (a.Y + b.Y) / 2 - ft.Height / 2, ft.Width + 6, ft.Height);
+                        dc.DrawRoundedRectangle(TemaPlant.BFundoTextoCanvas, null, rr, 2, 2);
+                        dc.DrawText(ft, new Point(rr.X + 3, rr.Y));
+                    }
+                }
             }
         }
 
@@ -824,7 +846,8 @@ namespace NovoFtool
                 var ps = viga.Select(P).ToList();
                 Caixa(g.NomeViga.Replace("x", "×"), new Point(ps.Max(q => q.X) - 4, ps.Min(q => q.Y) - 20), TemaPlant.BRealceClaro, true);
             }
-            var sup = g.Pecas.Where(q => q.Grupo == "suporte").SelectMany(q => q.Base).ToList();
+            // cantos do sólido (base ± N·T/2): a base da Caixa é o plano médio e, na lateral, punha o rótulo do pilar no meio do desenho
+            var sup = g.Pecas.Where(q => q.Grupo == "suporte").SelectMany(q => q.Base.SelectMany(p => new[] { p + q.N * q.T / 2, p - q.N * q.T / 2 })).ToList();
             if (sup.Count > 0 && g.NomeSuporte != "")
             {
                 var ps = sup.Select(P).ToList();
@@ -837,6 +860,13 @@ namespace NovoFtool
                 double alt = ch.Base.Max(q => Dot(q, U)) - ch.Base.Min(q => Dot(q, U));
                 string nome = ch.Camada == 2 ? ch.Nome : "ch " + Num.Fmt(ch.T, Math.Abs(ch.T - Math.Round(ch.T)) < 0.05 ? 0 : 1) + " × " + Num.Fmt(alt, 0);
                 Caixa(nome, new Point(ps.Min(q => q.X) + 4, Math.Max(30, ps.Min(q => q.Y) - 22)), ch.Falha ? TemaPlant.BErro : TemaPlant.BTexto1);
+            }
+            // W7-LIG: cantoneira sobre um gusset (a chapa já levou o rótulo): nome do perfil na ponta da barra
+            var ca = ch != null && ch.Camada == 1 ? g.Pecas.FirstOrDefault(q => q.Camada == 2 && Math.Abs(Vector3D.DotProduct(q.N, F)) > 0.85) : null;
+            if (ca != null && Vista == VistaLig.Elevacao)
+            {
+                var ps = ca.Base.Select(P).ToList();
+                Caixa(ca.Nome.Replace(" x ", " × "), new Point(ps.Max(q => q.X) - 4, Math.Max(30, ps.Min(q => q.Y) - 22)), ca.Falha ? TemaPlant.BErro : TemaPlant.BRealceClaro, true);
             }
             var sd = g.Soldas.FirstOrDefault();
             if (sd != null && Vista != VistaLig.Planta)
