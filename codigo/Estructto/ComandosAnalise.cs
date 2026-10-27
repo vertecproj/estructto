@@ -70,11 +70,10 @@ namespace NovoFtool
         public static async void AbrirLigacao(Window dono) { await AbrirLigacao(dono, null); }
 
         // Projetista de ligações (JanelaLigacaoProjeto): tipo = abre direto no tipo (null = biblioteca)
-        public static async Task AbrirLigacao(Window dono, string tipo)
+        public static Task AbrirLigacao(Window dono, string tipo)
         {
-            if (dono is MainWindow w) { w.AbrirProjetistaLigacao(tipo); return; }
-            var d = await BuscarTipos(dono);
-            if (d != null) Mostrar(dono, new JanelaLigacaoProjeto(d, tipo));
+            (dono as MainWindow ?? (MainWindow)Application.Current.MainWindow).AbrirProjetistaLigacao(tipo);   // W7: sempre numa aba da janela principal
+            return Task.CompletedTask;
         }
 
         public static Task<JsonNode> BuscarTipos(Window dono) => Buscar(dono, "Projetar ligação", () => Motor.Get("/api/ligacoes/tipos"));

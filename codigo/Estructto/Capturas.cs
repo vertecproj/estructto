@@ -1211,6 +1211,7 @@ namespace NovoFtool
                 if (so == "a1") so1(() => CapturasA1(w, caminhoModelo));          // só as 54) do produto 3D único (A1)
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
+                if (so == "w7aba") so1(() => CapturasW7Aba(w));                   // só as 63) das abas de ligação
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
                 if (so == "w7ui") so1(() => CapturasW7Ui(w));                     // só as W7-) ícones de perfil e rolagem do seletor
@@ -1431,6 +1432,7 @@ namespace NovoFtool
                 // 51) Projetista de ligações (biblioteca, chapa simples ao vivo, falha, otimizado, aplicar ao grupo)
                 CapturasProjetista(w);
                 CapturasW7Ui(w);
+                CapturasW7Aba(w);   // 63) projetista/biblioteca em aba da janela principal (CapturasW7Aba.cs)
                 // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
                 CapturasSnap(w);
                 // 56) Pivô automático da órbita e zoom no cursor

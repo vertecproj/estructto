@@ -25,11 +25,20 @@ using System.Windows.Threading;
 using Portico;
 using static NovoFtool.UiPlaca;
 using static NovoFtool.UiAnalise;
+using static NovoFtool.JanelaEscura;
 
 namespace NovoFtool
 {
-    public class JanelaLigacaoProjeto : JanelaEscura
+    // W7 (docs/v3/W7-ABA.md): controle hospedado numa aba da barra de documentos da janela principal (LigacaoAbas.cs), não mais Window.
+    public class JanelaLigacaoProjeto : UserControl
     {
+        public string Title { get; set; }                     // ponytail: o cabeçalho da aba usa NomeAba; Title só por compatibilidade
+        public Action Fechou;                                 // Close(): a aba sai (MainWindow.FecharLigacao)
+        public Action AbaMudou;                               // biblioteca ↔ padrão: o nome da aba muda
+        public string NomeAba => (tipo == null ? "Biblioteca de ligações" : "Ligação · " + NomeTipo(Tipo())) + (grupo != null ? " · grupo " + S(grupo, "nome") : "");
+        public void Close() { espera.Stop(); Fechou?.Invoke(); }
+        Window Dono => Window.GetWindow(this) ?? Application.Current.MainWindow;   // diálogos: a janela que hospeda a aba
+        bool carregou;
         // rotas sem estado (verificar, sugerir, otimizar, memorial) e, com grupo, as do documento (editar, dimensionar)
         public Func<string, string, JsonObject, Task<JsonNode>> Api = (m, r, c) => Motor.Chamar(m, r, c);
         public Func<string, string, JsonObject, Task<JsonNode>> ApiGrupo;
@@ -76,8 +85,12 @@ namespace NovoFtool
                 esforcos[id] = t["exemplo"]?["esforcos"] is JsonObject e ? (JsonObject)e.DeepClone() : new JsonObject();
                 foreach (var c in Campos(t)) if (dados[id][S(c, "nome")] == null && c["padrao"] != null) dados[id][S(c, "nome")] = c["padrao"].DeepClone();
             }
-            Moldar(this, "Projetar ligação", 1460, 880);
-            MinWidth = 1180; MinHeight = 700;
+            Title = "Projetar ligação";
+            Background = BFundo; Foreground = BTexto; FontFamily = TemaPlant.Fonte; FontSize = 12;   // o que a JanelaEscura dava
+            UseLayoutRounding = true; SnapsToDevicePixels = true; TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+            Focusable = true; FocusVisualStyle = null;
+            KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Cycle);   // Tab circula dentro da aba
+            KeyDown += (s, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };   // Esc fecha, como na janela
             Content = Raiz(hostCab, hostCorpo, hostRodape);
             espera.Tick += async (s, e) => { espera.Stop(); await CalcularAgora(); };
             tDestaque.Tick += (s, e) => { tDestaque.Stop(); if (celDestaque != null) { celDestaque.Background = Brushes.Transparent; celDestaque.BorderBrush = Brushes.Transparent; } celDestaque = null; campoDestaque = null; };
@@ -86,7 +99,8 @@ namespace NovoFtool
             Montar();
             Loaded += async (s, e) =>
             {
-                if (Capturas.Ativo) return;
+                if (carregou || Capturas.Ativo) return;
+                carregou = true;
                 if (tipo != null) await CalcularAgora(); else await CarregarMiniaturas();
             };
         }
@@ -265,7 +279,7 @@ namespace NovoFtool
         {
             if (tipo == null) return;
             var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Conexão do Estructto (*" + ConexaoArquivo.Ext + ")|*" + ConexaoArquivo.Ext, FileName = arquivoConexao != null ? Path.GetFileName(arquivoConexao) : tipo + ConexaoArquivo.Ext };
-            if (dlg.ShowDialog(this) != true) return;
+            if (dlg.ShowDialog(Dono) != true) return;
             try { ConexaoArquivo.Gravar(dlg.FileName, Path.GetFileNameWithoutExtension(dlg.FileName), tipo, Dados, Esf); arquivoConexao = dlg.FileName; status = "Conexão salva em " + dlg.FileName; }
             catch (Exception ex) { status = "Nenhuma conexão salva: " + ex.Message; }
             MontarRodape();
@@ -275,7 +289,7 @@ namespace NovoFtool
             if (caminho == null)
             {
                 var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Conexão do Estructto (*" + ConexaoArquivo.Ext + ")|*" + ConexaoArquivo.Ext };
-                if (dlg.ShowDialog(this) != true) return;
+                if (dlg.ShowDialog(Dono) != true) return;
                 caminho = dlg.FileName;
             }
             try
@@ -442,6 +456,7 @@ namespace NovoFtool
         {
             if (tipo == null) MontarBiblioteca(); else MontarProjeto();
             MontarRodape();
+            AbaMudou?.Invoke();
         }
 
         void Atualizar()
@@ -1269,7 +1284,7 @@ namespace NovoFtool
                         11.5, status.StartsWith("Motor:") || status.StartsWith("Nenhum") ? TemaPlant.BAlertaClaro : status != "" ? TemaPlant.BTexto1 : TemaPlant.BTexto3);
             st.TextTrimming = TextTrimming.CharacterEllipsis; st.MaxWidth = 640;   // no StackPanel o corte só vale com largura máxima (texto longo alargava a janela)
             esq.Children.Add(Dica(st, st.Text));
-            var bts = new List<Button> { B("Fechar", Close, false, "Fecha a janela (Esc).") };
+            var bts = new List<Button> { B("Fechar", Close, false, "Fecha esta aba (Esc).") };
             if (tipo != null && grupo != null)
             {
                 var ap = B("Aplicar ao grupo", () => _ = AplicarAoGrupo(), true, "Grava este projeto no grupo " + S(grupo, "nome") + " e verifica todas as ligações do grupo em todas as combinações ELU.");
@@ -1292,9 +1307,9 @@ namespace NovoFtool
         {
             var d = await ComandosAnalise.BuscarTipos(this);
             if (d == null) return;
-            var j = new JanelaLigacaoProjeto(d, tipo) { Owner = this };
-            j.AbrirPlaca = jp => { Activate(); _ = AbrirPlacaEsp(null); };   // placa do pé de pilar (Legado3D.cs): nó selecionado ou pede o clique
-            j.Show();
+            var j = new JanelaLigacaoProjeto(d, tipo);
+            j.AbrirPlaca = jp => { MostrarLigacao(null); _ = AbrirPlacaEsp(null); };   // placa do pé de pilar (Legado3D.cs): nó selecionado ou pede o clique (na aba do modelo)
+            MostrarLigacao(j);
             if (conexao != null) await j.AbrirConexao(conexao);
         }
 
@@ -1310,7 +1325,7 @@ namespace NovoFtool
                 if (g == null) { MostrarToast("Esta chapa não pertence a nenhum grupo de ligações do modelo.", true); return; }
                 var j = await CriarProjetistaGrupo(d, g, null);
                 if (j == null) return;
-                j.Show();
+                MostrarLigacao(j);
                 if (j.TemTipo) j.IrParaTag(tag);
                 else MostrarToast("O grupo " + S(g, "nome") + " ainda não tem projeto: escolha o padrão na biblioteca.", false);
             }
@@ -1328,7 +1343,7 @@ namespace NovoFtool
         internal async Task AbrirProjetistaGrupo(DocumentoEspacial d, JsonNode g, JanelaLigacoesGrupos ger)
         {
             var j = await CriarProjetistaGrupo(d, g, ger);
-            j?.Show();
+            if (j != null) { MostrarLigacao(j); Activate(); }   // a aba fica na janela principal (o gerenciador continua por cima)
         }
 
         internal async Task<JanelaLigacaoProjeto> CriarProjetistaGrupo(DocumentoEspacial d, JsonNode g, JanelaLigacoesGrupos ger)
@@ -1342,7 +1357,7 @@ namespace NovoFtool
                 dim = await d.Ligacoes("POST", "/api/ligacoes/grupos/" + Uri.EscapeDataString(S(g, "id")) + "/dimensionar");
             }
             catch (Exception ex) { MostrarToast("Projetar: " + ComandosAnalise.MensagemMotor(ex), true); }
-            var j = new JanelaLigacaoProjeto(tipos) { Owner = (Window)ger ?? this, ApiGrupo = (m, r, c) => d.Ligacoes(m, r, c) };
+            var j = new JanelaLigacaoProjeto(tipos) { ApiGrupo = (m, r, c) => d.Ligacoes(m, r, c) };
             j.UsarGrupo(g, dim);
             j.Aplicado = () => { if (Esp == d) { alterado = true; AtualizarTitulo(); } if (ger != null) _ = ger.Carregar(false); };
             j.AbrirPlaca = jp => { jp.Close(); if (ger != null) { ger.Escolher(S(g, "id")); _ = ger.DimensionarSelecionado(); } };
@@ -1371,7 +1386,7 @@ namespace NovoFtool
             Ligacao3D gotL = null; string gotTag = null;
             Action<Ligacao3D, string> ouvir = (l, t) => { gotL = l; gotTag = t; };
             v.CliquePecaLig += ouvir;
-            JanelaLigacaoProjeto Aberta() => Application.Current.Windows.OfType<JanelaLigacaoProjeto>().FirstOrDefault(x => x.IsVisible && x.CampoDoDestaque != null);
+            JanelaLigacaoProjeto Aberta() => w.LigacoesAbertas.FirstOrDefault(x => x.IsVisible && x.CampoDoDestaque != null);   // W7: abas, não janelas
             JanelaLigacaoProjeto Clicar(string tipoPeca, string nome, Func<string, bool> tagOk)
             {
                 var centros = tipoPeca == "parafuso" ? v.CentrosParafusos() : col.Where(x => x.Tipo == tipoPeca && x.Lig != null && !x.Lig.Proposta).Take(250).Select(Centro).ToList();
@@ -1385,10 +1400,10 @@ namespace NovoFtool
                         if (gotL != null && tagOk(gotTag)) break;
                         gotL = null; gotTag = null;
                     }
-                    if (gotL == null || !tagOk(gotTag)) { foreach (var j0 in Application.Current.Windows.OfType<JanelaLigacaoProjeto>().Where(x => x.IsVisible).ToList()) j0.Close(); continue; }
+                    if (gotL == null || !tagOk(gotTag)) { foreach (var j0 in w.LigacoesAbertas.ToList()) j0.Close(); continue; }
                     JanelaLigacaoProjeto jp = null;
                     for (int i = 0; i < 300 && jp == null; i++) { EsperarIdle(); System.Threading.Thread.Sleep(100); jp = Aberta(); }
-                    if (jp == null) { var qq = Application.Current.Windows.OfType<JanelaLigacaoProjeto>().ToList(); throw new InvalidOperationException("clique na Vista3D (" + nome + ") não abriu o projetista no campo; tag " + gotTag + " lig " + gotL.No + "/" + gotL.Barra + "; janelas " + qq.Count + " " + string.Join(",", qq.Select(x => x.IsVisible + "/" + x.TemTipo + "/" + x.CampoDoDestaque))); }
+                    if (jp == null) { var qq = w.LigacoesAbertas.ToList(); throw new InvalidOperationException("clique na Vista3D (" + nome + ") não abriu o projetista no campo; tag " + gotTag + " lig " + gotL.No + "/" + gotL.Barra + "; janelas " + qq.Count + " " + string.Join(",", qq.Select(x => x.IsVisible + "/" + x.TemTipo + "/" + x.CampoDoDestaque))); }
                     Esperar(jp.CalcularAgora());   // nas capturas a janela não calcula sozinha ao abrir
                     EsperarIdle();
                     log.AppendLine(nome + ": clique abriu o projetista, tag " + gotTag + ", campo destacado " + jp.CampoDoDestaque);
@@ -1401,7 +1416,7 @@ namespace NovoFtool
             { var L = v.ModeloAtual.Ligacoes; log.AppendLine("proposta " + L.Count(l => l.Proposta) + ", motor com chapas " + L.Count(l => !l.Proposta && l.Chapas.Count > 0) + ", motor com parafusos " + L.Count(l => !l.Proposta && l.Parafusos.Count > 0) + ", motor sem peças " + L.Count(l => !l.Proposta && l.Chapas.Count + l.Parafusos.Count + l.Cantoneiras.Count == 0) + ", chapas do motor sem campo " + L.Count(l => !l.Proposta && l.Chapas.Any(c => string.IsNullOrEmpty(c.Campo))) + ", Grupo vazio entre as não-proposta " + L.Count(l => !l.Proposta && l.Grupo == "")); Fim(); }
             var jc = Clicar("chapa", "chapa", t => !string.IsNullOrEmpty(t));
             if (!jc.TemTipo) throw new InvalidOperationException("projetista aberto sem tipo");
-            CapturarPrincipal(w, "51-vista3d-clique-chapa-" + obra);
+            w.MostrarLigacao(null); CapturarPrincipal(w, "51-vista3d-clique-chapa-" + obra);   // a aba aberta pelo clique cobre a vista: foto do modelo
             CapturarDialogo(jc, "51-projetista-clique-vista3d-chapa-" + obra + ".png"); jc.Close(); EsperarIdle();
             var jb = Clicar("parafuso", "parafuso", t => t != null && t.StartsWith("d"));
             CapturarDialogo(jb, "51-projetista-clique-vista3d-parafuso-" + obra + ".png"); jb.Close(); EsperarIdle();
@@ -1417,7 +1432,7 @@ namespace NovoFtool
                 if (!(v.Acertar(v.Tela(m)) is Barra3D)) continue;
                 v.TesteClique(v.Tela(m)); EsperarIdle();
                 if (v.Selecao.Barras.Count != 1) throw new InvalidOperationException("clique na barra não a selecionou");
-                if (Application.Current.Windows.OfType<JanelaLigacaoProjeto>().Any(x => x.IsVisible)) throw new InvalidOperationException("clique na barra abriu o projetista");
+                if (w.LigacoesAbertas.Count > 0) throw new InvalidOperationException("clique na barra abriu o projetista");
                 log.AppendLine("barra " + b.Id + ": clique seleciona a barra, projetista não abre"); achou = true; break;
             }
             if (!achou) throw new InvalidOperationException("clique na barra: nenhuma barra acertada no meio");
@@ -1432,12 +1447,11 @@ namespace NovoFtool
         static void CapturasProjetista(MainWindow w)
         {
             var tipos = Esperar2(Motor.Get("/api/ligacoes/tipos"));
-            var j = new JanelaLigacaoProjeto(tipos) { Owner = w, Width = 1460, Height = 880 };
-            PrepararDialogoForaDaTela(j); j.Show(); EsperarIdle();
+            var j = new JanelaLigacaoProjeto(tipos);
+            w.MostrarLigacao(j); EsperarIdle();   // W7: aba da janela principal
             Esperar(j.CarregarMiniaturas()); EsperarIdle();
             CapturarDialogo(j, "51-projetista-biblioteca.png");
-            RenderizarJanela(j, 1280, 720, "51-projetista-biblioteca-1280x720.png");
-            j.Width = 1460; j.Height = 880;
+            RenderizarJanela(w, 1280, 720, "51-projetista-biblioteca-1280x720.png");
             Esperar(j.Escolher("chapa_simples_alma", false));
             j.DefinirEsforcos(new JsonObject { ["V"] = 100, ["N"] = 0 }); Esperar(j.CalcularAgora()); EsperarIdle();
             CapturarDialogo(j, "51-projetista-chapa-simples.png");
@@ -1457,11 +1471,11 @@ namespace NovoFtool
                 var tp2 = j.TrocarPerfil("perfil_suporte", "W250x73"); Esperar(tp2); EsperarIdle(); var (n2, g2) = tp2.Result;
                 if (n1 < 50 || n2 < 50 || g1 != "W360x51" || g2 != "W250x73")
                     throw new InvalidOperationException($"projetista: troca de perfil no combo: itens {n1}/{n2}, gravado '{g1}'/'{g2}'");
-                {   // 27/10/2026: a lista do seletor abria e fechava sozinha (clique real, janela na tela)
-                    double l0 = j.Left, t0 = j.Top; j.Left = 0; j.Top = 0; j.Topmost = true; j.Activate(); EsperarIdle();
+                {   // 27/10/2026: a lista do seletor abria e fechava sozinha (clique real, janela na tela). W7: a janela principal com a aba
+                    double l0 = w.Left, t0 = w.Top; w.Width = 1600; w.Height = 900; w.Left = 0; w.Top = 0; w.Topmost = true; w.Activate(); EsperarIdle();
                     bool aberto = j.CliqueRealNoSeletor("perfil_viga", EsperarIdle);
-                    bool ativa = j.IsActive;
-                    j.Topmost = false; j.Left = l0; j.Top = t0; EsperarIdle();
+                    bool ativa = w.IsActive;
+                    w.Topmost = false; w.Left = l0; w.Top = t0; EsperarIdle();
 
                     if (!aberto) throw new InvalidOperationException("projetista: a lista de perfis fechou sozinha depois do clique; janela ativa: " + ativa);
                 }
@@ -1519,8 +1533,7 @@ namespace NovoFtool
             var g = grupos.First(x => S(x, "tipo").StartsWith("viga_pilar"));
             var t2 = w.CriarProjetistaGrupo(d, g, ger); Esperar(t2);
             var jg = t2.Result ?? throw new InvalidOperationException("projetista do grupo não abriu");
-            jg.Width = 1460; jg.Height = 880;
-            PrepararDialogoForaDaTela(jg); jg.Show(); EsperarIdle();
+            w.MostrarLigacao(jg); EsperarIdle();
             CapturarDialogo(jg, "51-projetista-grupo-biblioteca.png");
             Esperar(jg.Escolher("chapa_simples_alma")); EsperarIdle();
             CapturarDialogo(jg, "51-projetista-grupo-projeto.png");
@@ -1546,7 +1559,7 @@ namespace NovoFtool
                     try
                     {
                         var tp = w.CriarProjetistaGrupo(dP, gp, null); Esperar(tp); var jp = tp.Result; if (jp == null) continue;
-                        PrepararDialogoForaDaTela(jp); jp.Show(); EsperarIdle();
+                        w.MostrarLigacao(jp); EsperarIdle();
                         Esperar(jp.Escolher("chapa_simples_alma")); Esperar(jp.AplicarAoGrupo()); jp.Close(); EsperarIdle(); aplicados++;
                     }
                     catch (Exception) { }

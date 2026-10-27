@@ -602,7 +602,7 @@ namespace NovoFtool
                 var t2 = w.CriarProjetistaGrupo(d, gJoelho, ger); Esperar(t2);
                 var jg = t2.Result;
                 r.Exigir(jg != null, "projetista do grupo do joelho abriu");
-                jg.Width = 1460; jg.Height = 880; PrepararDialogoForaDaTela(jg); jg.Show(); EsperarIdle();
+                w.MostrarLigacao(jg); EsperarIdle();   // W7: aba da janela principal
                 Esperar(jg.Escolher("chapa_topo_estendida")); EsperarIdle();
                 if (jg.Resultado != null && !UiAnalise.Bool(jg.Resultado, "ok")) { Esperar(jg.Otimizar()); EsperarIdle(); }
                 FotoDialogo(jg, "A-13-joelho-chapa-topo");
@@ -1342,7 +1342,7 @@ namespace NovoFtool
                 var jg = t2.Result;
                 if (r.Checar(jg != null, "projetista do grupo abriu"))
                 {
-                    jg.Width = 1460; jg.Height = 880; PrepararDialogoForaDaTela(jg); jg.Show(); EsperarIdle();
+                    w.MostrarLigacao(jg); EsperarIdle();   // W7: aba da janela principal
                     Esperar(jg.Escolher("chapa_topo_estendida")); EsperarIdle();
                     if (jg.Resultado != null && !UiAnalise.Bool(jg.Resultado, "ok")) { Esperar(jg.Otimizar()); EsperarIdle(); }
                     r.Checar(jg.Resultado?["taxa"] != null, "chapa de topo estendida calculada pelo pacote (taxa " + jg.Resultado?["taxa"] + ", " + (string)jg.Resultado?["criterio"] + ")");

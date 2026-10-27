@@ -391,7 +391,7 @@ namespace NovoFtool
         // de ponto em curso, dígitos, vírgula, ponto e @ vão para a entrada dinâmica da Vista3D (Vista3D.Digitar).
         void TextoDigitado(object s, TextCompositionEventArgs e)
         {
-            if (Editando() || Comando.IsKeyboardFocusWithin || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
+            if (LigacaoAtiva != null || Editando() || Comando.IsKeyboardFocusWithin || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
             if (vista3D == null || !(vista3D.IsKeyboardFocusWithin || vista3D.IsMouseOver || Keyboard.FocusedElement == null || Keyboard.FocusedElement is Window)) return;
             char c = e.Text[0];
             bool numerico = char.IsDigit(c) || c == '.' || c == '-' || c == ',' || c == ';' || c == '@';
@@ -412,6 +412,7 @@ namespace NovoFtool
             bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control), shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
             bool editando = Editando();
             Key k = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (TeclaLigacao(k, ctrl, e)) return;   // aba de ligação na frente (LigacaoAbas.cs)
             // ferramenta/pedido em curso na Vista3D: Esc em cascata, Enter/Espaço, Tab, Backspace (Vista3D.Tecla)
             if (!editando && !ctrl && Comando.Text == "" && (k == Key.Escape || k == Key.Enter || k == Key.Return || k == Key.Space || k == Key.Tab || k == Key.Back) && Tecla3D(k))
             { e.Handled = true; return; }
