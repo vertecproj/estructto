@@ -1,6 +1,11 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 27/10/2026 — v0.6.17 (relato do usuário sobre a solda direta: "só conta a solda da alma, tem que soldar tudo" e "não funciona com dois tamanhos diferentes"):
+  - Solda direta solda o contorno inteiro (alma e mesas) por padrão e o calcula como grupo elástico (NBR 8800 6.2.5: V, Vz, N, M, Mz e T). "Soldar as mesas" fica só com sim/não; um .pcon antigo com "auto" abre como sim. A perna mínima é a da junta mais grossa.
+  - Viga apoiada de tamanho diferente: campo "desnível" com padrão auto. A viga desce o mínimo para caber na altura livre do apoio; se não cabe, as mesas são recortadas. UPN 50 no UPN 100 passa de "sem solução" (124 %) para 75 %; W200 no W310 passa de 130 % para 75 %.
+  - Otimizar (todos os tipos): não desce uma disposição construtiva para acima de 0,90 e sobe a perna que está exatamente na mínima. Ver [v3/W10-SOLDA-DIRETA.md](v3/W10-SOLDA-DIRETA.md).
+  - Pendente: com as mesas soldadas, o momento é verificado só na solda (a viga e o apoio não); viga chegando pelo lado das mesas de um apoio U.
 - 27/10/2026 — v0.6.16 (pedidos do usuário: "falta a conexão de flange entre vigas e entre pilares" para I, U, H, W, metalon e tubo redondo; "ainda não tem a função de usar perfis U como tubo ou invertidos para ser um I"):
   - Emenda flangeada de viga e de pilar (perfil I/H/U, `emenda_flangeada_viga`/`_pilar`): chapa de topo soldada em cada trecho e as duas aparafusadas (T-stub com alavanca, aproveitando a chapa de topo). Pilar com contato usinado. Padrões de fábrica: viga W310 0,875, pilar W250 0,885, UPN 200 0,857. Ver [v3/W9-FLANGE-PERFIL.md](v3/W9-FLANGE-PERFIL.md).
   - Emenda flangeada de tubo redondo (flange circular, Igarashi / CIDECT DG1, conferido com a tabela 3 de Cao & Packer) e de metalon/TQ/TR (flange retangular, T-stub CIDECT DG3, parede fina NBR 14762). Padrões de fábrica 0,87 e 0,88. Ver [v3/W9-FLANGE-TUBO.md](v3/W9-FLANGE-TUBO.md).
