@@ -246,7 +246,8 @@ namespace NovoFtool
                     r.Pecas.InsertRange(0, lst);
                 }
             }
-            if (!Lista(g["membros"]).Any(m => S(m, "barra") != "viga") && r.Soldas.Any() && pecasLig.Count > 0 && r.Pecas.Any(q => q.Grupo == "viga"))
+            // W9: membros com `pecas` (emenda flangeada: os dois trechos da viga) não são tipo antigo sem apoio
+            if (!Lista(g["membros"]).Any(m => S(m, "barra") != "viga" || m["pecas"] is JsonArray) && r.Soldas.Any() && pecasLig.Count > 0 && r.Pecas.Any(q => q.Grupo == "viga"))
             {
                 r.Parede = true; r.XParede = xMinLig;   // tipo antigo: apoio sem perfil
             }
