@@ -344,7 +344,8 @@ namespace NovoFtool
             if (tipo == null || ocupado) return;
             var perfis = new JsonObject();
             foreach (var kv in Dados)
-                if (kv.Key.StartsWith("perfil_") || kv.Key == "apoio" || kv.Key.StartsWith("secao") || kv.Key.StartsWith("dim_") || kv.Key.Contains("_perfil") || kv.Key.StartsWith("t_perfil"))
+                // W11: terca_ou_travessa vai junto (isenção da NBR 8800 6.1.5.2 muda o pré-dimensionamento da chapa de topo com viga U)
+                if (kv.Key.StartsWith("perfil_") || kv.Key == "apoio" || kv.Key.StartsWith("secao") || kv.Key.StartsWith("dim_") || kv.Key.Contains("_perfil") || kv.Key.StartsWith("t_perfil") || kv.Key == "terca_ou_travessa")
                     perfis[kv.Key] = kv.Value?.DeepClone();
             await Rodar(async () =>
             {
@@ -1011,7 +1012,9 @@ namespace NovoFtool
             }
         }
 
-        // mesmo seletor do inspetor (SeletorPerfil: miniatura, busca, lista); nas rígidas e emendas só I/H (o motor recusa U, G5)
+        // mesmo seletor do inspetor (SeletorPerfil: miniatura, busca, lista); nas rígidas e emendas só I/H (o motor recusa U, G5).
+        // Exceção por campo: quando o motor manda `perfis` no campo (W9 emenda flangeada; W11 chapa de topo ajustada com I/H/U/Ue),
+        // a lista vem dele (CaixaPerfil, `so`) e este filtro não vale.
         static readonly HashSet<string> FamiliasI = new HashSet<string> { "W", "HP", "IPE", "HEA", "HEB" };
         bool SoPerfilI => S(Tipo(), "familia") is "rigida" or "emenda";
         IEnumerable<string> PerfisDoTipo() => Lista(catalogo).Where(x => !SoPerfilI || FamiliasI.Contains(S(x, "familia"))).Select(x => S(x, "nome")).Where(x => x != "");

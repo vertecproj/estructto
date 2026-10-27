@@ -36,8 +36,9 @@ Excentricidade ao centro de cisalhamento: `valores.e_centro_cisalhamento_mm`. O 
 
 ## Recusas
 
-- Rígidas com U (`chapa_topo_*`, `flange_plate`, emendas rígidas): `ValueError` "ligação rígida com perfil U não
-  suportada". No modelo (`ligacoes_modelo.membros`), a viga–pilar na mesa rígida com viga U sai com
+- Rígidas com U (`chapa_topo_estendida`, `flange_plate`, emendas rígidas): `ValueError` "ligação rígida com perfil U não
+  suportada". Exceções: a emenda flangeada (W9) e a chapa de topo ajustada com viga U (W11,
+  [W11-CHAPA-TOPO-U.md](W11-CHAPA-TOPO-U.md)). No modelo (`ligacoes_modelo.membros`), a viga–pilar na mesa rígida com viga U sai com
   `sem_tipo: true` e `motivo` com esse texto. A alma do pilar e a viga–viga já são propostas flexíveis em qualquer
   condição, então não recebem `sem_tipo`.
 - Chapa de extremidade maior que a face do apoio: o `sugerir` recusa. Exemplo: viga UPN 120 na mesa de um UPN 50: "chapa de topo 74 mm > face do apoio
