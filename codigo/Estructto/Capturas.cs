@@ -1212,6 +1212,7 @@ namespace NovoFtool
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
                 if (so == "w7aba") so1(() => CapturasW7Aba(w));                   // só as 63) das abas de ligação
+                if (so == "w73d") so1(() => CapturasW73d(w));                     // só as w73d-*: 3D do projetista (z-buffer), tubo, teste dos parafusos
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
                 if (so == "w7ui") so1(() => CapturasW7Ui(w));                     // só as W7-) ícones de perfil e rolagem do seletor
