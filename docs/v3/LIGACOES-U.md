@@ -21,6 +21,8 @@ Os tipos flexíveis (`chapa_simples_alma`, `cantoneira_dupla_alma`, `chapa_extre
 - Referencial: o U abre para `+y` local. A face externa da alma (costas) fica em `y = −xg`.
 - Chapa simples: a chapa fica nas costas da alma. Os parafusos entram de fora para dentro, e a porca fica entre as mesas.
 - Cantoneira dupla: as duas cantoneiras abraçam a alma. Plano médio da alma em `y = tw/2 − xg`.
+- Chapa de extremidade: chapa, parafusos e os dois filetes centrados no plano médio da alma (W7-UPN, `docs/v3/W7-UPN.md`).
+- `geometria.membros` (projetista): o U vai com `forma: "U"`, `xg` e `abertura_y`.
 
 ## Verificações a mais
 

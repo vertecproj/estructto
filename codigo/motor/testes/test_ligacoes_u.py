@@ -430,3 +430,72 @@ class TestChapaFaceContrato(unittest.TestCase):
         self.assertNotIn("erro", lote)
         self.assertTrue(lote["geometria"]["soldas"])
         self.assertNotIn("barra curta", lote.get("motivo") or "")
+
+
+class TestDesenhoU(unittest.TestCase):
+    """W7-UPN (docs/v3/W7-UPN.md): a viga/apoio U vai em `geometria.membros` com as dimensões do catálogo, a forma U, xg
+    e a abertura; as peças que tocam a alma ficam na alma do U (costas em y = −ab·xg), em todos os tipos que aceitam U."""
+    US = ["UPN 200", 'U 8" x 17,1', "U 200x75x3,00", "Ue 200x75x25x3,00"]
+    TIPOS = ["chapa_simples_alma", "cantoneira_dupla_alma", "chapa_extremidade_flexivel", "viga_viga_recorte",
+             "apoio_cantoneira", "solda_direta_alma"]
+
+    @staticmethod
+    def _geo(tipo, pf, esf=ESF):
+        s = dict(P.sugerir_ligacao(tipo, pf, esf))
+        s.pop("tipo_ligacao", None)
+        s.pop("motivo", None)
+        d = dict(pf, **s)
+        return P.verificar_ligacao(tipo, d, esf)["geometria"]   # o tipo pedido, mesmo que o sugerir proponha outro
+
+    def _membro(self, g, barra, nome):
+        m = next(x for x in g["membros"] if x["barra"] == barra)
+        p = secoes.catalogo(nome).props
+        self.assertEqual(m["forma"], "U")
+        for k, pk in (("d", "h"), ("bf", "b"), ("tw", "tw"), ("tf", "tf"), ("xg", "xg")):
+            self.assertAlmostEqual(m[k], (p.get(pk) or p["t"]) * 1e3, 6, f"{nome} {k}")
+        return m
+
+    def test_viga_u_em_todos_os_tipos(self):
+        for nome in self.US:
+            for tipo in self.TIPOS:
+                for ab in (1, -1):
+                    with self.subTest(perfil=nome, tipo=tipo, abertura=ab):
+                        pf = dict(perfil_viga=nome, perfil_suporte="W460x52", perfil_pilar="W460x52", abertura_y=ab)
+                        g = self._geo(tipo, pf)
+                        m = self._membro(g, "viga", nome)
+                        self.assertEqual(m["abertura_y"], ab)
+                        yb, tw = -ab * m["xg"], m["tw"]
+                        alma = (min(yb, yb + ab * tw) - 0.05, max(yb, yb + ab * tw) + 0.05)
+                        if g["chapas"] and tipo in ("chapa_simples_alma", "viga_viga_recorte"):
+                            # chapa nas costas (as soldas são chapa–apoio): uma face (origem ou origem + t·n, G6) em y = yb
+                            ch = g["chapas"][0]
+                            faces = [ch["origem"][1] + k * ch["espessura"] * ch["normal"][1] for k in (0, 1)]
+                            self.assertLess(min(abs(f - yb) for f in faces), 0.05, f"chapa {faces} fora das costas {yb}")
+                            continue
+                        else:
+                            ys = [p[1] for s in g["soldas"] for p in s["pontos"]] + [c["origem"][1] for c in g["cantoneiras"]]
+                        if tipo == "apoio_cantoneira":   # assento sob a mesa inteira do U
+                            c = g["cantoneiras"][0]
+                            self.assertLessEqual(c["origem"][1], min(yb, yb + ab * m["bf"]) + 0.05)
+                            self.assertGreaterEqual(c["origem"][1] + c["comprimento"], max(yb, yb + ab * m["bf"]) - 0.05)
+                            continue
+                        self.assertTrue(ys)
+                        for y in ys:
+                            self.assertTrue(alma[0] <= y <= alma[1], f"y = {y:.2f} fora da alma {alma}")
+
+    def test_apoio_u(self):
+        """U como apoio: vai em membros com forma U (antes sumia); U dobrado só com t não quebra as pontas (tw = tf = t)."""
+        for nome in self.US:
+            for tipo, ap in (("chapa_simples_alma", "alma_pilar"), ("viga_viga_recorte", "alma_viga"),
+                             ("solda_direta_alma", "alma_pilar")):
+                with self.subTest(perfil=nome, tipo=tipo):
+                    pf = dict(perfil_viga="W200x15", perfil_suporte=nome, perfil_pilar=nome, apoio=ap)
+                    self._membro(self._geo(tipo, pf), "suporte", nome)
+
+    def test_chapa_de_extremidade_na_alma_do_u(self):
+        """Antes, as soldas da chapa de extremidade ficavam em y = ±tw/2 (alma do I no eixo), fora da alma do U."""
+        g = self._geo("chapa_extremidade_flexivel", dict(perfil_viga="UPN 200", perfil_suporte="W250x73"))
+        xg, tw = secoes.catalogo("UPN 200").props["xg"] * 1e3, 8.5
+        self.assertEqual(sorted(round(s["pontos"][0][1], 2) for s in g["soldas"]), [round(-xg, 2), round(-xg + tw, 2)])
+        ch = g["chapas"][0]
+        self.assertAlmostEqual(ch["origem"][1] + ch["contorno"][2][0] / 2, -xg + tw / 2, 3)   # chapa centrada na alma

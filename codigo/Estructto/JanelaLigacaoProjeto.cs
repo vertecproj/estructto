@@ -293,6 +293,7 @@ namespace NovoFtool
         public void MostrarBiblioteca() { tipo = null; Montar(); }
         public void Buscar(string s) { busca = s ?? ""; Montar(); }
         public JsonNode Resultado => resultado;
+        public string TipoAtual => tipo; public string Erro => erro; public string Status => status;   // capturas W7-UPN
         // capturas/testes: clica (hit-test real) no centro da 1a chapa da vista 3D; devolve o tag achado
         public string ClicarChapa3D()
         {
@@ -332,14 +333,23 @@ namespace NovoFtool
             {
                 var r = await Api("POST", "/api/ligacoes/sugerir", new JsonObject { ["tipo"] = tipo, ["perfis"] = perfis, ["esforcos"] = Esf.DeepClone() });
                 realces.Clear();
+                // G5: viga U sem parafusada que caiba/passe → o motor troca de tipo (tipo_ligacao + motivo); a tela segue a troca e diz por quê
+                string troca = S(r, "tipo_ligacao"), porque = "";
+                if (troca != "" && troca != tipo && Tipo(troca) != null)
+                {
+                    porque = "Trocado para " + S(Tipo(troca), "nome") + (S(r, "motivo") != "" ? ": " + S(r, "motivo") : "") + ". ";
+                    foreach (var kv in perfis) dados[troca][kv.Key] = kv.Value?.DeepClone();
+                    foreach (var kv in Esf) esforcos[troca][kv.Key] = kv.Value?.DeepClone();
+                    tipo = troca; resultado = null; erro = null; filtroComp = null; semSolucao = null;
+                }
                 if (r is JsonObject o)
                     foreach (var kv in o)
                     {
-                        if (kv.Value == null) continue;
+                        if (kv.Value == null || kv.Key == "tipo_ligacao" || kv.Key == "motivo") continue;
                         if (Dados[kv.Key]?.ToJsonString() != kv.Value.ToJsonString()) realces.Add(kv.Key);
                         Dados[kv.Key] = kv.Value.DeepClone();
                     }
-                status = realces.Count > 0 ? "Pré-dimensionado pelo motor: " + realces.Count + " campos ajustados (em destaque)." : "Sugestão do motor = dados atuais.";
+                status = porque + (realces.Count > 0 ? "Pré-dimensionado pelo motor: " + realces.Count + " campos ajustados (em destaque)." : "Sugestão do motor = dados atuais.");
             });
             Montar();
             await CalcularAgora();
@@ -596,7 +606,7 @@ namespace NovoFtool
         {
             var t = Tipo();
             var chips = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            var vs = Lista(resultado?["verificacoes"]).ToList();
+            var vs = erro != null ? new List<JsonNode>() : Lista(resultado?["verificacoes"]).ToList();   // W7-UPN: com erro, nada do resultado antigo
             foreach (var gr in vs.GroupBy(v => GrupoDe(S(v, "nome"))).OrderBy(g => Array.IndexOf(new[] { "parafusos", "chapas", "soldas", "cantoneiras", "viga", "suporte" }, g.Key)))
             {
                 double tx = gr.Max(v => double.IsNaN(D(v, "taxa")) || double.IsInfinity(D(v, "taxa")) ? 9.99 : D(v, "taxa"));
@@ -1082,7 +1092,8 @@ namespace NovoFtool
             foreach (var v in vistas) if (g != null && (v.Geo == null || !ReferenceEquals(ultimoRes, resultado))) v.Mostrar(g);
             ultimoRes = resultado;
             vistaEsmaecida = erro != null || resultadoVelho;
-            areaVistas.Opacity = erro != null ? 0.45 : 1;
+            // W7-UPN: com erro do motor o desenho antigo (outros perfis) some; o motivo fica no cabeçalho e no passo 3
+            areaVistas.Visibility = erro != null ? Visibility.Hidden : Visibility.Visible;
         }
         JsonNode ultimoRes; bool vistaEsmaecida;
 
@@ -1115,7 +1126,7 @@ namespace NovoFtool
         {
             var dp = new DockPanel();
             var tit = TituloSecao("Passo 3 · Verificações", null, 0); DockPanel.SetDock(tit, Dock.Top); dp.Children.Add(tit);
-            if (resultado == null)
+            if (resultado == null || erro != null)   // W7-UPN: o resultado antigo é de outros dados (ex.: rígida que recusou o U)
             {
                 dp.Children.Add(Vazio("verif", erro != null ? "Corrija os dados" : "Calculando…", erro ?? "O motor verifica a ligação a cada mudança."));
                 hostRes.Child = dp; return;
@@ -1256,7 +1267,8 @@ namespace NovoFtool
             if (ocupado) { var br = Anim.Brilho(80, 3); br.VerticalAlignment = VerticalAlignment.Center; br.Margin = new Thickness(4, 0, 10, 0); esq.Children.Add(br); }
             var st = Tx(status != "" ? status : tipo == null ? "Resultado do motor; exige conferência do engenheiro (ART)." : "Ligação isolada pela NBR 8800:2008. Resultado do motor; exige conferência do engenheiro (ART).",
                         11.5, status.StartsWith("Motor:") || status.StartsWith("Nenhum") ? TemaPlant.BAlertaClaro : status != "" ? TemaPlant.BTexto1 : TemaPlant.BTexto3);
-            st.TextTrimming = TextTrimming.CharacterEllipsis; esq.Children.Add(Dica(st, st.Text));
+            st.TextTrimming = TextTrimming.CharacterEllipsis; st.MaxWidth = 640;   // no StackPanel o corte só vale com largura máxima (texto longo alargava a janela)
+            esq.Children.Add(Dica(st, st.Text));
             var bts = new List<Button> { B("Fechar", Close, false, "Fecha a janela (Esc).") };
             if (tipo != null && grupo != null)
             {

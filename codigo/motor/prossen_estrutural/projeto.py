@@ -2499,8 +2499,10 @@ def _exemplo_lig(lig, t):
     return _EXEMPLOS_LIG[tipo]
 
 
-def _membros_geometria(dados):
-    """Perfis ligados (dados perfil_*) com d, bf, tw, tf em mm, para o desenho da ligação (geometria.membros)."""
+def _membros_geometria(dados, abertura=1):
+    """Perfis ligados (dados perfil_*) com d, bf, tw, tf em mm, para o desenho da ligação (geometria.membros).
+    U/Ue (G5, docs/v3/LIGACOES-U.md): forma "U", xg (mm, centroide → costas da alma) e abertura_y (±1, lado y para
+    onde as mesas abrem). Viga U: costas da alma em y = −abertura·xg, como as chapas do contrato."""
     out = []
     for k, v in (dados or {}).items():
         if not (k.startswith("perfil_") and isinstance(v, str) and v):
@@ -2509,9 +2511,14 @@ def _membros_geometria(dados):
             p = _sec.catalogo(v).props
         except KeyError:
             continue
-        if p.get("tipo") == "I":
-            out.append(dict(barra=k[7:], perfil=v, campo=k, d=p["h"] * 1e3, bf=p["b"] * 1e3, tw=p["tw"] * 1e3, tf=p["tf"] * 1e3,
-                            apoio=str((dados or {}).get("apoio") or "")))
+        if p.get("tipo") not in ("I", "U", "Ue"):
+            continue
+        tw, tf = p.get("tw") or p["t"], p.get("tf") or p["t"]   # formado a frio: tw = tf = t
+        m = dict(barra=k[7:], perfil=v, campo=k, d=p["h"] * 1e3, bf=p["b"] * 1e3, tw=tw * 1e3, tf=tf * 1e3,
+                 apoio=str((dados or {}).get("apoio") or ""))
+        if p["tipo"] != "I":
+            m.update(forma="U", xg=p.get("xg", 0.0) * 1e3, abertura_y=-1 if abertura < 0 else 1)
+        out.append(m)
     return out
 
 
@@ -2529,7 +2536,9 @@ def verificar_ligacao(tipo, dados, esforcos):
         r["geometria"] = lig.geometria_basica(tipo, dados)
     if isinstance(r.get("geometria"), dict):
         # viga_viga_recorte não leva `apoio` nos dados (o tipo já é alma de viga): sem ele o desenho põe o suporte em pé, como pilar
-        r["geometria"].setdefault("membros", _membros_geometria(dict(dados or {}, apoio="alma_viga") if tipo == "viga_viga_recorte" else dados))
+        ab = r["geometria"].get("abertura_y") or (dados or {}).get("abertura_y") or 1
+        r["geometria"].setdefault("membros", _membros_geometria(dict(dados or {}, apoio="alma_viga") if tipo == "viga_viga_recorte" else dados,
+                                                                 -1 if float(ab) < 0 else 1))
         from .aco import ligacoes_campos as _lc   # `campo` de cada peça: o clique na peça leva ao campo (docs/v3/LIGACOES-EDITOR.md)
         _lc.anotar(tipo, r["geometria"], dados, {c["nome"] for c in lig.esquema(tipo)} if hasattr(lig, "esquema") else set())
     return _puro(r)

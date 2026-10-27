@@ -1216,7 +1216,8 @@ namespace NovoFtool
                 if (so == "w7ui") so1(() => CapturasW7Ui(w));                     // só as W7-) ícones de perfil e rolagem do seletor
                 if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)
                 if (so == "interf3d") { int np = CapturasInterf3D(w); w.alterado = false; w.Close(); Environment.Exit(np); }   // só as 62) bateria de interferência das ligações locais
-                if (so == "geo") so1(() => CapturasGeo(w));                     // só as 61) da geometria das ligações (solda, enrijecedores, placa)
+                if (so == "upn") so1(() => CapturasW7Upn(w));                    // só as 70) do perfil U no projetista (W7-UPN)
+                if (so == "geo") so1(() => CapturasGeo(w));                   // só as 61) da geometria das ligações (solda, enrijecedores, placa)
                 if (so == "visual") so1(() => CapturasVisual(w));                 // só as 58) close-ups de parafusos, linhas e ligações propostas
 
                 // 02) Modelo convertido (antes de calcular: aviso da conversão) e calculado
