@@ -222,7 +222,7 @@ _PARAFUSOS = list(lg.PARAFUSOS)
 
 _E_PAR = {"d_mm": _ent("Diâmetro do parafuso", "mm", 19.05, 12.0, 40.0),
           "tipo_parafuso": _ent("Tipo de parafuso", "-", "A325", opcoes=_PARAFUSOS),
-          "rosca_no_plano": _ent("Rosca no plano de corte", "-", True, opcoes=[True, False])}
+          "rosca_no_plano": _ent("Rosca no plano de corte", "-", True)}
 _E_PILAR = {
     "perfil_pilar": _ent("Perfil do pilar", "-", "", descricao="nome do catálogo ou {d, bf, tw, tf, r} em mm; "
                          "vazio = pilar não verificado"),
@@ -235,14 +235,14 @@ _E_PILAR = {
                     descricao="momento da viga do outro lado no mesmo sentido (soma no painel); 0 = unilateral"),
     "V_pilar": _ent("Cortante do pilar", "kN", 0.0, 0.0, 1e5, descricao="cortante do pilar junto ao nó (alivia o painel)"),
     "N_pilar": _ent("Compressão no pilar", "kN", 0.0, 0.0, 1e6, descricao="força de compressão do pilar (5.7.7)"),
-    "topo_pilar": _ent("Nó no topo do pilar", "-", False, opcoes=[True, False],
+    "topo_pilar": _ent("Nó no topo do pilar", "-", False,
                        descricao="força a menos de d do topo (reduções de 5.7.2 a 5.7.6)"),
 }
 _E_VIGA = {"perfil_viga": _ent("Perfil da viga", "-", None, descricao="nome do catálogo ou {d, bf, tw, tf, r} em mm"),
            "aco_viga": _ent("Aço da viga", "-", _PERFIS_PADRAO, opcoes=_ACOS)}
 _E_CHAPA = {"aco_chapa": _ent("Aço das chapas", "-", "A-36", opcoes=_ACOS),
             "eletrodo": _ent("Eletrodo", "-", "E70", opcoes=list(lg.ELETRODOS)),
-            "borda_laminada": _ent("Bordas laminadas/maçarico", "-", False, opcoes=[True, False],
+            "borda_laminada": _ent("Bordas laminadas/maçarico", "-", False,
                                    descricao="bordas laminadas ou cortadas a maçarico (tabela 14); senão serra/tesoura")}
 
 
@@ -260,11 +260,12 @@ def _ler(tipo, dados):
         if v is None:
             erros.append(f"{nome}: obrigatório")
             continue
+        if isinstance(ent["padrao"], bool):   # W8-RIG: sim/não sem "opcoes" (como os outros módulos); "false" ≠ True
+            d[nome] = v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "sim", "s")
+            continue
         if "opcoes" in ent:
             ops = ent["opcoes"]
-            if isinstance(ops[0], bool):
-                d[nome] = bool(v)
-            elif str(v).upper() not in [str(o).upper() for o in ops]:
+            if str(v).upper() not in [str(o).upper() for o in ops]:
                 erros.append(f"{nome}: '{v}' inválido ({', '.join(map(str, ops))})")
             else:
                 d[nome] = next(o for o in ops if str(o).upper() == str(v).upper())
@@ -937,7 +938,23 @@ def verificar_painel_alma(dados, esforcos):
     Ft = abs(e["M"]) / (H - tf) + max(e["N"], 0) / 2
     Fc = abs(e["M"]) / (H - tf) + max(-e["N"], 0) / 2
     geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=[], recortes=[])
-    _pilar(R, d, pil, fyc, Ft, Fc, d["ln"] * MM or tf, bf, tf, H, e["M"], d["mesa_soldada"], geo, pil["h"] / 2)
+    xf = pil["h"] / 2                                  # face da mesa do pilar (origem no eixo do pilar)
+    _pilar(R, d, pil, fyc, Ft, Fc, d["ln"] * MM or tf, bf, tf, H, e["M"], d["mesa_soldada"], geo, xf)
+    if d["mesa_soldada"]:
+        # W8-RIG: o padrão é a viga soldada direto na mesa do pilar — encostada (folga 0), mesas com penetração total e
+        # alma com filete dos dois lados. Só desenho: este tipo verifica o pilar; a solda da viga não é dimensionada
+        ctx = (dados or {}).get("contexto_pontas") or {}
+        geo["pontas"] = [_pontas.pontas_locais(ctx.get("tipo_no", "viga_pilar_mesa"), vg, pil,
+                                               comprimento=ctx.get("comprimento", math.inf), desloc=ctx.get("desloc"),
+                                               params=dict(ctx.get("params") or {}, folga=0.0))[0]]
+        for zf in (H / 2, H / 2 - tf, -H / 2, -(H / 2 - tf)):
+            geo["soldas"].append(dict(_solda("penetracao", tf, [[xf, -bf / 2, zf], [xf, bf / 2, zf]]), campo="mesa_soldada"))
+        bw = max(lg.filete_minimo(min(vg["tw"], pil["tf"])), min(0.005, lg.filete_maximo(vg["tw"])))
+        for y in (-vg["tw"] / 2, vg["tw"] / 2):
+            geo["soldas"].append(dict(_solda("filete", bw, [[xf, y, -(H / 2 - tf)], [xf, y, H / 2 - tf]]),
+                                      campo="mesa_soldada"))
+        R.avisos.append("viga soldada na mesa do pilar (mesas com penetração total, alma com filete dos dois lados): "
+                        "a solda da viga não é dimensionada neste tipo (só desenhada; confira pela 6.2)")
     out = R.resultado(geo)
     out["intermediarios"] = dict(Ft=Ft, Fc=Fc)
     return out
@@ -1108,12 +1125,16 @@ def verificar_emenda_pilar(dados, esforcos):
 
 # ---------------------------------------------------------------- sugerir (pré-dimensionamento por busca)
 
-def _buscar(tipo, base, grade, esforcos):
-    """Primeira combinação da grade que passa; senão a de menor taxa (o verificar mostra a falha).
+ALVO = 0.90   # W8-RIG: taxa governante do pré-dimensionamento (a interface mostra "no limite" acima de 0,90)
+
+
+def _buscar(tipo, base, grade, esforcos, alvo=ALVO):
+    """Primeira combinação da grade com taxa ≤ alvo (folga sobre o limite, inclusive nas disposições construtivas);
+    senão a primeira que passa; senão a de menor taxa (o verificar mostra a falha).
     Com pilar, cada combinação tenta também enrijecedores e chapa de reforço (do mais leve ao mais pesado)."""
     pilar = [{}] + ([dict(t_enr_pilar=12.5), dict(t_enr_pilar=16.0, t_reforco=9.5),
                      dict(t_enr_pilar=19.0, t_reforco=16.0)] if base.get("perfil_pilar") else [])
-    melhor = None
+    melhor = passa = None
     for extra in grade:
         for pp in pilar:
             dados = dict(base, **extra, **pp)
@@ -1121,20 +1142,40 @@ def _buscar(tipo, base, grade, esforcos):
                 r = TIPOS[tipo]["verificar"](dados, esforcos)
             except ValueError:
                 continue
-            if r["ok"]:
+            if r["ok"] and r["taxa"] <= alvo + 1e-9:
                 return dados
+            if r["ok"] and passa is None:
+                passa = dados
             if melhor is None or r["taxa"] < melhor[0]:
                 melhor = (r["taxa"], dados)
-    return melhor[1] if melhor else dict(base, **grade[0])
+    return passa or (melhor[1] if melhor else dict(base, **grade[0]))
 
 
 _DS = (15.875, 19.05, 22.225, 25.4)
 _TS = (12.5, 16.0, 19.0, 22.4, 25.0, 31.5, 37.5, 44.5, 50.0)
 
 
+def _com_folga(minimo_mm):
+    """W8-RIG: mínimo de detalhamento / ALVO, para cima a 5 mm (taxa ≤ 0,90 na disposição construtiva)."""
+    return math.ceil(minimo_mm / ALVO / 5 - 1e-9) * 5
+
+
 def _borda(dmm):
-    """Borda mínima (tabela 14, serra/tesoura) arredondada a 5 mm, em mm."""
-    return math.ceil(lg.distancia_min_borda(dmm * MM) / MM / 5) * 5
+    """Borda do pré-dimensionamento (mm): tabela 14 (serra/tesoura) com folga de 10 %, para cima a 5 mm —
+    ⅝" 35, ¾" 40, ⅞" 45, 1" 50. Antes era a tabela 14 só arredondada (⅝" 30 contra 29: 97 %, W8-RIG). Bate com o
+    padrão CBCA 2.4.4 (40 mm para ¾") e fica acima dele onde o CBCA cai no limite da tabela 14 (⅝" 30, ⅞"/1" 40)."""
+    return _com_folga(lg.distancia_min_borda(dmm * MM) / MM)
+
+
+def _passo(dmm):
+    """Espaçamento usual (mm): CBCA 2.4.3 (60 mm para ⅝", 75 mm para os demais), ≥ 3d (NBR 6.3.9: 2,7d mínimo,
+    3d preferível = 2,7d com a folga de 10 %), para cima a 5 mm — ⅝" 60, ¾" 75, ⅞" 75, 1" 80."""
+    return max(60 if dmm <= 16 else 75, math.ceil(3 * dmm / 5 - 1e-9) * 5)
+
+
+def _comercial(t_mm):
+    """Menor espessura comercial (lista do otimizador) ≥ t_mm."""
+    return next((t for t in lg._T_MM if t >= t_mm - 1e-9), t_mm)
 
 
 def _base(perfis):
@@ -1151,7 +1192,10 @@ def _sugerir_chapa(tipo):
         # W7-LIG: filete da alma dentro da faixa da tabela 10 / 6.2.6.2.2 da alma (W310x38,7: tw 5,8 → 5 mm; o padrão 6 reprovava)
         bmax = math.floor(lg.filete_maximo(pv["tw"]) / MM)
         base["b_alma"] = max(math.ceil(lg.filete_minimo(pv["tw"]) / MM), min(6, bmax))
+        # W8-RIG: pf = mínimo de aperto (CBCA 6.1.1) com folga de 10 % (30 → 35, 35 → 40, 40 → 45); com pf = 0 (auto =
+        # o mínimo) o padrão nascia a 1,00 nessa disposição
         grade = [dict(d_mm=dd, tp=t, de=max(40, _borda(dd)), bp=bf + 25, n_linhas_extras=nx,
+                      pf=_com_folga(next((p for d0, p in _PF_MIN if dd <= d0 + 0.05), 1.6 * dd * MM) / MM),
                       s_linhas=max(75, math.ceil(3 * dd / 5) * 5),
                       g=max(round(bf / 2 / 5) * 5, math.ceil((2.7 * dd + 10) / 5) * 5))
                  for nx in (0, 1, 2) for dd in _DS for t in _TS]
@@ -1162,9 +1206,12 @@ def _sugerir_chapa(tipo):
 
 def _sugerir_flange(perfis, esforcos):
     base = _base(perfis)
-    grade = [dict(modo="parafusada", d_mm=dd, t_mesa=t, n_por_linha=n, e1=max(40, _borda(dd)),
-                  e_viga=max(40, _borda(dd)), s=max(75, math.ceil(3 * dd / 5) * 5))
-             for t in _TS for dd in _DS for n in (2, 3, 4, 5, 6)]
+    # W8-RIG: o mesmo diâmetro na chapa de alma (antes ficava o padrão ¾", e as bordas fixas de 35 mm da alma davam
+    # 32/35 = 0,91: nenhuma combinação chegava a ≤ 0,90 e o padrão saía a 0,96)
+    grade = [dict(modo="parafusada", d_mm=dd, d_alma_mm=dd, t_mesa=t, n_por_linha=n, e1=max(40, _borda(dd)),
+                  e_viga=max(40, _borda(dd)), s=max(75, math.ceil(3 * dd / 5) * 5),
+                  n_alma=na, s_alma=_passo(dd), h_alma=(na - 1) * _passo(dd) + 2 * _borda(dd))
+             for t in _TS for dd in _DS for n in (2, 3, 4, 5, 6) for na in (3, 4)]
     return _buscar("flange_plate", base, grade, esforcos)
 
 
@@ -1172,18 +1219,33 @@ def _sugerir_emenda(tipo, chave):
     def f(perfis, esforcos):
         base = {chave: perfis.get(chave) or perfis.get("perfil_viga") or perfis.get("perfil_pilar")}
         p = _perfil(base[chave], chave)
-        tf, tw = p["tf"] / MM, p["tw"] / MM
-        livre = (p["h"] - 2 * p["tf"] - 2 * p.get("r", 0)) / MM - 10
+        bf, tf, tw = p["b"] / MM, p["tf"] / MM, p["tw"] / MM
+        # W8-RIG: tala da alma até 90 % da altura livre hw − 2r (folga com os raios de concordância e a tolerância de
+        # laminação; a verificação "cabe entre as mesas" fica ≤ 0,90)
+        livre = ALVO * (p["h"] - 2 * p["tf"] - 2 * p.get("r", 0)) / MM
+        tm0 = _comercial(max(tf, 6.3))                     # Pfeil 9.10.1: tala da mesa com a espessura da mesa
+        ta0 = _comercial(max(0.6 * tw, 6.3))
         grade = []
-        for dd in _DS:
-            ev, sv = _borda(dd), math.ceil(3 * dd / 5) * 5
-            nr = max(2, int((livre - 2 * ev) // sv) + 1)
-            for n in (2, 3, 4, 5, 6):
-                grade.append(dict(d_mesa_mm=dd, d_alma_mm=dd, n_por_linha_mesa=n, s_mesa=max(70, sv),
-                                  t_tala_mesa=max(tf, 6.3), t_tala_alma=max(0.6 * tw, 6.3), n_linhas_alma=nr,
-                                  s_alma=sv, sh_alma=max(70, sv), h_tala_alma=(nr - 1) * sv + 2 * ev,
-                                  e1_mesa=max(40, ev), e_mesa_perfil=max(40, ev), e_tala_alma=ev,
-                                  e_emenda_alma=ev + 5))
+        for dd in _DS:   # o mesmo diâmetro nas mesas e na alma (CBCA 2.4: evita troca na montagem)
+            ev, s = _borda(dd), _passo(dd)
+            # gabarito da mesa: bf/2 + 10 para baixo a 5 mm, sem passar da borda lateral com folga
+            g = math.floor(min(bf / 2 + 10, bf - 2 * lg.distancia_min_borda(dd * MM) / MM / ALVO) / 5) * 5
+            mesas = [dict(d_mesa_mm=dd, n_por_linha_mesa=n, s_mesa=s, g_mesa=g, t_tala_mesa=t,
+                          e1_mesa=max(40, ev), e_mesa_perfil=max(40, ev))
+                     for n in (2, 3, 4, 5, 6) for t in (tm0, _comercial(tm0 + 0.1))]
+            almas = []
+            for nc in (1, 2):
+                for nr in range(2, 13):
+                    if (livre - 2 * ev) < (nr - 1) * s:
+                        break
+                    for ta in (ta0, _comercial(ta0 + 0.1)):
+                        # linhas espalhadas na altura disponível (mais braço para M0), até 24t ≤ 300 mm (6.3.10)
+                        smax = min(24 * min(ta, tw), 300.0) * ALVO
+                        sv = max(s, min(math.floor((livre - 2 * ev) / (nr - 1) / 5) * 5, math.floor(smax / 5) * 5))
+                        almas.append(dict(d_alma_mm=dd, n_linhas_alma=nr, n_colunas_alma=nc, s_alma=sv, sh_alma=s,
+                                          t_tala_alma=ta, h_tala_alma=(nr - 1) * sv + 2 * ev, e_tala_alma=ev,
+                                          e_emenda_alma=ev + 10.0 / 2))   # borda ev na ponta da alma (folga 10)
+            grade += [dict(folga=10.0, **m, **a) for m in mesas for a in almas]
         return _buscar(tipo, base, grade, esforcos)
     return f
 
@@ -1214,7 +1276,7 @@ _E_CHAPA_TOPO_EST = dict(
     estendida=_ent("Posição da chapa", "-", "superior", opcoes=["superior", "ambas", "inferior"],
                    descricao="superior = estende em cima, alinhada embaixo (CBCA LMPA); ambas = centralizada (inversão de momento); inferior = estende embaixo, alinhada em cima (M < 0)"),
     de=_ent("Furo → extremidade da chapa", "mm", 40.0, 15.0, 200.0),
-    enrijecedor_chapa=_ent("Enrijecedor na extensão", "-", False, opcoes=[True, False]),
+    enrijecedor_chapa=_ent("Enrijecedor na extensão", "-", False),
     t_enrijecedor=_ent("Espessura do enrijecedor", "mm", 0.0, 0.0, 50.0))
 
 _E_FLANGE = dict(
@@ -1245,7 +1307,7 @@ _E_PAINEL = dict(
     **{k: v for k, v in _E_PILAR.items() if k != "perfil_pilar"},
     ln=_ent("ℓn de apoio (0 = tf)", "mm", 0.0, 0.0, 500.0,
             descricao="extensão da força na mesa do pilar (5.7.3/5.7.4); 0 = tf da viga"),
-    mesa_soldada=_ent("Mesa da viga soldada", "-", True, opcoes=[True, False],
+    mesa_soldada=_ent("Mesa da viga soldada", "-", True,
                       descricao="força aplicada por solda (verifica 5.7.2); parafusada = T-stub na ligação"))
 
 
@@ -1274,10 +1336,10 @@ def _e_emenda(chave, aco_chave, rot):
 
 
 _E_EMENDA_VIGA = dict(_e_emenda("perfil_viga", "aco_viga", "da viga"),
-                      minimo_50=_ent("Mínimo 50% da capacidade", "-", False, opcoes=[True, False],
+                      minimo_50=_ent("Mínimo 50% da capacidade", "-", False,
                                      descricao="M e V ≥ 50 % de MRd e VRd (Pfeil p. 244)"))
 _E_EMENDA_PILAR = dict(_e_emenda("perfil_pilar", "aco_pilar", "do pilar"),
-                       contato=_ent("Contato usinado", "-", True, opcoes=[True, False],
+                       contato=_ent("Contato usinado", "-", True,
                                     descricao="superfícies usinadas: compressão por contato (Pfeil 9.1)"))
 _ESF = ["N", "V", "M"]
 
