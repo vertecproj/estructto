@@ -31,6 +31,10 @@ SECOES = ["L", "2L", "U", "tubo_circular", "tubo_retangular", "barra_redonda"]
 APOIOS = ["viga-pilar", "pilar", "viga", "base"]
 N_MINIMO = L.F_MINIMA       # kN — NBR 8800 6.1.5.2 (p. 63); Pfeil p.238
 FOLGA_RASGO = 2.0           # mm — rasgo do tubo = t_gusset + 2 mm. ponytail: valor usual de fábrica
+# W8-CONTRAV: folga de montagem entre a região ligada (barra e parafusos) e as faces do apoio/banzo: max(2·tg, 25 mm).
+# 2·tg = linha de dobra do gusset (AISC parte 13); 25 mm = folga usual de montagem e de chave [conferir]. Só no esquema
+# novo (dados antigos continuam com 2·tg)
+FOLGA_MONTAGEM = 0.025      # m
 ACOS = list(materiais.ACOS)
 _PRE = "NBR 8800 "
 
@@ -120,6 +124,20 @@ def _e(rotulo, unidade, padrao, **kw):
     return dict(rotulo=rotulo, unidade=unidade, padrao=padrao, **kw)
 
 
+_CAT = secoes._carrega_catalogo()
+
+
+def _nomes(teste):
+    return list(dict.fromkeys(lin["nome"] for lin in _CAT.values() if teste(lin)))
+
+
+# L laminadas (iguais e desiguais), U laminado/UPN e tubos estruturais Vallourec. Fora: U/Ue formados a frio e metalon
+# (parede fina, NBR 14762; o cálculo daqui é o da NBR 8800). ponytail: lista fixa; abrir para formados quando houver cálculo
+_PERFIS_BARRA = _nomes(lambda x: x["forma"] == "L" or x["forma"] == "U" and x["familia"] in ("U laminado", "UPN")
+                       or x["forma"] in ("TC", "TR") and x["familia"] == "Tubo Vallourec")
+_PERFIS_BANZO = _nomes(lambda x: x["forma"] == "I")
+_MED_BARRA = ("secao", "dim_a", "dim_b", "t_perfil", "tf_perfil", "A_perfil", "xg_perfil")
+
 _COMUNS = {
     "d_mm": _e("Diâmetro do parafuso", "mm", 16.0, min=10.0, max=40.0),
     "tipo_parafuso": _e("Tipo de parafuso", "-", "A325", opcoes=list(L.PARAFUSOS)),
@@ -172,7 +190,7 @@ def _campos_membro(s="", rot="", obrig=True, secoes=SECOES, theta=None):
     return c
 
 
-_GUSSET = {
+_GUSSET_LEG = {   # dados antigos (secao + medidas soltas); o esquema do projetista é _GUSSET, abaixo
     **_campos_membro(),
     **_COMUNS,
     "apoio": _e("Apoio do gusset", "-", "viga-pilar", opcoes=APOIOS),
@@ -190,7 +208,7 @@ _GUSSET = {
     "x_max": _e("Comprimento livre na barra", "mm", 0.0, min=0.0, max=100000.0, ajuda="G6: 0 = sem limite"),
 }
 
-_NO = {
+_NO_LEG = {   # dados antigos; o esquema do projetista é _NO, abaixo
     **_campos_membro("_1", " 1", secoes=["2L", "L", "U", "tubo_circular", "tubo_retangular"], theta=45.0),
     **_campos_membro("_2", " 2", obrig=False, secoes=["2L", "L", "U", "tubo_circular", "tubo_retangular"],
                      theta=135.0),
@@ -206,6 +224,41 @@ _NO = {
     "b_interface": _e("Filete da interface", "mm", 5.0, min=2.0, max=30.0),
     "K_gusset": _e("K do gusset", "-", 0.65, min=0.5, max=2.0),
     "fator_ductilidade": _e("Fator de ductilidade", "-", 1.0, min=1.0, max=1.4),
+}
+
+
+def _campos_barra(s, rot, campo, padrao, arranjo, opcoes_arranjo, theta=None, secao=None):
+    """W8-CONTRAV: campos de uma barra ligada ao gusset — perfil do catálogo (seletor), arranjo e aba ligada; as medidas
+    soltas do esquema antigo saem (vêm do catálogo)."""
+    ext = {} if secao is None else dict(secao=secao)
+    c = {campo: _e(f"Perfil{rot}", "-", padrao, perfis=_PERFIS_BARRA, resugerir=True,
+                   ajuda="L, U ou tubo do catálogo: medidas, área e excentricidade ec vêm dele"),
+         f"arranjo{s}": _e(f"Arranjo{rot}", "-", arranjo, opcoes=opcoes_arranjo, **ext,
+                           ajuda="dupla = 2 cantoneiras costas com costas, gusset entre elas (2L); simples = 1 perfil "
+                                 "numa face do gusset (L, U) ou tubo com rasgo"),
+         f"aba_ligada{s}": _e(f"Aba ligada{rot}", "-", "maior", opcoes=["maior", "menor"], **ext,
+                              ajuda="cantoneira de abas desiguais: aba encostada no gusset")}
+    c.update({k: v for k, v in _campos_membro(s, rot, theta=theta).items()
+              if k not in tuple(m + s for m in _MED_BARRA)})
+    c[f"g_aba{s}"] = dict(c[f"g_aba{s}"], ajuda="do talão à linha de furos (cantoneira); 0 = gabarito usual da aba")
+    return c
+
+
+_GUSSET = {
+    **_campos_barra("", "", "perfil_diagonal", 'L 3" x 1/4"', "simples", ["simples", "dupla"], secao="barras"),
+    **{k: v for k, v in _GUSSET_LEG.items() if k not in _campos_membro()},
+}
+_NO = {
+    **_campos_barra("_1", " 1", "perfil_barra_1", 'L 2.1/2" x 1/4"', "dupla", ["dupla", "simples"], theta=45.0),
+    **_campos_barra("_2", " 2", "perfil_barra_2", 'L 2.1/2" x 1/4"', "nenhuma", ["nenhuma", "dupla", "simples"], theta=90.0),
+    **_campos_barra("_3", " 3", "perfil_barra_3", 'L 2" x 3/16"', "nenhuma", ["nenhuma", "dupla", "simples"], theta=135.0),
+    **_campos_barra("_4", " 4", "perfil_barra_4", 'L 2" x 3/16"', "nenhuma", ["nenhuma", "dupla", "simples"], theta=0.0),
+    "perfil_banzo": _e("Perfil do banzo", "-", "W150x18", perfis=_PERFIS_BANZO,
+                       ajuda="banzo contínuo: perfil I com a alma no plano da treliça; o gusset é soldado na face da "
+                             "mesa (eixo do banzo à face = d/2)"),
+    **{k: v for k, v in _NO_LEG.items() if k in _COMUNS or k in ("L_interface", "b_interface", "K_gusset",
+                                                               "fator_ductilidade")},
+    "banzo": dict(_NO_LEG["banzo"], secao="barras"),
 }
 
 _TIRANTE = {
@@ -224,7 +277,9 @@ _TIRANTE = {
     "t_orelha": _e("Espessura da orelha", "mm", 0.0, min=0.0, max=100.0,
                    ajuda="flexão do pino (6.4.1); 0 = não informada: momento mínimo N·t/8 (aviso)"),
     "folga_garfo": _e("Folga orelha–gusset", "mm", 0.0, min=0.0, max=50.0, ajuda="cada lado; flexão do pino (6.4.1)"),
-    "comprimento": _e("Comprimento do tirante", "mm", 0.0, min=0.0, max=1e5),
+    "comprimento": _e("Comprimento do tirante", "mm", 6000.0, min=0.0, max=1e5,
+                      ajuda="entre pontos de trabalho (X de cobertura entre tesouras a ~6 m); entra no aviso de "
+                            "esbeltez (5.2.8) e na cota do desenho; 0 = não informado"),
     "borda_laminada": _e("Bordas laminadas/maçarico", "-", False),
     "deformacao_limitada": _e("Deformação limitada", "-", True),
 }
@@ -275,6 +330,51 @@ def cantoneira_catalogo(nome, aba="maior"):
     a, o = (h, b) if lig_h else (b, h)
     return dict(dim_a=a / MM, dim_b=o / MM, t_perfil=t / MM, A_perfil=(p.get("A_catalogo") or s.A) / MM ** 2,
                 xg_perfil=ec / MM), s
+
+
+# ---------------------------------------------------------------- W8-CONTRAV (docs/v3/W8-CONTRAV.md): barras do catálogo
+# Gusset e nó de treliça: o perfil de cada barra vem do catálogo (seletor do projetista, `perfis` = nomes aceitos) e as
+# medidas (dim_a, dim_b, t, tf, A, ec) saem dele; dados antigos com `secao`/`dim_a` e sem perfil seguem o esquema antigo.
+_FORMA = {"L": "L", "U": "U", "tubo_circular": "tubo_circular", "tubo_retangular": "tubo_retangular"}
+
+
+def perfil_barra(nome, aba="maior"):
+    """Perfil do catálogo da barra ligada ao gusset → medidas da ligação (mm, como os campos antigos): forma (L, U,
+    tubo_circular, tubo_retangular), dim_a (aba ligada / altura da alma / D / H no plano do gusset), dim_b (outra aba /
+    mesa / B), t_perfil (aba, alma ou parede), tf_perfil (mesa do U), A_perfil (tabelada, mm²) e xg_perfil = ec (5.2.5:
+    face de contato → centroide; tubos: 0 = calculado por _area_ec)."""
+    if str(nome).split(" ")[0] == "L":
+        med, _s = cantoneira_catalogo(nome, aba)
+        return dict(med, forma="L", tf_perfil=0.0)
+    try:
+        p = secoes.catalogo(str(nome)).props
+    except KeyError:
+        raise ValueError(f"perfil '{nome}' não está no catálogo") from None
+    forma = _FORMA.get(p.get("tipo"))
+    if forma not in ("U", "tubo_circular", "tubo_retangular"):
+        raise ValueError(f"perfil '{nome}': a barra do gusset é L, 2L, U ou tubo (não {p.get('tipo')})")
+    A = (p.get("A_catalogo") or p["A"]) / MM ** 2
+    if forma == "U":
+        return dict(forma=forma, dim_a=p["h"] / MM, dim_b=p["b"] / MM, t_perfil=p["tw"] / MM, tf_perfil=p["tf"] / MM,
+                    A_perfil=A, xg_perfil=p["xg"] / MM)
+    return dict(forma=forma, dim_a=p["h"] / MM, dim_b=p["b"] / MM, t_perfil=p["t"] / MM, tf_perfil=0.0, A_perfil=A,
+                xg_perfil=0.0)
+
+
+def _medidas(d, s, campo):
+    """Medidas da barra `s` (sufixo) a partir de d[campo] e do arranjo (dupla = 2L) → chaves antigas com o sufixo."""
+    med = perfil_barra(d[campo], d.get(f"aba_ligada{s}", "maior"))
+    forma = med.pop("forma")
+    if d[f"arranjo{s}"] == "dupla" and forma != "L":
+        raise ValueError(f"{campo}: arranjo duplo só para cantoneira (2L); '{d[campo]}' é {forma}")
+    med["secao"] = "2L" if d[f"arranjo{s}"] == "dupla" else forma
+    return {k + s: v for k, v in med.items()}
+
+
+def _legado(dados, s=""):
+    """Dados antigos: medidas informadas (dim_a) e nenhum perfil do catálogo na barra."""
+    campo = "perfil_diagonal" if s == "" else f"perfil_barra{s}"
+    return not dados.get(campo) and bool(dados.get(f"dim_a{s}"))
 
 
 def _ler(entradas, dados, tipo):
@@ -411,7 +511,7 @@ def _membro(d, s, N, c, v, av, rot=""):
     ec = g_("xg_perfil") * MM or ec
     F = abs(N)
     tg, db, dn, dh = c["tg"], c["db"], c["dn"], c["dh"]
-    info = dict(sec=sec, a=a, b=b, t=t, A=A, ec=ec, npf=npf, parafusos=[], soldas=[])
+    info = dict(sec=sec, a=a, b=b, t=t, tf=tf, A=A, ec=ec, npf=npf, parafusos=[], soldas=[])
     tracao = N > 0
     if tracao:
         v.append(_vf(f"barra{rot}: escoamento da seção bruta", F, npf * A * fy / GA1, "kN", "5.2.2 a)"))
@@ -490,7 +590,9 @@ def _membro(d, s, N, c, v, av, rot=""):
             L._bordas(leg, db, t, borda_ponta, laminada=True, nome=f"{rot} (borda da aba)")
         v += [_de_legado(x) for x in leg]
         comp = e1 + lc + eg
-        info.update(lc=lc, Lw=Lw, Aw=Aw, w0=w0, comp=comp, meia=max(a / 2, w0 / 2 + eg), xw=e1)
+        # W8-CONTRAV: na L o talão fica a g_aba da linha de furos (não a dim_a/2): a região ligada cobre a aba inteira
+        zt = (nl - 1) / 2 * gg + ga if sec != "U" else a / 2
+        info.update(lc=lc, Lw=Lw, Aw=Aw, w0=w0, comp=comp, meia=max(zt, a - zt, w0 / 2 + eg), xw=e1, z_talao=zt)
         pega = tg + npf * t
         for i in range(np_):
             for j in range(nl):
@@ -553,7 +655,7 @@ def _membro(d, s, N, c, v, av, rot=""):
         if tracao:
             v += [_vf(f"gusset{rot}: Whitmore, escoamento", F, Aw * c["fyg"] / GA1, "kN", "6.5.3 → 5.2.2 a)"),
                   _vf(f"gusset{rot}: Whitmore, ruptura", F, Aw * c["fug"] / GA2, "kN", "6.5.3 → 5.2.2 b)")]
-        info.update(lc=lc, Lw=Lw, Aw=Aw, w0=w0, comp=max(l1, l2) + 10 * MM, meia=a / 2 + 10 * MM, xw=0.0)
+        info.update(lc=lc, Lw=Lw, Aw=Aw, w0=w0, comp=max(l1, l2) + 10 * MM, meia=a / 2 + 10 * MM, xw=0.0, z_talao=a / 2)
         lados = [1, -1] if (sec == "2L" or sec.startswith("tubo")) else [1]
         zs = [a / 2, -a / 2]
         for lado in lados:
@@ -611,6 +713,20 @@ def _geo_membro(info, recuo, dirv, perp, dir1, perp1, tg, d_mm):
     return par, sol
 
 
+def _cruzam(A, B, folga=0.0):
+    """Polígonos convexos (anti-horários, m) a menos de `folga` um do outro? Separação por eixos (normais das arestas)."""
+    for P in (A, B):
+        for i in range(len(P)):
+            ex, ez = P[(i + 1) % len(P)][0] - P[i][0], P[(i + 1) % len(P)][1] - P[i][1]
+            n = math.hypot(ex, ez)
+            if n < 1e-12:
+                continue
+            pa, pb = [(x * -ez + z * ex) / n for x, z in A], [(x * -ez + z * ex) / n for x, z in B]
+            if max(pa) + folga <= min(pb) or max(pb) + folga <= min(pa):
+                return False
+    return True
+
+
 def _whitmore_cabe(casca, info, recuo, dirv, perp, av, rot=""):
     """Aviso se as pontas da seção de Whitmore saem do contorno (convexo, anti-horário) do gusset."""
     n = len(casca)
@@ -620,6 +736,70 @@ def _whitmore_cabe(casca, info, recuo, dirv, perp, av, rot=""):
             av.append(f"gusset{rot}: a seção de Whitmore ({info['Lw'] / MM:.0f} mm) sai do contorno da chapa — "
                       "a resistência calculada fica superestimada; aumente o gusset ou recorte a largura")
             return
+
+
+def _cruz(a, b):
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+
+
+def _caixa(nome, campo, O, ex, ez, x0, x1, y0, y1, z0, z1):
+    """W8-CONTRAV: placa [x0, x1] × [y0, y1] × [z0, z1] (mm) no referencial da barra (O; ex ao longo dela, ez no plano do
+    gusset, y normal ao gusset) → item de `perfis_barra`, no formato de `chapas` (origem numa face; sólido até origem +
+    espessura·normal). A normal é a direção mais fina (y ou z)."""
+    ey = (0.0, 1.0, 0.0)
+
+    def P(x, y, z):
+        return [O[i] + x * ex[i] + y * ey[i] + z * ez[i] for i in range(3)]
+    if y1 - y0 <= z1 - z0:
+        n, t, o = list(ey), y1 - y0, P(x0, y0, 0.0)
+        cantos = [P(x, y0, z) for x, z in ((x0, z0), (x1, z0), (x1, z1), (x0, z1))]
+    else:
+        n, t, o = list(ez), z1 - z0, P(x0, 0.0, z0)
+        cantos = [P(x, y, z0) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
+    u, v = list(ex), _cruz(n, ex)
+    pr = lambda p, e: sum((p[i] - o[i]) * e[i] for i in range(3))  # noqa: E731
+    return dict(nome=nome, perfil=nome, campo=campo, contorno=[[round(pr(p, u), 2), round(pr(p, v), 2)] for p in cantos],
+                origem=[round(x, 3) for x in o], normal=[round(x, 12) for x in n], u=[round(x, 12) for x in u],
+                espessura=round(t, 3))
+
+
+def _nome_barra(d, s, campo):
+    nome = d.get(campo) or f"{d[f'secao{s}']} {d[f'dim_a{s}']:g}x{d.get(f'dim_b{s}') or d[f'dim_a{s}']:g}"
+    return "2" + nome if d.get(f"secao{s}") == "2L" and not nome.startswith("2") else nome
+
+
+def _geo_perfil(info, x0, x1, O, ex, ez, tg, campo, nome):
+    """W8-CONTRAV: a barra ligada ao gusset desenhada com as medidas reais (mm), da ponta (x0) até x1: `perfis_barra` (placas:
+    abas da L/2L encostadas nas faces do gusset com o talão em z_talao, alma e mesas do U numa face, paredes do tubo
+    retangular em volta do gusset) e `tubos` (tubo circular com o gusset no rasgo; barra redonda sobre a face)."""
+    a, b, t, tf = (info[k] / MM for k in ("a", "b", "t", "tf"))
+    zt, h, sec = info.get("z_talao", info["a"] / 2) / MM, tg / 2 / MM, info["sec"]
+    cx = lambda *k: _caixa(nome, campo, O, ex, ez, x0, x1, *k)  # noqa: E731
+    barras, tubos = [], []
+    if sec in ("L", "2L"):
+        for lado in ((1,) if sec == "L" else (1, -1)):
+            y0, y1 = sorted((lado * h, lado * (h + t))), sorted((lado * h, lado * (h + b)))
+            barras += [cx(*y0, zt - a, zt), cx(*y1, zt - t, zt)]
+    elif sec == "U":
+        barras += [cx(h, h + t, -a / 2, a / 2), cx(h, h + b, a / 2 - tf, a / 2), cx(h, h + b, -a / 2, -a / 2 + tf)]
+    elif sec == "tubo_retangular":
+        barras += [cx(-b / 2, b / 2, a / 2 - t, a / 2), cx(-b / 2, b / 2, -a / 2, -a / 2 + t),
+                   cx(b / 2 - t, b / 2, -a / 2 + t, a / 2 - t), cx(-b / 2, -b / 2 + t, -a / 2 + t, a / 2 - t)]
+    else:   # tubo circular (gusset no rasgo, eixo no plano médio) ou barra redonda soldada sobre a face +y
+        yc = h + a / 2 if sec == "barra_redonda" else 0.0
+        tubos.append(dict(nome=nome, grupo="viga", campo=campo, origem=[O[i] + x0 * ex[i] + (yc if i == 1 else 0.0)
+                                                                        for i in range(3)],
+                          eixo=list(ex), comprimento=x1 - x0, d=a, t=a / 2 if sec == "barra_redonda" else t, corte=None))
+    return barras, tubos
+
+
+def _linha_whitmore(info, recuo, O, ex, ez, tg, rot=""):
+    """W8-CONTRAV: espraiamento de 30° (linhas tracejadas) do fim da ligação até a seção de Whitmore, na face −y."""
+    x1, x0 = (recuo + info["xw"] + info["lc"]) / MM, (recuo + info["xw"]) / MM
+    w0, Lw, y = info["w0"] / 2 / MM, info["Lw"] / 2 / MM, -tg / 2 / MM
+    P = lambda x, z: [round(O[i] + x * ex[i] + z * ez[i] + (y if i == 1 else 0.0), 2) for i in range(3)]  # noqa: E731
+    return dict(nome=f"Whitmore{rot}", estilo="tracejada", texto=f"Whitmore{rot} {info['Lw'] / MM:.0f}",
+                pontos=[P(x1, w0), P(x0, Lw), P(x0, -Lw), P(x1, -w0)])
 
 
 def _chapa(nome, contorno_m, tg):
@@ -650,7 +830,8 @@ def _x_ponta(tipo, dados, s=""):
     """Posição da ponta da diagonal no eixo (m), pela geometria de pontas (pontas.py: face do apoio + folga)."""
     d = dict(dados or {})
     if s:   # nó de treliça: a barra s vira a "barra 1" para pontas_de
-        d.update(dim_a_1=d.get(f"dim_a{s}"), dim_b_1=d.get(f"dim_b{s}"), theta_1=d.get(f"theta{s}", 45.0))
+        d.update(dim_a_1=d.get(f"dim_a{s}"), dim_b_1=d.get(f"dim_b{s}"), theta_1=d.get(f"theta{s}", 45.0),
+                 perfil_barra_1=d.get(f"perfil_barra{s}"))
         t = math.radians(float(d["theta_1"]))
         if abs(math.sin(t)) < 1e-6:   # barra ao longo do banzo: sem ponta de gusset
             return 0.0
@@ -671,7 +852,7 @@ def _auto_gusset(d, info, c, theta, x_min=0.0):
     """recuo, Lh e Lv automáticos: a região ligada fica a 2·tg das faces (folga da linha de dobra) e nunca antes da
     ponta da diagonal (x_min, pontas.py)."""
     dirv, perp = _frame(theta)
-    folga = 2 * c["tg"]
+    folga = max(2 * c["tg"], d.get("_folga", 0.0))
     eb, ec = d["eb"] * MM, d["ec"] * MM
     hw, ap = info["meia"], d["apoio"]
     s, co = math.sin(theta), math.cos(theta)
@@ -691,8 +872,26 @@ def _auto_gusset(d, info, c, theta, x_min=0.0):
     return recuo, Lh, Lv, pts
 
 
+def _ler_barras(entradas, entradas_leg, dados, tipo, barras):
+    """W8-CONTRAV: esquema novo (perfil do catálogo) ou antigo (medidas soltas, sem perfil) → d com as medidas antigas
+    (dim_a, t_perfil...) de cada barra ativa. barras: [(sufixo, campo do perfil)]. Devolve (d, novo)."""
+    bruto = dict(dados or {})
+    if any(_legado(bruto, s) for s, _c in barras):
+        return _ler(entradas_leg, bruto, tipo), False
+    d = _ler(entradas, bruto, tipo)
+    for s, campo in barras:
+        if d.get(f"arranjo{s}", "simples") == "nenhuma":
+            d[f"secao{s}"] = "nenhum"
+            continue
+        d.update(_medidas(d, s, campo))
+        if d[f"secao{s}"] in ("L", "2L") and not d[f"g_aba{s}"]:
+            d[f"g_aba{s}"] = gabarito_usual(d[f"dim_a{s}"])
+    return d, True
+
+
 def verificar_gusset(dados, esforcos):
-    d = _ler(_GUSSET, dados, "gusset_contraventamento")
+    d, novo = _ler_barras(_GUSSET, _GUSSET_LEG, dados, "gusset_contraventamento", [("", "perfil_diagonal")])
+    d["_folga"] = FOLGA_MONTAGEM if novo else 0.0
     N = _esf(esforcos)["N"]
     c = _comum(d)
     v, av = [], list(c["avisos"])
@@ -703,7 +902,8 @@ def verificar_gusset(dados, esforcos):
         av.append(aviso)
     theta = math.radians(d["theta"])
     info = _membro(d, "", N, c, v, av)
-    recuo, Lh, Lv, pts = _auto_gusset(d, info, c, theta, _x_ponta("gusset_contraventamento", dados))
+    pdados = dict(dados or {}, dim_a=d["dim_a"], dim_b=d["dim_b"]) if novo else dados   # pontas.py lê as medidas
+    recuo, Lh, Lv, pts = _auto_gusset(d, info, c, theta, _x_ponta("gusset_contraventamento", pdados))
     eb, ec, ap, tg = d["eb"] * MM, d["ec"] * MM, d["apoio"], c["tg"]
     dirv, perp = _frame(theta)
     reg = _regiao(info, recuo, dirv, perp)   # região ligada não pode invadir viga/pilar
@@ -779,6 +979,14 @@ def verificar_gusset(dados, esforcos):
                ponto_trabalho=[0.0, 0.0, 0.0], recuo=recuo / MM, Lh=Lh / MM, Lv=Lv / MM,
                largura_whitmore=info["Lw"] / MM, pontas=[_ponta_em(recuo)])
     geo.update(_orientacao(ap, dirv, perp))
+    # W8-CONTRAV: a diagonal desenhada (só no projetista: `perfis_barra`/`tubos`/`linhas` não entram no Realista, que desenha a
+    # barra do modelo); membros = [] para o perfil da diagonal não virar "viga" no desenho
+    barras, tubos = _geo_perfil(info, recuo / MM, (recuo + info["comp"] + max(0.15, 2 * info["a"])) / MM, (0.0, 0.0, 0.0),
+                                (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), tg, "perfil_diagonal", _nome_barra(d, "", "perfil_diagonal"))
+    (hx, hz), (vx, vz) = _para_local([(1.0, 0.0), (0.0, 1.0)], dirv, perp)   # vista: viga na horizontal, pilar na vertical
+    geo.update(perfis_barra=barras, tubos=tubos, membros=[], linhas=[_linha_whitmore(info, recuo, (0.0, 0.0, 0.0), (1.0, 0.0, 0.0),
+                                                                                (0.0, 0.0, 1.0), tg)],
+               vista=dict(x=[round(hx, 12), 0.0, round(hz, 12)], z=[round(vx, 12), 0.0, round(vz, 12)]))
     if d.get("x_max"):   # G6 r3: chapa e parafusos cabem no trecho da diagonal disponível para esta ponta?
         alc = max([p[0] for p in geo["chapas"][0]["contorno"]] + [p["origem"][0] for p in par])
         v.append(_vf("geometria: comprimento disponível na barra", alc, d["x_max"], "mm", "detalhamento"))
@@ -806,11 +1014,22 @@ def _orientacao(ap, dirv, perp):
 # ---------------------------------------------------------------- 2. nó de treliça com gusset
 
 def verificar_no_trelica(dados, esforcos):
-    d = _ler(_NO, dados, "no_trelica_gusset")
+    d, novo = _ler_barras(_NO, _NO_LEG, dados, "no_trelica_gusset", [(f"_{i}", f"perfil_barra_{i}") for i in "1234"])
+    banzo = None
+    if novo:   # W8-CONTRAV: eixo do banzo à face da mesa = d/2 do perfil do banzo (banzo contínuo)
+        try:
+            banzo = secoes.catalogo(d["perfil_banzo"]).props if d["banzo"] == "continuo" else None
+        except KeyError:
+            raise ValueError(f"perfil_banzo: '{d['perfil_banzo']}' não está no catálogo") from None
+        if banzo is not None and banzo.get("tipo") != "I":
+            raise ValueError(f"perfil_banzo: '{d['perfil_banzo']}' não é perfil I (alma no plano da treliça)")
+        d["e_banzo"] = banzo["h"] / 2 / MM if banzo else 0.0
+    pdados = dict(dados or {}, **{k: x for k, x in d.items() if k.startswith(("dim_a_", "dim_b_"))}) if novo else dados
     e = _esf(esforcos, ("N", "N2", "N3", "N4"))
     c = _comum(d)
     v, av = [], list(c["avisos"])
     tg, eb = c["tg"], d["e_banzo"] * MM
+    fol = max(2 * tg, FOLGA_MONTAGEM if novo else 0.0)
     ativos = [i for i in "1234" if d[f"secao_{i}"] != "nenhum"]
     forcas = {i: e["N" if i == "1" else f"N{i}"] for i in ativos}
     pts_all, regs, membros, H, V = [], [], {}, 0.0, 0.0
@@ -828,9 +1047,14 @@ def verificar_no_trelica(dados, esforcos):
         sv = abs(math.sin(th))
         x_face = eb / sv if sv > 1e-6 else 0.0
         cs = abs(math.cos(th))
-        auto = max((eb + 2 * tg + info["meia"] * cs) / sv, (eb + info["Lw"] / 2 * cs) / sv - info["xw"])             if sv > 1e-6 else 2 * tg
-        auto = max(auto, _x_ponta("no_trelica_gusset", dados, f"_{i}"))
+        auto = max((eb + fol + info["meia"] * cs) / sv, (eb + info["Lw"] / 2 * cs) / sv - info["xw"])             if sv > 1e-6 else fol
+        auto = max(auto, _x_ponta("no_trelica_gusset", pdados, f"_{i}"))
         recuo = d[f"recuo_{i}"] * MM or math.ceil(auto / 0.005) * 0.005
+        if not d[f"recuo_{i}"]:   # W8-CONTRAV: recuo automático afasta a barra das já postas (regiões ligadas sem choque)
+            for _n in range(400):
+                if not any(_cruzam(_hull(_regiao(info, recuo, dv, pp)), _hull(_regiao(*m)), fol) for m in membros.values()):
+                    break
+                recuo += 0.005
         if Nd < 0:
             L1 = max(recuo + info["xw"] - x_face, 0.0)
             fl = flambagem_chapa(info["Aw"], tg, d["K_gusset"] * L1, c["fyg"])
@@ -841,7 +1065,7 @@ def verificar_no_trelica(dados, esforcos):
         reg = _regiao(info, recuo, dv, pp)
         regs += reg
         vmin = eb if d["banzo"] == "continuo" else -math.inf
-        pts_all += reg + [(h, max(v_, vmin)) for h, v_ in _pontas_whitmore(info, recuo, dv, pp, 2 * tg)]
+        pts_all += reg + [(h, max(v_, vmin)) for h, v_ in _pontas_whitmore(info, recuo, dv, pp, fol)]
         membros[i] = (info, recuo, dv, pp)
     av.append("barras com eixos concorrentes no ponto de trabalho: momento no nó desprezado (sem fadiga; "
               "Pfeil p.231–233)")
@@ -892,6 +1116,27 @@ def verificar_no_trelica(dados, esforcos):
                ponto_trabalho=[0.0, 0.0, 0.0],
                barras={i: dict(recuo=m[1] / MM, largura_whitmore=m[0]["Lw"] / MM) for i, m in membros.items()},
                pontas=[_ponta_em(m[1], int(i)) for i, m in membros.items()])   # cada uma no referencial da sua barra
+    # W8-CONTRAV: barras (abas/mesas reais), banzo e Whitmore desenhados, como no gusset (só no projetista)
+    pb, tb, lin = [], [], []
+    for i, (info, recuo, dv, pp) in membros.items():
+        ex, ez = (lambda q: (q[0], 0.0, q[1]))(to_loc(dv)), (lambda q: (q[0], 0.0, q[1]))(to_loc(pp))
+        p_, t_ = _geo_perfil(info, recuo / MM, (recuo + info["comp"] + max(0.15, 2 * info["a"])) / MM, (0.0, 0.0, 0.0),
+                             ex, ez, tg, f"perfil_barra_{i}", _nome_barra(d, f"_{i}", f"perfil_barra_{i}"))
+        pb += p_
+        tb += t_
+        lin.append(_linha_whitmore(info, recuo, (0.0, 0.0, 0.0), ex, ez, tg, f" {i}"))
+    if banzo:   # perfil I com a alma no plano do gusset e a mesa de cima em v = e_banzo, além do gusset dos dois lados
+        hb, bb, tw, tf = (banzo[k] / MM for k in ("h", "b", "tw", "tf"))
+        ex, ez = (lambda q: (q[0], 0.0, q[1]))(to_loc((1.0, 0.0))), (lambda q: (q[0], 0.0, q[1]))(to_loc((0.0, 1.0)))
+        xs = [P[0] for P in casca]
+        x0, x1 = min(xs) / MM - max(150.0, hb), max(xs) / MM + max(150.0, hb)
+        cx = lambda *k: dict(_caixa(d["perfil_banzo"], "perfil_banzo", (0.0, 0.0, 0.0), ex, ez, x0, x1, *k),  # noqa: E731
+                             camada=0)   # perfil (o desenho põe por baixo do gusset, na cor dos perfis)
+        pb += [cx(-tw / 2, tw / 2, -hb / 2 + tf, hb / 2 - tf), cx(-bb / 2, bb / 2, hb / 2 - tf, hb / 2),
+               cx(-bb / 2, bb / 2, -hb / 2, -hb / 2 + tf)]
+    (hx, hz), (vx, vz) = to_loc((1.0, 0.0)), to_loc((0.0, 1.0))   # vista: banzo na horizontal, gusset para cima
+    geo.update(perfis_barra=pb, tubos=tb, linhas=lin, membros=[],
+               vista=dict(x=[round(hx, 12), 0.0, round(hz, 12)], z=[round(vx, 12), 0.0, round(vz, 12)]))
     return _resultado(v, av, geo, forcas_interface=forcas_if)
 
 
@@ -917,6 +1162,76 @@ def pino_garfo(F, d, fy, t, t_orelha=0.0, folga=0.0):
                 FvRd=2 * 0.6 * 0.75 * Ag * fy / GA1, sigma=sig, sigmaRd=1.5 * fy / GA1)
 
 
+# W8-CONTRAV: desenho do tirante (mm; x ao longo da barra, saindo do nó). Peças comerciais com as proporções usuais
+# [conferir no fabricante]: porca sextavada pesada ASTM A563 / ASME B18.2.2 (abertura 1,5·D + 3,2 mm, altura ≈ D),
+# contraporca (altura 0,6·D), arruela ASTM F436 (Ø 2·D × 4 mm), 3 fios (≈ 0,4·D) além da contraporca e rosca até 2·D
+# além da chapa (folga de ajuste). Só o trecho junto ao nó é desenhado (10·D); o comprimento vai na cota.
+ARRUELA_MM = 4.0
+
+
+def _disco(nome, campo, x, n, raio, esp, lados):
+    """Prisma de `lados` faces (sextavado, círculo) ⟂ x: face em x, sólido para o lado n·x."""
+    pts = [[round(raio * math.cos(2 * math.pi * (k + 0.5) / lados), 2),
+            round(raio * math.sin(2 * math.pi * (k + 0.5) / lados), 2)] for k in range(lados)]
+    return dict(nome=nome, campo=campo, contorno=pts, origem=[round(x, 2), 0.0, 0.0], normal=[float(n), 0.0, 0.0],
+                u=[0.0, 1.0, 0.0], espessura=round(esp, 2))
+
+
+def _cota(a, b, lado, texto):
+    """W8-CONTRAV: cota explícita (contrato `linhas`, estilo "cota"): de a até b (mm), traçada para o lado `lado`."""
+    return dict(estilo="cota", pontos=[[round(x, 2) for x in a], [round(x, 2) for x in b]], lado=list(lado), texto=texto)
+
+
+def _barra_tubo(D, x0, x1, nome="barra"):
+    return dict(nome=nome, grupo="viga", campo="D_barra", origem=[round(x0, 2), 0.0, 0.0], eixo=[1.0, 0.0, 0.0],
+                comprimento=round(x1 - x0, 2), d=round(D, 3), t=round(D / 2, 3), corte=None)
+
+
+def _geo_rosca(D, t, dh, comp):
+    """Chapa de apoio (face em x = 0, do lado da barra; espessura para −x), arruela, porca e contraporca atrás dela, a barra
+    (tubo maciço) e a rosca (tubo no diâmetro do núcleo ≈ 0,85·D: no desenho, a linha fina da rosca)."""
+    H, Hc, F = D, 0.6 * D, 1.5 * D + 3.2
+    x = [-t, -t - ARRUELA_MM, -t - ARRUELA_MM - H, -t - ARRUELA_MM - H - Hc]
+    ponta, Ld = x[3] - 0.4 * D, 10 * D
+    chapas = [dict(nome="chapa de apoio da porca", contorno=[[-2 * D, -2 * D], [2 * D, -2 * D], [2 * D, 2 * D], [-2 * D, 2 * D]],
+                   origem=[0.0, 0.0, 0.0], normal=[-1.0, 0.0, 0.0], u=[0.0, 1.0, 0.0], espessura=t, furo=round(dh, 2)),
+              _disco("arruela", "D_barra", x[0], -1, D, ARRUELA_MM, 24),
+              _disco("porca", "D_barra", x[1], -1, F / math.sqrt(3), H, 6),
+              _disco("contraporca", "D_barra", x[2], -1, F / math.sqrt(3), Hc, 6)]
+    z = 2 * D
+    n = lambda v: f"{v:.1f}".rstrip("0").rstrip(".").replace(".", ",")  # noqa: E731
+    linhas = [_cota((0.0, D / 2, D / 2), (5 * D, D / 2, D / 2), (0, 1, 1), f"barra Ø{n(D)}" + (f" · L = {comp:.0f}" if comp else "")),
+              _cota((ponta, -z, -z), (2 * D, -z, -z), (0, -1, -1), f"rosca {2 * D - ponta:.0f}"),
+              _cota((x[3], z, z), (0.0, z, z), (0, 1, 1), f"{n(t)} + {n(ARRUELA_MM)} + {n(H)} + {n(Hc)}")]
+    return dict(chapas=chapas, tubos=[_barra_tubo(D, ponta, Ld), _barra_tubo(0.85 * D, ponta, 2 * D, "rosca")],
+                linhas=linhas, porcas=[], barra=dict(D=D, eixo=[1.0, 0.0, 0.0], ponta=round(ponta, 2),
+                                                     rosca=round(2 * D - ponta, 2), comprimento=comp))
+
+
+def _geo_garfo(D, t, dp, a, bw, te, gf, comp):
+    """Pino no nó (origem); gusset (plano xz) do apoio (x = −3·dp) até a borda a além do pino, no sentido da força (+x);
+    garfo comercial: duas orelhas (espessura t_orelha; 0 = 0,5·dp só no desenho) com folga gf de cada lado do gusset,
+    corpo e a barra."""
+    te = te or 0.5 * dp
+    yo, w, xc = t / 2 + gf + te, 1.1 * dp, a + 10.0
+    chapas = [dict(nome="gusset", campo="t_chapa", contorno=[[-3 * dp, -bw / 2], [a, -bw / 2], [a, bw / 2], [-3 * dp, bw / 2]],
+                   origem=[0.0, t / 2, 0.0], normal=[0.0, -1.0, 0.0], u=[1.0, 0.0, 0.0], espessura=t)]
+    for lado in (1, -1):
+        chapas.append(dict(nome="garfo (orelha)", campo="t_orelha", contorno=[[0.0, -w], [xc + w, -w], [xc + w, w], [0.0, w]],
+                           origem=[-w, lado * (t / 2 + gf), 0.0], normal=[0.0, float(lado), 0.0], u=[1.0, 0.0, 0.0],
+                           espessura=te))
+    chapas.append(dict(nome="garfo (corpo)", campo="D_barra", contorno=[[-yo, -w], [yo, -w], [yo, w], [-yo, w]],
+                       origem=[xc, 0.0, 0.0], normal=[1.0, 0.0, 0.0], u=[0.0, 1.0, 0.0], espessura=1.5 * D))
+    pino = dict(d=dp, campo="d_pino", comprimento=round(2 * yo + 1.2 * dp + 6, 1), pega=round(2 * yo, 1),
+                origem=[0.0, yo, 0.0], eixo=[0.0, -1.0, 0.0])
+    x0, Ld = xc + 1.5 * D, xc + 1.5 * D + 10 * D
+    linhas = [_cota((x0, 0.0, D / 2), (x0 + 5 * D, 0.0, D / 2), (0, 1, 1), f"barra Ø{D:.1f}".rstrip("0").rstrip(".").replace(".", ",")
+                    + (f" · L = {comp:.0f}" if comp else "")),
+              _cota((0.0, 0.0, -bw / 2), (a, 0.0, -bw / 2), (0, -1, -1), f"borda {a:.0f}")]
+    return dict(chapas=chapas, parafusos=[pino], tubos=[_barra_tubo(D, x0, Ld)], linhas=linhas,
+                barra=dict(D=D, eixo=[1.0, 0.0, 0.0], comprimento=comp))
+
+
 def verificar_tirante(dados, esforcos):
     d = _ler(_TIRANTE, dados, "tirante_barra_redonda")
     N = _esf(esforcos)["N"]
@@ -934,16 +1249,10 @@ def verificar_tirante(dados, esforcos):
     if F > 0:
         v += [_vf("barra: tração na rosca (0,75·Ab)", F, r["rosca"], "kN", "6.3.3.1"),
               _vf("barra: escoamento da seção bruta", F, r["escoamento"], "kN", "6.3.3.1 / 5.2.2 a)")]
-    geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=[], recortes=[], porcas=[])
+    geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=[], recortes=[], porcas=[], membros=[])
     if d["extremidade"] == "rosca_porca":
         dh = D + L.FURO_FOLGA
-        geo["chapas"].append(dict(nome="chapa de apoio da porca",
-                                  contorno=[[-2 * D / MM, -2 * D / MM], [2 * D / MM, -2 * D / MM],
-                                            [2 * D / MM, 2 * D / MM], [-2 * D / MM, 2 * D / MM]],
-                                  origem=[0.0, 0.0, 0.0], normal=[1.0, 0.0, 0.0], u=[0.0, 1.0, 0.0],
-                                  espessura=t / MM, furo=dh / MM))
-        geo["porcas"].append(dict(d=D / MM, origem=[-t / MM, 0.0, 0.0], eixo=[-1.0, 0.0, 0.0],
-                                  arruela=True, contraporca=True))
+        geo.update(_geo_rosca(D / MM, t / MM, dh / MM, d["comprimento"]))
         av += ["porca e arruela: especifique classe compatível (ex.: ASTM A563 / F436) — resistência da porca não "
                "verificada", "flexão da chapa/aba sob a porca não verificada (use arruela de chapa)"]
     else:
@@ -980,16 +1289,10 @@ def verificar_tirante(dados, esforcos):
         L._bordas(leg, db, t, a, laminada=d["borda_laminada"], nome=" (gusset, além do pino)")
         v += [_de_legado(x) for x in leg]
         av.append("garfo (clevis) e esticador: peças comerciais — use a carga de catálogo do fabricante ≥ N")
-        geo["chapas"].append(dict(nome="gusset", contorno=[[0.0, -bw / 2 / MM], [(a + 3 * dp) / MM, -bw / 2 / MM],
-                                                         [(a + 3 * dp) / MM, bw / 2 / MM], [0.0, bw / 2 / MM]],
-                                  origem=[0.0, t / 2 / MM, 0.0], normal=[0.0, -1.0, 0.0], u=[1.0, 0.0, 0.0],
-                                  espessura=t / MM))
-        geo["parafusos"].append(dict(d=dp / MM, comprimento=round(t / MM + 2 * dp / MM + 20, 1), pega=round(t / MM + dp / MM, 1),
-                                     origem=[a / MM, t / 2 / MM + dp / MM, 0.0], eixo=[0.0, -1.0, 0.0]))
+        geo.update(_geo_garfo(D / MM, t / MM, dp / MM, a / MM, bw / MM, te / MM, gf / MM, d["comprimento"]))
     if d["comprimento"] > 0:
         av.append(f"esbeltez L/r = {d['comprimento'] * MM / (D / 4):.0f}: barras redondas pré-tracionadas "
                   "dispensam L/r ≤ 300 (5.2.8); garanta a protensão com esticador")
-    geo["barra"] = dict(D=D / MM, eixo=[1.0, 0.0, 0.0])
     return _resultado(v, av, geo, Ab_mm2=r["Ab"] / MM ** 2)
 
 
@@ -1139,26 +1442,66 @@ def _passos(sfx, ligacao, interface=(None,)):
     return out
 
 
+def _prep_barra(d, s, campo):
+    """W8-CONTRAV (sugerir): arranjo e ligação coerentes com o perfil do catálogo, gabarito usual da L e bordas com 3 mm
+    de tolerância de corte sobre a Tab. 14 (o padrão não nasce "no limite"). Põe t_perfil{s} provisório (filete de
+    _std_parafuso) e devolve a espessura do perfil (o gusset não fica mais fino que ela)."""
+    med = perfil_barra(d[campo], d.get(f"aba_ligada{s}", "maior"))
+    if med["forma"] != "L":
+        d[f"arranjo{s}"] = "simples"
+    if med["forma"].startswith("tubo"):
+        d[f"ligacao{s}"] = "soldada"
+    if med["forma"] == "L":
+        d[f"g_aba{s}"] = d.get(f"g_aba{s}") or gabarito_usual(med["dim_a"])
+    d[f"t_perfil{s}"] = med["t_perfil"]
+    return med["t_perfil"]
+
+
+def _bordas_folga(d, sfx):
+    emin = L.distancia_min_borda(d["d_mm"] * MM, d.get("borda_laminada", False)) / MM
+    for s in sfx:
+        t = d.pop(f"t_perfil{s}", None)
+        if t:   # perna do filete a até 90 % da máxima na borda (6.2.6.2.2): na parede de 5 mm, 4 mm (e não 5 = no limite)
+            bmin = L.filete_minimo(min(t, d.get("t_gusset") or t) * MM) / MM
+            d[f"b_solda{s}"] = max(bmin, min(d[f"b_solda{s}"], math.floor(0.9 * L.filete_maximo(t * MM) / MM)))
+        for k in ("e1", "e_gusset"):
+            d[f"{k}{s}"] = max(d[f"{k}{s}"], math.ceil((emin + 3) / 5) * 5)
+
+
 def sugerir_gusset(perfis, esforcos):
-    d = _base(_GUSSET, perfis)
+    novo = not _legado(dict(perfis or {}))
+    d = _base(_GUSSET if novo else _GUSSET_LEG, perfis)
     _de_catalogo(perfis, d)
-    d["t_gusset"] = d.get("t_gusset") or 8.0
-    if d["secao"] in ("tubo_circular", "tubo_retangular", "barra_redonda"):
+    tmin = _prep_barra(d, "", "perfil_diagonal") if novo else 0.0
+    d["t_gusset"] = d.get("t_gusset") or next((x for x in _TG if x >= max(tmin, 8.0) - 0.1), 8.0)
+    if not novo and d["secao"] in ("tubo_circular", "tubo_retangular", "barra_redonda"):
         d["ligacao"] = "soldada"
     _std_parafuso(d, [""])
-    return _buscar(verificar_gusset, d, _passos([""], {"": d["ligacao"]}, (6.0, 8.0, 10.0, 12.0)), esforcos)
+    if novo:
+        _bordas_folga(d, [""])
+    passos = [p for p in _passos([""], {"": d["ligacao"]}, (6.0, 8.0, 10.0, 12.0)) if p["t_gusset"] >= tmin - 0.1]
+    return _buscar(verificar_gusset, d, passos, esforcos)
 
 
 def sugerir_no(perfis, esforcos):
-    d = _base(_NO, perfis)
+    novo = not any(_legado(dict(perfis or {}), f"_{i}") for i in "1234")
+    d = _base(_NO if novo else _NO_LEG, perfis)
     d["t_gusset"] = d.get("t_gusset") or 8.0
-    ativos = [f"_{i}" for i in "1234" if d[f"secao_{i}"] != "nenhum"]
-    for s in ativos:
-        if d[f"secao{s}"].startswith("tubo"):
-            d[f"ligacao{s}"] = "soldada"
+    tmin = 0.0
+    if novo:
+        ativos = [f"_{i}" for i in "1234" if d[f"arranjo_{i}"] != "nenhuma"]
+        tmin = max([_prep_barra(d, s, f"perfil_barra{s}") for s in ativos] + [0.0])
+    else:
+        ativos = [f"_{i}" for i in "1234" if d[f"secao_{i}"] != "nenhum"]
+        for s in ativos:
+            if d[f"secao{s}"].startswith("tubo"):
+                d[f"ligacao{s}"] = "soldada"
     _std_parafuso(d, ativos)
-    return _buscar(verificar_no_trelica, d, _passos(ativos, {s: d[f"ligacao{s}"] for s in ativos}, (5.0, 6.0, 8.0)),
-                   esforcos)
+    if novo:
+        _bordas_folga(d, ativos)
+    passos = [p for p in _passos(ativos, {s: d[f"ligacao{s}"] for s in ativos}, (5.0, 6.0, 8.0))
+              if p["t_gusset"] >= tmin - 0.1]
+    return _buscar(verificar_no_trelica, d, passos, esforcos)
 
 
 DIAMETROS_BARRA_MM = (9.525, 12.7, 15.875, 19.05, 22.225, 25.4, 28.575, 31.75, 34.925, 38.1, 41.275, 44.45,
@@ -1209,7 +1552,10 @@ TIPOS = {
         nome="Nó de treliça com gusset", familia="contraventamento", liga=["no-trelica"],
         descricao="Até 4 barras (diagonais, montante, banzo emendado) ligadas a um gusset, banzo contínuo soldado "
                   "ao gusset ou emendado no nó; mínimo de 45 kN por ligação; Whitmore e flambagem por barra.",
-        entradas=_NO, esforcos=["N", "N2", "N3", "N4"], verificar=verificar_no_trelica, sugerir=sugerir_no),
+        entradas=_NO, esforcos=["N", "N2", "N3", "N4"], verificar=verificar_no_trelica, sugerir=sugerir_no,
+        # W8-CONTRAV: padrão de fábrica = nó do banzo inferior de uma Pratt: diagonal 2L a 45° tracionada e montante 2L
+        # comprimido; ΣV = 100·sen 45° − 70,7 = 0 e a interface leva ΣH = 70,7 kN
+        exemplo=dict(dados=dict(arranjo_2="dupla"), esforcos=dict(N=100.0, N2=-70.7, N3=0.0, N4=0.0))),
     "tirante_barra_redonda": dict(
         nome="Tirante de barra redonda", familia="contraventamento",
         liga=["tirante-gusset", "tirante-viga", "tirante-pilar"],

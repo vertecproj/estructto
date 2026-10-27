@@ -88,3 +88,9 @@ Cada tipo tem pelo menos 1 exemplo resolvido de livro (`docs/v3/ligacoes/*.md`, 
   O sugerir dos flexíveis já escolhe com `x_max` (chapa simples compacta pela Tab. 14; sem parafusada que caiba →
   `solda_direta_alma` com `tipo_ligacao` e `motivo`, que o lote passa a verificar e desenhar). Nesse caso o item do lote
   traz `troca` {tipo, dados (sem x_max/x_face/abertura_y), motivo}, e o WPF grava isso no projeto do grupo.
+
+## Peças só do projetista (W8-CONTRAV, docs/v3/W8-CONTRAV.md §3)
+`perfis_barra` (placas da barra ligada no formato de `chapas`, com `perfil`, `campo` e `camada` 0 = perfil), `linhas`
+(`estilo` "tracejada" | "cota", `pontos`, `texto`, `lado`) e `vista` ({x, z}: eixos da elevação no referencial local).
+O Realista não lê essas chaves (desenha as barras do modelo). Campo de perfil com `resugerir`: trocar o perfil refaz o
+Sugerir. `chapas`: o desenho do projetista respeita a origem na face (G6).

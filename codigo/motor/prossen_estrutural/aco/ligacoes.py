@@ -651,9 +651,10 @@ def pontas_de(tipo, dados, ctx=None, aproximacao=None):
     theta = None
     for s in ("", "_1"):   # diagonal: aba ligada/altura (dim_a) × dim_b, em mm; tirante: D
         a = d.get(f"dim_a{s}") or d.get("D_barra")
-        if barra is None and a:
+        pf = perfil_pontas(d.get("perfil_barra_1" if s else "perfil_diagonal"))   # W8-CONTRAV: barra do catálogo
+        if barra is None and (a or pf):
             b = d.get(f"dim_b{s}") or a
-            barra = dict(h=float(a) * MM, b=float(b) * MM)
+            barra = pf or dict(h=float(a) * MM, b=float(b) * MM)
             theta = math.radians(float(d.get(f"theta{s}", 45.0)))
     params = dict(ctx.get("params") or {})
     if tipo.startswith("chapa_topo") and "folga" not in params:   # chapa encostada: viga cortada a tp do apoio

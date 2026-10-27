@@ -1214,6 +1214,7 @@ namespace NovoFtool
                 if (so == "w7aba") so1(() => CapturasW7Aba(w));                   // só as 63) das abas de ligação
                 if (so == "w73d") so1(() => CapturasW73d(w));                     // só as w73d-*: 3D do projetista (z-buffer), tubo, teste dos parafusos
                 if (so == "w7lig") so1(() => CapturasW7Lig(w));                   // só as 70) padrões de fábrica de todos os tipos (W7-LIG)
+                if (so == "w8contrav") so1(() => CapturasW8Contrav(w));           // só as 80) gusset, nó de treliça e tirante (W8-CONTRAV)
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
                 if (so == "w7ui") so1(() => CapturasW7Ui(w));                     // só as W7-) ícones de perfil e rolagem do seletor
