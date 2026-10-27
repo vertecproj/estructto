@@ -2490,6 +2490,9 @@ def _exemplo_lig(lig, t):
         if v is not None:
             dados[c["nome"]] = v
     reg = lig.registro(tipo)
+    ex = (reg or {}).get("exemplo") or {}   # tipo com exemplo próprio (tubos: perfis tubulares e esforços realistas)
+    dados.update(ex.get("dados") or {})
+    esf = dict(ex.get("esforcos") or esf)
     if reg and reg.get("sugerir"):
         try:
             dados.update({k: v for k, v in reg["sugerir"](dict(dados), dict(esf)).items() if v is not None})
