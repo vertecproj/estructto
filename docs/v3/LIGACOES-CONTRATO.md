@@ -73,6 +73,11 @@ Em mm, no **referencial local da ligação**: origem no nó; eixo x ao longo da 
   Ramal: começa no ponto mais baixo da curva de contato e vai até 2·d1 além do mais alto; a curva da solda (`soldas[0]`)
   fica sobre a superfície do receptor e sobre o ramal cortado (teste `test_ligacoes_tubos.TestNoTubular.test_contrato_tubos`).
   No `perfil_tubo_soldado`, o receptor aparece se for circular e o ramal só se também for tubo circular.
+- `membros` (W8, opcional, só para o desenho do projetista): `{"barra": "viga"|"pilar", "perfil", "campo",
+  "pecas": [{"base": [[x,y,z],...] (mm, polígono no plano MÉDIO da chapa), "normal": [nx,ny,nz], "espessura"}]}`.
+  Com `pecas`, o desenho usa essas chapas como o perfil (camada de perfil, cor/falha do grupo viga ou suporte) em vez de
+  montar o I pelas medidas `d`, `bf`, `tw`, `tf`. `perfil_tubo_soldado` manda o perfil com a ponta na sela e o tubo
+  retangular receptor (4 paredes). Não vai para o Realista nem para listas de material (não é `chapas`).
 
 ## Testes
 Cada tipo tem pelo menos 1 exemplo resolvido de livro (`docs/v3/ligacoes/*.md`, com página) reproduzido no teste, ou cálculo à mão documentado no próprio teste.

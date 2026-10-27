@@ -104,7 +104,10 @@ class TestAvisosEMotivos(unittest.TestCase):
         s = P.sugerir_ligacao("chapa_simples_alma", dict(perfil_viga="UPN 50", perfil_suporte="UPN 50",
                                                          apoio="alma_viga"), {"V": 5})
         self.assertEqual(s["tipo_ligacao"], "solda_direta_alma")
-        self.assertRegex(s["motivo"], r"governa: solda alma.*taxa 0,9\d")   # G5: a solda (0,98), não "dimensão mínima" (1,00 geométrico)
+        # G5: cita uma resistência, não "dimensão mínima" (1,00 geométrico). W8: a perna passou de 3 (= mínima, solda a
+        # 0,98) para 4 mm (solda a 0,74); quem governa agora é o cisalhamento da alma do UPN 50 (0,96), que não depende dela
+        self.assertRegex(s["motivo"], r"governa: alma da viga: escoamento por cisalhamento.*taxa 0,9\d")
+        self.assertNotIn("dimensão mínima", s["motivo"])
 
 
 class TestGussetMinimo(unittest.TestCase):

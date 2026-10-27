@@ -141,11 +141,12 @@ def contorno(p):
     raise ValueError(f"seção '{forma}' sem contorno para solda em tubo (use I, H, U, tubo ou retangular)")
 
 
-def contato_tubo(m, ap):
+def contato_tubo(m, ap, secao=None):
     """Perfil `m` encostado no tubo `ap` (circular: superfície do cilindro; retangular: a face voltada para o perfil).
     Cada ponto do contorno anda ao longo de m.dir até tocar o tubo. → (pontos [[x,y,z]] relativos ao nó,
     t [distância no eixo de cada ponto], beta = largura do perfil no tubo / largura do tubo). ValueError se o perfil não
-    cabe no tubo (beta > 1) ou é paralelo a ele."""
+    cabe no tubo (beta > 1) ou é paralelo a ele. `secao` = outros pontos [(yb, zh)] da seção no lugar do contorno
+    (W8: borda da ponta de cada chapa do perfil, para o desenho)."""
     u, a = m["dir"], ap["dir"]
     c = _dot(u, a)
     if 1 - abs(c) < 1e-6:
@@ -154,7 +155,7 @@ def contato_tubo(m, ap):
     n = _unit(up)                           # do eixo do tubo para o perfil
     lat = _cross(a, n)                      # largura da face (tubo retangular) / corda (circular)
     d, eb = m["eixo_d"], _cross(m["dir"], m["eixo_d"])
-    p0s = [_add(_mul(eb, yb), d, zh) for yb, zh in contorno(m["perfil"])]
+    p0s = [_add(_mul(eb, yb), d, zh) for yb, zh in (secao or contorno(m["perfil"]))]
     pa = ap["perfil"]
     circ = pa.get("tipo") == "tubo_circular"
     larg = pa["h"] if circ else 2 * _meia_largura(ap, lat)

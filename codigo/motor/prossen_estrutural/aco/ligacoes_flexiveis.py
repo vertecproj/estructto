@@ -1333,9 +1333,24 @@ def _sug_vv(perfis, esforcos):
 
 
 def _sug_sd(perfis, esforcos):
+    """W8 (docs/v3/W8-TUBO.md): a menor perna ACIMA da mínima da tabela 10 que passa (a mínima só se nenhuma maior
+    passar, ex.: alma fina com perna máxima = tw < mínima + 1 mm). Com a perna = mínima o padrão saía "no limite" (taxa
+    1,00) só pela disposição construtiva, com as resistências a 38 %."""
     v, s_, apoio = _perfis_de(perfis)
+    try:
+        bmin = L.filete_minimo(min(_perfil(v, "perfil_viga")["tw"], _t_apoio(_perfil(s_, "perfil_suporte"), apoio))) / MM
+    except (ValueError, KeyError):
+        bmin = 3
     cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, b_solda=b) for b in (3, 4, 5, 6, 8, 10)]
-    return _tentar("solda_direta_alma", cands, esforcos, perfis)
+    cima = [c for c in cands if c["b_solda"] > bmin + 1e-9]
+    if cima:
+        c = _tentar("solda_direta_alma", cima, esforcos, perfis)
+        try:
+            if TIPOS["solda_direta_alma"]["verificar"](c, esforcos)["ok"]:
+                return c
+        except ValueError:
+            pass
+    return _tentar("solda_direta_alma", cands, esforcos, perfis)   # como antes: a mínima, ou a última tentada
 
 
 def _governa(res):
