@@ -58,13 +58,17 @@ class TestOtimizar(unittest.TestCase):
         self.assertTrue(r["ok"])
         self.assertTrue(L.verificar_ligacao("chapa_simples", r["dados"], {"V": 180})["ok"])
         self.assertTrue(r["mudancas"])
-        for nome, _papel, lista in L.botoes_otimizar("chapa_simples"):   # nenhum item desce sem reprovar
+        # nenhum item desce sem reprovar — W10 (docs/v3/W10-SOLDA-DIRETA.md): ou sem levar uma disposição construtiva
+        # ao "no limite" (> 0,90; ex.: perna = mínima da tabela 10), que a descida do otimizar não faz mais
+        lim = max(L.ALVO_DISP, L._disp(L.verificar_ligacao("chapa_simples", r["dados"], {"V": 180})))
+        for nome, _papel, lista in L.botoes_otimizar("chapa_simples"):
             menores = [x for x in lista if x < float(r["dados"][nome]) - 1e-9]
             if not menores:
                 continue
             d = dict(r["dados"], **{nome: int(max(menores)) if nome == "n" else max(menores)})
             try:
-                ok = L.verificar_ligacao("chapa_simples", d, {"V": 180})["ok"]
+                rd = L.verificar_ligacao("chapa_simples", d, {"V": 180})
+                ok = rd["ok"] and L._disp(rd) <= lim + 1e-9
             except ValueError:
                 ok = False
             self.assertFalse(ok, f"{nome} ainda podia descer")

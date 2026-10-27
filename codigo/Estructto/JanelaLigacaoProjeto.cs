@@ -309,6 +309,7 @@ namespace NovoFtool
         public void MostrarBiblioteca() { tipo = null; Montar(); }
         public void Buscar(string s) { busca = s ?? ""; Montar(); }
         public JsonNode Resultado => resultado;
+        public JsonObject DadosAtuais => tipo == null ? null : Dados;   // capturas W10-SD
         public string TipoAtual => tipo; public string Erro => erro; public string Status => status;   // capturas W7-UPN
         // capturas/testes: clica (hit-test real) no centro da 1a chapa da vista 3D; devolve o tag achado
         public string ClicarChapa3D()

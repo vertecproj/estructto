@@ -311,16 +311,19 @@ class TestChapaFaceContrato(unittest.TestCase):
         self.assertRegex(s["motivo"], r"governa: (solda|alma|metal base).*taxa \d")
 
     def test_solda_direta_contorna_extremidade(self):
-        """G6: o desenho da solda direta é um filete fechado em volta da ponta da alma (as duas faces e os retornos)."""
+        """G6: o desenho da solda direta é um filete fechado em volta da ponta da viga. W10 (docs/v3/W10-SOLDA-DIRETA.md):
+        o padrão passou a soldar o contorno inteiro do U (antes só as duas faces da alma e os retornos); com
+        'soldar as mesas: não' continua o filete fechado em volta da alma."""
         d = dict(perfil_viga="UPN 50", perfil_suporte="UPN 120", apoio="alma_viga")
         d.update({k: v for k, v in P.sugerir_ligacao("solda_direta_alma", d, {"V": 20}).items()
                   if v is not None and k not in ("tipo_ligacao", "motivo")})
-        sol = P.verificar_ligacao("solda_direta_alma", d, {"V": 0})["geometria"]["soldas"]
-        self.assertEqual(len(sol), 1)
-        pts = sol[0]["pontos"]
-        self.assertEqual(pts[0], pts[-1])                          # fechado
-        self.assertEqual(len({round(p[1], 3) for p in pts}), 2)    # as duas faces da alma
-        self.assertEqual(len({round(p[2], 3) for p in pts}), 2)    # topo e base (retornos)
+        for mesas, ys, zs in (("sim", 3, 4), ("não", 2, 2)):   # U: costas, face interna da alma e ponta das mesas
+            sol = P.verificar_ligacao("solda_direta_alma", dict(d, soldar_mesas=mesas), {"V": 0})["geometria"]["soldas"]
+            self.assertEqual(len(sol), 1)
+            pts = sol[0]["pontos"]
+            self.assertEqual(pts[0], pts[-1])                           # fechado
+            self.assertEqual(len({round(p[1], 3) for p in pts}), ys)    # (sim) costas, face interna, ponta das mesas
+            self.assertEqual(len({round(p[2], 3) for p in pts}), zs)    # (sim) topo, base e faces internas das mesas
 
     def test_rasgo_na_ponta_do_tubo(self):
         """G6 r1: gusset em tubo leva o rasgo na ponta (pontas[0].recortes): largura = t_gusset + 2 mm, comprimento = o
@@ -401,17 +404,28 @@ class TestChapaFaceContrato(unittest.TestCase):
             self.assertTrue(g["soldas"] and not g["parafusos"] and not g["chapas"])
 
     def test_viga_w_na_alma_de_viga_sem_cope_nao_vira_solda_direta(self):
-        """G6 r5: W310 na alma de W360 (sem cope): a solda direta reprova ("abaixo da mesa da viga suporte"), então nunca
-        troca. x_max 150: a chapa compacta cabe (~78 mm), parafusada. x_max 60: nada cabe → continua parafusada e o lote
-        devolve "barra curta" (pendente no WPF), sem `troca`."""
+        """G6 r5: W310 na alma de W360. x_max 150: a chapa compacta cabe (~78 mm), parafusada, sem troca.
+        x_max 60: a chapa não cabe. Antes a solda direta reprovava sempre ("abaixo da mesa da viga suporte", uma conta que
+        ignorava o recorte). W10 (docs/v3/W10-SOLDA-DIRETA.md): a solda direta recorta a mesa superior da W310 (fora da
+        altura livre da W360); só com V = 50 ela passa e o sugerir troca. O lote usa os esforços típicos N 50, V 50,
+        M 30: com as mesas soldadas o M entra no grupo e a alma recortada não aguenta (1,47), então continua parafusada
+        e "barra curta" (pendente no WPF), sem `troca`, como antes."""
         pf = dict(perfil_viga="W310x38.7", perfil_suporte="W360x51", apoio="alma_viga")
-        for xm, curta in ((150, False), (60, True)):
-            sug = P.sugerir_ligacao("chapa_simples_alma", dict(pf, x_max=xm), {"V": 50})
-            self.assertNotIn("tipo_ligacao", sug, xm)
-            lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=dict(pf, x_max=xm))])[0]
-            self.assertNotIn("troca", lote)
-            self.assertTrue(lote["geometria"]["parafusos"])
-            self.assertEqual("barra curta" in (lote.get("motivo") or ""), curta, xm)
+        sug = P.sugerir_ligacao("chapa_simples_alma", dict(pf, x_max=150), {"V": 50})
+        self.assertNotIn("tipo_ligacao", sug)
+        lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=dict(pf, x_max=150))])[0]
+        self.assertNotIn("troca", lote)
+        self.assertTrue(lote["geometria"]["parafusos"])
+        self.assertNotIn("barra curta", lote.get("motivo") or "")
+        sug = P.sugerir_ligacao("chapa_simples_alma", dict(pf, x_max=60), {"V": 50})
+        self.assertEqual(sug["tipo_ligacao"], "solda_direta_alma")
+        self.assertIn("disponível 60 mm", sug["motivo"])
+        self.assertTrue(any(r["tipo"] == "cope" for r in P.verificar_ligacao(
+            "solda_direta_alma", {k: v for k, v in sug.items() if k not in ("tipo_ligacao", "motivo")},
+            {"V": 50})["geometria"]["recortes"]))
+        lote = P.geometrias_ligacoes([dict(tipo="chapa_simples_alma", dados={}, perfis=dict(pf, x_max=60))])[0]
+        self.assertNotIn("troca", lote)
+        self.assertIn("barra curta", lote.get("motivo") or "")
 
     def test_lote_informa_troca(self):
         """G6 r5: quando o sugerir troca o tipo, o lote devolve `troca` {tipo, dados, motivo} para o WPF gravar no projeto
@@ -482,6 +496,9 @@ class TestDesenhoU(unittest.TestCase):
                             self.assertGreaterEqual(c["origem"][1] + c["comprimento"], max(yb, yb + ab * m["bf"]) - 0.05)
                             continue
                         self.assertTrue(ys)
+                        if tipo == "solda_direta_alma":   # W10: contorno inteiro do U (costas da alma até a ponta das mesas)
+                            alma = (min(yb, yb + ab * m["bf"]) - 0.05, max(yb, yb + ab * m["bf"]) + 0.05)
+                            self.assertAlmostEqual(max(ys) - min(ys), m["bf"], 3)
                         for y in ys:
                             self.assertTrue(alma[0] <= y <= alma[1], f"y = {y:.2f} fora da alma {alma}")
 

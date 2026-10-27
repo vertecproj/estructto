@@ -261,7 +261,11 @@ _ENT_AP = {**_BASE,
 
 _ENT_SD = {**_BASE, **_SOLDA,
            "comprimento_solda": _e("Comprimento do filete", "mm", 0, mn=0, mx=2000),
-           "soldar_mesas": _e("Soldar as mesas", "-", "auto", ["auto", "sim", "não"]),
+           # W10: padrão = contorno inteiro; "auto" (até 27/10/2026: sim no I e não no U, sem aviso) é lido como "sim"
+           "soldar_mesas": dict(_e("Soldar as mesas", "-", "sim", ["sim", "não"]), legado={"auto": "sim"}),
+           "desnivel": dict(_e("Topo viga abaixo do apoio", "mm", "auto", mn=0, mx=2000), auto=True,
+                            ajuda="Só no apoio alma de viga. auto = a viga desce o mínimo para soldar o contorno inteiro "
+                                  "na altura livre do apoio (quando cabe); 0 = topos alinhados (apoio I: mesas recortadas)."),
            "folga": _e("Folga viga–apoio", "mm", 2, mn=0, mx=10)}
 
 _ENT_VV = {**{k: v for k, v in _ENT_CD.items() if k not in _RECORTE and k != "apoio"},
@@ -277,8 +281,12 @@ def _ler(tipo, dados):
     out, erros = {}, []
     for k, c in ent.items():
         v = dados.get(k, c["padrao"])
+        if isinstance(v, str) and c.get("legado"):
+            v = c["legado"].get(v, v)
         if v is None:
             erros.append(f"{k}: obrigatório")
+        elif c.get("auto") and str(v).strip().lower() in ("auto", ""):
+            out[k] = None   # W10: automático (o tipo calcula)
         elif k in _PERFIS:
             out[k] = v
         elif "opcoes" in c:
@@ -306,25 +314,31 @@ def _ler(tipo, dados):
     return out
 
 
-def _esforcos(esf, r, d):
+def _esforcos(esf, r, d, extras=()):
+    """(V, N) de cálculo; com `extras` (W10, solda direta com o contorno: "Vz", "M", "Mz", "T") → (V, N, {extra: |valor|})
+    e Vz entra na resultante do mínimo de 6.1.5.2."""
     esf = dict(esf or {})
     try:
         V, N = abs(float(esf.get("V", 0.0))), float(esf.get("N", 0.0))
+        X = {k: abs(float(esf.get(k, 0.0) or 0.0)) for k in extras}
     except (TypeError, ValueError):
         raise ValueError("esforços V e N: números (kN) esperados") from None
-    if not (math.isfinite(V) and math.isfinite(N)):
+    if not all(math.isfinite(x) for x in (V, N, *X.values())):
         raise ValueError("esforços V e N: números finitos esperados")
-    outros = [k for k in ("Vz", "M", "Mz", "T") if abs(float(esf.get(k, 0.0) or 0.0)) > 1e-9]
+    outros = [k for k in ("Vz", "M", "Mz", "T") if k not in X and abs(float(esf.get(k, 0.0) or 0.0)) > 1e-9]
     if outros:
         r.avisos.append(f"ligação flexível: {', '.join(outros)} ignorados (rótula; só V e N são transmitidos)")
-    # NBR 8800 6.1.5.2: força de cálculo (resultante de V e N) mínima de 45 kN; terças e travessas isentas
-    k, aviso = L.fator_minimo_6152(math.hypot(V, N), isenta=d["terca_ou_travessa"])
+    # NBR 8800 6.1.5.2: força de cálculo (resultante de V e N, e Vz quando entra) mínima de 45 kN; terças e travessas isentas
+    vz = X.get("Vz", 0.0)
+    k, aviso = L.fator_minimo_6152(math.sqrt(V * V + N * N + vz * vz), isenta=d["terca_ou_travessa"])
     if aviso:
         V, N = (V * k, N * k) if math.isfinite(k) else (L.F_MINIMA, 0.0)
+        if "Vz" in X and math.isfinite(k):
+            X["Vz"] = vz * k
         r.avisos.append(aviso)
-    if V == 0 and N == 0:
+    if V == 0 and N == 0 and not any(X.values()):
         r.avisos.append("sem esforços: só as disposições construtivas foram verificadas")
-    return V, N
+    return (V, N, X) if extras else (V, N)
 
 
 def _perfil(v, campo):
@@ -1091,88 +1105,255 @@ def _viga_viga(d, e):
         z = d["desnivel"]
         for x in res["geometria"]["recortes"]:
             x["parametros"]["desnivel"] = z / MM
+        res["geometria"]["z_topo_suporte"] = (vg["d"] / 2 + z) / MM   # W10: o desenho põe o suporte acima da viga
     return res
 
 
-# ---------------------------------------------------------------- solda direta da alma (G5)
+# ---------------------------------------------------------------- solda direta (G5; W10: contorno inteiro, docs/v3/W10-SOLDA-DIRETA.md)
+
+def _contorno(vg, ab, yw, zt, zb, mt, mb):
+    """W10: contorno (y, z) da seção da viga na face do apoio entre zb e zt, com a mesa de cima (mt) e a de baixo (mb)
+    quando não recortadas. I centrado em yw; U com as costas em yw − ab·tw/2 e as mesas para o lado ab."""
+    b, tw, tf = vg["bf"], vg["tw"], vg["tf"]
+    if vg.get("forma") == "U":
+        yb, s = yw - ab * tw / 2, ab
+        p = [(yb, zb)] + ([(yb + s * b, zb), (yb + s * b, zb + tf), (yb + s * tw, zb + tf)] if mb else [(yb + s * tw, zb)])
+        return p + ([(yb + s * tw, zt - tf), (yb + s * b, zt - tf), (yb + s * b, zt)] if mt else [(yb + s * tw, zt)]) \
+            + [(yb, zt)]
+    h, w = b / 2, tw / 2
+    p = [(-h, zb), (h, zb), (h, zb + tf), (w, zb + tf)] if mb else [(-w, zb), (w, zb)]
+    p += [(w, zt - tf), (h, zt - tf), (h, zt), (-h, zt), (-h, zt - tf), (-w, zt - tf)] if mt else [(w, zt), (-w, zt)]
+    p += [(-w, zb + tf), (-h, zb + tf)] if mb else []
+    return [(y + yw, z) for y, z in p]
+
+
+def _cordoes(pts, b, zlo, zhi):
+    """W10: lados do contorno com face do apoio para a perna b. Lado horizontal: só se a perna (para fora da seção) fica
+    entre zlo e zhi; lado vertical: cortado nessa faixa. → [((y1, z1), (y2, z2))] na ordem do contorno."""
+    n, eps = len(pts), 1e-9
+    sg = 1 if sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1] for i in range(n)) > 0 else -1
+    out = []
+    for i in range(n):
+        (y1, z1), (y2, z2) = pts[i], pts[(i + 1) % n]
+        if abs(z2 - z1) < eps:   # horizontal: normal para fora = sg·(dz, −dy) → só z
+            zp = z1 - sg * math.copysign(b, y2 - y1)
+            if zlo - eps <= min(z1, zp) and max(z1, zp) <= zhi + eps:
+                out.append(((y1, z1), (y2, z2)))
+        else:
+            a, c = max(min(z1, z2), zlo), min(max(z1, z2), zhi)
+            if c - a > eps:
+                out.append(((y1, a), (y2, c)) if z2 > z1 else ((y1, c), (y2, a)))
+    return out
+
+
+def _perto(p, q):
+    return abs(p[0] - q[0]) < 1e-9 and abs(p[1] - q[1]) < 1e-9
+
+
+def _trechos(segs):
+    """Cordões contínuos (polilinhas) a partir dos lados na ordem do contorno; o contorno inteiro sai fechado."""
+    runs = []
+    for a, c in segs:
+        if runs and _perto(runs[-1][-1], a):
+            runs[-1].append(c)
+        else:
+            runs.append([a, c])
+    if len(runs) > 1 and _perto(runs[-1][-1], runs[0][0]):
+        runs[0] = runs.pop()[:-1] + runs[0]
+    return runs
+
+
+def _comp(seg):
+    (y1, z1), (y2, z2) = seg
+    return math.hypot(y2 - y1, z2 - z1)
+
+
+def _alma_lado(seg, tf):
+    """Lado vertical da alma (não a ponta da mesa, de altura tf)."""
+    return abs(seg[1][0] - seg[0][0]) < 1e-9 and _comp(seg) > 1.5 * tf
+
+
+def _grupo(segs, tf):
+    """Grupo de solda pelo método elástico (linhas de garganta unitária; Salmon & Johnson, Blodgett): comprimento L,
+    centroide (yc, zc), Iy = Σ∫(z − zc)² (M, eixo forte), Iz = Σ∫(y − yc)² (Mz), Ip = Iy + Iz (T); Lv = lados da alma
+    (levam V, no plano da alma) e Lh = lados horizontais (levam Vz, no plano das mesas)."""
+    L = sum(_comp(s) for s in segs)
+    yc = sum(_comp(s) * (s[0][0] + s[1][0]) / 2 for s in segs) / L
+    zc = sum(_comp(s) * (s[0][1] + s[1][1]) / 2 for s in segs) / L
+
+    def i2(a, c):
+        return (a * a + a * c + c * c) / 3
+
+    Iy = sum(_comp(s) * i2(s[0][1] - zc, s[1][1] - zc) for s in segs)
+    Iz = sum(_comp(s) * i2(s[0][0] - yc, s[1][0] - yc) for s in segs)
+    Lv = sum(_comp(s) for s in segs if _alma_lado(s, tf))
+    Lh = sum(_comp(s) for s in segs if abs(s[1][1] - s[0][1]) < 1e-9)
+    return dict(L=L, yc=yc, zc=zc, Iy=Iy, Iz=Iz, Ip=Iy + Iz, Lv=Lv or L, Lh=Lh or L)
+
+
+def _q_lado(g, seg, tf, V, N, Vz, M, Mz, T):
+    """Maior força por comprimento (kN/m) nas pontas do lado `seg` do grupo: soma vetorial com os termos em valor
+    absoluto (a favor). V só nos lados da alma e Vz só nos horizontais (cada força pelas chapas no plano dela)."""
+    def t(m, dist, i):
+        return 0.0 if m == 0 else (m * dist / i if i > 0 else _INF)
+    v = V / g["Lv"] if _alma_lado(seg, tf) or g["Lv"] == g["L"] else 0.0
+    vz = Vz / g["Lh"] if abs(seg[1][1] - seg[0][1]) < 1e-9 or g["Lh"] == g["L"] else 0.0
+    q = 0.0
+    for y, z in seg:
+        dy, dz = abs(y - g["yc"]), abs(z - g["zc"])
+        fx = abs(N) / g["L"] + t(M, dz, g["Iy"]) + t(Mz, dy, g["Iz"])
+        fz, fy = v + t(T, dy, g["Ip"]), vz + t(T, dz, g["Ip"])
+        q = max(q, math.sqrt(fx * fx + fy * fy + fz * fz))
+    return q
+
+
+def _b_min_sd(vg, sp, apoio, mesas=True):
+    """Perna mínima da tabela 10 (6.2.6.2.1, metal-base mais fino de cada junta): alma–apoio e, com as mesas soldadas,
+    mesa–apoio (W10: a mesa grossa pede mais; antes valia só a alma)."""
+    t_ap = _t_apoio(sp, apoio)
+    return max(L.filete_minimo(min(t, t_ap)) for t in ([vg["tw"], vg["tf"]] if mesas else [vg["tw"]]))
+
+
+def _posicao_sd(d, vg, sp, bs, r):
+    """W10: na alma de viga, a face do apoio é a altura livre entre as mesas do apoio I (tf + máx(r, 10 mm) de cada lado,
+    [GD] 2.4.6) ou a alma inteira do apoio U (costas da alma para a viga, como o desenho W7-UPN). Desnível `auto`: a viga
+    desce o mínimo para o contorno inteiro (com a perna b por fora das mesas) caber nessa faixa (múltiplo de 5 mm quando
+    cabe); se não cabe, topos alinhados e recorte das mesas da viga (apoio I) ou só o que fica na face (apoio U).
+    → (zlo, zhi, desnível, recorte_sup_h, recorte_inf_h, z do topo do apoio), em m no referencial da viga."""
+    h2 = vg["d"] / 2
+    if d["apoio"] != "alma_viga":
+        return -_INF, _INF, 0.0, 0.0, 0.0, None
+    obst = 0.0 if sp.get("forma") == "U" else sp["tf"] + max(sp["r"], FOLGA_RECORTE)
+    des = d["desnivel"]
+    # a perna b fica por fora do topo/base da seção (mesa por fora, ou o retorno do filete na ponta da alma / do recorte)
+    if des is None:   # auto
+        des = 0.0
+        if vg["d"] + 2 * bs <= sp["d"] - 2 * obst + 1e-9:
+            des = obst + bs
+            for passo in (5 * MM, 1 * MM):
+                x = math.ceil(des / passo - 1e-9) * passo
+                if x + vg["d"] + bs <= sp["d"] - obst + 1e-9:
+                    des = x
+                    break
+            r.avisos.append(f"viga {des / MM:.0f} mm abaixo do topo do apoio (desnível automático) para soldar o "
+                            f"contorno inteiro na altura livre de {(sp['d'] - 2 * obst) / MM:.0f} mm; desnível 0 = "
+                            "topos alinhados (sem a solda por cima da mesa superior)")
+    zs = h2 + des
+    zhi, zlo = zs - obst, zs - sp["d"] + obst
+    dct = dcb = 0.0
+    if obst > 0:   # apoio I: as mesas do apoio avançam para a viga → recorte do que fica fora da altura livre + b,
+        # tirando a mesa inteira com o raio
+        dct, dcb = h2 - zhi, zlo + h2
+        dct = max(dct + bs, vg["tf"] + vg["r"]) if dct > 1e-9 else 0.0
+        dcb = max(dcb + bs, vg["tf"] + vg["r"]) if dcb > 1e-9 else 0.0
+    return zlo, zhi, des, dct, dcb, zs
+
 
 def _solda_direta(d, e, tipo="solda_direta_alma"):
-    """Alma da viga (U pequeno, UPN 50/65) soldada direto no apoio, sem chapa nem parafusos: dois filetes de
-    comprimento Lw (um em cada face da alma; padrão Lw = h: a face interna continua pelas mesas).
+    """Viga soldada direto no apoio, sem chapa nem parafusos. W10 (27/10/2026): padrão = contorno inteiro do perfil
+    (alma e mesas, dos dois lados) como um grupo de solda pelo método elástico (V nos lados da alma, Vz nos lados
+    horizontais, N, M, Mz e T pelas propriedades do grupo; NBR 8800 6.2.5 com a resultante no ponto mais solicitado).
+    'Soldar as mesas: não' = só as duas faces da alma (rótula, como antes: q = √(V² + N²)/(2·Lw)).
 
-    Conferência à mão (E70, fw = 485 MPa, perna 5 mm, 2 × 84 mm, aço A-572 GR.50):
+    Conferência à mão (só a alma; E70, fw = 485 MPa, perna 5 mm, 2 × 84 mm, aço A-572 GR.50):
       metal da solda 0,6·0,707·5·485/1,35 = 762 N/mm; metal base 0,6·5·345/1,10 = 941 N/mm → FwRd = 762 N/mm;
       2 × 84 × 0,762 = 128 kN (≈ 127 kN da revisão).
-    UPN 50 em UPN 100, V = 45 kN (6.1.5.2): Lw = 50 mm → solda 2 × 50 × 0,762 = 76 kN; alma do UPN 50
-      0,6·345·50·5/1,10 = 47,0 kN (taxa 0,96)."""
+    Contorno: conta à mão do grupo em testes/test_w10_solda_direta.py (UPN 50 na alma de UPN 100)."""
     r = _Col()
-    V, N = _esforcos(e, r, d)
+    mesas = d["soldar_mesas"] != "não"
+    if mesas:
+        V, N, X = _esforcos(e, r, d, ("Vz", "M", "Mz", "T"))
+    else:
+        (V, N), X = _esforcos(e, r, d), {}
     vg, sp = _perfil(d["perfil_viga"], "perfil_viga"), _perfil(d["perfil_suporte"], "perfil_suporte")
     fyv, fuv = _aco(d["aco_viga"])
     fys, fus = _aco(d["aco_suporte"])
     bs, fw = d["b_solda"], L.ELETRODOS[d["eletrodo"]] * MPa
-    tw, t_ap, apoio = vg["tw"], _t_apoio(sp, d["apoio"]), d["apoio"]
-    # 26/10/2026: mesas soldadas (auto = sim no I, não no U pequeno, o caso de origem). O cordão contorna o perfil: a alma
-    # entre as mesas (Lw = d − 2·tf) leva V; N se divide no contorno todo (alma 2·Lw + mesas: bf por fora e bf − tw por dentro).
-    sm = d.get("soldar_mesas", "auto")
-    mesas = (vg.get("forma") != "U") if sm == "auto" else sm == "sim"
+    tw, apoio = vg["tw"], d["apoio"]
+    ab = _abertura(d, vg)
+    yw = ab * (tw / 2 - vg.get("xg", tw / 2)) if vg.get("forma") == "U" else 0.0
+    zlo, zhi, des, dct, dcb, zs = _posicao_sd(d, vg, sp, bs, r)
+    rec = dict(recorte_sup_h=dct, recorte_inf_h=dcb, recorte_sup_c=0.0, recorte_inf_c=0.0)
+    if dct > 0 or dcb > 0:
+        c = sp["bf"] / 2 - sp["tw"] / 2 + FOLGA_RECORTE - d["folga"]   # [GD] 3.3: projeção da mesa + 10 mm − folga
+        rec.update(recorte_sup_c=c if dct > 0 else 0.0, recorte_inf_c=c if dcb > 0 else 0.0)
+        _recortes(r, rec, vg, fyv, V, d["folga"])
+        r.avisos.append(f"viga mais alta que a altura livre do apoio ({(zhi - zlo) / MM:.0f} mm): mesas recortadas "
+                        f"(recorte {dct / MM:.0f} / {dcb / MM:.0f} mm, topo / base), só a seção que sobra é soldada")
+    zt, zb = vg["d"] / 2 - dct, -vg["d"] / 2 + dcb
+    if mesas:
+        if d["comprimento_solda"]:
+            r.avisos.append("comprimento do filete ignorado: com as mesas soldadas o cordão é o contorno do perfil")
+        pts = _contorno(vg, ab, yw, zt, zb, dct == 0, dcb == 0)
+    else:
+        lw = min(d["comprimento_solda"] or zt - zb, zt - zb)
+        zm = (zt + zb) / 2
+        pts = [(yw - tw / 2, zm - lw / 2), (yw + tw / 2, zm - lw / 2), (yw + tw / 2, zm + lw / 2), (yw - tw / 2, zm + lw / 2)]
+    segs = _cordoes(pts, bs, zlo, zhi)
+    alma = [s for s in segs if _alma_lado(s, vg["tf"])]
+    if not alma:
+        raise ValueError("solda direta: a alma da viga não fica na face do apoio (confira o desnível e os perfis)")
+    runs = _trechos(segs)
+    Lw = min(_comp(s) for s in alma)
     fwrd = L.resistencia_filete(bs, fw, fyv, fuv)["FwRd"]
     if mesas:
-        Lw = d["comprimento_solda"] or vg["d"] - 2 * vg["tf"]
-        Lt = 2 * Lw + 2 * (2 * vg["bf"] - tw)
-        qn = abs(N) / Lt
-        q = math.hypot(V / (2 * Lw), qn)
-        r.val.update(Lw_mm=Lw / MM, L_contorno_mm=Lt / MM, q_kN_m=q)
+        g = _grupo(segs, vg["tf"])
+        esf = (V, N, X["Vz"], X["M"], X["Mz"], X["T"])
+        q = max(_q_lado(g, s, vg["tf"], *esf) for s in segs)
+        # chapa da alma entre os filetes das duas faces: V pela altura da alma na face (a mesma do Aw = h·tw, como antes)
+        q_alma = max(_q_lado(dict(g, Lv=2 * (zt - zb)), s, vg["tf"], *esf) for s in alma)
+        per = sum(_comp(s) for s in zip(pts, pts[1:] + pts[:1]))
+        r.val.update(Lw_mm=Lw / MM, L_contorno_mm=g["L"] / MM, q_kN_m=q, Iy_grupo_cm3=g["Iy"] * 1e6,
+                     Iz_grupo_cm3=g["Iz"] * 1e6, centroide_mm=(g["yc"] / MM, g["zc"] / MM))
+        r.res("solda: contorno (grupo elástico, ponto mais solicitado)", q, fwrd, "kN/m", "6.2.5 / tabela 8")
+        if per - g["L"] > 1e-6:
+            r.avisos.append(f"{(per - g['L']) / MM:.0f} mm do contorno sem solda: a face do apoio acaba no topo/base da "
+                            "viga (mesa por fora); com 'desnível: auto' a viga desce para soldar o contorno inteiro "
+                            "quando cabe na altura do apoio")
+        r.avisos.append("mesas soldadas: a ligação transmite momento (deixa de ser flexível); Vz, M, Mz e T entram no grupo "
+                        "de solda, a viga e o apoio não são verificados ao momento — se o modelo a trata como rotulada, "
+                        "confira a rotação ou use 'soldar as mesas: não'")
     else:
-        Lw = d["comprimento_solda"] or vg["d"]
-        q = math.hypot(V, N) / (2 * Lw)
+        q = q_alma = math.hypot(V, N) / (2 * Lw)
         r.val.update(Lw_mm=Lw / MM, q_kN_m=q)
-    r.res("solda alma–apoio (V, N; 2 filetes)", q, fwrd, "kN/m", "6.2.5 / tabela 8")
-    if mesas:
-        r.res("solda das mesas (N no contorno)", qn, fwrd, "kN/m", "6.2.5 / tabela 8")
-        r.avisos.append("mesas soldadas: a ligação passa a transmitir momento (deixa de ser flexível); o momento não é "
-                        "verificado aqui — se o modelo a trata como rotulada, use 'soldar as mesas: não' ou uma ligação rígida")
+        r.res("solda alma–apoio (V, N; 2 filetes)", q, fwrd, "kN/m", "6.2.5 / tabela 8")
+        r.avisos.append("só a alma soldada ('soldar as mesas: não'): as mesas ficam sem solda (rótula)")
     r.res("apoio: metal base junto à solda", q, L.resistencia_filete(bs, fw, fys, fus)["metal_base"], "kN/m",
           "6.2.5 / tabela 8")
-    r.res("alma da viga: metal base entre os filetes", 2 * q, min(0.6 * fyv * tw / GA1, 0.6 * fuv * tw / GA2),
+    r.res("alma da viga: metal base entre os filetes", 2 * q_alma, min(0.6 * fyv * tw / GA1, 0.6 * fuv * tw / GA2),
           "kN/m", "6.5.5 / tabela 8")
-    r.res("alma da viga: escoamento por cisalhamento (Aw = h·tw)", V, 0.6 * fyv * vg["d"] * tw / GA1, "kN",
+    r.res("alma da viga: escoamento por cisalhamento (Aw = h·tw)", V, 0.6 * fyv * (zt - zb) * tw / GA1, "kN",
           "5.4.3.1 / 6.5.5 a)")
     if N > 0:
-        r.res("alma da viga: tração na seção da solda", N, Lw * tw * fyv / GA1, "kN", "5.2.2 a)")
-    r.minimo("solda: dimensão mínima", L.filete_minimo(min(tw, t_ap)), bs, "6.2.6.2.1 / tabela 10", "b_solda")
-    r.maximo("solda: dimensão máxima (borda da alma)", bs, L.filete_maximo(tw), "6.2.6.2.2", "b_solda")
-    r.minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * bs, 0.040), Lw, "6.2.6.2.3")
-    _cabe_no_apoio(r, sp, apoio, (vg["bf"] if mesas else tw) + 2 * bs, "solda", topo=vg["tf"] + vg["r"])
+        if mesas:
+            A = (zt - zb) * tw + sum(vg["tf"] * (vg["bf"] - tw) for m in (dct == 0, dcb == 0) if m)
+            r.res("viga: tração na seção da face (A·fy)", N, A * fyv / GA1, "kN", "5.2.2 a)")
+        else:
+            r.res("alma da viga: tração na seção da solda", N, Lw * tw * fyv / GA1, "kN", "5.2.2 a)")
+    r.minimo("solda: dimensão mínima", _b_min_sd(vg, sp, apoio, mesas and (dct == 0 or dcb == 0)), bs,
+             "6.2.6.2.1 / tabela 10", "b_solda")
+    # W10 (= W8-TUBO): junta em T (ponta da viga contra a face do apoio) — sem a perna máxima de borda (6.2.6.2.2)
+    r.minimo("solda: comprimento mínimo do filete (4b e 40 mm)", max(4 * bs, 0.040),
+             min(sum(_comp(s) for s in zip(t, t[1:])) for t in runs) if mesas else Lw, "6.2.6.2.3")
+    _cabe_no_apoio(r, sp, apoio, (vg["bf"] if mesas else tw) + 2 * bs, "solda")
     if vg.get("forma") == "U":
         e_ = vg["x_cc"]
         r.val["e_centro_cisalhamento_mm"] = e_ / MM
         r.avisos.append(f"viga U: reação a {e_ / MM:.0f} mm do centro de cisalhamento — torção na viga não verificada")
     r.avisos.append("solda direta: ligação de campo soldada (sem montagem parafusada); confira o acesso à face interna")
     xf = _x_face(sp, apoio, d)
-    ab = _abertura(d, vg)
-    yw = ab * (tw / 2 - vg.get("xg", tw / 2)) if vg.get("forma") == "U" else 0.0
-    zt = vg["d"] / 2
-    # G6: um filete fechado contornando a ponta da alma (as duas faces, Lw cada, e os retornos de tw no topo e na base)
-    z1, z2, y1, y2 = zt - (vg["d"] - Lw) / 2, zt - (vg["d"] + Lw) / 2, yw + tw / 2, yw - tw / 2
-    sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y1, z1), _p(xf, y1, z2), _p(xf, y2, z2), _p(xf, y2, z1),
-                                                      _p(xf, y1, z1)])]
-    if mesas:   # contorno do perfil inteiro (sentido anti-horário em (y, z)), fechado
-        h, b, tf_ = vg["d"] / 2, vg["bf"], vg["tf"]
-        if vg.get("forma") == "U":   # costas da alma em yb, mesas para o lado da abertura (ab)
-            yb, s_ = yw - ab * tw / 2, ab
-            yz = [(yb, -h), (yb + s_ * b, -h), (yb + s_ * b, -h + tf_), (yb + s_ * tw, -h + tf_), (yb + s_ * tw, h - tf_),
-                  (yb + s_ * b, h - tf_), (yb + s_ * b, h), (yb, h)]
-        else:
-            yz = [(-b / 2, -h), (b / 2, -h), (b / 2, -h + tf_), (tw / 2, -h + tf_), (tw / 2, h - tf_), (b / 2, h - tf_),
-                  (b / 2, h), (-b / 2, h), (-b / 2, h - tf_), (-tw / 2, h - tf_), (-tw / 2, -h + tf_), (-b / 2, -h + tf_)]
-            yz = [(y + yw, z) for y, z in yz]
-        sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y, z) for y, z in yz + yz[:1]])]
-    geo = dict(chapas=[], cantoneiras=[], parafusos=[], soldas=sol,
-               recortes=[dict(barra="viga", tipo="recuo", parametros=dict(x_ponta=(xf + d["folga"]) / MM))])
+    r.val.update(desnivel_mm=des / MM, soldar_mesas="sim" if mesas else "não", **{k + "_mm": v / MM for k, v in rec.items()})
+    geo = dict(chapas=[], cantoneiras=[], parafusos=[],
+               soldas=[dict(tipo="filete", perna=bs / MM, pontos=[_p(xf, y, z) for y, z in t]) for t in runs],
+               recortes=_geo_recortes(rec, xf + d["folga"]))
+    if zs is not None:
+        geo["z_topo_suporte"] = zs / MM   # W10: topo do apoio (alma de viga) no referencial da viga — desenho
     if vg.get("forma") == "U":
         geo["abertura_y"] = ab
-    return r.resultado(geo)
+    res = r.resultado(geo)
+    if dct > 0 or dcb > 0:
+        res["recortes_usados"] = rec   # com_pontas devolve à ponta (render = cálculo), como a viga–viga
+    return res
 
 
 def _abertura(d, vg):
@@ -1360,8 +1541,8 @@ def _sug_sd(perfis, esforcos):
     passar, ex.: alma fina com perna máxima = tw < mínima + 1 mm). Com a perna = mínima o padrão saía "no limite" (taxa
     1,00) só pela disposição construtiva, com as resistências a 38 %."""
     v, s_, apoio = _perfis_de(perfis)
-    try:
-        bmin = L.filete_minimo(min(_perfil(v, "perfil_viga")["tw"], _t_apoio(_perfil(s_, "perfil_suporte"), apoio))) / MM
+    try:   # W10: com as mesas soldadas (padrão) a mínima é a da junta mais grossa (mesa–apoio)
+        bmin = _b_min_sd(_perfil(v, "perfil_viga"), _perfil(s_, "perfil_suporte"), apoio) / MM
     except (ValueError, KeyError):
         bmin = 3
     cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, b_solda=b) for b in (3, 4, 5, 6, 8, 10)]
@@ -1512,8 +1693,9 @@ TIPOS = {
                   "dupla cantoneira ou chapa simples; escoamento, flambagem local e rasgamento da viga recortada."),
     "solda_direta_alma": dict(
         nome="Solda direta", familia="flexivel", liga=_LIGA_VP, entradas=_ENT_SD, esforcos=["V", "N"],
-        descricao="Viga soldada direto no apoio, sem chapa nem parafusos: dois filetes na alma e, com 'soldar as "
-                  "mesas' (padrão no I), o contorno das mesas. NBR 8800 6.2.5 / tabela 10."),
+        descricao="Viga soldada direto no apoio, sem chapa nem parafusos: contorno inteiro do perfil (alma e mesas) "
+                  "como grupo de solda; 'soldar as mesas: não' = só os dois filetes da alma. Na alma de viga, desnível "
+                  "automático ou recorte. NBR 8800 6.2.5 / tabela 10."),
 }
 for _t, _f, _s in (("cantoneira_dupla_alma", _cantoneira_dupla, _com_solda_direta("cantoneira_dupla_alma", _sug_cd)),
                    ("chapa_simples_alma", _chapa_simples, _com_solda_direta("chapa_simples_alma", _sug_cs)),

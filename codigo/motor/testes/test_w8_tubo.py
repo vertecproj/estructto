@@ -118,26 +118,27 @@ class TestPernaAcimaDaMinima(unittest.TestCase):
         self.assertFalse(_ver(dict(b_solda=[b for b in L._B_MM if b < s["b_solda"]][-1]), dict(V=150, M=90))["ok"])
 
     def test_solda_direta_padrao(self):
-        """W310×38,7 na mesa do W250×73: mínima 3 mm (tabela 10, alma 5,8), máxima 5,8 (borda da alma) → 4 mm; a solda da
-        alma fica em 172,1/609,6 = 0,28 e o padrão em 0,75 (era 1,00 com 3 mm = mínima)."""
+        """W310×38,7 na mesa do W250×73. W8: mínima 3 mm (tabela 10, alma 5,8), máxima 5,8 → 4 mm, padrão 0,75.
+        W10 (docs/v3/W10-SOLDA-DIRETA.md): com as mesas soldadas a tabela 10 vale também para a junta mesa–apoio
+        (menor espessura 9,7 mm → 5 mm) e a perna máxima de borda saiu (junta em T, como no perfil–tubo) → 6 mm;
+        o contorno fica em 172,1/914,4 = 0,19 e o padrão em 5/6 = 0,83 (ainda ≤ 0,90)."""
         ex = {t["tipo"]: t for t in P.tipos_ligacao()}["solda_direta_alma"]["exemplo"]
-        self.assertEqual(ex["dados"]["b_solda"], 4)
+        self.assertEqual(ex["dados"]["b_solda"], 6)
         r = P.verificar_ligacao("solda_direta_alma", ex["dados"], ex["esforcos"])
         self.assertTrue(r["ok"])
-        self.assertAlmostEqual(r["taxa"], 0.75, places=9)
-        self.assertAlmostEqual(_v(r, "solda alma–apoio")["resistente"], 0.6 * 0.707 * 4 * 485 / 1.35 * 1, delta=0.1)
+        self.assertAlmostEqual(r["taxa"], 5 / 6, places=9)
+        self.assertAlmostEqual(_v(r, "solda: contorno")["resistente"], 0.6 * 0.707 * 6 * 485 / 1.35 * 1, delta=0.1)
 
     def test_solda_direta_acima_da_minima_dentro_da_maxima(self):
         for viga, sup in (("W310x38.7", "W250x73"), ("W460x52", "W310x97"), ("UPN 120", "W 200 x 26,6")):
             s = P.sugerir_ligacao("solda_direta_alma", dict(perfil_viga=viga, perfil_suporte=sup, apoio="mesa_pilar"), {"V": 30})
             r = P.verificar_ligacao("solda_direta_alma", s, {"V": 30})
-            mn, mx = _v(r, "solda: dimensão mínima"), _v(r, "solda: dimensão máxima")
+            mn = _v(r, "solda: dimensão mínima")
             self.assertTrue(r["ok"], viga)
-            self.assertLessEqual(mx["solicitante"], mx["resistente"], viga)
-            if viga == "UPN 120":   # alma 7 mm: mínima 5, máxima 7 − 1,5 = 5,5 → não cabe perna comercial acima da mínima
-                self.assertEqual((mn["solicitante"], s["b_solda"]), (5.0, 5))
-            else:
-                self.assertLess(mn["solicitante"], mn["resistente"], viga)   # perna > mínima
+            # W10: sem a perna máxima de borda (junta em T, = perfil–tubo). Antes o UPN 120 (alma 7: máxima 5,5) ficava
+            # na mínima 5; agora vai a 6 como os outros
+            self.assertFalse(any(x["nome"].startswith("solda: dimensão máxima") for x in r["verificacoes"]), viga)
+            self.assertLess(mn["solicitante"], mn["resistente"], viga)   # perna > mínima
 
 
 class TestDesenhoPerfilNaSela(unittest.TestCase):

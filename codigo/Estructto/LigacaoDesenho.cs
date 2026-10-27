@@ -224,7 +224,8 @@ namespace NovoFtool
                     double mx0 = ehU ? tw / 2 - bf : -bf / 2, mx1 = ehU ? tw / 2 : bf / 2;
                     if (apoio.Contains("viga"))
                     {
-                        double zt = Ok(dv) ? dv / 2 : zMaxLig, Ly = Math.Max(2.2 * bf, 380);
+                        // W10: topo do apoio dado pelo motor (desnível da viga apoiada); sem ele, topos alinhados
+                        double zt = Ok(D(g, "z_topo_suporte")) ? D(g, "z_topo_suporte") : Ok(dv) ? dv / 2 : zMaxLig, Ly = Math.Max(2.2 * bf, 380);
                         lst.Add(Caixa(-tw / 2, tw / 2, -Ly, Ly, zt - d + tf, zt - tf, 0, "suporte"));
                         lst.Add(Caixa(mx0, mx1, -Ly, Ly, zt - tf, zt, 0, "suporte"));
                         lst.Add(Caixa(mx0, mx1, -Ly, Ly, zt - d, zt - d + tf, 0, "suporte"));
@@ -896,7 +897,9 @@ namespace NovoFtool
             if (sup.Count > 0 && g.NomeSuporte != "")
             {
                 var ps = sup.Select(P).ToList();
-                Caixa(g.NomeSuporte.Replace("x", "×"), new Point(ps.Min(q => q.X), Math.Max(30, ps.Min(q => q.Y) + 2)), TemaPlant.BTexto2);
+                // W10: acima do apoio quando há espaço (apoio viga: dentro, a caixa cobria a mesa de cima e o U parecia um L)
+                double yt = ps.Min(q => q.Y);
+                Caixa(g.NomeSuporte.Replace("x", "×"), new Point(ps.Min(q => q.X), yt - 20 >= 30 ? yt - 20 : Math.Max(30, yt + 2)), TemaPlant.BTexto2);
             }
             var ch = g.Pecas.FirstOrDefault(q => q.Camada > 0 && Math.Abs(Vector3D.DotProduct(q.N, F)) > 0.85);
             if (ch != null && Vista == VistaLig.Elevacao)
