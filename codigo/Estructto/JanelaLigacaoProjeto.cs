@@ -955,7 +955,7 @@ namespace NovoFtool
             if (texto)
             {
                 // W7-LIG: trocar a cantoneira refaz o pré-dimensionamento (gabarito, bordas e parafusos vêm do perfil)
-                if (nome.StartsWith("perfil_")) return CaixaPerfil(nome, atual?.ToString() ?? "", dica, x => { Gravar(x); if (nome == "perfil_cantoneira" && Bool(Tipo(), "sugerir")) _ = Sugerir(); }, c["perfis"] as JsonArray);
+                if (nome.StartsWith("perfil_")) return CaixaPerfil(nome, atual?.ToString() ?? "", dica, x => { Gravar(x); if ((nome == "perfil_cantoneira" || Bool(c, "resugerir")) && Bool(Tipo(), "sugerir")) _ = Sugerir(); }, c["perfis"] as JsonArray);
                 var tb = new TextBox { Text = atual?.ToString() ?? "", Width = 176, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, Background = TemaPlant.BSup3, Foreground = TemaPlant.BTexto1, BorderBrush = TemaPlant.BBorda, CaretBrush = TemaPlant.BTexto1, Padding = new Thickness(6, 0, 6, 0) };
                 string ini = tb.Text;
                 void Ok() { if (tb.Text != ini) { ini = tb.Text; Gravar(tb.Text.Trim()); } }

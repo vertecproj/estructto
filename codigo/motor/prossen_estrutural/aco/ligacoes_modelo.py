@@ -678,7 +678,8 @@ def verificador(tl):
 
     def f(modelo, membro, e, dados):
         # o nó de treliça exige N1–N4 simultâneos; a ponta só fornece o N da barra 1 (N2–N4 virariam 0/45 kN)
-        if tl == "no_trelica_gusset" and any((dados or {}).get(f"secao_{i}", "nenhum") != "nenhum" for i in "234"):
+        if tl == "no_trelica_gusset" and any((dados or {}).get(f"secao_{i}", "nenhum") != "nenhum"
+                                             or (dados or {}).get(f"arranjo_{i}", "nenhuma") != "nenhuma" for i in "234"):   # W8: esquema novo
             raise ValueError("no_trelica_gusset com várias barras: os esforços simultâneos N2–N4 não são obtidos do "
                              "modelo — verifique o nó pela janela da ligação com os esforços de todas as barras")
         r = _lig.verificar_ligacao(tl, dados, esforcos_contrato(e))

@@ -21,7 +21,7 @@ namespace NovoFtool
 {
     // Cada peça desenhada carrega Tag = campo editável que o MOTOR pôs na peça do contrato (`campo`; ligacoes_campos.py).
 
-    public class GeoLig
+    public partial class GeoLig
     {
         // Camada: 0 perfil ligado, 1 chapa, 2 cantoneira. Grupo de falha: viga, suporte, chapas, cantoneiras.
         public class Prisma { public string Nome = "", Grupo = ""; public Point3D[] Base; public Vector3D N; public double T; public int Camada; public bool Falha; public string Tag = ""; }
@@ -84,10 +84,12 @@ namespace NovoFtool
                 var o = P3(c["origem"]); var n = V3(c["normal"], new Vector3D(0, 1, 0)); var u = V3(c["u"], new Vector3D(1, 0, 0));
                 n.Normalize(); u.Normalize();
                 var v = c["v"] is JsonArray ? V3(c["v"], new Vector3D()) : Vector3D.CrossProduct(n, u);
-                var pts = Lista(c["contorno"]).OfType<JsonArray>().Where(p => p.Count >= 2).Select(p => o + D(p[0]) * u + D(p[1]) * v).ToArray();
+                // W8: `origem` é uma face (G6, LIGACOES-CONTRATO.md); a base do Prisma é o plano médio → + n·t/2
+                var pts = Lista(c["contorno"]).OfType<JsonArray>().Where(p => p.Count >= 2).Select(p => o + n * (D(c, "espessura") / 2) + D(p[0]) * u + D(p[1]) * v).ToArray();
                 double t = D(c, "espessura");
                 if (pts.Length >= 3 && Ok(t)) r.Pecas.Add(new Prisma { Base = pts, N = n, T = t, Camada = 1, Grupo = "chapas", Nome = S(c, "nome"), Falha = F("chapas"), Tag = S(c, "campo") });
             }
+            LerW8(r, g, F);   // W8-CONTRAV: perfis das barras (perfis_barra) e linhas (Whitmore, cotas)
             foreach (var c in Lista(g["cantoneiras"]))
             {
                 var o = P3(c["origem"]); var e = V3(c["eixo"], new Vector3D(0, 0, 1)); var u = V3(c["u"], new Vector3D(1, 0, 0));
@@ -274,6 +276,7 @@ namespace NovoFtool
             Point3D LP(Point3D p, Point3D q) => new Point3D(p.X + (q.X - p.X) * t, p.Y + (q.Y - p.Y) * t, p.Z + (q.Z - p.Z) * t);
             double L(double x, double y) => x + (y - x) * t;
             var r = new GeoLig { Parede = b.Parede, XParede = L(a.XParede, b.XParede), NomeViga = b.NomeViga, NomeSuporte = b.NomeSuporte };
+            r.Linhas.AddRange(b.Linhas); r.VistaX = b.VistaX; r.VistaZ = b.VistaZ;
             for (int i = 0; i < b.Pecas.Count; i++)
             {
                 var pa = a.Pecas[i]; var pb = b.Pecas[i];
@@ -401,15 +404,17 @@ namespace NovoFtool
         // base da vista: R (direita), U (cima), F (para o observador)
         (Vector3D R, Vector3D U, Vector3D F) Base()
         {
+            // W8-CONTRAV: o motor pode dar os eixos da vista (`vista`: x = horizontal da elevação, z = vertical) no plano xz
+            var vx = geo?.VistaX ?? new Vector3D(1, 0, 0); var vz = geo?.VistaZ ?? new Vector3D(0, 0, 1); var vy = new Vector3D(0, 1, 0);
             switch (Vista)
             {
-                case VistaLig.Elevacao: return (new Vector3D(1, 0, 0), new Vector3D(0, 0, 1), new Vector3D(0, -1, 0));
-                case VistaLig.Planta: return (new Vector3D(1, 0, 0), new Vector3D(0, 1, 0), new Vector3D(0, 0, 1));
-                case VistaLig.Lateral: return (new Vector3D(0, 1, 0), new Vector3D(0, 0, 1), new Vector3D(1, 0, 0));
+                case VistaLig.Elevacao: return (vx, vz, Vector3D.CrossProduct(vx, vz));
+                case VistaLig.Planta: return (vx, vy, Vector3D.CrossProduct(vx, vy));
+                case VistaLig.Lateral: return (vy, vz, Vector3D.CrossProduct(vy, vz));
                 default:
                     double y = yaw * Math.PI / 180, p = pitch * Math.PI / 180;
-                    var F = new Vector3D(Math.Cos(p) * Math.Cos(y), Math.Cos(p) * Math.Sin(y), Math.Sin(p));
-                    var R = Vector3D.CrossProduct(new Vector3D(0, 0, 1), F); R.Normalize();
+                    var F = Math.Cos(p) * Math.Cos(y) * vx + Math.Cos(p) * Math.Sin(y) * vy + Math.Sin(p) * vz;
+                    var R = Vector3D.CrossProduct(vz, F); R.Normalize();
                     var U = Vector3D.CrossProduct(F, R);
                     return (R, U, F);
             }
@@ -689,7 +694,7 @@ namespace NovoFtool
                     if (!Miniatura) dc.DrawLine(new Pen(cor, 0.7) { DashStyle = new DashStyle(new double[] { 6, 3, 1, 3 }, 0) }, Q(-ph - 4, 0), Q(L + 4, 0));
                 }
             }
-            if (!Miniatura) { Cotas(dc, g, R, U, F, P, esc); Rotulos(dc, g, R, U, F, P, esc); }
+            if (!Miniatura) { Cotas(dc, g, R, U, F, P, esc); Rotulos(dc, g, R, U, F, P, esc); Linhas(dc, g, P); }
         }
 
         // Tubo na vista ortogonal: faixas entre geratrizes vizinhas (a união é a silhueta, inclusive a ponta em sela), as duas

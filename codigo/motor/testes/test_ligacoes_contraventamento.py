@@ -292,7 +292,9 @@ class TestContrato(unittest.TestCase):
     def test_erros(self):
         with self.assertRaises(ValueError) as cm:
             C.verificar_gusset({}, {"N": 10})
-        self.assertIn("dim_a", str(cm.exception))
+        # W8-CONTRAV: a diagonal vem do catálogo (perfil_diagonal, com padrão): dim_a deixou de ser obrigatório no
+        # esquema do projetista; com dados vazios só falta o gusset (dados antigos com dim_a seguem o esquema antigo)
+        self.assertNotIn("dim_a", str(cm.exception))
         self.assertIn("t_gusset", str(cm.exception))
         with self.assertRaises(ValueError):
             C.verificar_gusset(dict(P352, apoio="laje"), {"N": 10})
