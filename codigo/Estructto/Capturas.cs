@@ -1218,6 +1218,7 @@ namespace NovoFtool
                 if (so == "w7lig") so1(() => CapturasW7Lig(w));                   // só as 70) padrões de fábrica de todos os tipos (W7-LIG)
                 if (so == "w8rig") so1(() => CapturasW8Rig(w));                   // só as 80) rígidas e emendas revistas (W8-RIG)
                 if (so == "w8tubo") so1(() => CapturasW8Tubo(w));                 // só as 80) perfil–tubo (parede do tubo, desenho) e solda direta (W8)
+                if (so == "w10sd") so1(() => CapturasW10Sd(w));                   // só as 82) solda direta: contorno inteiro e viga–viga de tamanhos diferentes (W10-SD)
                 if (so == "w8contrav") so1(() => CapturasW8Contrav(w));           // só as 80) gusset, nó de treliça e tirante (W8-CONTRAV)
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));

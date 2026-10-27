@@ -38,7 +38,9 @@ class TestPadroesDeFabrica(unittest.TestCase):
 
     def test_outros_flexiveis_nao_pioram(self):
         self.assertLessEqual(self._taxa("chapa_extremidade_flexivel")[0], 0.80 + 1e-9)
-        self.assertLessEqual(self._taxa("solda_direta_alma")[0], 0.75 + 1e-9)
+        # W10 (docs/v3/W10-SOLDA-DIRETA.md): a solda direta passou de 0,75 para 5/6 = 0,83 — a perna mínima da junta
+        # mesa–apoio (tabela 10, 9,7 mm → 5) também vale agora que as mesas são soldadas; continua ≤ 0,90
+        self.assertLessEqual(self._taxa("solda_direta_alma")[0], 5 / 6 + 1e-9)
 
     def test_escolhas_do_padrao(self):
         t, d = self._taxa("cantoneira_dupla_alma")

@@ -73,6 +73,8 @@ Em mm, no **referencial local da ligação**: origem no nó; eixo x ao longo da 
   Ramal: começa no ponto mais baixo da curva de contato e vai até 2·d1 além do mais alto; a curva da solda (`soldas[0]`)
   fica sobre a superfície do receptor e sobre o ramal cortado (teste `test_ligacoes_tubos.TestNoTubular.test_contrato_tubos`).
   No `perfil_tubo_soldado`, o receptor aparece se for circular e o ramal só se também for tubo circular.
+- `z_topo_suporte` (W10, opcional, mm): topo do apoio viga (alma de viga) no referencial da viga, quando a viga apoiada
+  não tem o topo alinhado (desnível). Sem a chave, o desenho alinha os topos. Solda direta e viga–viga com desnível.
 - `membros` (W8, opcional, só para o desenho do projetista): `{"barra": "viga"|"pilar", "perfil", "campo",
   "pecas": [{"base": [[x,y,z],...] (mm, polígono no plano MÉDIO da chapa), "normal": [nx,ny,nz], "espessura"}]}`.
   Com `pecas`, o desenho usa essas chapas como o perfil (camada de perfil, cor/falha do grupo viga ou suporte) em vez de

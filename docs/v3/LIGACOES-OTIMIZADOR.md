@@ -24,7 +24,9 @@ Código: `codigo/motor/prossen_estrutural/aco/ligacoes.py` (`otimizar`, `_botoes
   Antes de descartá-lo, o otimizador põe os espaçamentos no mínimo de `limites` (3d). Espaçamentos e bordas que ele
   não move ficam presos à faixa do candidato: o mínimo 3d sobe com o diâmetro.
 - `geometria impossível` (ValueError) só descarta o candidato.
-- Depois de passar, desce cada item enquanto continuar passando (mínimo local de material).
+- Depois de passar, desce cada item enquanto continuar passando (mínimo local de material). W10 ([W10-SOLDA-DIRETA.md](W10-SOLDA-DIRETA.md)):
+  a descida não leva uma disposição construtiva acima de 0,90 ("no limite" da tela, ex.: perna = mínima da tabela 10); no fim,
+  uma disposição mínima no limite com `parametro` sobe um degrau se isso a tira do limite e continua passando.
 - **Último degrau, com pilar (tipos com `t_enr_pilar`):** se ainda não passa e o usuário não pôs enrijecedor, refaz a
   busca com `t_enr_pilar` 12,5 → 16 + `t_reforco` 9,5 → 19 + reforço 16 (como `ligacoes_rigidas._buscar`).
   A espessura é sempre comercial e ≥ tf da viga (faixa em `limites`). A largura do enrijecedor é a do cálculo,

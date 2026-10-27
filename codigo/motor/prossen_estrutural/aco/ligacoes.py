@@ -892,6 +892,14 @@ def _descer(r, nomes):
 
 
 _CHAPA_MAIOR = 10.0   # mm, degrau das dimensões de chapa (papel 4, último recurso)
+ALVO_DISP = 0.90   # W10: limiar "no limite" da tela (= ALVO do W8-RIG/W8-FLEX) para as disposições construtivas no otimizar
+
+
+def _disp(r):
+    """Maior taxa das disposições construtivas (verificações com `sentido`) de um resultado."""
+    return max((x.get("taxa", 0.0) for x in r.get("verificacoes", []) if x.get("sentido")), default=0.0)
+
+
 _ESPAC = ("s", "s_mesa", "s_alma", "sh_alma")
 
 
@@ -1143,9 +1151,24 @@ def otimizar(tipo, dados, esforcos, max_passos=60, membro=None, _sem_pilar=False
                 continue
             cand = ajustar({**cur, nome: valor(nome, x)})
             rc = rodar(cand)
-            if rc is not None and rc["ok"] and rc["verificacoes"] != r["verificacoes"]:
+            # W10: a descida não leva uma disposição construtiva para o "no limite" (> 0,90) só por economia
+            if rc is not None and rc["ok"] and rc["verificacoes"] != r["verificacoes"] \
+                    and _disp(rc) <= max(ALVO_DISP, _disp(r)) + 1e-9:
                 passos.append(dict(campo=nome, de=cur.get(nome), para=valor(nome, x), taxa=_nota(rc)))
                 cur, r, mudou = cand, rc, True
+    for _ in range(6):   # W10 (= W8-TUBO): disposição mínima no limite (ex.: perna = mínima) sobe um degrau se cabe
+        alvo = [x["parametro"] for x in r["verificacoes"] if x.get("sentido") == "sobe" and x.get("taxa", 0.0) > ALVO_DISP
+                and x.get("parametro") in nomes_b]
+        lista = next((b[2] for b in botoes if alvo and b[0] == alvo[0]), None)
+        x = vizinho(alvo[0], lista, True) if lista else None
+        if x is None:
+            break
+        cand = ajustar({**cur, alvo[0]: valor(alvo[0], x)})
+        rc = rodar(cand)
+        if rc is None or not rc["ok"] or _disp(rc) >= _disp(r) - 1e-9:
+            break
+        passos.append(dict(campo=alvo[0], de=cur.get(alvo[0]), para=valor(alvo[0], x), taxa=_nota(rc)))
+        cur, r = cand, rc
     mud = {k: [original.get(k), v] for k, v in cur.items() if original.get(k) != v}
     return dict(ok=True, params={k: v[1] for k, v in mud.items()}, motivo=None, verificacao_limitante=None,
                 limite_atingido=[], campos_limite=[], campo_limitante=None, dados=cur, resultado=r, passos=passos, mudancas=mud)
