@@ -8,6 +8,8 @@ Todos os tipos novos seguem este contrato, para a interface, o agrupamento (`lig
 - `aco/ligacoes_rigidas.py` — chapa de topo ajustada e estendida (com/sem enrijecedor), flange plate soldada/parafusada, painel de alma do pilar, enrijecedores e chapa de reforço, emenda de viga e de pilar.
 - `aco/ligacoes_contraventamento.py` — gusset de contraventamento (Whitmore, flambagem da chapa, ligação gusset-viga/pilar), nó de treliça com gusset, tirante/barra redonda com olhal ou rosca, ligação de cantoneira simples/dupla em treliça.
 - `aco/placa_base.py` — bases (já existe; v2 em correção).
+- `aco/ligacoes_tubos.py` — tubo–tubo e perfil–tubo soldados (família `tubo`) e as emendas flangeadas de tubo redondo e
+  quadrado/retangular (família `emenda`, W9-FT, `docs/v3/W9-FLANGE-TUBO.md`).
 
 ## Registro
 Cada módulo expõe `TIPOS: dict[str, dict]` e o `ligacoes.py` agrega tudo em `tipos_ligacao()`:
