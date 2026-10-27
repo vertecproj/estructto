@@ -155,6 +155,8 @@ namespace NovoFtool
             sp.Children.Add(Linha("Nome", c["nome"], "Nome do projeto e do arquivo (.json)."));
             var pasta = new DockPanel();
             var bp = Ui.Botao("…", null, EscolherPasta, "Escolhe a pasta onde o projeto será salvo."); bp.Margin = new Thickness(6, 0, 0, 0); DockPanel.SetDock(bp, Dock.Right); pasta.Children.Add(bp);
+            // campos reaproveitados quando o passo é remontado (Voltar, nome já existe, validação): soltam do painel antigo antes (27/10/2026: crash)
+            if (c["pasta"].Parent is Panel antigaPasta) antigaPasta.Children.Remove(c["pasta"]);
             c["pasta"].Width = double.NaN; pasta.Children.Add(c["pasta"]);
             sp.Children.Add(Linha("Pasta", pasta, null, "O arquivo nasce salvo: nada de \"Sem título\"."));
             sp.Children.Add(Linha("Cliente", c["cliente"]));
@@ -162,7 +164,7 @@ namespace NovoFtool
             sp.Children.Add(Linha("Empresa", c["empresa"], "Vai para o carimbo do relatório."));
             var un = Ui.Chip("kN · m · kN·m · MPa", Ui.Nivel.Neutro, "Unidades fixas do motor: forças em kN, comprimentos em m, momentos em kN·m, tensões em MPa."); un.HorizontalAlignment = HorizontalAlignment.Left;
             sp.Children.Add(Linha("Unidades", un, null, "Fixas no cálculo; a exibição muda em Opções."));
-            var ns = new StackPanel { Orientation = Orientation.Horizontal }; foreach (var cb in normas.Values) ns.Children.Add(cb);
+            var ns = new StackPanel { Orientation = Orientation.Horizontal }; foreach (var cb in normas.Values) { if (cb.Parent is Panel antigaNs) antigaNs.Children.Remove(cb); ns.Children.Add(cb); }
             sp.Children.Add(Linha("Normas", ns, null, "Aço laminado/soldado, concreto armado, formados a frio."));
             sp.Children.Add(Linha("Vento e sismo", T("Opcional, depois: Ações › Vento (NBR 6123) e Ações › Sismo (NBR 15421).", 11.5, BFraco)));
             return sp;

@@ -473,6 +473,8 @@ namespace NovoFtool
                     EsperarIdle();
                     CapturarDialogo(j, "02-novo-projeto-" + chave + "-passo" + (p + 1) + ".png");
                 }
+                // Voltar e remontar os passos (nome já existe / validação voltam ao passo 2): campos reaproveitados não podem ter pai (crash 27/10/2026)
+                foreach (int p in new[] { 1, 2, 1, 0, 1, 2 }) { j.IrPasso(p); EsperarIdle(); }
                 j.Close();
             }
 
@@ -1219,6 +1221,7 @@ namespace NovoFtool
                 if (so == "w8contrav") so1(() => CapturasW8Contrav(w));           // só as 80) gusset, nó de treliça e tirante (W8-CONTRAV)
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));
+                if (so == "inicio") so1(() => CapturasInicio(w));                 // só as 01-02) tela inicial e novo projeto (inclui Voltar/remontar passos)
                 if (so == "w7ui") so1(() => CapturasW7Ui(w));                     // só as W7-) ícones de perfil e rolagem do seletor
                 if (so == "v06") so1(() => CapturarV06(w));                        // só as 47) da v0.6 B (faixa, painéis, seletor, em branco, formas do catálogo)
                 if (so == "interf3d") { int np = CapturasInterf3D(w); w.alterado = false; w.Close(); Environment.Exit(np); }   // só as 62) bateria de interferência das ligações locais

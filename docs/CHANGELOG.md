@@ -1,6 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 27/10/2026 — crash no Novo projeto (relato do usuário: "quando eu crio um novo arquivo ele crasha"; log do Windows: `InvalidOperationException` "elemento já é filho lógico" em `JanelaNovoProjeto.PassoProjeto`). Causa: o passo Projeto reaproveita o campo Pasta e as caixas de Normas, e ao remontar o passo não os soltava do painel antigo. Isso acontece ao Voltar, quando já existe arquivo com o mesmo nome na pasta e quando a validação devolve ao passo 2. Correção: os dois campos soltam do painel antigo, como o Nome já fazia. Prova: a captura `inicio` (`ESTRUCTTO_CAPTURAS=inicio`) remonta os passos 1-2-1-0-1-2; sem a correção ela reproduz o crash.
 - 27/10/2026 — v0.6.14 (pedido do usuário: "corrija os outros padrões ruins"). Regra nova: o pré-dimensionamento busca a 1ª combinação com taxa ≤ 0,90 em todas as verificações, inclusive detalhamento; nenhum padrão de fábrica sai "no limite".
   - Gusset de contraventamento e nó de treliça: perfil da diagonal e do banzo do catálogo, com seletor e sem campos zerados. As barras são desenhadas com as abas, a linha de gabarito e Whitmore. Taxa de 0,967 para 0,864. Tirante: barra Ø25,4 de 6000 mm com chapa, arruela, porca e contraporca, taxa 0,888. Ver [v3/W8-CONTRAV.md](v3/W8-CONTRAV.md).
   - Desenho 2D: as chapas eram desenhadas deslocadas meia espessura em todos os padrões. As vistas agora podem ser giradas pelo motor.
