@@ -1,6 +1,17 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 27/10/2026 — v0.6.14 (pedido do usuário: "corrija os outros padrões ruins"). Regra nova: o pré-dimensionamento busca a 1ª combinação com taxa ≤ 0,90 em todas as verificações, inclusive detalhamento; nenhum padrão de fábrica sai "no limite".
+  - Gusset de contraventamento e nó de treliça: perfil da diagonal e do banzo do catálogo, com seletor e sem campos zerados. As barras são desenhadas com as abas, a linha de gabarito e Whitmore. Taxa de 0,967 para 0,864. Tirante: barra Ø25,4 de 6000 mm com chapa, arruela, porca e contraporca, taxa 0,888. Ver [v3/W8-CONTRAV.md](v3/W8-CONTRAV.md).
+  - Desenho 2D: as chapas eram desenhadas deslocadas meia espessura em todos os padrões. As vistas agora podem ser giradas pelo motor.
+  - Painel de alma: desenha a viga soldada. O campo sim/não das rígidas era gravado como "false" e o motor o lia como verdadeiro, nos 7 campos. Emendas de viga e de pilar: 0,97 para 0,89/0,90, com talas comerciais e cotas sem sobreposição. Chapas de topo ajustada e estendida: 1,00 para 0,89/0,88. Flange plate: 0,96 para 0,83. Ver [v3/W8-RIG.md](v3/W8-RIG.md).
+  - Perfil–tubo: parede do tubo verificada pela EN 1993-1-8 tab. 7.3/7.4 (plastificação, punção, N + M, validade). O perfil é desenhado com a ponta recortada na sela, taxa 0,83. Solda direta: perna padrão acima da mínima, de 1,00 para 0,75. Ver [v3/W8-TUBO.md](v3/W8-TUBO.md).
+  - Flexíveis: cantoneira dupla 0,91 para 0,83, apoio em cantoneira 0,91 para 0,87, chapa simples na alma 0,93 para 0,86, viga–viga 0,91 para 0,83. Ver [v3/W8-FLEX.md](v3/W8-FLEX.md).
+  - Pendente:
+    - Itens a conferir no texto licenciado: as fórmulas da NBR 16239 e as tabelas de gabarito do AISC.
+    - A emenda de pilar é desenhada deitada.
+    - A cantoneira dupla na alma do pilar W250 fica em 0,91, porque o L102 não cabe.
+    - O tirante com garfo e pino reprova no padrão (1,20).
 - 27/10/2026 — v0.6.13 (relato do usuário com 10 capturas do projetista de ligações; 6 frentes em paralelo, branches `wt7-*` juntados em `wt7-int`):
   - "Solda direta da alma" passa a se chamar "Solda direta"; o id `solda_direta_alma` não mudou e os .pcon antigos abrem. Ver [v3/W7-UI.md](v3/W7-UI.md).
   - Ícone de perfil: o `MiniaturaPerfil` só achava os perfis da biblioteca do pórtico; agora lê a forma do nome do catálogo do motor (2199 nomes conferidos, nenhum na reserva).

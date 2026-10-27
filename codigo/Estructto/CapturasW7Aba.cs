@@ -65,7 +65,10 @@ namespace NovoFtool
             var r0 = b.Resultado;
             Clicar(w.AbasLig.Children[0], MouseButton.Left);
             Ok(w.LigacaoAtiva == a && a.IsVisible && !b.IsVisible, "clique na aba 1 mostra a biblioteca");
-            Clicar(w.AbasDocs.Children.OfType<UIElement>().Last(), MouseButton.Left);
+            // modelo vazio não tem aba (Documentos.cs: tela Início); aí volta pelo botão Início
+            var abaModelo = w.AbasDocs.Children.OfType<UIElement>().LastOrDefault();
+            if (abaModelo != null) Clicar(abaModelo, MouseButton.Left);
+            else { w.ArqInicio.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); EsperarIdle(); }
             Ok(w.LigacaoAtiva == null && w.HostLigacoes.Visibility == Visibility.Collapsed && w.LigacoesAbertas.Count == 2, "clique na aba do modelo volta ao modelo (as ligações continuam abertas)");
             log.AppendLine("abas: " + Abas());
             RenderizarJanela(w, 1600, 900, "63-aba-volta-ao-modelo.png");
