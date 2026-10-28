@@ -248,7 +248,8 @@ class TestContrato(unittest.TestCase):
         for tipo, d, e in casos:
             r = lg.verificar_ligacao(tipo, d, e)
             json.dumps(r)
-            self.assertEqual({"taxa_max", "criterio", "item", "ok", "verificacoes", "avisos", "geometria"}, set(r))
+            self.assertEqual({"taxa_max", "criterio", "item", "ok", "verificacoes", "avisos", "geometria"},
+                             set(r) - {"lista_parafusos"})   # W12: lista de compra dos parafusos (catálogo)
             for v in r["verificacoes"]:
                 base = {"nome", "solicitante", "resistente", "unidade", "taxa", "item"}
                 self.assertTrue(base <= set(v) <= base | {"sentido", "parametro"}, set(v))   # dicas do otimizador

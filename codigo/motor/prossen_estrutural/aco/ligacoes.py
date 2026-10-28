@@ -19,6 +19,7 @@ import re
 
 from .. import materiais, secoes
 from ..modelo import MPa
+from . import parafusos as _P
 from .nbr8800 import GA1, GA2
 
 log = logging.getLogger(__name__)
@@ -386,6 +387,9 @@ def _parafuso(d):
                           "para 1\" informe d = 25,4 mm")
     if not any(abs(d["d_mm"] - x) < 0.05 for x in DIAMETROS_USUAIS_MM):
         avisos.append(f"d = {d['d_mm']:g} mm não é diâmetro usual")
+    elif d["tipo_parafuso"] in _P.POLEGADA and _P.polegada(d["d_mm"]) is None:
+        avisos.append(f"{d['tipo_parafuso']} é especificação em polegada: d = {d['d_mm']:g} mm não está no catálogo "
+                      "(use ½\", ⅝\", ¾\", ⅞\", 1\"... ou uma classe ISO para métrico)")
     return db, fub * MPa, p["alta"], db + FURO_FOLGA, avisos
 
 
@@ -592,8 +596,29 @@ def verificar_ligacao(tipo, dados, esforcos):
     dimensões mínimas/máximas, bordas, espaçamentos) só reprovam (ok = False) e ficam em verificacoes.
     Tipos do contrato (tipos_contrato) devolvem o resultado do contrato (ok, taxa, verificacoes, geometria)."""
     if tipo not in _TIPOS and tipo in (tc := tipos_contrato()):
-        return tc[tipo]["verificar"](dados, esforcos)
-    return com_pontas(tipo, lambda dd: _verificar_antigo(tipo, dd, esforcos))(dados)
+        return lista_parafusos(tc[tipo]["verificar"](dados, esforcos), dados)
+    return lista_parafusos(com_pontas(tipo, lambda dd: _verificar_antigo(tipo, dd, esforcos))(dados), dados)
+
+
+def lista_parafusos(res, dados):
+    """Acrescenta res["lista_parafusos"]: parafusos da geometria agrupados por diâmetro e comprimento comercial, com a
+    descrição de compra ('⅞" × 2½" A325') e a quantidade. Pinos (campo d_pino) ficam fora; sem parafuso, sem a chave."""
+    geo = res.get("geometria") if isinstance(res, dict) else None
+    if not isinstance(geo, dict):
+        return res
+    tipo = (dados or {}).get("tipo_parafuso") or "A325"
+    cont = {}
+    for b in geo.get("parafusos") or []:
+        if b.get("campo") == "d_pino" or not b.get("d") or not b.get("comprimento"):
+            continue
+        k = (round(float(b["d"]), 3), round(float(b["comprimento"]), 1))
+        cont[k] = cont.get(k, 0) + 1
+    if not cont:
+        return res
+    res["lista_parafusos"] = [dict(descricao=_P.descricao(d * MM, c * MM, tipo), quantidade=n, d_mm=d, comprimento_mm=c,
+                                   sob_encomenda=_P.sob_encomenda(c * MM, d * MM))
+                              for (d, c), n in sorted(cont.items())]
+    return res
 
 
 def _verificar_antigo(tipo, dados, esforcos):
@@ -797,11 +822,12 @@ def geometria_basica(tipo, dados):
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             k[c["nome"]] = float(v) / MM if c["unidade"] == "m" else float(v)
     U, V, Z = [1, 0, 0], [0, 0, 1], [0, -1, 0]
+    _comp = lambda pega, db: round(_P.comprimento(pega * MM, db * MM) / MM, 1)   # mm (catálogo)
     try:
         if tipo == "chapa_simples":
             h, t, n, s, eh, e, tw, b = k["h"], k["t"], int(k["n"]), k["s"], k["eh"], k["e"], k["tw"], k["b_solda"]
             db = k["d_mm"]
-            par = [dict(d=db, comprimento=round(t + tw + 1.2 * db + 6), origem=[e, tw / 2 + t, (i - (n - 1) / 2) * s], eixo=Z)
+            par = [dict(d=db, comprimento=_comp(t + tw, db), pega=t + tw, origem=[e, tw / 2 + t, (i - (n - 1) / 2) * s], eixo=Z)
                    for i in range(n)]
             sol = [dict(tipo="filete", perna=b, pontos=[[0, y, -h / 2], [0, y, h / 2]]) for y in (tw / 2, tw / 2 + t)]
             dv = round(h / 0.75)
@@ -813,7 +839,7 @@ def geometria_basica(tipo, dados):
         if tipo == "ligacao_tracao":
             b, t, nl, np_, s, g, e1 = k["b"], k["t"], int(k["n_linhas"]), int(k["n_por_linha"]), k["s"], k["g"], k["e1"]
             db, x0 = k["d_mm"], 80.0
-            par = [dict(d=db, comprimento=round(2 * t + 1.2 * db + 6), origem=[x0 + i * s, t / 2, (j - (nl - 1) / 2) * g], eixo=Z)
+            par = [dict(d=db, comprimento=_comp(2 * t, db), pega=2 * t, origem=[x0 + i * s, t / 2, (j - (nl - 1) / 2) * g], eixo=Z)
                    for i in range(np_) for j in range(nl)]
             return dict(chapas=[_quad("chapa de ligação", [0, 0, -b / 2], U, V, x0 + (np_ - 1) * s + e1, b, t)], cantoneiras=[],
                         parafusos=par, soldas=[dict(tipo="filete", perna=max(4.0, t * 0.6), pontos=[[0, y, -b / 2], [0, y, b / 2]])
@@ -822,7 +848,7 @@ def geometria_basica(tipo, dados):
             t, db, lf = k["t"], k["d_mm"], k["lf"]
             borda = lf + (db + 1.5) / 2
             return dict(chapas=[_quad("chapa", [0, 0, -50], U, V, borda + 70, 100, t)], cantoneiras=[], soldas=[], recortes=[],
-                        parafusos=[dict(d=db, comprimento=round(2 * t + 1.2 * db + 6), origem=[70, t / 2, 0], eixo=Z)])
+                        parafusos=[dict(d=db, comprimento=_comp(2 * t, db), pega=2 * t, origem=[70, t / 2, 0], eixo=Z)])
         if tipo == "solda_filete":
             t, L_, b = k["t_base"], k["L"], k["b"]
             return dict(chapas=[_quad("chapa soldada", [0, 0, -L_ / 2], U, V, 120, L_, t)], cantoneiras=[], parafusos=[],
@@ -837,7 +863,7 @@ def geometria_basica(tipo, dados):
 #     desce cada um enquanto passar (mínimo de material local). Disposição máxima reprovada (perna máxima, espaçamento
 #     e borda máximos, b/t) também abre a descida do campo da dica `parametro` (sem dica: de qualquer campo).
 #     ponytail: busca gulosa (um degrau por vez), não global.
-_D_MM = (12.7, 16, 19.05, 20, 22.225, 24, 25.4, 27, 28.575, 30, 31.75)
+_D_MM = (12, 12.7, 15.875, 16, 19.05, 20, 22, 22.225, 24, 25.4, 27, 28.575, 30, 31.75)   # polegada e métrico: ver _da_familia
 _T_MM = (4.75, 6.3, 8, 9.5, 12.5, 16, 19, 22.4, 25, 31.5, 37.5, 44.5, 50)
 _B_MM = (3, 4, 5, 6, 8, 10, 12, 14, 16)
 _CONTAGEM = {"n", "n_linhas", "n_linhas_extras", "n_por_linha", "n_colunas", "fileiras", "por_fileira", "n_parafusos",
@@ -923,6 +949,12 @@ def _num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+def _da_familia(ds, dados):
+    """Diâmetros (mm) da família da especificação: A307/A325/A490 só em polegada, classes ISO só métricos."""
+    pol = (dados or {}).get("tipo_parafuso", "A325") in _P.POLEGADA
+    return [x for x in ds if (_P.polegada(x) is not None) == pol] or list(ds)
+
+
 def _t_min(d):
     """Espessura (mm) da chapa mais fina entre os campos de espessura preenchidos (limites de 6.3.12); 0 = não sei."""
     ts = [float(v) for k, v in d.items() if k in _ESPESSURA and _num(v) and v > 0]
@@ -934,6 +966,8 @@ def _botoes_limitados(tipo, campos, lim, cur):
     dimensões de chapa com máximo nos limites, em degraus de 10 mm (só se o valor atual não é o automático 0)."""
     out = []
     for nome, papel, lista in botoes_otimizar(tipo, campos):
+        if papel == 2:
+            lista = _da_familia(lista, cur)
         f = lim.get(nome)
         if f:
             if f["passos"]:

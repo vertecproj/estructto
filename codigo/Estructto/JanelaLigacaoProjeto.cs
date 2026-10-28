@@ -48,7 +48,14 @@ namespace NovoFtool
         static readonly HashSet<string> Antigos = new HashSet<string> { "parafuso", "solda_filete", "chapa_simples", "ligacao_tracao" };
         static readonly (string id, string nome)[] Familias =
         { ("flexivel", "Flexíveis"), ("rigida", "Rígidas"), ("emenda", "Emendas"), ("contraventamento", "Contraventamento e treliça"), ("base", "Bases"), ("tubo", "Tubos"), ("componente", "Componentes") };
-        static readonly double[] DiamMm = { 15.875, 16, 19.05, 20, 22.225, 24, 25.4, 27 };
+        // W12: diâmetros de linha por especificação (motor aco/parafusos.py, catálogos Indufix/Allenfix): A307/A325/A490 só em
+        // polegada (½" a 1¼"), classes ISO só métricos (M12 a M30). O seletor mostra a família do tipo de parafuso do campo.
+        static readonly double[] DiamPol = { 12.7, 15.875, 19.05, 22.225, 25.4, 28.575, 31.75 };
+        static readonly double[] DiamIso = { 12, 16, 20, 22, 24, 27, 30 };
+        static readonly string[] Polegada = { "A307", "A325", "A490" };
+        static bool CampoDiametro(string n) => n == "d" || n == "d_mm" || n == "d_alma_mm" || n == "d_mesa_mm" || n == "d_pino";
+        string EspecDe(string campo) => S(Dados, campo == "d_pino" ? "tipo_pino" : "tipo_parafuso");
+        double[] DiamDe(string campo) { string e = EspecDe(campo); return e == "" || Polegada.Contains(e) ? DiamPol : DiamIso; }
         static readonly double[] EspMm = { 4.75, 6.3, 8, 9.5, 12.5, 16, 19, 22.4, 25, 31.5, 37.5, 44.5, 50 };
         static readonly double[] PernaMm = { 3, 4, 5, 6, 8, 10, 12, 14, 16 };
         static readonly Dictionary<string, GeoLig> miniaturas = new Dictionary<string, GeoLig>();   // por sessão
@@ -904,7 +911,7 @@ namespace NovoFtool
         static bool Largo(JsonNode c)
         {
             string n = S(c, "nome");
-            if ((n == "d" || n == "d_mm") && S(c, "unidade") == "mm" || n == "estendida") return true;
+            if (CampoDiametro(n) && n != "d_pino" && S(c, "unidade") == "mm" || n == "estendida") return true;
             if (c["opcoes"] is JsonArray op && op.Count <= 3 && op.Sum(x => x.ToString().Length) <= 34 && op.Count > 0) return op.Sum(x => x.ToString().Length) > 16;
             return n.StartsWith("perfil_") && false;
         }
@@ -930,7 +937,7 @@ namespace NovoFtool
             double k = metro ? 1000 : 1;
             double mn = D(c, "min"), mx = D(c, "max");
             bool Dentro(double mm) => (double.IsNaN(mn) || mm / k >= mn - 1e-9) && (double.IsNaN(mx) || mm / k <= mx + 1e-9);
-            void Gravar(JsonNode v) { Dados[nome] = v; Mudou(nome); }
+            void Gravar(JsonNode v) { Dados[nome] = v; if (nome == "tipo_parafuso" || nome == "tipo_pino") TrocarFamilia(nome); Mudou(nome); }
 
             // posição da chapa de topo estendida: nomes do motor (superior/ambas/inferior) em termos de alinhamento
             if (nome == "estendida" && c["opcoes"] is JsonArray ope)
@@ -971,11 +978,12 @@ namespace NovoFtool
             JsonNode Num_(double x) => metro ? JsonValue.Create(Math.Round(x / 1000, 6)) : JsonValue.Create(x);
             bool inteiro = (un == "-" || un == "") && (Bool(c, "inteiro") || c["padrao"] is JsonValue pi && pi.TryGetValue(out int _) && pi.ToJsonString().IndexOf('.') < 0);
             // seletor de diâmetro (parafusos usuais)
-            if ((nome == "d" || nome == "d_mm") && (un == "mm" || un == ""))
+            if (CampoDiametro(nome) && (un == "mm" || un == "") && !(nome == "d_pino" && (double.IsNaN(mm) || mm <= 0)))
             {
-                var itens = DiamMm.Where(Dentro).Select(x => (NomeDiam(x), Math.Abs(x - mm) < 0.05, (Action)(() => Gravar(Num_(x))), dica)).ToList();
-                if (!double.IsNaN(mm) && !DiamMm.Any(x => Math.Abs(x - mm) < 0.05)) itens.Add((Num.Fmt(mm, 1), true, (Action)null, dica));
-                return Segmentado(itens, 28, 11.5);
+                var ds = DiamDe(nome);
+                var itens = ds.Where(Dentro).Select(x => (NomeDiam(x), Math.Abs(x - mm) < 0.05, (Action)(() => Gravar(Num_(x))), dica + "\n" + EspecDe(nome) + ": " + (ds == DiamPol ? "polegada (catálogo ASTM)" : "métrico (ISO)"))).ToList();
+                if (!double.IsNaN(mm) && !ds.Any(x => Math.Abs(x - mm) < 0.05)) itens.Add((Num.Fmt(mm, 1), true, (Action)null, dica));
+                return Segmentado(itens, 28, 10.5);
             }
             double[] lista = null; string su = metro ? "mm" : un == "-" ? "" : un;
             if (new[] { "t", "t_chapa", "t_gusset", "t_placa", "esp", "espessura", "t_assento", "t_enrijecedor" }.Contains(nome)) lista = EspMm;
@@ -1004,11 +1012,30 @@ namespace NovoFtool
         {
             switch (mm)
             {
+                case 12.7: return "½\"";
                 case 15.875: return "⅝\"";
                 case 19.05: return "¾\"";
                 case 22.225: return "⅞\"";
                 case 25.4: return "1\"";
+                case 28.575: return "1⅛\"";
+                case 31.75: return "1¼\"";
                 default: return "M" + Num.Fmt(mm, 0);
+            }
+        }
+
+        // W12: trocar polegada ↔ métrico leva os diâmetros ao mais próximo da nova família (A325 ⅞" → ISO 8.8 M22)
+        void TrocarFamilia(string campoTipo)
+        {
+            foreach (var c in Lista(Tipo()?["campos"]))
+            {
+                string n = S(c, "nome");
+                if (!CampoDiametro(n) || (n == "d_pino") != (campoTipo == "tipo_pino") || !(Dados[n] is JsonValue jv) || !jv.TryGetValue(out double v) || v <= 0) continue;
+                double k = S(c, "unidade") == "m" ? 1000 : 1, mm = v * k;
+                var lista = DiamDe(n);
+                if (lista.Any(x => Math.Abs(x - mm) < 0.05)) continue;
+                double novo = lista.OrderBy(x => Math.Abs(x - mm)).First();
+                Dados[n] = k == 1000 ? JsonValue.Create(Math.Round(novo / 1000, 6)) : JsonValue.Create(novo);
+                realces.Add(n);
             }
         }
 
@@ -1087,6 +1114,9 @@ namespace NovoFtool
 
         void MontarDesenho()
         {
+            // W12: recálculo com a mesma vista não recria o cartão nem tira o Viewport3D da árvore (piscava/vibrava a cada
+            // recálculo); só troca a geometria
+            if (cardDesenho != null && hostDesenho.Child == cardDesenho && vistaMontada == vistaAtiva) { AtualizarVistas(); return; }
             var card = new Border { Background = TemaPlant.BSup1, BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Margin = new Thickness(10), ClipToBounds = true };
             var dp = new DockPanel();
             var topo = new DockPanel { Margin = new Thickness(10, 8, 12, 8) };
@@ -1115,16 +1145,24 @@ namespace NovoFtool
             dp.Children.Add(new Border { BorderBrush = TemaPlant.BBordaSutil, BorderThickness = new Thickness(0, 1, 0, 1), Child = areaVistas });
             card.Child = dp;
             hostDesenho.Child = card;
-            // geometria atual com as falhas
+            cardDesenho = card; vistaMontada = vistaAtiva;
+            AtualizarVistas();
+        }
+        Border cardDesenho; int vistaMontada = -1;
+
+        void AtualizarVistas()
+        {
+            // geometria atual com as falhas; a mesma geometria (recálculo sem mudança) não reanima nem reconstrói o 3D
             var falhas = new HashSet<string>(Lista(resultado?["verificacoes"]).Where(v => !Passa(v)).Select(v => GrupoDe(S(v, "nome"))));
-            var g = resultado?["geometria"] != null ? GeoLig.De(resultado["geometria"], falhas) : null;
-            foreach (var v in vistas) if (g != null && (v.Geo == null || !ReferenceEquals(ultimoRes, resultado))) v.Mostrar(g);
-            ultimoRes = resultado;
+            string chave = resultado?["geometria"] == null ? null : resultado["geometria"].ToJsonString() + "|" + string.Join(",", falhas.OrderBy(x => x));
+            var g = chave != null ? GeoLig.De(resultado["geometria"], falhas) : null;
+            foreach (var v in vistas) if (g != null && (v.Geo == null || !ReferenceEquals(ultimoRes, resultado) && chave != ultimaGeo)) v.Mostrar(g);
+            ultimoRes = resultado; if (chave != null) ultimaGeo = chave;
             vistaEsmaecida = erro != null || resultadoVelho;
             // W7-UPN: com erro do motor o desenho antigo (outros perfis) some; o motivo fica no cabeçalho e no passo 3
             areaVistas.Visibility = erro != null ? Visibility.Hidden : Visibility.Visible;
         }
-        JsonNode ultimoRes; bool vistaEsmaecida;
+        JsonNode ultimoRes; string ultimaGeo; bool vistaEsmaecida;
 
         FrameworkElement Legenda()
         {
@@ -1197,6 +1235,18 @@ namespace NovoFtool
                     f.Margin = new Thickness(0, 0, 0, 6); lista.Children.Add(f);
                 }
                 foreach (var v in vs.Where(v => filtroComp == null || GrupoDe(S(v, "nome")) == filtroComp)) lista.Children.Add(LinhaVerif(v, v == pior));
+                // W12: lista de compra dos parafusos (comprimento comercial do catálogo, motor aco/parafusos.py)
+                var lp = Lista(resultado["lista_parafusos"]).ToList();
+                if (lp.Count > 0)
+                {
+                    lista.Children.Add(TituloSecao("Parafusos · " + lp.Sum(p => (int)D(p, "quantidade")), null, 12));
+                    foreach (var p in lp)
+                    {
+                        var t = Tx(D(p, "quantidade") + " ×  " + S(p, "descricao"), 12, Bool(p, "sob_encomenda") ? TemaPlant.BAlertaClaro : TemaPlant.BTexto1, null, true);
+                        t.Margin = new Thickness(0, 0, 0, 4); Typography.SetNumeralAlignment(t, FontNumeralAlignment.Tabular);
+                        lista.Children.Add(Dica(t, "Comprimento comercial: pega + arruela F436 + porca pesada + 2 fios, arredondado para o próximo comprimento de linha (catálogos Indufix/Allenfix, ASME B18.2.6/B18.2.1). Comprimento " + Num.Fmt(D(p, "comprimento_mm"), 1) + " mm."));
+                    }
+                }
                 var av = Lista(resultado["avisos"]).ToList();
                 if (av.Count > 0)
                 {

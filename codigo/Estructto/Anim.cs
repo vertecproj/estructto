@@ -30,7 +30,8 @@ namespace NovoFtool
         static IEasingFunction Congelar(EasingMode m) { var e = new CubicEase { EasingMode = m }; e.Freeze(); return e; }
 
         // Windows "Mostrar animacoes" desligado (SystemParameters.ClientAreaAnimation) ou modo --capturas: tudo desliga.
-        public static bool Ligado => SystemParameters.ClientAreaAnimation && !Capturas.Ativo;
+        public static bool Ligado => ForcarLigado || SystemParameters.ClientAreaAnimation && !Capturas.Ativo;
+        public static bool ForcarLigado;   // diagnóstico (capturas vibra): animação ligada mesmo nas capturas
 
         // ---------- primitiva ----------
 

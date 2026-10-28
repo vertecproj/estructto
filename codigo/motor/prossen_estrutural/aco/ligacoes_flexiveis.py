@@ -23,6 +23,7 @@ import re
 from .. import materiais, secoes
 from ..modelo import MPa
 from . import ligacoes as L
+from . import parafusos as _P
 from .nbr8800 import GA1, GA2
 
 MM = 1e-3
@@ -586,7 +587,7 @@ def _u_viga(r, vg, p, V, pega):
 
 
 def _comp_parafuso(pega, db):
-    return math.ceil((pega + 1.2 * db + 6 * MM) / (5 * MM)) * 5   # mm: pega + porca/arruela + 3 fios (aprox.)
+    return _P.comprimento(pega, db) / MM   # mm, catálogo (A325/A307 em polegada, ISO a cada 5 mm)
 
 
 def _p(*v):

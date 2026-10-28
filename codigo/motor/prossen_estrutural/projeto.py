@@ -2484,7 +2484,7 @@ _AMOSTRA_LIG = {
     ("chapa_simples", "n"): 3, ("chapa_simples", "s"): 0.075, ("chapa_simples", "e"): 0.06, ("chapa_simples", "tw"): 0.0058,
     ("ligacao_tracao", "b"): 0.2, ("ligacao_tracao", "t"): 0.0095, ("ligacao_tracao", "d_mm"): 19.05,
     ("ligacao_tracao", "n_linhas"): 2, ("ligacao_tracao", "n_por_linha"): 3, ("ligacao_tracao", "e1"): 0.04,
-    ("parafuso", "d_mm"): 16, ("parafuso", "t"): 0.0095, ("parafuso", "lf"): 0.03,
+    ("parafuso", "d_mm"): 15.875, ("parafuso", "t"): 0.0095, ("parafuso", "lf"): 0.03,
     ("solda_filete", "b"): 0.006, ("solda_filete", "L"): 0.2, ("solda_filete", "t_base"): 0.0095,
 }
 _EXEMPLOS_LIG = {}

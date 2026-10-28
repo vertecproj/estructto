@@ -26,6 +26,7 @@ from .. import materiais, secoes
 from ..materiais import E_ACO
 from ..modelo import MPa
 from . import ligacoes as lg
+from . import parafusos as _P
 from . import pontas as _pontas
 from .ligacoes import GA1, GA2, MM
 from .nbr8800 import _cortante
@@ -427,8 +428,10 @@ def _chapa(nome, contorno, origem, normal, u, t):
                 normal=list(normal), u=list(u), espessura=_mm(t))
 
 
-def _paraf(d, L, origem, eixo):
-    return dict(d=_mm(d), comprimento=_mm(L), origem=[_mm(c) for c in origem], eixo=list(eixo))
+def _paraf(d, pega, origem, eixo):
+    """Parafuso da geometria: comprimento comercial do catálogo (parafusos.comprimento) e a pega (o 3D põe a porca nela)."""
+    return dict(d=_mm(d), comprimento=_mm(_comprimento_parafuso(pega, d)), pega=_mm(pega), origem=[_mm(c) for c in origem],
+                eixo=list(eixo))
 
 
 def _solda(tipo, perna, pts):
@@ -436,8 +439,7 @@ def _solda(tipo, perna, pts):
 
 
 def _comprimento_parafuso(pega, db):
-    # ponytail: pega + porca (≈ 0,9d) + arruela (4 mm) + 3 fios; arredondado a 5 mm — catálogo de comprimentos depois
-    return math.ceil((pega + 0.9 * db + 0.004 + 0.006) / 0.005) * 0.005
+    return _P.comprimento(pega, db)   # catálogo (A325/A307 em polegada, ISO a cada 5 mm)
 
 
 # ---------------------------------------------------------------- pilar: forças localizadas e painel
@@ -778,7 +780,7 @@ def _chapa_topo(d, e, estendida_padrao):
     pega = tp + (pil["tf"] if pil is not None else tp)
     for L in linhas:
         for y in (-g / 2, g / 2):
-            geo["parafusos"].append(_paraf(db, _comprimento_parafuso(pega, db), [x0 + tp, y, L["z"]], [-1, 0, 0]))
+            geo["parafusos"].append(_paraf(db, pega, [x0 + tp, y, L["z"]], [-1, 0, 0]))
     xs = x0 + tp
     tipo_m = "penetracao" if d["solda_mesa"] == "penetracao" else "filete"
     for zf in (H / 2, H / 2 - tf, -H / 2, -(H / 2 - tf)):
@@ -1125,7 +1127,7 @@ def _chapa_topo_u(d, esforcos, dados):
     geo = dict(chapas=[dict(_chapa("chapa de topo", [[y0, zb_p], [y1, zb_p], [y1, zt_p], [y0, zt_p]], [xf, 0, 0],
                                    [1, 0, 0], [0, 1, 0], tp), campo="tp")],
                cantoneiras=[], recortes=[], abertura_y=int(ab),
-               parafusos=[dict(_paraf(db, _comprimento_parafuso(tp + (tp if pil is None else t_ap), db), [xs, yb, z],
+               parafusos=[dict(_paraf(db, tp + (tp if pil is None else t_ap), [xs, yb, z],
                                       [-1, 0, 0]), campo="d_mm") for z in (zb, -zb)],
                soldas=[dict(_solda("filete", b, [[xs, *pa], [xs, *pc_]]), campo="b_alma" if alma else "b_mesa")
                        for (pa, pc_), b, alma in lados],
@@ -1249,7 +1251,7 @@ def verificar_flange_plate(dados, esforcos):
         for zs, sg in ((H / 2, 1), (-H / 2, -1)):
             for i in range(npl):
                 for y in (-g / 2, g / 2):
-                    geo["parafusos"].append(_paraf(db, _comprimento_parafuso(t + tf, db),
+                    geo["parafusos"].append(_paraf(db, t + tf,
                                                    [x0 + L1 + i * s, y, zs + sg * t], [0, 0, -sg]))
     else:
         bw_ = d["b_solda_mesa"] * MM
@@ -1307,7 +1309,7 @@ def verificar_flange_plate(dados, esforcos):
     da = d["d_alma_mm"] * MM
     for i in range(int(d["n_alma"])):
         z = (i - (d["n_alma"] - 1) / 2) * d["s_alma"] * MM
-        geo["parafusos"].append(_paraf(da, _comprimento_parafuso(tw + d["t_alma"] * MM, da),
+        geo["parafusos"].append(_paraf(da, tw + d["t_alma"] * MM,
                                        [x0 + folga + 0.035, tw / 2 + d["t_alma"] * MM, z], [0, -1, 0]))
     geo["recortes"].append(dict(barra="viga", tipo="recuo", parametros=dict(folga=_mm(folga))))
     out = R.resultado(geo)
@@ -1480,7 +1482,7 @@ def _emenda(d, esforcos, pilar):
         for lado in (-1, 1):
             for i in range(npl):
                 for y in (-g / 2, g / 2):
-                    geo["parafusos"].append(_paraf(dbm, _comprimento_parafuso(tm + tf, dbm),
+                    geo["parafusos"].append(_paraf(dbm, tm + tf,
                                                    [lado * (folga / 2 + ev + i * s), y, zs + sg * tm], [0, 0, -sg]))
     Lta = 2 * (ee + (nc - 1) * sh + d["e_tala_alma"] * MM)
     for sg in (1, -1):
@@ -1488,7 +1490,7 @@ def _emenda(d, esforcos, pilar):
                                                       [-Lta / 2, ha / 2]], [0, sg * tw / 2, 0], [0, sg, 0], [1, 0, 0], ta))
     for lado in (-1, 1):
         for x, y in zip(xs, ys):
-            geo["parafusos"].append(_paraf(dba, _comprimento_parafuso(2 * ta + tw, dba),
+            geo["parafusos"].append(_paraf(dba, 2 * ta + tw,
                                            [lado * x, tw / 2 + ta, y], [0, -1, 0]))
     out = R.resultado(geo)
     out["intermediarios"] = dict(Mf=Mf, Mw=Mw, Ft=Ft, Fc=Fc, M0=M0, sum_r2=r2, Fw=Fw, FvRd_mesa=FvRdm,
@@ -1787,7 +1789,7 @@ def _flange(d, esforcos, pilar, dados):
     geo = dict(chapas=[dict(_chapa("chapa de flange", cont, [x, 0, 0], [1, 0, 0], [0, 1, 0], tp), campo="tp")
                        for x in (-tp, 0.0)],
                cantoneiras=[], recortes=[], soldas=[],
-               parafusos=[dict(_paraf(db, _comprimento_parafuso(2 * tp, db), [-tp, y, L["z"]], [1, 0, 0]), campo="d_mm")
+               parafusos=[dict(_paraf(db, 2 * tp, [-tp, y, L["z"]], [1, 0, 0]), campo="d_mm")
                           for L in linhas for y in ys])
     tipo_m = "penetracao" if d["solda_mesa"] == "penetracao" else "filete"
     perna_m = tf if tipo_m == "penetracao" else d["b_mesa"] * MM

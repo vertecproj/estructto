@@ -23,6 +23,7 @@ import math
 from .. import materiais, secoes
 from ..modelo import MPa
 from . import ligacoes as L
+from . import parafusos as _P
 from .nbr8800 import GA1, GA2, compressao
 
 MM = 1e-3
@@ -139,7 +140,7 @@ _PERFIS_BANZO = _nomes(lambda x: x["forma"] == "I")
 _MED_BARRA = ("secao", "dim_a", "dim_b", "t_perfil", "tf_perfil", "A_perfil", "xg_perfil")
 
 _COMUNS = {
-    "d_mm": _e("Diâmetro do parafuso", "mm", 16.0, min=10.0, max=40.0),
+    "d_mm": _e("Diâmetro do parafuso", "mm", 15.875, min=10.0, max=40.0),   # ⅝" (A325 é em polegada)
     "tipo_parafuso": _e("Tipo de parafuso", "-", "A325", opcoes=list(L.PARAFUSOS)),
     "rosca_no_plano": _e("Rosca no plano de corte", "-", True),
     "eletrodo": _e("Eletrodo", "-", "E70", opcoes=list(L.ELETRODOS)),
@@ -701,7 +702,7 @@ def _geo_membro(info, recuo, dirv, perp, dir1, perp1, tg, d_mm):
         t_, fol = info["t"], 0.004   # fol: 4 mm entre a face da aba e a cabeça (arruela)
         pega = p["pega"] + fol       # cabeça → fim da pilha: aba + gusset (+ 2ª cantoneira no 2L)
         pilha = [[fol, fol + t_]] + ([[fol + t_ + tg, fol + 2 * t_ + tg]] if info["npf"] == 2 else [])
-        comp = pega + max(0.025, 1.2 * d_mm * MM + 0.006)   # porca (0,94d) + fios: o render nunca precisa encurtar a pega
+        comp = _P.comprimento(pega, d_mm * MM)   # catálogo: pega + arruela + porca + 2 fios (o render não encurta a pega)
         par.append(dict(d=d_mm, comprimento=round(comp / MM, 1), pega=round(pega / MM, 1),
                         pilha=[[round(x / MM, 1), round(y / MM, 1)] for x, y in pilha],   # peças apertadas fora de `chapas` (mm a partir da cabeça)
                         origem=[X / MM, y0 / MM, Z / MM], eixo=[0.0, -1.0, 0.0]))

@@ -97,7 +97,8 @@ def limites(tipo, membro, dados=None):
             ps = tuple(x for x in T_COMERCIAL if x >= tmin - 1e-9)
             out[k] = _f(ps[0], ps[-1], ps)
         elif b in _DIAMETRO:
-            out[k] = _f(D_PARAFUSO[0], D_PARAFUSO[-1], D_PARAFUSO)
+            ds = tuple(L._da_familia(D_PARAFUSO, dados))
+            out[k] = _f(ds[0], ds[-1], ds)
         elif b in _ESPACAMENTO:
             out[k] = _f(3 * d_atual, s_max)   # 6.3.9: ≥ 3d (nunca < 2,7d)
         elif b in _BORDA:
