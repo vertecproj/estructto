@@ -54,7 +54,7 @@ namespace NovoFtool
             switch (tipo)
             {
                 case "base": return "placa_base";
-                case "viga_pilar_mesa": return rigida && !vigaU ? "chapa_topo_estendida" : "chapa_simples_alma";   // G6: U não tem rígida no motor: flexível
+                case "viga_pilar_mesa": return !rigida ? "chapa_simples_alma" : vigaU ? "chapa_topo_ajustada" : "chapa_topo_estendida";   // W12-RIG: viga U rígida = chapa de topo ajustada (W11; U baixo: o motor grava solda direta)
                 case "viga_pilar_alma": case "viga_viga": return "chapa_simples_alma";
                 case "gusset_contraventamento": return "gusset_contraventamento";
                 case "perfil_tubo_soldado": return "perfil_tubo_soldado";   // perfil soldado em tubo: recorte + filete, sem chapa (LIGACOES-TUBO-PERFIL.md)

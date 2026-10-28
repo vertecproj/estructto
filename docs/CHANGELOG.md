@@ -1,6 +1,8 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- v0.6.19 (em andamento) — 28/10/2026 (pedido do usuário: "as outras ligações não têm os U e UPN também, revise isso"):
+  - W12-RIG: emendas de viga e de pilar com talas, flange plate (viga U em pilar I/H) e painel de alma (viga U) aceitam UPN, U laminado e U dobrado (1 linha de parafusos por mesa, talas da alma nas costas e por dentro do U, seção líquida do U). Chapa de topo estendida e pilar U (painel, flange plate, chapa de topo com viga I) recusados com o motivo. Viga U rígida no modelo propõe a chapa de topo ajustada. Ver [v3/W12-RIG-U.md](v3/W12-RIG-U.md).
 - 27/10/2026 — v0.6.18 (pedido do usuário: "adicione VIGA UPN a esse tipo de conexão, será uma chapa do tamanho da viga escolhida com 5 mm de sobra pra cada lado e se as vigas forem do mesmo tamanho não tem essa folga. 2 parafusos por conexão e dentro da viga"):
   - A chapa de topo ajustada aceita viga U (UPN, U laminado, U e Ue dobrados) em pilar I/H ou U, encostada nas costas da alma do pilar U. O seletor lista os U só nesta ligação; as outras rígidas continuam recusando U.
   - Chapa de (d + 10) × (bf + 10); sem sobra (d × bf) quando viga e apoio têm o mesmo tamanho. 2 parafusos numa vertical dentro do U, do lado aberto, com folga de chave e de aperto. UPN 50/65/80 são recusados com o diâmetro máximo que cabe.

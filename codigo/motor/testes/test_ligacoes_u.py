@@ -114,15 +114,15 @@ class TestFlexiveisU(unittest.TestCase):
         self.assertIn("face do apoio 38 mm", msg)
 
     def test_rigida_u_sem_tipo(self):
+        # W12-RIG: a estendida recusa a viga U com o motivo e aponta a ajustada (W11)
         with self.assertRaises(P.ErroEntrada) as cm:
             P.verificar_ligacao("chapa_topo_estendida", dict(perfil_viga="UPN 120", perfil_pilar="W 200 x 26,6"),
                                 {"V": 10, "M": 5})
-        self.assertIn("ligação rígida com perfil U não suportada", str(cm.exception))
-        # no modelo: viga U rígida no pilar → membro sem_tipo com motivo
+        self.assertIn("chapa de topo ajustada", str(cm.exception))
+        # no modelo: viga U rígida no pilar → membro normal (W12-RIG: sem sem_tipo; a tela propõe a ajustada)
         m = _modelo_viga_pilar("UPN 120")
         (mb,) = [x for x in lm.membros(m) if x["tipo"].startswith("viga_pilar")]
-        self.assertTrue(mb["sem_tipo"])
-        self.assertEqual(mb["motivo"], "ligação rígida com perfil U não suportada")
+        self.assertNotIn("sem_tipo", mb)
 
 
 class TestGussetU(unittest.TestCase):
@@ -186,10 +186,11 @@ class TestNos(unittest.TestCase):
 
 # ---------------------------------------------------------------- PLATAFORMA (aceite; arquivo fora do git)
 
-def _tipo_proposto(tipo, assin):
-    """Espelho de Render3DMotor.TipoProposto (C#)."""
+def _tipo_proposto(tipo, assin, viga_u=False):
+    """Espelho de Render3DMotor.TipoProposto (C#). W12-RIG: viga U rígida → chapa de topo ajustada."""
     rigida = "rigida" in assin
-    return {"base": None, "viga_pilar_mesa": "chapa_topo_estendida" if rigida else "chapa_simples_alma",
+    rig = "chapa_topo_ajustada" if viga_u else "chapa_topo_estendida"
+    return {"base": None, "viga_pilar_mesa": rig if rigida else "chapa_simples_alma",
             "viga_pilar_alma": "chapa_simples_alma", "viga_viga": "chapa_simples_alma",
             "gusset_contraventamento": "gusset_contraventamento"}.get(tipo)
 
@@ -215,7 +216,8 @@ def plataforma_propostas(m):
     """(nós com proposta do motor, erros) pelo mesmo caminho do WPF (sugerir + verificar com geometria)."""
     nos, ok, erros = set(), set(), []
     for mb in lm.membros(m):
-        tl = _tipo_proposto(mb["tipo"], mb["assinatura"].split("|"))
+        tl = _tipo_proposto(mb["tipo"], mb["assinatura"].split("|"),
+                            m.secoes[m.barras[mb["barra"]].secao].props.get("tipo") in ("U", "Ue"))
         if tl is None or mb.get("sem_tipo"):
             continue
         sec = m.barras[mb["barra"]].secao

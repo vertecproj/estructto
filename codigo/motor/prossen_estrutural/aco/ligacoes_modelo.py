@@ -22,7 +22,6 @@ import math
 from . import ligacoes as _lig
 from . import placa_base as _placa
 from . import pontas as _P
-from .ligacoes_rigidas import U_RIGIDA
 from ..solver import eixos_locais
 
 # tipo de nó → (rótulo, tipo de ligação sugerido)
@@ -94,10 +93,8 @@ def _membro(m, no, e, tipo, apoio=None, ang=0, cond=None):
     nome = f"{rot} {b.secao}" + (f" → {sec_ap}" if sec_ap else "") + (f" {ang}°" if tipo in ("emenda",) and ang else "")
     mb = dict(no=no, barra=b.id, ponta=e["ponta"], tipo=tipo, assinatura=assin, nome=nome,
               apoio=apoio["b"].id if apoio else None)
-    # G5: sem tipo rígido para U. Só a viga–pilar na mesa pede tipo rígido; alma do pilar e viga–viga já são
-    # propostas flexíveis (chapa simples) com qualquer condição
-    if cond == "rigida" and tipo == "viga_pilar_mesa" and m.secoes[b.secao].props.get("tipo") in ("U", "Ue"):
-        mb.update(sem_tipo=True, motivo=U_RIGIDA)
+    # W12-RIG: viga U rígida na mesa do pilar tem tipo desde o W11 (chapa de topo ajustada, proposta pela tela); o
+    # G5 marcava sem_tipo (U_RIGIDA). U baixo demais para 2 parafusos: o projeto padrão é a solda direta (_projeto_padrao)
     return mb
 
 
@@ -404,7 +401,7 @@ def _projeto_padrao(tipo, modelo=None, n=None):
         return dict(tipo_ligacao=sug, dados=dict(pelo_perfil=True))
     if sug == "perfil_tubo_soldado" and modelo is not None and n and n.get("apoio"):
         return dict(tipo_ligacao=sug, dados=dados_perfil_tubo(modelo, n))
-    if modelo is not None and n and tipo in _APOIO_FLEX and not n.get("sem_tipo") and n.get("apoio"):
+    if modelo is not None and n and tipo in _APOIO_FLEX and n.get("apoio"):
         return _solda_direta_padrao(modelo, n, tipo)
     return None
 
@@ -435,14 +432,25 @@ def dados_perfil_tubo(modelo, n):
 
 
 def _solda_direta_padrao(modelo, n, tipo):
-    """G5: viga U baixa demais até para 1 parafuso (UPN 50/65) → projeto padrão solda_direta_alma."""
+    """G5: viga U baixa demais até para 1 parafuso (UPN 50/65) → projeto padrão solda_direta_alma. W12-RIG: viga U rígida
+    na mesa do pilar → a tela propõe a chapa de topo ajustada (W11); se os 2 parafusos não cabem dentro do U (UPN 50 a
+    80), a solda direta."""
     from . import ligacoes_flexiveis as F
+    from . import ligacoes_rigidas as RG
     sec = modelo.barras[n["barra"]].secao
     try:
         vg = F._perfil(sec, "perfil_viga")
     except ValueError:
         return None
-    if vg.get("forma") != "U" or F._furos_viga(vg, F._padrao_gerdau(vg["d"]), 1) is not None:
+    if vg.get("forma") != "U":
+        return None
+    if tipo == "viga_pilar_mesa" and n["assinatura"].split("|")[5:6] == ["rigida"]:
+        try:
+            RG._sugerir_chapa_u(dict(perfil_viga=sec, perfil_pilar=modelo.barras[n["apoio"]].secao), {})
+            return None
+        except ValueError:
+            pass
+    elif F._furos_viga(vg, F._padrao_gerdau(vg["d"]), 1) is not None:
         return None
     return dict(tipo_ligacao="solda_direta_alma", dados=dict(perfil_viga=sec, apoio=_APOIO_FLEX[tipo],
                                                              perfil_suporte=modelo.barras[n["apoio"]].secao))
