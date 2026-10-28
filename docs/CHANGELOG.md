@@ -1,7 +1,6 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
-<<<<<<< HEAD
 - 28/10/2026 — v0.6.19 (em andamento; pedidos do usuário: "as outras ligações não têm os U e UPN também", "tá vibrando a vista 3D da ferramenta de ligações", "use esses catálogos, bote os A307 e A325 para imperial"):
   - Parafusos com catálogo (Indufix/Allenfix): A307/A325/A490 só em polegada e ISO só métrico, no seletor e no otimizador. O comprimento comercial (pega + arruela + porca + 2 fios, comprimento de linha a cada ¼") vai para todas as geometrias. O painel ganhou a lista de compra, por exemplo "3 × ¾" × 1¾" A325". Ver [v3/W12-PARAFUSOS.md](v3/W12-PARAFUSOS.md).
   - Vista 3D do projetista: o recálculo não recria mais o cartão nem tira o Viewport3D da tela, e a mesma geometria não reanima. O diagnóstico não achou tremor de câmera; pendente confirmar com o usuário.
