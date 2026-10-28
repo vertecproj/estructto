@@ -40,12 +40,15 @@ namespace NovoFtool
             var tipos = Esperar2(Motor.Get("/api/ligacoes/tipos"));
 
             // 1) pela faixa (Ligações e bases › Projetar ligação): biblioteca numa aba
+            // janelas que capturas anteriores deixaram abertas (ex.: o gerenciador de grupos, que continua janela) não contam
+            var antes = Application.Current.Windows.OfType<Window>().Where(x => x.IsVisible).ToList();
             w.AbrirProjetistaLigacao();
             for (int i = 0; i < 300 && w.LigacoesAbertas.Count == 0; i++) { EsperarIdle(); System.Threading.Thread.Sleep(50); }
             var a = w.LigacoesAbertas.FirstOrDefault();
             Ok(a != null && w.LigacaoAtiva == a && !a.TemTipo, "faixa › Projetar ligação abre a biblioteca numa aba");
             if (a == null) throw new InvalidOperationException("63) biblioteca não abriu");
-            Ok(Application.Current.Windows.OfType<Window>().All(x => x == w || !x.IsVisible), "nenhuma janela separada aberta");
+            var abertas = Application.Current.Windows.OfType<Window>().Where(x => x != w && x.IsVisible && !antes.Contains(x)).Select(x => x.GetType().Name + " \"" + x.Title + "\"").ToList();
+            Ok(abertas.Count == 0, "nenhuma janela separada aberta" + (abertas.Count > 0 ? " (abertas: " + string.Join(", ", abertas) + ")" : ""));
             Ok(w.HostLigacoes.Visibility == Visibility.Visible && a.IsVisible && w.Faixa.IsVisible && w.StatusMsg.IsVisible, "aba cobre a área de trabalho; faixa e barra de status continuam");
             Esperar(a.CarregarMiniaturas()); EsperarIdle();
             log.AppendLine("abas: " + Abas());

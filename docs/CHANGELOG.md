@@ -1,6 +1,11 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 27/10/2026 — v0.6.18 (pedido do usuário: "adicione VIGA UPN a esse tipo de conexão, será uma chapa do tamanho da viga escolhida com 5 mm de sobra pra cada lado e se as vigas forem do mesmo tamanho não tem essa folga. 2 parafusos por conexão e dentro da viga"):
+  - A chapa de topo ajustada aceita viga U (UPN, U laminado, U e Ue dobrados) em pilar I/H ou U, encostada nas costas da alma do pilar U. O seletor lista os U só nesta ligação; as outras rígidas continuam recusando U.
+  - Chapa de (d + 10) × (bf + 10); sem sobra (d × bf) quando viga e apoio têm o mesmo tamanho. 2 parafusos numa vertical dentro do U, do lado aberto, com folga de chave e de aperto. UPN 50/65/80 são recusados com o diâmetro máximo que cabe.
+  - Verificações: momento por T = M/h, com o braço real até a mesa comprimida; tração + cisalhamento (6.3.3.4); T-stub com alavanca (EN 1993-1-8); solda no contorno do U como grupo; apoio I (mesa como T-stub, 5.7.3, 5.7.4 e 5.7.7.1) ou apoio U (alma como T-stub). Momento alto demais gera o aviso "momento além da capacidade de 2 parafusos dentro do U". Ver [v3/W11-CHAPA-TOPO-U.md](v3/W11-CHAPA-TOPO-U.md).
+  - Pendente: com sobra de 5 mm, o filete externo é limitado a 5 mm. Em UPN 80–220 isso coincide com a perna mínima da tabela 10 e aparece como "no limite" (100 %): passa, mas fica no limite. Alternativas: sobra de 6 mm, ou soldar só por dentro do U. Também pendentes: torção pelo centro de cisalhamento (só aviso) e proposta automática no modelo 3D para viga U rígida.
 - 27/10/2026 — v0.6.17 (relato do usuário sobre a solda direta: "só conta a solda da alma, tem que soldar tudo" e "não funciona com dois tamanhos diferentes"):
   - Solda direta solda o contorno inteiro (alma e mesas) por padrão e o calcula como grupo elástico (NBR 8800 6.2.5: V, Vz, N, M, Mz e T). "Soldar as mesas" fica só com sim/não; um .pcon antigo com "auto" abre como sim. A perna mínima é a da junta mais grossa.
   - Viga apoiada de tamanho diferente: campo "desnível" com padrão auto. A viga desce o mínimo para caber na altura livre do apoio; se não cabe, as mesas são recortadas. UPN 50 no UPN 100 passa de "sem solução" (124 %) para 75 %; W200 no W310 passa de 130 % para 75 %.
