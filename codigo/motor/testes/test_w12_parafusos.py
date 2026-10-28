@@ -60,6 +60,11 @@ class TestResultado(unittest.TestCase):
         r = L.verificar_ligacao("parafuso", dict(d_mm=20, tipo_parafuso="A325", t=0.0095, lf=0.03), {"Ft": 10, "Fv": 10})
         self.assertTrue(any("polegada" in a for a in r["avisos"]), r["avisos"])
 
+    def test_viga_u_acima_do_alvo_troca(self):
+        # ¾" passa a 0,98 na chapa simples com UPN 200: acima de 0,90 o Sugerir troca para solda direta
+        s = P.sugerir_ligacao("chapa_simples_alma", {"perfil_viga": "UPN 200", "perfil_suporte": "W250x73"}, {"V": 50, "N": 0})
+        self.assertEqual(s.get("tipo_ligacao"), "solda_direta_alma", s)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,6 +32,7 @@ As fontes ficam em `9. CONSULTOR DE ENGENHARIA/referencias/fixadores/md`:
   - `_da_familia` restringe os diâmetros à família da especificação: A325 nunca pula de ⅝" para M20.
   - `_D_MM` ganhou ⅝" (15,875), M12 e M22.
   - A faixa de `ligacoes_limites` usa a mesma regra.
+- **Viga U → solda direta (G5)**: com ¾" a chapa simples com UPN 200 passa a 0,98 (cisalhamento dos parafusos; com M20 reprovava a 1,42). A troca para solda direta agora também acontece quando uma verificação de resistência passa de 0,90. Verificações de detalhamento (bordas, encaixe no U) acima de 0,90 não trocam, como na v0.6.18: cantoneira dupla e viga–viga com UPN 300 seguem parafusadas (0,971 e 0,914).
 - **Padrões de fábrica**: o tipo "parafuso" e o gusset/nó de treliça/cantoneira simples passaram de M16 para ⅝" (A325). Taxas: parafuso 0,712 → 0,723; gusset, nó de treliça e cantoneira simples 0,864 → 0,857. Os 26 padrões seguem ≤ 0,90.
 
 ## Interface (`JanelaLigacaoProjeto.cs`)

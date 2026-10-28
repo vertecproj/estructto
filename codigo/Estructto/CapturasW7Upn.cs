@@ -59,7 +59,7 @@ namespace NovoFtool
             Esperar(j.Escolher("chapa_topo_estendida", false)); EsperarIdle();
             j.DefinirDados(new JsonObject { ["perfil_viga"] = "UPN 200" }); Esperar(j.CalcularAgora()); EsperarIdle();
             log.AppendLine("rigida-upn200: erro '" + j.Erro + "'");
-            if (j.Erro == null || !j.Erro.Contains("perfil U")) throw new InvalidOperationException("w7-upn: rígida com UPN sem o motivo da recusa: " + j.Erro);
+            if (j.Erro == null || !j.Erro.Contains("viga U"))   // W12-RIG: a recusa cita a viga U e o que usar throw new InvalidOperationException("w7-upn: rígida com UPN sem o motivo da recusa: " + j.Erro);
             CapturarDialogo(j, "70-upn-rigida-recusa.png");
             j.Close();
             File.WriteAllText(Path.Combine(pastaSaida, "70-upn.txt"), log.ToString());

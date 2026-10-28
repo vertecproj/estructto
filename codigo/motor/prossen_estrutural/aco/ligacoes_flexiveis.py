@@ -1765,12 +1765,15 @@ def _com_solda_direta(tipo, sug):
                              f"{cb['resistente']:.0f} mm): solda direta; governa: {_governa(r2)}")
             return alt if r2["ok"] else c
         try:
-            if _perfil(_perfis_de(perfis)[0], "perfil_viga").get("forma") != "U" or r1["ok"]:
+            # W12: com ¾" em polegada a parafusada pode passar com resistência acima do ALVO (UPN 200: parafusos 0,98)
+            # → também troca; detalhamento (`sentido`: bordas, encaixe no U) acima de 0,90 não troca, como na v0.6.18
+            resist = max((v["taxa"] for v in r1["verificacoes"] if "sentido" not in v), default=0)
+            if _perfil(_perfis_de(perfis)[0], "perfil_viga").get("forma") != "U" or r1["ok"] and resist <= ALVO + 1e-9:
                 return c
             alt = solda(perfis, esforcos, "")
             dd = {k: v for k, v in alt.items() if k not in ("tipo_ligacao", "motivo")}
             r2 = TIPOS["solda_direta_alma"]["verificar"](dd, esforcos)
-            alt["motivo"] = (f"{tipo} não passa com viga U ({_governa(r1)}): solda direta; "
+            alt["motivo"] = (f"{tipo} {'acima de 0,90' if r1['ok'] else 'não passa'} com viga U ({_governa(r1)}): solda direta; "
                              f"governa: {_governa(r2)}")
             return alt if r2["ok"] else c
         except ValueError:
