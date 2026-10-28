@@ -92,7 +92,61 @@ def _secao(secao):
     s.setdefault('tf', s.get('tw', 0))
     s.setdefault('tipo', '')
     s.update(_numeros({k: s.get(k, 0) for k in ('h', 'b', 'tw', 'tf')}, positivos=('h', 'b'), nao_negativos=('tw', 'tf')))
+    if s['tipo'] in _TIPOS_U:   # W12-OUT: U/Ue dobrado só tem t (tw = tf = t); centroide e lábio D para o contorno
+        s['xg'] = _xg_u(s)
+        s['D'] = float(s.get('D') or 0) if s['tipo'] == 'Ue' else 0.
     return s
+
+
+_TIPOS_U = ('U', 'Ue')   # UPN, U laminado e U dobrado (U); dobrado enrijecido (Ue)
+
+
+def _xg_u(s):
+    """Centroide do U → costas da alma (m): o do catálogo (props['xg']) ou, de um dict sem xg, o das chapas retas
+    (alma h·tw + 2 mesas (b − tw)·tf; Ue: mais os lábios 2·D·tw na ponta)."""
+    if s.get('xg'):
+        return float(s['xg'])
+    h, b, tw, tf = s['h'], s['b'], s['tw'], s['tf']
+    D = float(s.get('D') or 0) if s.get('tipo') == 'Ue' else 0.
+    pecas = [(h*tw, tw/2), (2*(b-tw)*tf, tw+(b-tw)/2), (2*D*tw, b-tw/2)]
+    a = sum(x for x, _ in pecas)
+    return sum(x*c for x, c in pecas)/a if a > 0 else b/2
+
+
+def _contorno_u_mm(s):
+    """Contorno do U (polígono fechado, mm) com a solda de pilar em volta das duas faces: u na largura, costas da alma em
+    u = −b/2 e mesas abertas para +u; v na altura h. Origem no centro da caixa b × h (o centro da placa; o U fica
+    centrado na CAIXA, não no centroide). Ue: lábios D na ponta das mesas (voltados para o centro da altura)."""
+    h, b, tw, tf, D = (s[k]*1000 for k in ('h', 'b', 'tw', 'tf', 'D'))
+    u0, ut, ui, h2 = -b/2, b/2, -b/2+tw, h/2
+    baixo = ([(u0, -h2), (ut, -h2), (ut, -h2+D), (ut-tw, -h2+D), (ut-tw, -h2+tf), (ui, -h2+tf)] if D > 0
+             else [(u0, -h2), (ut, -h2), (ut, -h2+tf), (ui, -h2+tf)])
+    return baixo+[(u, -v) for u, v in reversed(baixo[1:])]+[(u0, h2)]
+
+
+def _grupo_u(s, eixo_fraco, Hc=0., Bc=0.):
+    """Grupo de solda do U (contorno aberto: costas da alma, duas mesas e os cantos, em volta das duas faces das chapas).
+    Propriedades por espessura de garganta unitária, em mm: comprimento L, momento de inércia iu em torno do centroide do
+    grupo na direção do plano (v do eixo forte; u do eixo fraco), distância c à fibra extrema e a distância e do centroide
+    do grupo ao centroide do perfil (na direção do plano). Hc/Bc > 0: a placa menor que o perfil recorta o contorno à
+    placa (vértices cortados no retângulo, como min(perfil, chapa) do contorno fechado)."""
+    pts = _contorno_u_mm(s)
+    k = 0 if eixo_fraco else 1                       # coordenada do plano da flexão: u (eixo fraco) ou v
+    if Hc > 0 and Bc > 0:
+        lim = (Hc/2, Bc/2) if eixo_fraco else (Bc/2, Hc/2)   # (limite em u, limite em v); H é a dimensão no plano
+        recorte = any(abs(p[0]) > lim[0]+1e-9 or abs(p[1]) > lim[1]+1e-9 for p in pts)
+        pts = [(max(-lim[0], min(lim[0], p[0])), max(-lim[1], min(lim[1], p[1]))) for p in pts]
+    else:
+        recorte = False
+    seg = [(p, q, math.dist(p, q)) for p, q in zip(pts, pts[1:]+pts[:1])]
+    seg = [x for x in seg if x[2] > 1e-9]
+    Lt = sum(x[2] for x in seg)
+    cu, cv = (sum((p[i]+q[i])/2*L for p, q, L in seg)/Lt for i in (0, 1))
+    cg = cu if eixo_fraco else cv
+    iu = sum(L*((p[k]-cg)**2+(p[k]-cg)*(q[k]-cg)+(q[k]-cg)**2)/3 for p, q, L in seg)
+    c = max(abs(p[k]-cg) for p, _, _ in seg)
+    e = abs(cu-(s['xg']*1000-s['b']*500)) if eixo_fraco else 0.   # centroide do grupo → centroide do perfil (u_g = xg − b/2)
+    return dict(L=Lt, iu=iu, c=c, e=e, recortada=recorte)
 
 
 def esquema_placa_base():
@@ -474,32 +528,43 @@ def _solda(secao, dados, esforcos, h):
     if dados.get('eixo_fraco', False):
         b, d = d, b
     circular = s['tipo'] in ('TC', 'CIRC', 'tubo_circular', 'circular')
+    em_u = s['tipo'] in _TIPOS_U
     # Só conta a solda que assenta na chapa (docs/v3/GEOMETRIA-LIGACOES.md §1): com H/B informados (pelo_perfil falso) a
     # chapa pode ser menor que o perfil; o contorno soldado fica limitado a min(perfil, chapa) em cada direção (d ao longo
     # de H, b ao longo de B). Tubo circular maior que a chapa: círculo inscrito na chapa (a favor da segurança).
     recortada = False
+    Hc = Bc = 0.
     if not dados.get('pelo_perfil', False):
         Hc, Bc = dados.get('H', 0)*1000, dados.get('B', 0)*1000
         if Hc > 0 and Bc > 0:
             if circular:
                 recortada = s['h']*1000 > min(Hc, Bc) + 1e-9
-            else:
+            elif not em_u:
                 recortada = d > Hc + 1e-9 or b > Bc + 1e-9
                 d, b = min(d, Hc), min(b, Bc)
+    Mw = abs(e['M'])*1e6   # N·mm
     if circular:
         raio = s['h']*500
         if recortada:
             raio = min(Hc, Bc)/2
         area, iu, c = 1.414*math.pi*h*raio, math.pi*raio**3, raio
+    elif em_u:
+        # W12-OUT: U = contorno ABERTO (costas da alma + 2 mesas, cantos e faces internas), não o retângulo h·(b+d).
+        # Grupo elástico (AISC 360 J2.4 / NBR 8800 6.2.5): propriedades do contorno real em torno do centroide do grupo; N e
+        # M estão no centroide do PERFIL: no eixo fraco o centroide do grupo fica a e do perfil, M_w = |M| + |N|·e.
+        gu = _grupo_u(s, bool(dados.get('eixo_fraco', False)), Hc, Bc)
+        recortada = gu['recortada']
+        area, iu, c = .707*h*gu['L'], gu['iu'], gu['c']
+        Mw += abs(e['N'])*gu['e']*1e3
     else:
         area, iu, c = 1.414*h*(b+d), d*d*(3*b+d)/6, d/2
     inertia = .707*h*iu
     t1 = abs(e['V'])*1000/area
-    t2 = abs(e['N'])*1000/area+abs(e['M'])*1e6*c/inertia
+    t2 = abs(e['N'])*1000/area+Mw*c/inertia
     tau = math.hypot(t1, t2)
     el = _eletrodo(dados.get('eletrodo'))
     adm = ELETRODOS[el]
-    t = min(s['tf'], s['tw']) if s['tipo'] in ('I', 'U') else s['tw']
+    t = min(s['tf'], s['tw']) if s['tipo'] in ('I', 'U', 'Ue') else s['tw']
     chapa = dados.get('esp', 0)
     hn = perna_minima_norma(min(t if t > 0 else 1e6, chapa if chapa > 0 else 1e6))
     L = area/(.707*h)
@@ -552,6 +617,11 @@ def verificar_solda_contorno(secao, dados, esforcos):
                                           'chapa (min(perfil, chapa) em cada direção).')
     r['h_min'] = perna_minima_contorno(secao, d, esforcos)
     r['ok'] = r['passa']
+    if _secao(secao)['tipo'] in _TIPOS_U:
+        r.setdefault('avisos', []).append(
+            'Pilar U: solda em volta do contorno aberto do U (costas da alma, 2 mesas, cantos e faces internas), grupo '
+            'elástico do contorno real. Exige acesso à solda nas duas faces das chapas; sem o lado de dentro, reduza o '
+            'contorno e verifique de novo. Torção pelo centro de cisalhamento do U (V·e) NÃO verificada.')
     return r
 
 
@@ -663,7 +733,9 @@ def forcas_bloco(N, M, coordenadas, H, B, sigma_cRd):
 
 
 def _ks(secao):
-    """Fatores do balanço: I/H 0,95d e 0,8bf; tubo retangular 0,95; circular 0,80 (DG1 3.1)."""
+    """Fatores do balanço: I/H 0,95d e 0,8bf; tubo retangular 0,95; circular 0,80 (DG1 3.1). U/Ue (W12-OUT): como o I
+    (0,95·h entre as pontas das mesas; 0,8·b na largura, placa centrada na caixa: as duas bordas têm o mesmo balanço,
+    o da ponta das mesas; do lado da alma, mais rígido, o 0,8 é a favor da segurança)."""
     t = str(secao.get('tipo', '')).upper()
     if t in ('TC', 'CIRC', 'TUBO_CIRCULAR', 'CIRCULAR'):
         return .8, .8
@@ -1001,6 +1073,18 @@ def verificar_placa_base(dados, esforcos, secao):
     g = geometria_placa(d, secao)
     e = _numeros({k: esforcos.get(k) for k in ('N', 'V', 'M')}, nao_negativos=('V',))
     avisos = list(esforcos.get('avisos', []))
+    su = _secao(secao)
+    if su['tipo'] in _TIPOS_U:
+        # W12-OUT: placa centrada na CAIXA do U (b × h), N e M no centroide do perfil, a ecc = |b/2 − xg| do centro da placa.
+        ecc = abs(su['b']/2-su['xg'])
+        if d['eixo_fraco']:   # a excentricidade cai no plano da flexão: M_placa = M + N·ecc (aumenta |M|: orientação do U livre)
+            e['M'] += (1 if e['M'] >= 0 else -1)*abs(e['N'])*ecc
+            avisos.append(f"Pilar U no eixo fraco: N atua no centroide, a {ecc*1000:.1f} mm do centro da placa (centrada na caixa do "
+                          f"perfil); M da placa = M + |N|·e = {e['M']:.2f} kN·m.")
+        else:
+            avisos.append(f"Pilar U no eixo forte: N atua no centroide, a {ecc*1000:.1f} mm do centro da placa (centrada na caixa do "
+                          "perfil), fora do plano da flexão: o efeito entra só na verificação do eixo fraco (método uniaxial).")
+        avisos.append('Pilar U: centro de cisalhamento fora da alma; torção do pilar (V·e) não verificada.')
     try:
         leg = _legado(d, e, g, secao)
     except ValueError as exc:

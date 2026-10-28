@@ -48,12 +48,18 @@ namespace NovoFtool
             if (sec == null || sec.H <= 0) { r.Erro = "Seção sem medidas para o grupo de solda."; return r; }
             double d = (deitado ? (sec.Bf > 0 ? sec.Bf : sec.H) : sec.H) * 1000;   // no plano da flexao
             double b = (deitado ? sec.H : (sec.Bf > 0 ? sec.Bf : sec.H)) * 1000;
-            double c, iu;
+            double c, iu, mExtra = 0;   // mExtra: N·e do centroide do perfil ao do grupo (U no eixo fraco), N·mm
+            double lu, iuU, cU, eU;      // C# 5 (csc do Windows, portico\compilar.ps1): sem "out var"
             if (sec.Forma == "TC" || sec.Forma == "CIRC")
             {
                 double raio = sec.H * 1000 / 2;
                 r.A = 1.414 * Math.PI * h * raio; iu = Math.PI * raio * raio * raio; c = raio;
                 r.Grupo = "contorno circular Ø" + Num.Fmt(sec.H * 1000, 1) + " mm";
+            }
+            else if (GrupoU(sec, deitado, out lu, out iuU, out cU, out eU))
+            {
+                r.A = 0.707 * h * lu; iu = iuU; c = cU; mExtra = Math.Abs(N) * eU * 1e3;
+                r.Grupo = "contorno aberto do U, " + Num.Fmt(lu, 0) + " mm";
             }
             else
             {
@@ -62,7 +68,7 @@ namespace NovoFtool
             }
             r.I = 0.707 * h * iu;
             r.Tau1 = Math.Abs(V) * 1000 / r.A;
-            r.Tau2 = Math.Abs(N) * 1000 / r.A + Math.Abs(M) * 1e6 * c / r.I;
+            r.Tau2 = Math.Abs(N) * 1000 / r.A + (Math.Abs(M) * 1e6 + mExtra) * c / r.I;
             r.Tau = Math.Sqrt(r.Tau1 * r.Tau1 + r.Tau2 * r.Tau2);
             r.Ap = r.Tau / r.TauAdm;
             double t = sec.Forma == "I" || sec.Forma == "U" ? Math.Min(sec.Tf, sec.Tw) : sec.Tw > 0 ? sec.Tw : 0;
@@ -76,12 +82,53 @@ namespace NovoFtool
             return r;
         }
 
+        // W12-OUT: grupo de solda do U (UPN, U laminado, U dobrado) = contorno ABERTO (costas da alma, 2 mesas, pontas e faces
+        // internas), espelho de placa_base._grupo_u do motor (docs/v3/W12-OUT-U.md). mm; por garganta unitária: comprimento len,
+        // iu em torno do centroide do grupo na direção do plano, c até a fibra extrema e e = centroide do grupo → centroide do
+        // perfil (só no eixo fraco; o xg sai das chapas retas). Falso: seção sem medidas, volta ao retângulo.
+        static bool GrupoU(Secao sec, bool deitado, out double len, out double iu, out double c, out double e)
+        {
+            len = iu = c = e = 0;
+            if (sec == null || sec.Forma != "U") return false;
+            double h = sec.H * 1000, b = (sec.Bf > 0 ? sec.Bf : sec.H) * 1000, tw = sec.Tw * 1000, tf = (sec.Tf > 0 ? sec.Tf : sec.Tw) * 1000;
+            if (h <= 0 || b <= 0 || tw <= 0 || tf <= 0 || 2 * tf >= h || tw >= b) return false;
+            double u0 = -b / 2, ut = b / 2, ui = u0 + tw, h2 = h / 2;
+            var pts = new List<double[]> { new[] { u0, -h2 }, new[] { ut, -h2 }, new[] { ut, -h2 + tf }, new[] { ui, -h2 + tf },
+                                           new[] { ui, h2 - tf }, new[] { ut, h2 - tf }, new[] { ut, h2 }, new[] { u0, h2 } };
+            int k = deitado ? 0 : 1;   // coordenada do plano da flexão: u (eixo fraco) ou v
+            double cu = 0, cv = 0;
+            var comp = new double[pts.Count];   // comprimento de cada lado (do vértice i ao i+1)
+            for (int i = 0; i < pts.Count; i++)
+            {
+                double[] p = pts[i], q = pts[(i + 1) % pts.Count];
+                double l = Math.Sqrt((q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]));
+                comp[i] = l; len += l; cu += (p[0] + q[0]) / 2 * l; cv += (p[1] + q[1]) / 2 * l;
+            }
+            cu /= len; cv /= len;
+            double cg = deitado ? cu : cv;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                double a = pts[i][k] - cg, z = pts[(i + 1) % pts.Count][k] - cg;
+                iu += comp[i] * (a * a + a * z + z * z) / 3;   // ∫ q² ds de um segmento linear
+            }
+            foreach (double[] p in pts) c = Math.Max(c, Math.Abs(p[k] - cg));
+            if (deitado)
+            {
+                double aw = h * tw, af = 2 * (b - tw) * tf;
+                double xg = (aw * tw / 2 + af * (tw + (b - tw) / 2)) / (aw + af);
+                e = Math.Abs(cu - (xg - b / 2));
+            }
+            return true;
+        }
+
         static double CalcularSimples(Secao sec, bool deitado, double N, double V, double M, double h, double adm)
         {
             double d = (deitado ? (sec.Bf > 0 ? sec.Bf : sec.H) : sec.H) * 1000, b = (deitado ? sec.H : (sec.Bf > 0 ? sec.Bf : sec.H)) * 1000, c, iu, a;
+            double mExtra = 0, lu, iuU, cU, eU;
             if (sec.Forma == "TC" || sec.Forma == "CIRC") { double raio = sec.H * 500; a = 1.414 * Math.PI * h * raio; iu = Math.PI * raio * raio * raio; c = raio; }
+            else if (GrupoU(sec, deitado, out lu, out iuU, out cU, out eU)) { a = 0.707 * h * lu; iu = iuU; c = cU; mExtra = Math.Abs(N) * eU * 1e3; }
             else { a = 1.414 * h * (b + d); iu = d * d * (3 * b + d) / 6; c = d / 2; }
-            double t1 = Math.Abs(V) * 1000 / a, t2 = Math.Abs(N) * 1000 / a + Math.Abs(M) * 1e6 * c / (0.707 * h * iu);
+            double t1 = Math.Abs(V) * 1000 / a, t2 = Math.Abs(N) * 1000 / a + (Math.Abs(M) * 1e6 + mExtra) * c / (0.707 * h * iu);
             return Math.Sqrt(t1 * t1 + t2 * t2) / adm;
         }
 

@@ -767,6 +767,16 @@ namespace NovoFtool
                 foreach (var q in new[] { new[] { -h / 2, -b / 2 }, new[] { h / 2, -b / 2 }, new[] { h / 2, -b / 2 + tf }, new[] { tw / 2, -b / 2 + tf }, new[] { tw / 2, b / 2 - tf }, new[] { h / 2, b / 2 - tf },
                                           new[] { h / 2, b / 2 }, new[] { -h / 2, b / 2 }, new[] { -h / 2, b / 2 - tf }, new[] { -tw / 2, b / 2 - tf }, new[] { -tw / 2, -b / 2 + tf }, new[] { -h / 2, -b / 2 + tf } }) sec.Add(q);
             }
+            else if (forma == "U")   // W12-OUT: o U com a alma de um lado e as mesas para o outro (como na planta), não uma caixa
+            {
+                double h = hIn, b = hOut, tf = tfe, tw = twe;
+                if (!R.Deitado)
+                    foreach (var q in new[] { new[] { -h / 2, b / 2 }, new[] { -h / 2 + tf, b / 2 }, new[] { -h / 2 + tf, -b / 2 + tw }, new[] { h / 2 - tf, -b / 2 + tw },
+                                              new[] { h / 2 - tf, b / 2 }, new[] { h / 2, b / 2 }, new[] { h / 2, -b / 2 }, new[] { -h / 2, -b / 2 } }) sec.Add(q);
+                else
+                    foreach (var q in new[] { new[] { -h / 2, b / 2 }, new[] { h / 2, b / 2 }, new[] { h / 2, b / 2 - tf }, new[] { -h / 2 + tw, b / 2 - tf },
+                                              new[] { -h / 2 + tw, -b / 2 + tf }, new[] { h / 2, -b / 2 + tf }, new[] { h / 2, -b / 2 }, new[] { -h / 2, -b / 2 } }) sec.Add(q);
+            }
             else
             {
                 foreach (var q in new[] { new[] { -1.0, -1.0 }, new[] { 1.0, -1.0 }, new[] { 1.0, 1.0 }, new[] { -1.0, 1.0 } }) sec.Add(new[] { q[0] * hIn / 2, q[1] * hOut / 2 });
