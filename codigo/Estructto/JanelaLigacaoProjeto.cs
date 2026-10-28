@@ -1040,8 +1040,9 @@ namespace NovoFtool
         }
 
         // mesmo seletor do inspetor (SeletorPerfil: miniatura, busca, lista); nas rígidas e emendas só I/H (o motor recusa U, G5).
-        // Exceção por campo: quando o motor manda `perfis` no campo (W9 emenda flangeada; W11 chapa de topo ajustada com I/H/U/Ue),
-        // a lista vem dele (CaixaPerfil, `so`) e este filtro não vale.
+        // Exceção por campo: quando o motor manda `perfis` no campo (W9 emenda flangeada; W11 chapa de topo ajustada com I/H/U/Ue;
+        // W12-RIG emendas com talas, viga da flange plate e do painel com I/H/U), a lista vem dele (CaixaPerfil, `so`) e este
+        // filtro não vale. Continuam só I/H: chapa de topo estendida, pilar da flange plate e do painel.
         static readonly HashSet<string> FamiliasI = new HashSet<string> { "W", "HP", "IPE", "HEA", "HEB" };
         bool SoPerfilI => S(Tipo(), "familia") is "rigida" or "emenda";
         IEnumerable<string> PerfisDoTipo() => Lista(catalogo).Where(x => !SoPerfilI || FamiliasI.Contains(S(x, "familia"))).Select(x => S(x, "nome")).Where(x => x != "");

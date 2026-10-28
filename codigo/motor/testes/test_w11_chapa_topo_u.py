@@ -66,19 +66,16 @@ class TestRegistro(unittest.TestCase):
             for n in ("UPN 200", "UPN 50", "U 200x75x3,00", "Ue 200x75x25x3,00", "W310x38.7", "W250x73"):
                 self.assertIn(n, ps)
             self.assertNotIn("L 3\" x 1/4\"", ps)
-        for outro in ("chapa_topo_estendida", "flange_plate", "painel_alma_pilar", "emenda_viga", "emenda_pilar"):
-            for c in campos[outro].values():
-                self.assertFalse(any("UPN" in p for p in c.get("perfis") or []), (outro, c["nome"]))
+        # W12-RIG: a estendida continua só I/H (sem `perfis`); flange plate, painel e emendas passaram a aceitar U
+        # (test_w12_rig_u.py)
+        for c in campos["chapa_topo_estendida"].values():
+            self.assertFalse(any("UPN" in p for p in c.get("perfis") or []), c["nome"])
 
     def test_outras_rigidas_continuam_recusando_u(self):
-        casos = [("chapa_topo_estendida", dict(perfil_viga="UPN 200", perfil_pilar="W250x73")),
-                 ("flange_plate", dict(perfil_viga="UPN 200", perfil_pilar="W250x73")),
-                 ("painel_alma_pilar", dict(perfil_viga="UPN 200", perfil_pilar="W250x73")),
-                 ("emenda_viga", dict(perfil_viga="UPN 200")), ("emenda_pilar", dict(perfil_pilar="UPN 200"))]
-        for tipo, d in casos:
-            with self.assertRaises(P.ErroEntrada, msg=tipo) as cm:
-                P.verificar_ligacao(tipo, d, {"V": 40, "M": 8})
-            self.assertIn("ligação rígida com perfil U não suportada", str(cm.exception))
+        with self.assertRaises(P.ErroEntrada) as cm:
+            P.verificar_ligacao("chapa_topo_estendida", dict(perfil_viga="UPN 200", perfil_pilar="W250x73"),
+                                {"V": 40, "M": 8})
+        self.assertIn("chapa de topo ajustada", str(cm.exception))
 
     def test_viga_i_em_pilar_u_recusa_com_motivo(self):
         with self.assertRaises(P.ErroEntrada) as cm:
