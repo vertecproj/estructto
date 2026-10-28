@@ -145,7 +145,10 @@ def solda_consolo(w, h0):
 
 def recortes_viga_viga(viga, suporte, folga, desnivel=0.0):
     """Recortes da viga apoiada na alma da viga suporte, topos alinhados (desnivel = topo da viga abaixo do topo
-    do suporte). [GD] 3.3: altura = tf + 10 mm; comprimento = bf/2 − tw/2 + 10 mm − folga (exemplos E1/E2)."""
+    do suporte). [GD] 3.3: altura = tf + 10 mm; comprimento = bf/2 − tw/2 + 10 mm − folga (exemplos E1/E2).
+    W12: suporte U com as costas da alma para a viga (o desenho W7-UPN): as mesas ficam do outro lado, sem recorte."""
+    if suporte.get("forma") == "U":
+        return dict(recorte_sup_h=0.0, recorte_sup_c=0.0, recorte_inf_h=0.0, recorte_inf_c=0.0)
     c = suporte["bf"] / 2 - suporte["tw"] / 2 + FOLGA_RECORTE - folga
     dct = max(0.0, suporte["tf"] + FOLGA_RECORTE - desnivel)
     dcb = max(0.0, desnivel + viga["d"] - (suporte["d"] - suporte["tf"] - FOLGA_RECORTE))
@@ -365,7 +368,7 @@ def _perfil(v, campo):
         if pr.get("d_alma"):   # altura reta tabelada (UPN, mesa inclinada): tf + r = (h − d)/2
             r = (pr["h"] - pr["d_alma"]) / 2 - tf
         xg = pr.get("xg", 0.0)
-        return dict(nome=str(v), d=pr["h"], bf=pr["b"], tw=tw, tf=tf, r=r, forma="U", xg=xg,
+        return dict(nome=str(v), d=pr["h"], bf=pr["b"], tw=tw, tf=tf, r=r, forma="U", xg=xg, dobrado=not pr.get("tw"),
                     x_cc=abs(pr.get("x0", 0.0)) - xg)   # centro de cisalhamento: x_cc além da face externa da alma
     if pr.get("tipo") != "I":
         raise ValueError(f"{campo}: '{v}' ({pr.get('tipo')}): ligação flexível só com perfil I/H ou U")
@@ -555,24 +558,77 @@ def _cabe_na_alma(r, d, vg, topo, base, nome):
     r.minimo(f"{nome} acima da mesa/recorte inferior", lim_i, vg["d"] - base, "geometria (altura livre da alma)")
 
 
-def _cabe_no_apoio(r, sp, apoio, largura, nome, folga_viga_sup=None, topo=None):
-    """Largura ocupada no apoio: na mesa do pilar ≤ bf; na alma do pilar ≤ altura livre entre mesas."""
+def _cabe_no_apoio(r, sp, apoio, largura, nome, folga_viga_sup=None, topo=None, base=None, des=0.0):
+    """Largura ocupada no apoio: na mesa do pilar ≤ bf; na alma do pilar ≤ altura livre entre mesas.
+    W12: apoio U (alma/viga) = costas da alma para a ligação, face plana da altura d inteira (as mesas do outro lado):
+    na alma do pilar ≤ d; na viga suporte U a peça fica dentro da altura dela (base + desnível ≤ d), sem a mesa por cima."""
+    u = sp.get("forma") == "U"
     if apoio == "mesa_pilar":
         r.maximo(f"{nome}: largura na mesa do pilar", largura, sp["bf"], "geometria")
+    elif apoio == "alma_pilar" and u:
+        r.maximo(f"{nome}: largura nas costas da alma do U", largura, sp["d"], "geometria (apoio U)")
     elif apoio == "alma_pilar":
         r.maximo(f"{nome}: largura entre as mesas do pilar", largura, sp["d"] - 2 * (sp["tf"] + sp["r"]),
                  "geometria")
+    elif u:
+        if base is not None:
+            r.maximo(f"{nome}: dentro da altura da viga suporte U", base + des, sp["d"], "geometria (viga–viga, apoio U)")
     elif topo is not None:   # viga–viga, topos alinhados: abaixo da mesa da viga suporte
         r.minimo(f"{nome}: abaixo da mesa da viga suporte", sp["tf"] + sp["r"], topo, "geometria (viga–viga)")
 
 
 def _face_apoio(sp, apoio):
-    """Largura disponível na face do apoio (m): mesa = bf; alma do pilar = altura livre entre mesas; None = viga."""
+    """Largura disponível na face do apoio (m): mesa = bf; alma do pilar = altura livre entre mesas (U: costas da alma,
+    altura d inteira, W12); None = viga."""
     if apoio == "mesa_pilar":
         return sp["bf"]
     if apoio == "alma_pilar":
-        return sp["d"] - 2 * (sp["tf"] + sp["r"])
+        return sp["d"] if sp.get("forma") == "U" else sp["d"] - 2 * (sp["tf"] + sp["r"])
     return None
+
+
+def _apoio_u(r, sp, d, coords, p, nome):
+    """W12 (docs/v3/W12-FLEX-U.md): furos no apoio U. `coords` = posição de cada furo na direção transversal da face (m):
+    mesa e alma do pilar = y do furo; alma de viga = profundidade abaixo do topo da viga apoiada.
+    - Mesa do pilar U (desenho W7-UPN: mesa centrada em y, alma no lado −ab, ab = abertura_y): u = ab·y, ponta da mesa em
+      u = bf/2, pé do raio junto à alma em u = −(bf/2 − tw − r). Borda até a ponta (laminada, 6.3.11.1 / tabela 14) e folga
+      de aperto da porca até o pé do raio da alma, FOLGA_APERTO·db (a mesma regra da chapa de extremidade no pilar I, W7-LIG).
+    - Alma do pilar / da viga U (costas da alma para a ligação): a porca fica entre as mesas; folga de aperto até o pé do
+      raio das mesas (tf + r da face externa, UPN: (h − d)/2 pela alma reta tabelada).
+    Furo fora da parte plana (na ponta, no raio ou na outra peça) não é aceito: ValueError com o motivo e o que usar."""
+    if sp.get("forma") != "U" or not coords:
+        return
+    db, dh, apoio = p["db"], p["dh"], d["apoio"]
+    if apoio == "mesa_pilar":
+        ab = -1 if float(d.get("abertura_y") or 1) < 0 else 1
+        us = [ab * y for y in coords]
+        lo, hi = -(sp["bf"] / 2 - sp["tw"] - sp["r"]), sp["bf"] / 2
+        onde = f"mesa do {sp['nome']} (bf = {sp['bf'] / MM:.0f} mm, alma num dos lados)"
+        uso = ("use chapa_simples_alma ou solda_direta_alma (soldadas na mesa), apoio em cantoneira com 1 coluna de "
+               "parafusos, ou ligue nas costas da alma do U (apoio alma_pilar)")
+    else:
+        if apoio == "alma_pilar":
+            h = sp["d"] / 2 - sp["tf"] - sp["r"]
+            lo, hi = -h, h
+        else:
+            des = d.get("desnivel") or 0.0
+            lo, hi = sp["tf"] + sp["r"] - des, sp["d"] - sp["tf"] - sp["r"] - des
+        us = list(coords)
+        onde = f"alma do {sp['nome']} entre as mesas (parte plana {(hi - lo) / MM:.0f} mm)"
+        uso = "diminua o número de parafusos ou o gabarito, use parafuso menor ou a solda direta"
+    if min(us) - dh / 2 < lo - 1e-9 or max(us) + dh / 2 > hi + 1e-9:
+        raise ValueError(f"ligação com apoio U: os furos de {nome} caem fora da {onde} — {uso}")
+    folga = FOLGA_APERTO * db
+    if apoio == "mesa_pilar":
+        r.minimo(f"{nome}: borda até a ponta da mesa do U", L.distancia_min_borda(db, True), hi - max(us),
+                 "6.3.11.1 / tabela 14")
+        r.minimo(f"{nome}: folga de aperto até a alma do U", folga, min(us) - lo, "geometria (folga de montagem)")
+        if sp["nome"].upper().startswith("UPN"):
+            r.avisos.append("parafusos na mesa do UPN: face interna inclinada (8 %, DIN 1026) — arruela de compensação "
+                            "(cunha) sob a porca")
+    else:
+        r.minimo(f"{nome}: folga de aperto até as mesas do U (porca entre as mesas)", folga,
+                 min(min(us) - lo, hi - max(us)), "geometria (folga de montagem)")
 
 
 def _u_viga(r, vg, p, V, pega):
@@ -732,30 +788,32 @@ def _cantoneira_dupla(d, e, tipo="cantoneira_dupla_alma"):
     r.espacamento(s, db, min(ta, tw))
     topo, base = zs[0] - ev, zs[-1] + ev
     _cabe_na_alma(r, d, vg, topo, base, "cantoneiras")
-    _cabe_no_apoio(r, sp, apoio, tw + 2 * b2, "cantoneiras", topo=topo)
+    _cabe_no_apoio(r, sp, apoio, tw + 2 * b2, "cantoneiras", topo=topo, base=base, des=d.get("desnivel") or 0.0)
+    yw = _abertura(d, vg) * (tw / 2 - vg["xg"]) if vg.get("forma") == "U" else 0.0   # plano médio da alma (U abre para ab·y)
+    _apoio_u(r, sp, d, zs if apoio == "alma_viga" else [yw + sg * (tw / 2 + gs) for sg in (1, -1)], p,
+             "parafusos no apoio")
     if vg.get("forma") == "U":   # G5: a cantoneira de dentro fica entre as mesas do U
         r.maximo("cantoneira interna dentro da mesa do U", b1, vg["bf"] - tw, "geometria (gabarito na mesa do U)")
         e = vg["x_cc"] + tw / 2
         r.val["e_centro_cisalhamento_mm"] = e / MM
         r.avisos.append(f"viga U: reação a {e / MM:.0f} mm do centro de cisalhamento — torção V·e na viga não "
                         "verificada")
-    if apoio == "mesa_pilar":
+    if apoio == "mesa_pilar" and sp.get("forma") != "U":   # W12: mesa do U em _apoio_u (ponta de um lado, alma do outro)
         r.minimo("borda dos furos na mesa do pilar", L.distancia_min_borda(db, lam), (sp["bf"] - tw) / 2 - gs,
                  "6.3.11.1 / tabela 14")
     if Lc < vg["d"] / 2:
         r.avisos.append(f"cantoneira com {Lc / MM:.0f} mm < d/2 = {vg['d'] / 2 / MM:.0f} mm: estabilidade da viga no "
                         "apoio comprometida (Gerdau 3.1.2)")
-    if apoio == "alma_viga" and d["recorte_sup_h"] <= 0:
+    if apoio == "alma_viga" and d["recorte_sup_h"] <= 0 and sp.get("forma") != "U":
         r.avisos.append("viga–viga sem recorte: confira a interferência com a mesa da viga suporte (viga_viga_recorte)")
     r.avisos.append("apoio verificado só à pressão de contato dos parafusos; cortante/flexão local do apoio à parte")
 
     # geometria
     xf = _x_face(sp, apoio, d)
     ab = _abertura(d, vg)
-    yw = ab * (tw / 2 - vg["xg"]) if vg.get("forma") == "U" else 0.0   # plano médio da alma (U abre para ab·y)
     zt = vg["d"] / 2
     zb = zt - base
-    can = [dict(perfil=d["cantoneira"], origem=_p(xf, yw + sg * tw / 2, zb), eixo=[0, 0, 1], u=[1, 0, 0], w=[0, sg, 0],
+    can =[dict(perfil=d["cantoneira"], origem=_p(xf, yw + sg * tw / 2, zb), eixo=[0, 0, 1], u=[1, 0, 0], w=[0, sg, 0],
                 comprimento=Lc / MM, abas=[b1 / MM, b2 / MM], espessura=ta / MM) for sg in (1, -1)]
     par = [_paraf(p, (xf + ta, yw + sg * (tw / 2 + gs), zt - z), [-1, 0, 0], ta + t_ap) for sg in (1, -1) for z in zs]
     sol = []
@@ -853,7 +911,7 @@ def _chapa_simples(d, e, tipo="chapa_simples_alma"):
     r.espacamento(s, db, min(t, tw))
     topo, base = zs[0] - ev, zs[-1] + ev
     _cabe_na_alma(r, d, vg, topo, base, "chapa")
-    _cabe_no_apoio(r, sp, apoio, t + 2 * bs, "chapa", topo=topo)
+    _cabe_no_apoio(r, sp, apoio, t + 2 * bs, "chapa", topo=topo, base=base, des=d.get("desnivel") or 0.0)
     if a > 89 * MM:
         r.avisos.append(f"a = {a / MM:.0f} mm > 89 mm: chapa simples estendida (AISC) — interação V+M e flambagem "
                         "da chapa não verificadas")
@@ -941,15 +999,18 @@ def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
     # pilar, entre o furo e a alma + raio do pilar (docs/v3/W7-LIG.md §1)
     r.minimo("parafusos: folga de aperto até a solda da alma", FOLGA_APERTO * db, (gch - tw) / 2 - d["b_solda"],
              "geometria (folga de montagem)", "gabarito")
-    if apoio == "mesa_pilar":
+    if apoio == "mesa_pilar" and sp.get("forma") != "U":
         r.minimo("parafusos: folga de aperto até a alma do pilar", FOLGA_APERTO * db, gch / 2 - sp["tw"] / 2 - sp["r"],
                  "geometria (folga de montagem)", "gabarito")
     topo = d["dist_topo_chapa"]
+    yw = _abertura(d, vg) * (tw / 2 - vg["xg"]) if vg.get("forma") == "U" else 0.0
+    _apoio_u(r, sp, d, [topo + ev + i * s for i in range(n)] if apoio == "alma_viga"
+             else [yw + sg * gch / 2 for sg in (1, -1)], p, "parafusos no apoio")
     if Lp < ALTURA_MIN_CE * vg["d"] - 1e-9:
         r.avisos.append(f"chapa de extremidade com {Lp / MM:.0f} mm < 0,6·h = {ALTURA_MIN_CE * vg['d'] / MM:.0f} mm: "
                         "travamento à torção da viga no apoio duvidoso (SCI P358) — aumente as fileiras")
     _cabe_na_alma(r, {}, vg, topo, topo + Lp, "chapa")
-    _cabe_no_apoio(r, sp, apoio, bp, "chapa", topo=topo)
+    _cabe_no_apoio(r, sp, apoio, bp, "chapa", topo=topo, base=topo + Lp, des=d.get("desnivel") or 0.0)
     if t > 10 * MM:
         r.avisos.append(f"chapa de extremidade com t = {t / MM:g} mm > 10 mm: rótula duvidosa (Gerdau 4.1 usa 6,3 mm)")
     r.avisos.append("apoio verificado só à pressão de contato dos parafusos; flexão local da mesa/alma do apoio à parte")
@@ -960,8 +1021,7 @@ def _chapa_extremidade(d, e, tipo="chapa_extremidade_flexivel"):
     zs = [zt - topo - ev - i * s for i in range(n)]
     # G5: viga U → chapa, parafusos e soldas centrados no plano médio da alma (centroide no eixo, costas em y = −ab·xg)
     ab = _abertura(d, vg)
-    yw = ab * (tw / 2 - vg["xg"]) if vg.get("forma") == "U" else 0.0
-    ch = [_chapa("chapa de extremidade", (xf + t / 2, yw - bp / 2, zb), [0, 1, 0], [0, 0, 1], bp, Lp, t)]
+    ch =[_chapa("chapa de extremidade", (xf + t / 2, yw - bp / 2, zb), [0, 1, 0], [0, 0, 1], bp, Lp, t)]
     par = [_paraf(p, (xf + t, yw + sg * gch / 2, z), [-1, 0, 0], t + t_ap) for sg in (1, -1) for z in zs]
     sol = [dict(tipo="filete", perna=bs / MM, pontos=[_p(xf + t, yw + sg * tw / 2, zb), _p(xf + t, yw + sg * tw / 2, zb + Lp)])
            for sg in (1, -1)]
@@ -1063,6 +1123,7 @@ def _apoio(d, e, tipo="apoio_cantoneira"):
             if nc == 2:
                 r.minimo("gabarito entre colunas (2,7db)", 2.7 * db, gc, "6.3.9")
             r.minimo("1º furo abaixo do raio da cantoneira (t + 1,5db)", ta + 1.5 * db, z1, "geometria (aperto)")
+            _apoio_u(r, sp, d, ycols, p, "parafusos do assento")
             geo["parafusos"] = [_paraf(p, (xf + ta, y, -zt - z1 - i * s), [-1, 0, 0], ta + t_ap)
                                 for y in ycols for i in range(n)]
         else:
@@ -1082,6 +1143,21 @@ def _apoio(d, e, tipo="apoio_cantoneira"):
                                        u=[1, 0, 0], w=[0, 0, 1], comprimento=lc / MM, abas=[bs1 / MM, bs1 / MM],
                                        espessura=ts / MM))
         r.avisos.append("cantoneira superior: só estabilidade lateral (detalhe construtivo, não verificada)")
+    if vg.get("forma") == "U":
+        # W12: viga U no assento. A mesa inferior do U apoia no assento e a força vai para a alma (5.7.3 / 5.7.4 com tw,
+        # tf e k = tf + r do U, como no I: a força entra pela mesa ligada à alma). O assento (centrado no nó, que é o
+        # centroide do U) tem de cobrir a mesa inteira: costas em y = −ab·xg, ponta em y = ab·(bf − xg).
+        larg = w if enr else d["comprimento"]
+        r.minimo("assento cobre a mesa do U (2 × maior distância do centroide à borda da mesa)",
+                 2 * max(vg["xg"], vg["bf"] - vg["xg"]), larg, "geometria (apoio da viga U)")
+        e = vg["x_cc"] + vg["bf"] / 2   # do centro de cisalhamento ao meio da mesa apoiada (limite superior)
+        r.val["e_centro_cisalhamento_mm"] = e / MM
+        r.avisos.append(f"viga U no assento: reação até {e / MM:.0f} mm do centro de cisalhamento — torção V·e = "
+                        f"{V * e:.2f} kN·m na viga não verificada (a cantoneira superior trava a rotação; confira a torção)")
+        if vg.get("dobrado"):
+            r.avisos.append("viga U formada a frio: escoamento local e enrugamento da alma pela NBR 8800 5.7.3/5.7.4; "
+                            "confira o esmagamento da alma pela NBR 14762 / AISI S100 (seção G5)")
+        geo["abertura_y"] = _abertura(d, vg)
     if a_nec > ln:
         r.avisos.append(f"comprimento de apoio necessário {a_nec / MM:.0f} mm > disponível {ln / MM:.0f} mm")
     return r.resultado(geo)
@@ -1385,6 +1461,42 @@ def _padrao_gerdau(dv):
     return dict(d=22.225, s=75, e_v=40, cantoneira="L102x102x7.94", g=65)
 
 
+def _padroes(vg, sp):
+    """W12: furações do pré-dimensionamento. I com apoio I: só o padrão Gerdau (os padrões de fábrica não mudam). Com U
+    (viga ou apoio): U de 150–215 mm em que 2 parafusos do padrão ⅝" não cabem na alma reta (UPN 160: 115 mm) → o
+    padrão ½" dos U baixos; depois o mesmo diâmetro e os maiores até ¾" (o mínimo de 45 kN de 6.1.5.2 reprova ½"/⅝" em
+    2 parafusos), com s = 3db para cima a 5 mm (6.3.9) e borda = mínima da tabela 14 / ALVO (6.3.11.1)."""
+    pd = _padrao_gerdau(vg["d"])
+    if (vg.get("forma") != "U" and sp.get("forma") != "U") or vg["d"] <= 0.150:
+        return [pd]   # U ≤ 150 mm: como antes (½"; sem 2 parafusos o sugerir troca para a solda direta, G5)
+    if _furos_viga(vg, pd, 2) is None:
+        pd = _padrao_gerdau(0.150)
+    out = [pd]
+    for db in (12.7, 15.875, 19.05):
+        if db > pd["d"] - 1e-9:
+            out.append(dict(pd, d=db, s=5 * math.ceil(3 * db / 5),
+                            e_v=math.ceil(L.distancia_min_borda(db * MM) / MM / ALVO)))
+    return out
+
+
+def _perfil_ou_nada(v):
+    """Perfil do apoio no sugerir (só para saber se é U); fora do catálogo o verificar é quem recusa, como antes."""
+    try:
+        return _perfil(v, "perfil_suporte")
+    except ValueError:
+        return {}
+
+
+def _recusa_mesa_u(sp, apoio, tipo):
+    """W12: duas linhas de parafusos não cabem na mesa de um U (bf ≤ 110 mm no catálogo; o furo junto à alma precisa de
+    tw + r + 1,25db, a ponta de borda mínima, e as linhas ficam a ≥ tw da viga + 2 gabaritos)."""
+    if sp.get("forma") == "U" and apoio == "mesa_pilar":
+        raise ValueError(f"sugerir: {tipo} na mesa do {sp['nome']} (bf = {sp['bf'] / MM:.0f} mm): duas linhas de "
+                         "parafusos não cabem na mesa do U (alma de um lado, ponta livre do outro) — use chapa_simples_alma "
+                         "ou solda_direta_alma soldadas na mesa, apoio em cantoneira com 1 coluna, ou ligue nas costas da "
+                         "alma do U (apoio alma_pilar)")
+
+
 _CTX = ("x_face", "x_max", "abertura_y")   # G6 r4: geometria do chamador que muda a escolha (cabe na barra?)
 ALVO = 0.90   # W8-FLEX (= W8-RIG): taxa governante do pré-dimensionamento (a interface mostra "no limite" acima de 0,90)
 
@@ -1428,10 +1540,19 @@ def _furos_viga(vg, pd, n, rec_sup=0.0, rec_inf=0.0):
 
 def _sug_cd(perfis, esforcos, tipo="cantoneira_dupla_alma", extra=None):
     v, s_, apoio = _perfis_de(perfis)
-    vg = _perfil(v, "perfil_viga")
-    pd = _padrao_gerdau(vg["d"])
+    vg, sp = _perfil(v, "perfil_viga"), _perfil_ou_nada(s_)
+    if tipo != "viga_viga_recorte":
+        _recusa_mesa_u(sp, apoio, tipo)
     extra = dict(extra or {})
     cands = []
+    for pd in _padroes(vg, sp):
+        _cands_cd(cands, v, s_, apoio, vg, pd, tipo, extra)
+    if not cands:
+        raise ValueError(f"sugerir: perfil {v} baixo demais para {tipo}")
+    return _tentar(tipo, cands, esforcos, perfis)
+
+
+def _cands_cd(cands, v, s_, apoio, vg, pd, tipo, extra):
     for n in range(2, 13):
         dt = _furos_viga(vg, pd, n, extra.get("_rs", 0.0), extra.get("_ri", 0.0))
         if dt is None:
@@ -1449,16 +1570,24 @@ def _sug_cd(perfis, esforcos, tipo="cantoneira_dupla_alma", extra=None):
             if tipo != "viga_viga_recorte":
                 c["apoio"] = apoio
             cands.append(c)
-    if not cands:
-        raise ValueError(f"sugerir: perfil {v} baixo demais para {tipo}")
-    return _tentar(tipo, cands, esforcos, perfis)
 
 
 def _sug_cs(perfis, esforcos):
     v, s_, apoio = _perfis_de(perfis)
-    vg = _perfil(v, "perfil_viga")
-    pd = _padrao_gerdau(vg["d"])
+    vg, sp = _perfil(v, "perfil_viga"), _perfil_ou_nada(s_)
     cands, compactas = [], []
+    t_ap = _t_apoio(sp, apoio) / MM if sp else 0.0
+    for i, pd in enumerate(_padroes(vg, sp)):
+        _cands_cs(cands, compactas, v, s_, apoio, vg, pd, perfis, t_ap if i else None)
+    cands += compactas
+    if not cands:
+        raise ValueError(f"sugerir: perfil {v} baixo demais para chapa simples")
+    return _tentar("chapa_simples_alma", cands, esforcos, perfis)
+
+
+def _cands_cs(cands, compactas, v, s_, apoio, vg, pd, perfis, t_ap=None):
+    """`t_ap` (mm, W12: furações a mais com U): perna do filete = máx(5t/8, mínima da tabela 10) / ALVO, para cima a 1 mm
+    (com a perna = 5t/8 as duas verificações da solda saem 1,00)."""
     emin = L.distancia_min_borda(pd["d"] * MM) / MM
     # W8-FLEX: a = 75 (Gerdau/AISC) com folga 10 põe a ponta da viga a 65 mm, acima de 0,9 × 12tw (6.3.12) em alma fina
     # (W310×38,7: 65/69,6 = 0,93) → a com a ponta ≤ 0,9 × máximo, para baixo a 5 mm, e ≥ borda mínima com folga
@@ -1473,14 +1602,13 @@ def _sug_cs(perfis, esforcos):
                 break
             c = dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, d=pd["d"], s=pd["s"], e_v=pd["e_v"],
                      n=n, dist_topo_furo=dt, t_chapa=t, b_solda=max(5, math.ceil(5 * t / 8)), a=a)
+            if t_ap is not None:
+                bmin = max(5 * t / 8, L.filete_minimo(min(t, t_ap or t) * MM) / MM)
+                c["b_solda"] = math.ceil(bmin / ALVO - 1e-9)
             cands.append(c)
             # G6 r4: barra curta (x_max) → chapa compacta: furo e borda nas mínimas da Tab. 14 (a = folga 10 + emin)
             if (perfis or {}).get("x_max"):
                 compactas.append(dict(c, a=10 + emin, e_h=emin))
-    cands += compactas
-    if not cands:
-        raise ValueError(f"sugerir: perfil {v} baixo demais para chapa simples")
-    return _tentar("chapa_simples_alma", cands, esforcos, perfis)
 
 
 def _sug_ce(perfis, esforcos):
@@ -1496,20 +1624,27 @@ def _sug_ce(perfis, esforcos):
     if bmin > larg + 1e-9:
         raise ValueError(f"chapa de topo {math.ceil(bmin / MM)} mm > face do apoio {larg / MM:.0f} mm "
                          f"({s_}): use cantoneira lateral ou outro apoio")
-    gch = min(0.120, bp - 2 * emin)
+    _recusa_mesa_u(sp, apoio, "chapa_extremidade_flexivel")   # W12: depois da face (G5 mantém o motivo "chapa de topo")
     topo = vg["tf"] + vg["r"] + 5 * MM
     cands = []
-    cabe = lambda n: topo + (n - 1) * pd["s"] * MM + 2 * pd["e_v"] * MM <= vg["d"] - vg["tf"] - vg["r"]  # noqa: E731
-    for n in range(1, 13):
-        Lp = (n - 1) * pd["s"] * MM + 2 * pd["e_v"] * MM
-        if not cabe(n):
-            break
-        if Lp < ALTURA_MIN_CE * vg["d"] and cabe(n + 1):
-            continue   # W7-LIG: chapa ≥ 0,6·h sempre que couber (SCI P358; Gerdau LCHE tem 6 parafusos no W310)
-        for t in ESPESSURAS_CE:
-            cands.append(dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, d=pd["d"], s=pd["s"], e_v=pd["e_v"], n=n,
-                              t_chapa=t, largura_chapa=round(bp / MM), gabarito=round(gch / MM),
-                              dist_topo_chapa=round(topo / MM)))
+    # W12: com U (viga ou apoio), depois do padrão: as furações de _padroes (borda = mínima/ALVO), a chapa ≤ ALVO × face
+    # e a perna = mínima da tabela 10 / ALVO (o padrão de 5 mm saía 1,00 na alma do UPN 200)
+    variantes = [(pd, bp, None)] + [(q, min(0.200, math.floor(ALVO * larg / MM / 5) * 5 * MM),
+                                      math.ceil(L.filete_minimo(min(ESPESSURAS_CE[0] * MM, vg["tw"])) / MM / ALVO - 1e-9))
+                                     for q in (_padroes(vg, sp) if "U" in (vg.get("forma"), sp.get("forma")) else [])]
+    for q, bq, bs in variantes:
+        gch = min(0.120, bq - 2 * L.distancia_min_borda(q["d"] * MM))
+        cabe = lambda n: topo + (n - 1) * q["s"] * MM + 2 * q["e_v"] * MM <= vg["d"] - vg["tf"] - vg["r"]  # noqa: E731
+        for n in range(1, 13):
+            Lp = (n - 1) * q["s"] * MM + 2 * q["e_v"] * MM
+            if not cabe(n):
+                break
+            if Lp < ALTURA_MIN_CE * vg["d"] and cabe(n + 1):
+                continue   # W7-LIG: chapa ≥ 0,6·h sempre que couber (SCI P358; Gerdau LCHE tem 6 parafusos no W310)
+            for t in ESPESSURAS_CE:
+                c = dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, d=q["d"], s=q["s"], e_v=q["e_v"], n=n,
+                         t_chapa=t, largura_chapa=round(bq / MM), gabarito=round(gch / MM), dist_topo_chapa=round(topo / MM))
+                cands.append(dict(c, b_solda=bs) if bs else c)
     if not cands:
         raise ValueError(f"sugerir: perfil {v} baixo demais para chapa de extremidade")
     return _tentar("chapa_extremidade_flexivel", cands, esforcos, perfis)
@@ -1523,6 +1658,13 @@ def _sug_ap(perfis, esforcos):
     cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, assento="cantoneira", cantoneira=f"L102x152x{t}",
                   d=19.05, s=60, e_v=30, g_colunas=80, comprimento=lc)
              for t in (9.5, 12.7, 15.9, 19.0, 22.2, 25.4) for lc in lcs]
+    sp = _perfil_ou_nada(s_)
+    if sp.get("forma") == "U" and apoio == "mesa_pilar":
+        # W12: na mesa do U (bf ≤ 110 mm) só 1 coluna de parafusos no eixo da mesa, assento da largura da mesa (para
+        # baixo a 5 mm); as duas colunas caem fora da mesa (_apoio_u recusa)
+        lc = 5 * math.floor(ALVO * sp["bf"] / MM / 5)
+        cands = [dict(c, n_colunas=1, comprimento=lc, d=db) for db in (15.875, 12.7) for c in cands
+                 if c["comprimento"] == lcs[0]] + cands
     cands += [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, assento="enrijecido", t_enrijecedor=t,
                    h_enrijecedor=h, b_enrijecedor=125, largura_assento=150, t_assento=t, b_solda=b)
               for t in (12.5, 16.0, 19.0) for h in (200, 250, 300, 400) for b in (6, 8, 10)]
@@ -1542,11 +1684,17 @@ def _sug_sd(perfis, esforcos):
     passar, ex.: alma fina com perna máxima = tw < mínima + 1 mm). Com a perna = mínima o padrão saía "no limite" (taxa
     1,00) só pela disposição construtiva, com as resistências a 38 %."""
     v, s_, apoio = _perfis_de(perfis)
+    extra = {}
     try:   # W10: com as mesas soldadas (padrão) a mínima é a da junta mais grossa (mesa–apoio)
-        bmin = _b_min_sd(_perfil(v, "perfil_viga"), _perfil(s_, "perfil_suporte"), apoio) / MM
+        vg, sp = _perfil(v, "perfil_viga"), _perfil(s_, "perfil_suporte")
+        bmin = _b_min_sd(vg, sp, apoio) / MM
+        if apoio == "mesa_pilar" and vg["bf"] + 2 * bmin * MM > sp["bf"]:
+            # W12: a viga é mais larga que a mesa do apoio (ex.: W200×26,6 na mesa do UPN 300, bf 100): o contorno não
+            # tem face; só a alma soldada (rótula)
+            extra, bmin = dict(soldar_mesas="não"), _b_min_sd(vg, sp, apoio, False) / MM
     except (ValueError, KeyError):
         bmin = 3
-    cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, b_solda=b) for b in (3, 4, 5, 6, 8, 10)]
+    cands = [dict(perfil_viga=v, perfil_suporte=s_, apoio=apoio, b_solda=b, **extra) for b in (3, 4, 5, 6, 8, 10)]
     cima = [c for c in cands if c["b_solda"] > bmin + 1e-9]
     if cima:
         c = _tentar("solda_direta_alma", cima, esforcos, perfis)
@@ -1579,7 +1727,8 @@ def _com_solda_direta(tipo, sug):
     a resposta traz `tipo_ligacao` e `motivo`, e o chamador passa a verificar esse tipo.
     G6 r4: o mesmo quando a parafusada (qualquer perfil) não cabe no `x_max` ou tem dados impossíveis (UPN 50)."""
     def solda(perfis, esforcos, motivo):
-        c = _sug_sd(perfis, esforcos)
+        # W12: viga–viga não traz `apoio` nos perfis; sem ele a perna era escolhida como na mesa do pilar
+        c = _sug_sd(dict(perfis, apoio="alma_viga") if tipo == "viga_viga_recorte" else perfis, esforcos)
         if tipo == "viga_viga_recorte":
             c["apoio"] = "alma_viga"
         return dict(c, tipo_ligacao="solda_direta_alma", motivo=motivo)
@@ -1648,6 +1797,10 @@ def _fn(tipo, f):
     def verificar(dados, esforcos):
         d = _ler(tipo, dados)
         rp = (dados or {}).get("_recortes_ponta") or {}
+        if not (dados or {}).get("contexto_pontas") and _perfil_ou_nada(d.get("perfil_suporte")).get("forma") == "U":
+            # W12: sem o modelo 3D, o apoio U fica com as costas da alma para a viga (desenho W7-UPN): as mesas não
+            # invadem, sem cope (pontas.py não sabe o lado das mesas e recortaria como no I). No modelo vale o da ponta.
+            rp = {}
         if "recorte_sup_h" in d:   # G2: cope da ponta (pontas.py) entra nas verificações da viga recortada
             for k, v in rp.items():
                 d[k] = max(d[k], v)

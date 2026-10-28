@@ -1,6 +1,8 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 28/10/2026 — v0.6.19 (em andamento) (pedido do usuário: "as outras ligações não têm os U e UPN também, revise isso"):
+  - W12-FLEX-U: apoio U nas flexíveis deixa de ser medido como I (costas da alma = face de altura d, sem recorte na viga–viga, porca entre as mesas com folga de aperto, mesa do U com ponta de um lado e alma do outro; duas linhas de parafusos na mesa do U são recusadas com o que usar); viga U no assento (mesa coberta, torção em aviso); Sugerir ≤ 0,90 nos casos com U. Ver [v3/W12-FLEX-U.md](v3/W12-FLEX-U.md).
 - 27/10/2026 — v0.6.18 (pedido do usuário: "adicione VIGA UPN a esse tipo de conexão, será uma chapa do tamanho da viga escolhida com 5 mm de sobra pra cada lado e se as vigas forem do mesmo tamanho não tem essa folga. 2 parafusos por conexão e dentro da viga"):
   - A chapa de topo ajustada aceita viga U (UPN, U laminado, U e Ue dobrados) em pilar I/H ou U, encostada nas costas da alma do pilar U. O seletor lista os U só nesta ligação; as outras rígidas continuam recusando U.
   - Chapa de (d + 10) × (bf + 10); sem sobra (d × bf) quando viga e apoio têm o mesmo tamanho. 2 parafusos numa vertical dentro do U, do lado aberto, com folga de chave e de aperto. UPN 50/65/80 são recusados com o diâmetro máximo que cabe.
