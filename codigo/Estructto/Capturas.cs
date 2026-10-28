@@ -1224,6 +1224,7 @@ namespace NovoFtool
                 if (so == "w9fi") so1(() => CapturasW9Fi(w));                     // só as 90) emenda flangeada de perfil I/H/U (W9)
                 if (so == "vibra") so1(() => CapturasVibra(w));                   // diagnóstico W12: vista 3D do projetista parada?
                 if (so == "w11u") so1(() => CapturasW11U(w));                   // só as 92) chapa de topo ajustada com viga U (W11)
+                if (so == "w12out") so1(() => CapturasW12Out(w, caminhoModelo));  // só as 93) perfis U no gusset, no perfil–tubo e na placa de base (W12-OUT)
                 if (so == "w9ft") so1(() => CapturasW9Ft(w));                     // só as 90) emenda flangeada de tubo redondo e metalon (W9-FT)
                 if (so == "placa") so1(() => CapturasPlaca(w, caminhoModelo));    // só as 55) da placa de base pelo motor
                 if (so == "cmdline") so1(() => CapturasCmdline(w));

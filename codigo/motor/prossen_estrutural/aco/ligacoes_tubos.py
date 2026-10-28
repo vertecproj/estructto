@@ -610,7 +610,13 @@ def _parede_chs(r, d, perfil, d0, t0, fy0, th, g, Ns, M, Mz):
     if f in ("I", "H", "U") and lon:
         caso, h1, b1, mip, mop, t1 = "I", h, b, M, Mz, perfil["tf"]
         if f == "U":
-            r.avisos.append("perfil U tratado como I (EN 1993-1-8 tabela 7.4 é de I, H e tubo retangular)")
+            # W12-OUT: a tabela 7.4 é de I/H; o U com h ao longo do tubo tem as duas mesas (largura b, em ±h/2, linhas
+            # transversais ao tubo) iguais às do I, e é isso que as fórmulas de N, Mip e Mop usam (par de linhas separado por
+            # h1 = h e largura b1 = b); a alma, na borda das mesas em vez de no eixo, não entra nas fórmulas
+            r.avisos.append("perfil U: a tabela 7.4 da EN 1993-1-8 (I/H) é usada pelas mesas — mesma largura b1 = b e "
+                            "afastamento h1 = h do I —, mas a alma fica na borda das mesas e não no eixo, caso fora da "
+                            "tabela (a norma não cobre U; CIDECT DG1): conferir, e a torção pelo centro de cisalhamento "
+                            "do U não é verificada")
     elif f == "tubo_retangular" and (lon or tra):
         caso, t1 = "tubo_retangular", perfil["tw"]
         h1, b1, mip, mop = (h, b, M, Mz) if lon else (b, h, Mz, M)
@@ -670,6 +676,10 @@ def _sugerir_pt(perfis, esforcos):
 
 
 def _ler_pt(dados):
+    if str((dados or {}).get("forma_ramal", "")).lower() == "ue":
+        raise ValueError("perfil_tubo_soldado: U enrijecido (Ue) não é aceito como ramal — os lábios de borda não têm "
+                         "campo nem contorno de solda aqui e a tabela da EN 1993-1-8 não os cobre; use U simples (UPN, U "
+                         "laminado ou U dobrado), I/H ou tubo")
     return _ler(dados, _ENT_PT, "perfil_tubo_soldado")
 
 

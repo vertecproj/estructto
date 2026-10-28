@@ -126,15 +126,16 @@ def _e(rotulo, unidade, padrao, **kw):
 
 
 _CAT = secoes._carrega_catalogo()
+_FAMILIAS_U = ("U laminado", "UPN", "U formado a frio")
 
 
 def _nomes(teste):
     return list(dict.fromkeys(lin["nome"] for lin in _CAT.values() if teste(lin)))
 
 
-# L laminadas (iguais e desiguais), U laminado/UPN e tubos estruturais Vallourec. Fora: U/Ue formados a frio e metalon
-# (parede fina, NBR 14762; o cálculo daqui é o da NBR 8800). ponytail: lista fixa; abrir para formados quando houver cálculo
-_PERFIS_BARRA = _nomes(lambda x: x["forma"] == "L" or x["forma"] == "U" and x["familia"] in ("U laminado", "UPN")
+# L laminadas (iguais e desiguais), U laminado/UPN, U dobrado (W12-OUT: parede fina pela NBR 14762, ligado pela alma) e
+# tubos estruturais Vallourec. Fora: Ue (enrijecido: os lábios de borda e a distorção não são tratados aqui) e metalon.
+_PERFIS_BARRA = _nomes(lambda x: x["forma"] == "L" or x["forma"] == "U" and x["familia"] in _FAMILIAS_U
                        or x["forma"] in ("TC", "TR") and x["familia"] == "Tubo Vallourec")
 _PERFIS_BANZO = _nomes(lambda x: x["forma"] == "I")
 _MED_BARRA = ("secao", "dim_a", "dim_b", "t_perfil", "tf_perfil", "A_perfil", "xg_perfil")
@@ -351,13 +352,18 @@ def perfil_barra(nome, aba="maior"):
         p = secoes.catalogo(str(nome)).props
     except KeyError:
         raise ValueError(f"perfil '{nome}' não está no catálogo") from None
+    if p.get("tipo") == "Ue":
+        raise ValueError(f"perfil '{nome}': U enrijecido (Ue) não é aceito na barra do gusset — os lábios de borda e a "
+                         "distorção da seção (NBR 14762) não são tratados aqui; use U simples (UPN, U laminado, U dobrado), "
+                         "2L ou tubo")
     forma = _FORMA.get(p.get("tipo"))
     if forma not in ("U", "tubo_circular", "tubo_retangular"):
         raise ValueError(f"perfil '{nome}': a barra do gusset é L, 2L, U ou tubo (não {p.get('tipo')})")
     A = (p.get("A_catalogo") or p["A"]) / MM ** 2
-    if forma == "U":
-        return dict(forma=forma, dim_a=p["h"] / MM, dim_b=p["b"] / MM, t_perfil=p["tw"] / MM, tf_perfil=p["tf"] / MM,
-                    A_perfil=A, xg_perfil=p["xg"] / MM)
+    if forma == "U":   # U dobrado só tem t (tw = tf = t); o laminado tem tw e tf
+        t = p.get("t")
+        return dict(forma=forma, dim_a=p["h"] / MM, dim_b=p["b"] / MM, t_perfil=(p.get("tw") or t) / MM,
+                    tf_perfil=(p.get("tf") or t) / MM, A_perfil=A, xg_perfil=p["xg"] / MM, formado=t is not None)
     return dict(forma=forma, dim_a=p["h"] / MM, dim_b=p["b"] / MM, t_perfil=p["t"] / MM, tf_perfil=0.0, A_perfil=A,
                 xg_perfil=0.0)
 
@@ -369,6 +375,7 @@ def _medidas(d, s, campo):
     if d[f"arranjo{s}"] == "dupla" and forma != "L":
         raise ValueError(f"{campo}: arranjo duplo só para cantoneira (2L); '{d[campo]}' é {forma}")
     med["secao"] = "2L" if d[f"arranjo{s}"] == "dupla" else forma
+    med.setdefault("formado", False)   # U dobrado (parede fina): checagens da NBR 14762 em _membro
     return {k + s: v for k, v in med.items()}
 
 
@@ -435,8 +442,43 @@ def _vf(nome, sd, rd, unidade, item):
     if not (math.isfinite(rd) and rd > 0):
         raise ValueError(f"{nome}: resistência {rd:g} ≤ 0 — geometria ou dados inválidos")
     t = float(sd / rd)
-    return dict(nome=nome, item=_PRE + item, solicitante=float(sd), resistente=float(rd), unidade=unidade,
-                taxa=t, ok=t <= 1 + 1e-9)
+    return dict(nome=nome, item=item if item.startswith("NBR 14762") else _PRE + item, solicitante=float(sd),
+                resistente=float(rd), unidade=unidade, taxa=t, ok=t <= 1 + 1e-9)
+
+
+# ---------------------------------------------------------------- U dobrado (parede fina, NBR 14762) — W12-OUT
+G14_RUP, G14_RUP0 = 1.65, 1.35   # NBR 14762:2010 9.6.2 c) ruptura da seção líquida na ligação; b) fora da ligação
+G14_LIG = 1.65                   # contato/rasgamento/solda em chapa fina: φ = 0,60 do AISI S100 (1/0,60 ≈ 1,65), a favor
+MF_SEM_ARRUELA = 0.75            # AISI S100 E3.3 tab. E3.3-2: cisalhamento simples sem arruelas (a favor da segurança)
+
+
+def coef_Ct_frio(ec, lc):
+    """NBR 14762:2010 9.6.3 (= AISI S100 E5.2): perfil aberto ligado só por um elemento (U pela alma), Ct = 1 − 1,2·x̄/ℓ ≤
+    0,90, x̄ = excentricidade (face de contato → centroide) e ℓ = distância entre o primeiro e o último parafuso (ou o
+    comprimento dos filetes) na direção da força. → (Ct, nota). Ct < 0,60: aumente ℓ. [item da edição a conferir]"""
+    ct = min(1 - 1.2 * ec / lc, 0.90)
+    return ct, ("Ct < 0,60: aumente o comprimento da ligação" if ct < 0.60 else "")
+
+
+def _contato_fino(rot, F, k, nl, np_, sp, e1, db, dh, t, fu):
+    """U dobrado: pressão de contato e rasgamento por parafuso na parede fina. Contato Fc = mf·C·db·t·fu/γ (AISI S100 E3.3:
+    C = 3,0 se db/t < 10; 4 − 0,1·db/t até 22; 1,8 acima; mf = 0,75 sem arruelas) e rasgamento Fe = e·t·fu/γ (E3.1, e do
+    centro do furo à borda do furo vizinho ou à ponta), γ = 1,65. A resistência vale o MENOR dos dois por parafuso."""
+    dt = db / t
+    C = 3.0 if dt < 10 else 4 - 0.1 * dt if dt <= 22 else 1.8
+    fc = MF_SEM_ARRUELA * C * db * t * fu / G14_LIG
+    por_linha = [min(fc, e1 * t * fu / G14_LIG)] + [min(fc, (sp - dh / 2) * t * fu / G14_LIG)] * (np_ - 1)
+    return _vf(f"barra{rot}: contato e rasgamento na parede fina (t = {t / MM:.2f} mm)", k * F, nl * sum(por_linha), "kN",
+               "NBR 14762:2010 9.5 (= AISI S100 E3.1/E3.3; fórmulas e γ a conferir)")
+
+
+def _solda_fina(rot, nm, li, Fi, t, fu):
+    """U dobrado: filete longitudinal na parede fina, AISI S100 J2.2 b): Pn = (1 − 0,01·L/t)·t·L·fu (L/t < 100) ou
+    0,75·t·L·fu, γ = 1,65 (φ = 0,60)."""
+    r = li / t
+    Pn = (1 - 0.01 * r if r < 100 else 0.75) * t * li * fu
+    return _vf(f"solda{rot}: parede fina do perfil, filete {nm}", Fi, Pn / G14_LIG, "kN",
+               "NBR 14762:2010 (= AISI S100 J2.2 b; item a conferir)")
 
 
 def _de_legado(x):
@@ -514,8 +556,17 @@ def _membro(d, s, N, c, v, av, rot=""):
     tg, db, dn, dh = c["tg"], c["db"], c["dn"], c["dh"]
     info = dict(sec=sec, a=a, b=b, t=t, tf=tf, A=A, ec=ec, npf=npf, parafusos=[], soldas=[])
     tracao = N > 0
+    frio = sec == "U" and bool(d.get(f"formado{s}"))   # W12-OUT: U dobrado (parede fina) → NBR 14762 na barra
+    if frio:
+        av.append(f"barra{rot}: U dobrado (t = {t / MM:.2f} mm): escoamento pela NBR 8800 5.2.2 a) (γ = 1,10, igual à NBR "
+                  "14762 9.6.2 a); seção líquida com Ct = 1 − 1,2·x̄/ℓ e γ = 1,65; contato, rasgamento e solda na parede "
+                  "fina por AISI S100 E3/J2.2 (NBR 14762, itens a conferir). Compressão, flambagem local/distorcional e "
+                  "esbeltez da barra: verifique à parte (NBR 14762)")
     if tracao:
         v.append(_vf(f"barra{rot}: escoamento da seção bruta", F, npf * A * fy / GA1, "kN", "5.2.2 a)"))
+        if frio:
+            v.append(_vf(f"barra{rot}: ruptura da seção bruta fora da ligação", F, npf * A * fu / G14_RUP0, "kN",
+                         "NBR 14762:2010 9.6.2 b)"))
     if g_("ligacao") == "parafusada":
         if sec not in ("L", "2L", "U"):
             raise ValueError(f"secao{s} = {sec}: ligação parafusada só para L, 2L e U (tubo/barra: soldada)")
@@ -542,8 +593,15 @@ def _membro(d, s, N, c, v, av, rot=""):
               _vf(f"parafusos{rot}: contato no perfil", k * F, nl * npf * sum(fcm), "kN", "6.3.3.3"),
               _vf(f"parafusos{rot}: grupo Σ min(Fv; Fc)", k * F,
                   nl * sum(min(planos * FvRd, x, npf * y) for x, y in zip(fcg, fcm)), "kN", "6.3.3.2 / 6.3.3.3")]
+        if frio:   # a pressão de contato da NBR 8800 6.3.3.3 acima não vale na parede fina: soma-se a da NBR 14762
+            v.append(_contato_fino(rot, F, k, nl, np_, sp, e1, db, dh, t, fu))
         if tracao:
-            if np_ == 1:
+            if frio:   # U dobrado: Ct = 1 − 1,2·x̄/ℓ e γ = 1,65 (NBR 14762 9.6.2 c / 9.6.3)
+                if np_ == 1:
+                    raise ValueError(f"barra{rot}: U dobrado tracionado e parafusado precisa de 2 ou mais parafusos por "
+                                     "linha (Ct = 1 − 1,2·x̄/ℓ pede ℓ > 0, NBR 14762 9.6.3)")
+                ct, nota = coef_Ct_frio(ec, lc)
+            elif np_ == 1:
                 ct, nota = 0.60, "1 parafuso por linha: Ct = 0,60 (5.2.5 pede lc; prefira ≥ 2 parafusos)"
             else:
                 ct, nota = coef_Ct(sec, ec, lc)
@@ -551,8 +609,9 @@ def _membro(d, s, N, c, v, av, rot=""):
                 av.append(f"barra{rot}: {nota}")
             An = A - nl * dn * t
             info["Ct"] = ct
-            v.append(_vf(f"barra{rot}: ruptura da seção líquida (Ct = {ct:.3f})", F, npf * ct * An * fu / GA2, "kN",
-                         "5.2.2 b) / 5.2.3 / 5.2.5"))
+            v.append(_vf(f"barra{rot}: ruptura da seção líquida (Ct = {ct:.3f})", F,
+                         npf * ct * An * fu / (G14_RUP if frio else GA2), "kN",
+                         "NBR 14762:2010 9.6.2 c) / 9.6.3" if frio else "5.2.2 b) / 5.2.3 / 5.2.5"))
             v.append(_vf(f"barra{rot}: Ct ≥ 0,60", 0.60, ct, "-", "5.2.5"))
             Lv = e1 + lc
             Agv, Anv = Lv * t, (Lv - (np_ - 0.5) * dn) * t
@@ -624,6 +683,8 @@ def _membro(d, s, N, c, v, av, rot=""):
                 bt = L.beta_filete_longo(li, bs)
                 v.append(_vf(f"solda{rot}: filete {nm} (l = {li / MM:.0f} mm" + (f", β = {bt:.3f}" if bt < 1 else "")
                              + ")", Fi, Fw * bt * li, "kN", "6.2.5 / tabela 8" + (" / 6.2.2.2 d)" if bt < 1 else "")))
+                if frio:
+                    v.append(_solda_fina(rot, nm, li, Fi, t, fu))
         if sec != "barra_redonda":
             v += [_de_legado(L._minimo(f"solda{rot}: dimensão mínima", L.filete_minimo(min(t, tg)), bs,
                                        "6.2.6.2.1 / tabela 10", f"b_solda{s}")),
@@ -636,7 +697,7 @@ def _membro(d, s, N, c, v, av, rot=""):
                 ct, nota = coef_Ct(sec, ec, lc, D=a)
                 An = A - 2 * t * (tg + FOLGA_RASGO * MM)
             else:
-                ct, nota = coef_Ct(sec, ec, lc)
+                ct, nota = coef_Ct_frio(ec, lc) if frio else coef_Ct(sec, ec, lc)
                 An = A
             if nota:
                 av.append(f"barra{rot}: {nota}")
@@ -1386,13 +1447,24 @@ def _base(entradas, perfis):
     return d
 
 
+def _face_u(pr, face):
+    """W12-OUT: distância do ponto de trabalho (eixo da barra, no centroide) à face do U/Ue onde o gusset é soldado (m).
+    "mesa" (padrão): a face externa da mesa, h/2 — o U com as mesas para fora do plano do gusset, o filete duplo cai na
+    mesa (como no I). "alma": a face de trás da alma, xg — o U com a alma voltada ao gusset (mesas para dentro do apoio)."""
+    return pr["xg"] if face == "alma" else pr["h"] / 2
+
+
 def _de_catalogo(perfis, d):
-    """eb/ec pela meia altura dos perfis do catálogo (perfil_viga, perfil_pilar), se informados."""
-    for chave, campo in (("perfil_viga", "eb"), ("perfil_pilar", "ec")):
+    """eb/ec pela meia altura dos perfis do catálogo (perfil_viga, perfil_pilar), se informados. U/Ue: a face soldada é a da
+    mesa (h/2) ou a de trás da alma (xg), escolhida em `face_u_viga` / `face_u_pilar` ("mesa" | "alma"; padrão "mesa")."""
+    for chave, campo, fc in (("perfil_viga", "eb", "face_u_viga"), ("perfil_pilar", "ec", "face_u_pilar")):
         if (perfis or {}).get(chave) and campo in d and not (perfis or {}).get(campo):   # informado vence (G6)
             pr = L.perfil_pontas(perfis[chave])   # nome do catálogo ou medidas {d, bf, tw, tf} (composto, G6)
             if pr:
-                d[campo] = pr["h"] / 2 / MM
+                face = str((perfis or {}).get(fc) or "mesa").lower()
+                if face not in ("mesa", "alma"):
+                    raise ValueError(f"{fc}: use 'mesa' ou 'alma', recebido {face!r}")
+                d[campo] = (_face_u(pr, face) if pr.get("tipo") in ("U", "Ue") else pr["h"] / 2) / MM
 
 
 def _std_parafuso(d, sfx_list):
@@ -1411,8 +1483,9 @@ def _std_parafuso(d, sfx_list):
         d[f"e_gusset{s}"] = max(d.get(f"e_gusset{s}") or 0, math.ceil(emin / 5) * 5)
 
 
-def _buscar(fn, d, passos, esforcos):
-    ultimo = None
+def _buscar(fn, d, passos, esforcos, alvo=None):
+    """Primeiro passo que passa; com `alvo` (W12-OUT, U dobrado: 0,90), o primeiro com taxa ≤ alvo, senão o primeiro que passa."""
+    ultimo = primeiro_ok = None
     for p in passos:
         cand = dict(d, **p)
         try:
@@ -1421,8 +1494,10 @@ def _buscar(fn, d, passos, esforcos):
             continue
         ultimo = cand
         if r["ok"]:
-            return cand
-    return ultimo or d
+            if alvo is None or r["taxa"] <= alvo:
+                return cand
+            primeiro_ok = primeiro_ok or cand
+    return primeiro_ok or ultimo or d
 
 
 _TG = (6.3, 8.0, 9.5, 12.5, 16.0, 19.0, 22.4, 25.0)
@@ -1455,7 +1530,22 @@ def _prep_barra(d, s, campo):
     if med["forma"] == "L":
         d[f"g_aba{s}"] = d.get(f"g_aba{s}") or gabarito_usual(med["dim_a"])
     d[f"t_perfil{s}"] = med["t_perfil"]
+    d[f"formado{s}"] = bool(med.get("formado"))   # U dobrado: o diâmetro e a borda e1 saem da janela da parede fina
     return med["t_perfil"]
+
+
+def _diametro_frio(d, perfis, sfx):
+    """W12-OUT: U dobrado (parede fina, t ≈ 3 mm): a borda e1 precisa ficar entre emin/0,9 e 0,9·12t (tab. 14 e 6.3.12, com a
+    folga de 10 %); com ⅝" (emin 29 mm) e t = 3 mm a janela [32,2; 32,4] não admite borda em mm inteiros → ½" (emin 22 mm).
+    Só troca o diâmetro padrão: o informado pelo projetista vale."""
+    tf = [d[f"t_perfil{s}"] for s in sfx if d.get(f"formado{s}")]
+    if not tf or (perfis or {}).get("d_mm"):
+        return
+    for dm in (15.875, 12.7):
+        d["d_mm"] = dm
+        emin = L.distancia_min_borda(dm * MM, d.get("borda_laminada", False)) / MM
+        if math.ceil(emin / 0.9) <= 0.9 * min(12 * min(tf), 150):
+            return
 
 
 def _bordas_folga(d, sfx):
@@ -1467,6 +1557,8 @@ def _bordas_folga(d, sfx):
             d[f"b_solda{s}"] = max(bmin, min(d[f"b_solda{s}"], math.floor(0.9 * L.filete_maximo(t * MM) / MM)))
         for k in ("e1", "e_gusset"):
             d[f"{k}{s}"] = max(d[f"{k}{s}"], math.ceil((emin + 3) / 5) * 5)
+        if t and d.get(f"formado{s}"):   # janela estreita da parede fina: e1 em mm inteiros, ≥ emin/0,9 (taxa ≤ 0,90)
+            d[f"e1{s}"] = math.ceil(max(emin / 0.9, emin + 3))
 
 
 def sugerir_gusset(perfis, esforcos):
@@ -1477,11 +1569,13 @@ def sugerir_gusset(perfis, esforcos):
     d["t_gusset"] = d.get("t_gusset") or next((x for x in _TG if x >= max(tmin, 8.0) - 0.1), 8.0)
     if not novo and d["secao"] in ("tubo_circular", "tubo_retangular", "barra_redonda"):
         d["ligacao"] = "soldada"
+    if novo:
+        _diametro_frio(d, perfis, [""])
     _std_parafuso(d, [""])
     if novo:
         _bordas_folga(d, [""])
     passos = [p for p in _passos([""], {"": d["ligacao"]}, (6.0, 8.0, 10.0, 12.0)) if p["t_gusset"] >= tmin - 0.1]
-    return _buscar(verificar_gusset, d, passos, esforcos)
+    return _buscar(verificar_gusset, d, passos, esforcos, 0.90 if d.get("formado") else None)
 
 
 def sugerir_no(perfis, esforcos):
@@ -1497,12 +1591,14 @@ def sugerir_no(perfis, esforcos):
         for s in ativos:
             if d[f"secao{s}"].startswith("tubo"):
                 d[f"ligacao{s}"] = "soldada"
+    if novo:
+        _diametro_frio(d, perfis, ativos)
     _std_parafuso(d, ativos)
     if novo:
         _bordas_folga(d, ativos)
     passos = [p for p in _passos(ativos, {s: d[f"ligacao{s}"] for s in ativos}, (5.0, 6.0, 8.0))
               if p["t_gusset"] >= tmin - 0.1]
-    return _buscar(verificar_no_trelica, d, passos, esforcos)
+    return _buscar(verificar_no_trelica, d, passos, esforcos, 0.90 if any(d.get(f"formado{s}") for s in ativos) else None)
 
 
 DIAMETROS_BARRA_MM = (9.525, 12.7, 15.875, 19.05, 22.225, 25.4, 28.575, 31.75, 34.925, 38.1, 41.275, 44.45,
