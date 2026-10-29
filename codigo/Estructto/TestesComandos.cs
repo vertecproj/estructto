@@ -114,6 +114,20 @@ namespace NovoFtool
             int Cargas(string col) => (J(w)[col] as JsonArray)?.Count ?? 0;
             string antes;
 
+            // ================= linha de comando e barra de status =================
+            // AJUDA: a lista inteira fica legível no histórico (a caixa abre e a linha quebra; o toast cortava em 2 linhas e a linha na borda)
+            w.AbrirHistorico(false);
+            Cmd("AJUDA");
+            Ok("AJUDA abre o histórico da linha de comando", w.HistoricoCaixa.Visibility == Visibility.Visible);
+            Ok("histórico quebra linhas longas (lista do AJUDA não corta na borda)", w.Historico.TextWrapping == TextWrapping.Wrap && w.Historico.Text.Contains("Comandos: "));
+            Ok("histórico aberto não passa de 170 px (" + Math.Round(w.HistoricoCaixa.ActualHeight) + " px): a vista não some", w.HistoricoCaixa.ActualHeight <= 170 + 12);
+            w.AbrirHistorico(false);
+            // barra de status cortada na janela estreita: a dica mostra o texto inteiro
+            string st0 = w.StatusMsg.Text;
+            w.StatusMsg.Text = "Modelo espacial (motor) — 30 nós · 47 barras · 7 combinações · 19 barras não passam · pior: T1 330% (distorcional)";
+            Ok("barra de status: a dica mostra o texto inteiro", w.StatusMsg.ToolTip as string == w.StatusMsg.Text);
+            w.StatusMsg.Text = st0;
+
             // ================= apoios =================
             var t6 = new[] { true, true, true, true, true, true }; var art = new[] { true, true, true, false, false, false }; var mov = new[] { false, false, true, false, false, false }; var liv = new bool[6];
 

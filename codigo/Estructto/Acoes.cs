@@ -459,6 +459,13 @@ namespace NovoFtool
             else ExecutarComando("ESPELHAR");
         }
 
+        // Histórico da linha de comando (as últimas linhas, embaixo da vista): ▴/▾ e o AJUDA abrem
+        internal void AbrirHistorico(bool abrir)
+        {
+            HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed;
+            HistBtn.Content = abrir ? "▾" : "▴";
+        }
+
         void MostrarHistorico()
         {
             var j = new JanelaEscura { Title = "Histórico de comandos (F2)", Width = 760, Height = 480, Owner = this, ShowInTaskbar = false };
@@ -497,6 +504,7 @@ namespace NovoFtool
             historico.Add(s);
             if (historico.Count > 300) historico.RemoveAt(0);
             Historico.Text = string.Join("\n", historico.Skip(Math.Max(0, historico.Count - 8)));
+            HistoricoRolagem.ScrollToEnd();
             if (toast) MostrarToast(s);
         }
 

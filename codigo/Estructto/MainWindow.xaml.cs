@@ -71,7 +71,7 @@ namespace NovoFtool
             Hud = new HudVista(Vista, (d, calor) => MostrarDiagrama(d, calor), () => { try { return Vista.Resolvido ? "Mostrando: " + NomeResultado() : ""; } catch { return ""; } }, f => Escala(f));
             GridVista.Children.Add(Hud);
             Vista.SizeChanged += (s, e) => Hud.Compacto = Vista.ActualHeight < 340;
-            HistBtn.Click += (s, e) => { bool abrir = HistoricoCaixa.Visibility != Visibility.Visible; HistoricoCaixa.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed; HistBtn.Content = abrir ? "▾" : "▴"; Comando.Focus(); };
+            HistBtn.Click += (s, e) => { AbrirHistorico(HistoricoCaixa.Visibility != Visibility.Visible); Comando.Focus(); };
             NovoModelo(new Modelo(), null);
             Loaded += (s, e) => { Vista.ZoomTudo(); FocarVista(); };
             // recuperação só depois da janela aparecer: diálogo antes do primeiro quadro deixava a janela principal invisível

@@ -44,7 +44,7 @@
       <StackPanel x:Name="StatusBotoes" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0"/>
       <Button x:Name="SeloAvisos" DockPanel.Dock="Right" Margin="0,3,10,3" Padding="8,0" Cursor="Hand" Visibility="Collapsed"
               Background="{DynamicResource Status.WarnBg}" Foreground="{DynamicResource Status.Warn}" BorderBrush="{DynamicResource Status.Warn}" ToolTip="Abre o painel Avisos para ver erros ou alertas de cálculo e verificação."/>
-      <TextBlock x:Name="StatusMsg" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11" Foreground="{DynamicResource Text.Secondary}" TextTrimming="CharacterEllipsis" ToolTip="Resumo do estado atual do modelo, da seleção ou do último cálculo."/>
+      <TextBlock x:Name="StatusMsg" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11" Foreground="{DynamicResource Text.Secondary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
     </DockPanel>
 
     <Grid>
@@ -88,7 +88,10 @@
                   <!-- linha de comando: encaixada embaixo da vista (nao cobre o desenho); o histórico recolhe/expande -->
                   <StackPanel x:Name="LinhaComando" Grid.Row="1" Background="{DynamicResource Surface.1}">
                     <Border x:Name="HistoricoCaixa" Visibility="Collapsed" Background="{DynamicResource Surface.0}" BorderBrush="{DynamicResource Border.Subtle}" BorderThickness="0,1,0,0" Padding="12,5">
-                      <TextBlock x:Name="Historico" Foreground="{DynamicResource Text.Secondary}" FontFamily="{StaticResource Font.Mono}" FontSize="11"/>
+                      <!-- altura limitada: a lista do AJUDA quebrada em várias linhas não espreme a vista; rola e fica no fim (Log) -->
+                      <ScrollViewer x:Name="HistoricoRolagem" MaxHeight="170" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock x:Name="Historico" Foreground="{DynamicResource Text.Secondary}" FontFamily="{StaticResource Font.Mono}" FontSize="11" TextWrapping="Wrap"/>
+                      </ScrollViewer>
                     </Border>
                     <Border BorderBrush="{DynamicResource Border.Subtle}" BorderThickness="0,1,0,0" Height="30">
                       <DockPanel>

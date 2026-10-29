@@ -150,6 +150,30 @@ E2E-01 (a grade do novo projeto não aparecia na vista) já estava corrigido no 
 - **Status: corrigido.** `RelatorioMotor.ArqEmpresa` fica em `Config.Pasta` (agora `internal`: `%TEMP%\Estructto\config-automacao` na execução
   automática) e o `empresa.txt` só é regravado quando o texto muda. Único escritor: `RelatorioMotor.Empresa` (também via `Config.Opcoes.Empresa`).
 
+## Rodada com mouse e teclado reais (pywinauto/UI Automation, 28–29/10/2026)
+
+Suítes `--testes-*` todas passando. Achados dirigindo o exe como usuário (scripts fora do repositório). As suítes não cobrem os toasts,
+porque `Capturas.Ativo` os desliga.
+
+### UI-01 — Média — "Já existe …" some ao criar projeto com nome repetido
+- Passos: Novo projeto › Galpão › Avançar › nome de um `.json` que já existe na pasta › Avançar › Criar projeto.
+- Obtido: volta ao passo 2 sem mensagem nenhuma. `JanelaNovoProjeto.Avancar` gravava o erro e chamava `IrPasso(1)`, que zera `erro.Text`.
+- **Status: corrigido.** `ValidarProjeto` recusa o arquivo existente já ao sair do passo Projeto; o Criar guarda a mensagem, navega e a
+  repõe. `--testes-novo`: 2 conferências "diálogo:" (falhavam antes).
+
+### UI-02 — Baixa — Lista do AJUDA ilegível
+- Obtido: o toast corta em 2 linhas ("…verificação p…") e a linha do histórico corta na borda ("TR/APAR").
+- **Status: corrigido.** O histórico quebra linhas (`TextWrapping`). O `AJUDA` abre o histórico (`AbrirHistorico`) e não manda a lista ao toast.
+  `--testes-comandos`: 2 conferências.
+
+### UI-03 — Baixa — Barra de status cortada sem dica
+- Obtido: em 1440 px (e pior em 1000 px) o resumo do F5 termina em "…", e a dica era um texto fixo.
+- **Status: corrigido.** A dica mostra o texto inteiro (binding em `Text`). `--testes-comandos`: 1 conferência.
+
+Abertos (a conferir): Galpão padrão nasce com 19 barras reprovadas (terça T1 Ue 250x85x25x3,00, 330 % distorcional); o Galpão usa
+formados a frio, mas o novo projeto deixa a NBR 14762 desmarcada; projeto novo é `.json`, a tela inicial fala em `.pstr`; toast da
+Pratt diz "0 barras novas" depois de criar; tooltip de cartão da tela inicial vaza sobre o diálogo Novo projeto.
+
 ## Correções de hipótese da suíte (não são bugs)
 - `.ed3` sem resultados gravados pelo CYPE (`novo.ed3`, `PIPERACK TESTE 2.ed3`): o motor recusa a comparação, corretamente.
 - Edifício de aço: o motor dá B2 (NBR 8800 anexo D), não γz (NBR 6118, só concreto).

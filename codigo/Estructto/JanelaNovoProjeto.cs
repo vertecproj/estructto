@@ -231,7 +231,7 @@ namespace NovoFtool
         {
             if (passo == 1 && !ValidarProjeto()) return;
             if (passo < 2) { IrPasso(passo + 1); return; }
-            if (!ValidarProjeto()) { IrPasso(1); return; }
+            if (!ValidarProjeto()) { string msg = erro.Text; IrPasso(1); erro.Text = msg; return; }   // IrPasso limpa o erro: a mensagem volta depois
             GradeNiveis g;
             try { g = LerGrade(); } catch (FormatException ex) { erro.Text = "Confira os vãos: \"" + ex.Message + "\" não é \"n×valor\" nem um número."; return; }
             if (modelo.Gerador == null && modelo.Chave != "branco" && g.X.Count == 0 && g.Y.Count == 0) { erro.Text = "Informe ao menos um vão em X ou em Y."; return; }
@@ -240,7 +240,6 @@ namespace NovoFtool
                 Modelo = modelo, Grade = g, Nome = c["nome"].Text.Trim(), Pasta = c["pasta"].Text.Trim(), Cliente = c["cliente"].Text.Trim(), Engenheiro = c["engenheiro"].Text.Trim(), Empresa = c["empresa"].Text.Trim(),
                 Material = c["material"].Text.Trim(), Pilar = c["pilar"].Text.Trim(), Viga = c["viga"].Text.Trim(), Normas = normas.Where(kv => kv.Value.IsChecked == true).Select(kv => kv.Key).ToList(),
             };
-            if (File.Exists(Dados.Arquivo)) { erro.Text = "Já existe " + Path.GetFileName(Dados.Arquivo) + " nessa pasta: mude o nome ou a pasta."; IrPasso(1); return; }
             Config.Opcoes.PastaProjetos = Dados.Pasta;
             if (Dados.Engenheiro != "" && Config.Opcoes.Autor == "") Config.Opcoes.Autor = Dados.Engenheiro;
             if (Dados.Empresa != "" && Config.Opcoes.Empresa == "") Config.Opcoes.Empresa = Dados.Empresa;
@@ -252,6 +251,8 @@ namespace NovoFtool
             string nome = c["nome"].Text.Trim(), pasta = c["pasta"].Text.Trim();
             if (nome == "" || nome.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) { erro.Text = "Nome do projeto: obrigatório, sem \\ / : * ? \" < > |."; return false; }
             if (pasta == "" || pasta.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || !Path.IsPathRooted(pasta)) { erro.Text = "Pasta: informe um caminho completo (ex.: C:\\Projetos)."; return false; }
+            string arq = Path.Combine(pasta, nome + ".json");   // = NovoProjetoDados.Arquivo
+            if (File.Exists(arq)) { erro.Text = "Já existe " + Path.GetFileName(arq) + " nessa pasta: mude o nome ou a pasta."; return false; }
             return true;
         }
 

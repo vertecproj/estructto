@@ -109,7 +109,7 @@ namespace NovoFtool
             C("SALVAR", "Salvar (Ctrl+S)", w => Salvar(false), "SAVE", "QSAVE"),
             C("ASSISTENTE", "Gerar estrutura pelo assistente", w => AbrirAssistente(w.Length > 1 ? w[1].ToLowerInvariant() : null)).SemModeloOk(),
             C("ABA", "Ir para a aba da faixa: ABA nome", w => { foreach (var tab in Faixa.Tabs) if (w.Length > 1 && (tab.Header as string ?? "").StartsWith(w[1], StringComparison.OrdinalIgnoreCase)) Faixa.SelectedTabItem = tab; }).SemModeloOk(),
-            C("AJUDA", "Lista dos comandos", w => Log("Comandos: " + string.Join(" · ", Cmds3D.Select(c => (c.Alias.Length > 0 ? c.Alias[0] + "/" : "") + c.Nome)) + ". Pontos: x,y,z  @dx,dy,dz  ou o comprimento na direção do cursor."), "?").SemModeloOk(),
+            C("AJUDA", "Lista dos comandos", w => { Log("Comandos: " + string.Join(" · ", Cmds3D.Select(c => (c.Alias.Length > 0 ? c.Alias[0] + "/" : "") + c.Nome)) + ". Pontos: x,y,z  @dx,dy,dz  ou o comprimento na direção do cursor.", false); AbrirHistorico(true); }, "?").SemModeloOk(),   // lista longa: no histórico aberto, não no toast de 2 linhas
         };
 
         static Cmd3D C(string nome, string desc, Action<string[]> fazer, params string[] alias) => new Cmd3D { Nome = nome, Desc = desc, Fazer = fazer, Alias = alias };

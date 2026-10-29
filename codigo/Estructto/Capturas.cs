@@ -1285,9 +1285,9 @@ namespace NovoFtool
                 w.MostrarToast("Calculado — envoltória ELU (motor). Pior barra 62% (flexão).", true);
                 CapturarPrincipal(w, "38-toast");
                 w.Toast.Visibility = Visibility.Collapsed;
-                w.HistoricoCaixa.Visibility = Visibility.Visible;
+                w.ExecutarComando("AJUDA");   // abre o histórico com a lista longa (quebra de linha)
                 CapturarPrincipal(w, "39-historico");
-                w.HistoricoCaixa.Visibility = Visibility.Collapsed;
+                w.AbrirHistorico(false);
 
                 // 41) Relatório do motor (WebView2) com o anexo das placas pela ponte do pé de pilar (Legado3D.cs)
                 try

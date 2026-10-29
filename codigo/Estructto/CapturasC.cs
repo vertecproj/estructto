@@ -40,7 +40,7 @@ namespace NovoFtool
                 w.Comando.RaiseEvent(ev); EsperarIdle();
                 return ev.Handled;
             };
-            w.ExecutarComando("AJUDA");   // zera pedidos pendentes de capturas anteriores
+            w.ExecutarComando("AJUDA"); w.AbrirHistorico(false);   // zera pedidos pendentes de capturas anteriores (o AJUDA abre o histórico: recolhe)
             bool tratou = digitar("en", Key.Space);
             string h = w.Historico.Text;
             string relatorio = "tratou=" + tratou + " texto=[" + w.Comando.Text + "] candidatos 'en': " + string.Join(",", c1) + " · 'e': " + string.Join(",", c2) + " · histórico após 'en'+Espaço: " + h.Replace("\n", " | ");

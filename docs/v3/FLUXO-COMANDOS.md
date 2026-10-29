@@ -16,6 +16,9 @@ fluxo que quero". Agora **todo comando que age sobre objetos funciona nas duas o
     padrão entre `< >` (a última resposta vira o padrão); Enter/Espaço vazio ou botão direito aceita; resposta inválida
     pergunta de novo, com o motivo no histórico. O valor também pode vir na linha (`SECAO W310x38.7`, `GIRO 90`, `CD 0,0,-2`).
 - A linha de comando mostra o mesmo pedido da etiqueta da vista (antes mostrava a dica do antigo 2D).
+- Histórico (▴/▾ embaixo da vista, últimas 8 linhas, até 170 px com rolagem no fim): as linhas longas quebram em vez de cortar na borda. `AJUDA` abre o histórico
+  e põe a lista lá (o toast corta em 2 linhas). A barra de status, cortada com "…" em janela estreita, mostra o texto inteiro na
+  dica (29/10/2026). Testes: `--testes-comandos` (seção "linha de comando e barra de status").
 
 Código: `Comandos3D.cs` (`ComEscolha`, `PedirValor`, comandos), `Vista3D.Grips.cs` (`PedirSelecao`, `PedirValor`, filtro e
 pré-realce), `GeometriaEdicao.Apoio/Rotulas/Cardinal` (`EdicaoEspacial.cs`, testadas em `--testes-edicao`).

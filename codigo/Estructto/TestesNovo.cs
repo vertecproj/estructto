@@ -49,6 +49,22 @@ namespace NovoFtool
                     Grava();
                     w.FecharEspaciaisSemPerguntar();
                 }
+                // diálogo com nome que já existe (teste-novo-1.json, criado acima): avisa no passo Projeto; no Criar volta ao passo Projeto
+                // com a mensagem (antes, IrPasso apagava o erro e o usuário voltava ao passo 2 sem aviso)
+                {
+                    var j = new JanelaNovoProjeto(w, "edificio") { Owner = w };
+                    PrepararDialogoForaDaTela(j); j.Show();
+                    var cj = (System.Collections.Generic.Dictionary<string, System.Windows.Controls.TextBox>)typeof(JanelaNovoProjeto).GetField("c", Todos).GetValue(j);
+                    string Erro() => ((System.Windows.Controls.TextBlock)typeof(JanelaNovoProjeto).GetField("erro", Todos).GetValue(j)).Text;
+                    int Passo() => (int)typeof(JanelaNovoProjeto).GetField("passo", Todos).GetValue(j);
+                    void Confere(string nome, bool ok) { if (!ok) falhas++; sb.AppendLine((ok ? "ok    " : "FALHA ") + nome + " (passo " + (Passo() + 1) + ", erro \"" + Erro() + "\")"); }
+                    j.IrPasso(1); cj["nome"].Text = "teste-novo-1"; cj["pasta"].Text = Path.Combine(pastaSaida, "projetos");
+                    PrivCall(j, "Avancar"); EsperarIdle();
+                    Confere("diálogo: nome repetido avisa já no passo Projeto", Passo() == 1 && Erro().Contains("Já existe teste-novo-1.json"));
+                    j.IrPasso(2); PrivCall(j, "Avancar"); EsperarIdle();
+                    Confere("diálogo: Criar com nome repetido volta ao passo Projeto com a mensagem", Passo() == 1 && Erro().Contains("Já existe teste-novo-1.json") && j.Dados == null);
+                    j.Close();
+                }
                 tempos.Sort(); long med = tempos.Count > 0 ? tempos[tempos.Count / 2] : 0;
                 bool medOk = med < 2500; if (!medOk) falhas++;
                 sb.AppendLine((medOk ? "ok    " : "FALHA ") + "mediana " + med + " ms (teto 2500; meta 2000 em máquina ociosa)");

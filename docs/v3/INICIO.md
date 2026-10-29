@@ -44,7 +44,9 @@ Arquivo › Novo e os cartões chamam `MainWindow.NovoProjeto(modelo)`.
 
 Separador de lista é espaço ou `;` (vírgula é decimal). Nos modelos de galpão e treliça os rótulos mudam: vão, módulos
 (espaçamento), pé-direito + acréscimo até a cumeeira. Esc/Cancelar sempre fecha; Enter avança/cria; erros aparecem no rodapé
-(nome inválido, pasta relativa, arquivo já existente, vão não numérico).
+(nome inválido, pasta relativa, arquivo já existente, vão não numérico). Arquivo já existente é recusado já ao avançar do passo
+Projeto (`ValidarProjeto`); se ele aparecer entre o passo 2 e o Criar, o Criar volta ao passo Projeto com a mensagem (antes de
+29/10/2026, `IrPasso` apagava o erro e o usuário voltava ao passo 2 sem aviso). Teste: `--testes-novo` ("diálogo: nome repetido…").
 
 **Criar** (`Inicio.Acoes.Novo`): `POST /api/modelo/novo` → `POST /api/gerar-estrutura` (se o modelo tem barras) → `POST /api/modelo/lote`
 com os níveis da grade que o gerador não criou (pavimentos `N+3,50`…) e as cargas G/Q nas vigas → `PATCH /api/config`
