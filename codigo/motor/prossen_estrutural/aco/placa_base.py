@@ -43,6 +43,8 @@ LIMITACOES = (
     'Barra de cisalhamento: sem cone de corte à frente (ACI 349) e sem solda da barra.',
     'Catálogo pós-instalado: interação 5/3 e correção √fck são hipóteses de projeto; reduções WQA não calculadas.',
     'Solda de contorno pelo modelo legado (tensão admissível); sem 4b/40 mm nem máximo t−1,5 mm.',
+    'Penetração total: metal-base = parede do pilar (fy_pilar); face da chapa (tração na espessura, lamelar) não verificada.',
+    'Pilar na base: só a seção (5.5.1.2, χ = 1, Lb = 0); flambagem e FLT da barra ficam na verificação do pilar.',
     'Barra inclinada fora do modelo de chapa e solda.',
 )
 DIAMETROS_MM = (8, 10, 12, 14, 16, 20, 24, 30, 36)
@@ -187,6 +189,9 @@ def esquema_placa_base():
         ('lug_h', 'm', 'barra de cisalhamento: altura embutida no concreto', 0),
         ('graute', 'm', 'espessura do graute', 0),
         ('arruela_soldada', '', 'arruela soldada: todos os chumbadores trabalham ao corte', False),
+        # docs/PLACA-BASE-PILAR-SOLDA.md: pilar na base e solda de penetração total
+        ('fy_pilar', 'kN/m²', 'escoamento do aço do pilar; 0 = o do material do modelo (sem material: pilar não verificado)', 0),
+        ('solda_tipo', '', 'filete (perna em solda) ou penetracao (penetração total, resistência do metal-base)', 'filete'),
     ]
     out = [dict(nome=n, unidade=u, descricao=t, padrao=p) for n, u, t, p in campos]
     for c in out:
@@ -198,6 +203,8 @@ def esquema_placa_base():
             c['opcoes'] = ['', 'estatica', 'variavel', 'dinamica', 'choque']
         elif c['nome'] == 'risco':
             c['opcoes'] = ['', 'baixo', 'alto']
+        elif c['nome'] == 'solda_tipo':
+            c['opcoes'] = ['filete', 'penetracao']
     return out
 
 
@@ -207,10 +214,10 @@ def _dados(dados):
     nomes = ('H', 'B', 'esp', 'borda', 'sobra', 'fileiras', 'por_fileira', 'diametro_mm',
              'fy_chapa', 'fck', 'seguranca', 'seguranca_modelo', 'coef_chumbador', 'solda',
              'fu_chapa', 'bloco_H', 'bloco_B', 'bloco_altura', 'hef', 'abrg', 'fub_chumbador', 'fyb_chumbador',
-             'atrito', 'lug_b', 'lug_t', 'lug_h', 'graute')
+             'atrito', 'lug_b', 'lug_t', 'lug_h', 'graute', 'fy_pilar')
     d.update(_numeros({k: d[k] for k in nomes}, positivos=('seguranca_modelo', 'diametro_mm'),
                      nao_negativos=('esp', 'borda', 'sobra', 'solda', 'bloco_H', 'bloco_B', 'bloco_altura', 'hef',
-                                    'abrg', 'atrito', 'lug_b', 'lug_t', 'lug_h', 'graute'),
+                                    'abrg', 'atrito', 'lug_b', 'lug_t', 'lug_h', 'graute', 'fy_pilar'),
                      inteiros=('fileiras', 'por_fileira')))
     return d
 
@@ -593,13 +600,89 @@ def seguranca_solda(tau, tau_adm):
                 criterio='n = 0,577·FEXX / τ ≥ 0,577/0,30 ≈ 1,92 (equivale a τ ≤ 0,30·FEXX; informativo)')
 
 
-def perna_minima_contorno(secao, dados, esforcos):
+def pernas_filete(t):
+    """Pernas candidatas (m) para parede t (m): as da tabela ≤ t e a própria t arredondada para baixo a 0,5 mm
+    (tubo 9,5 → ..., 8, 9,5). Sem t (≤ 0): a tabela inteira. Limite prático h ≤ t da parede (verificar_solda_contorno)."""
+    if t <= 0:
+        return PERNAS
+    hs = [h for h in PERNAS if h <= t+1e-12]
+    tt = math.floor(round(t*2000, 6))/2000
+    return tuple(hs + ([tt] if tt > 0 and all(abs(tt-h) > 1e-9 for h in hs) else []))
+
+
+def perna_minima_contorno(secao, dados, esforcos, ate_parede=False):
+    """Menor perna que passa na tensão e no mínimo de norma (0 = nenhuma). ate_parede: só pernas ≤ parede (pernas_filete),
+    usado na escolha automática; sem ele a busca ignora a parede (só referência ``h_min``)."""
     d = _dados(dados)
-    for h in PERNAS:
+    pernas = pernas_filete(_solda(secao, d, esforcos, PERNAS[0])['espessura']) if ate_parede else PERNAS
+    for h in pernas:
         r = _solda(secao, d, esforcos, h)
         if h >= r['h_min_norma']-1e-12 and r['Ap'] <= 1:
             return h
     return 0.
+
+
+def _sec_mat(secao, fy):
+    """Seção (A + props) e aço para as funções de nbr8800 (E = 200 GPa, G = 77 GPa, NBR 8800 4.5.2.9)."""
+    from types import SimpleNamespace as NS
+    p = dict(secao.props if hasattr(secao, 'props') else secao)
+    A = p.get('A') or getattr(secao, 'A', 0)
+    if not A or A <= 0:
+        raise ValueError('seção do pilar sem área A: pilar não verificado')
+    return NS(A=A, props=p), NS(fy=fy, fu=1.25*fy, E=2e8, G=7.7e7)
+
+
+def resistencia_pilar(secao, fy):
+    """Resistências da seção do pilar NA BASE (kN, kN·m): NRd = Q·A·fy/γa1 (5.3.2 com χ = 1: sem flambagem global, a
+    base é a seção de ligação; Q do anexo F), MxRd/MyRd pela classe do perfil (5.4.2 / anexo G com Lb = 0: sem FLT,
+    com FLM/FLA), VyRd/VxRd (5.4.3). Seção fora do escopo de nbr8800 → ValueError."""
+    from . import nbr8800 as nb
+    sec, mat = _sec_mat(secao, fy)
+    try:
+        Q = nb.fator_Q(sec, mat)[0]
+        mx, my = nb.flexao_x(sec, mat, 0.)['MRd'], nb.flexao_y(sec, mat)['MRd']
+        vy, vx = nb.cortante_y(sec, mat)['VRd'], nb.cortante_x(sec, mat)['VRd']
+    except (NotImplementedError, KeyError) as exc:
+        raise ValueError(f'pilar fora do escopo da NBR 8800 implementada ({exc})') from None
+    return dict(NRd=Q*sec.A*fy/GA1, Q=Q, MxRd=mx, MyRd=my, VyRd=vy, VxRd=vx, fy=fy)
+
+
+MSG_PILAR = 'O pilar não resiste aos esforços na base (taxa {}): troque o perfil ou o aço — nenhuma placa resolve.'
+
+
+def verificar_pilar_base(secao, fy, N, Mx, My=0.):
+    """Flexo-compressão (ou flexo-tração) da seção do pilar na base, NBR 8800 5.5.1.2: NSd/NRd ≥ 0,2 →
+    N/NRd + 8/9·(Mx/MxRd + My/MyRd); senão N/(2·NRd) + Mx/MxRd + My/MyRd. Mx = eixo forte (My local do modelo),
+    My = eixo fraco. NRd de ``resistencia_pilar`` (seção, sem flambagem: a flambagem da barra é da verificação do pilar)."""
+    from . import nbr8800 as nb
+    r = resistencia_pilar(secao, fy)
+    taxa = nb.interacao(N, r['NRd'], Mx, r['MxRd'], My, r['MyRd'])
+    v = _v('pilar: flexo-compressão na base', taxa, 1., '', 'NBR 8800 5.5.1.2 (seção na base, χ = 1)')
+    return dict(r, taxa=taxa, ok=taxa <= 1, N=N, Mx=Mx, My=My, verificacao=v,
+                mensagem='' if taxa <= 1 else MSG_PILAR.format(f'{taxa:.2f}'.replace('.', ',')))
+
+
+def verificar_solda_penetracao(secao, dados, esforcos):
+    """Solda de penetração total pilar–placa em todo o contorno (NBR 8800 6.2.5.1, tabela 8: tração/compressão normal
+    ao eixo e cisalhamento → resistência do METAL-BASE). Metal-base = parede do pilar (fy_pilar; sem ele, fy_chapa).
+    N + M no plano: |N|/NRd + |M|/MRd ≤ 1 (soma linear das tensões na parede, N/A + M/Z para seção compacta — o MRd é o da
+    classe do perfil, Lb = 0); cortante |V| ≤ VRd. Esforços LOCAIS da barra; M no eixo do perfil indicado por eixo_fraco."""
+    d = _dados(dados)
+    s = _secao(secao)
+    e = _numeros({k: esforcos[k] for k in ('N', 'V', 'M')})
+    fy = d['fy_pilar'] if d['fy_pilar'] > 0 else (d['fy_chapa'] if d['fy_chapa'] > 0 else 250000)
+    rp = resistencia_pilar(secao, fy)
+    fraco = bool(d['eixo_fraco'])
+    MRd, VRd = (rp['MyRd'], rp['VxRd']) if fraco else (rp['MxRd'], rp['VyRd'])
+    taxa = abs(e['N'])/rp['NRd'] + abs(e['M'])/MRd
+    item = 'NBR 8800 6.2.5.1 tab. 8 (metal-base da parede)'
+    v = [_v('solda: penetração total — N + M no metal-base', taxa, 1., '', item + ' + 5.4.2'),
+         _v('solda: penetração total — cortante no metal-base', abs(e['V']), VRd, 'kN', item + ' + 5.4.3')]
+    r = _resultado(v)
+    t = min(s['tf'], s['tw']) if s['tipo'] in ('I', 'U', 'Ue') else s['tw']
+    r.update(tipo='penetracao', h=0., espessura=t, fy_metal_base=fy, NRd=rp['NRd'], MRd=MRd, VRd=VRd,
+             eletrodo=_eletrodo(d.get('eletrodo')), passa=r['ok'], h_min=0., recortada=False)
+    return r
 
 
 def verificar_solda_contorno(secao, dados, esforcos):
@@ -627,7 +710,7 @@ def verificar_solda_contorno(secao, dados, esforcos):
 
 def diagnosticar_solda(secao, dados, esforcos):
     d = _dados(dados)
-    diag = dict(porque='', o_que_fazer='', eletrodo='', perna=0., perna_max=0., sem_solucao=False, passa=True)
+    diag = dict(porque='', o_que_fazer='', eletrodo='', perna=0., perna_max=0., sem_solucao=False, passa=True, penetracao=False)
     try:
         _secao(secao)
     except ValueError as exc:
@@ -647,15 +730,18 @@ def diagnosticar_solda(secao, dados, esforcos):
                       'perna abaixo do mínimo de norma' if r['abaixo_minimo'] else 'tensão acima do admissível')
     eletrodos = list(ELETRODOS)
     for el in eletrodos[eletrodos.index(r['eletrodo']):]:
-        for h in PERNAS:
-            if h < hn-1e-12 or (t > 0 and h > t+1e-12):
+        for h in pernas_filete(t):
+            if h < hn-1e-12:
                 continue
             rr = _solda(secao, dict(d, eletrodo=el), esforcos, h)
             if rr['Ap'] <= 1:
                 diag.update(eletrodo=el, perna=h, o_que_fazer=f'Use {el} com perna de {h*1000:g} mm.')
                 return diag
-    diag.update(perna_max=min(t, .025) if t > 0 else .025, sem_solucao=True,
-                o_que_fazer='Nenhuma perna da tabela que cabe passa com E120; use pilar maior, nervuras ou detalhe à parte.')
+    hmax = pernas_filete(t)[-1]
+    diag.update(perna_max=hmax, sem_solucao=True, penetracao=True,
+                porque=f"sem filete possível: nem a maior perna que cabe na parede ({hmax*1000:g} mm) passa com E120 "
+                       "(filete ≤ parede não desenvolve a parede: garganta 0,707·t)".replace('.', ','),
+                o_que_fazer='Use solda de penetração total (resistência do metal-base da parede), nervuras no pé ou pilar maior.')
     return diag
 
 
@@ -1073,6 +1159,17 @@ def verificar_placa_base(dados, esforcos, secao):
     g = geometria_placa(d, secao)
     e = _numeros({k: esforcos.get(k) for k in ('N', 'V', 'M')}, nao_negativos=('V',))
     avisos = list(esforcos.get('avisos', []))
+    # pilar na base (NBR 8800 5.5.1.2): M_forte/M_fraco dos dois eixos (casos_biaxiais); sem eles, o M deste eixo
+    pilar = None
+    if d['fy_pilar'] > 0:
+        mf = esforcos.get('M_forte', 0. if d['eixo_fraco'] else e['M'])
+        mw = esforcos.get('M_fraco', e['M'] if d['eixo_fraco'] else 0.)
+        try:
+            pilar = verificar_pilar_base(secao, d['fy_pilar'], e['N'], mf, mw)
+            if not pilar['ok']:
+                avisos.append(pilar['mensagem'])
+        except ValueError as exc:
+            avisos.append(f'Pilar na base não verificado: {exc}')
     su = _secao(secao)
     if su['tipo'] in _TIPOS_U:
         # W12-OUT: placa centrada na CAIXA do U (b × h), N e M no centroide do perfil, a ecc = |b/2 − xg| do centro da placa.
@@ -1164,13 +1261,25 @@ def verificar_placa_base(dados, esforcos, secao):
     avisos += fix['avisos']+chapa['avisos']
     if inclinada:
         avisos.append('Barra inclinada: chapa e solda não verificadas.')
+    elif barra is not None and str(d['solda_tipo']).strip().lower().startswith('penetra'):
+        try:
+            solda = verificar_solda_penetracao(secao, d, barra)
+        except ValueError as exc:
+            avisos.append(f'Solda de penetração total não verificada: {exc}')
     elif barra is not None:
-        if d['solda'] == 0:
-            d['solda'] = perna_minima_contorno(secao, d, barra)
-        if d['solda'] > 0:
-            solda = verificar_solda_contorno(secao, d, barra)
-        else:
-            avisos.append('Nenhuma perna comercial atende à tensão da solda.')
+        sem_filete = False
+        if d['solda'] == 0:   # automática: nunca acima da parede (pernas_filete)
+            d['solda'] = perna_minima_contorno(secao, d, barra, ate_parede=True)
+            if d['solda'] == 0:
+                sem_filete = True
+                d['solda'] = pernas_filete(_solda(secao, d, barra, PERNAS[0])['espessura'])[-1]
+        solda = verificar_solda_contorno(secao, d, barra)
+        if sem_filete:
+            solda['sem_filete'] = True
+            solda['verificacoes'][0]['nome'] = 'solda: sem filete possível (use penetração total)'
+            hm = f"{d['solda']*1000:g}".replace('.', ',')
+            avisos.append(f"Sem filete possível: nenhuma perna até a parede ({hm} mm) passa; filete ≤ parede "
+                          "não desenvolve a parede (garganta 0,707·t). Use solda de penetração total.")
     else:
         avisos.append('Solda não verificada: forneça esforços locais da barra.')
     if esforcos.get('sismo') or d.get('sismo'):
@@ -1179,9 +1288,11 @@ def verificar_placa_base(dados, esforcos, secao):
     if f['modelo'] in ('Bloco sem solução (placa pequena)', 'Concreto esmagado'):
         avisos.append(f"{f['modelo']}: aumente a placa ou o bloco.")
     v += fix['verificacoes']+chapa['verificacoes']+(solda['verificacoes'] if solda else [])
+    if pilar:
+        v.append(pilar['verificacao'])
     r = _resultado(v, avisos)
     r.update(metodo=METODO_NBR, geometria=g, esforcos=copy.deepcopy(esforcos), forcas=f, concreto=conc,
-             cisalhamento=cis, fixacao=fix, chapa=chapa, solda=solda, legado=leg,
+             cisalhamento=cis, fixacao=fix, chapa=chapa, solda=solda, legado=leg, pilar=pilar,
              passa_legado=bool(leg and leg['passa']) and not inclinada, tem_esforcos=True,
              intermediarios=dict(geometria=g, distribuicao=dict(modelo=f['modelo'], Y=f['Y'], f=f['f'],
                                  e=f['e'], e_crit=f['e_crit'], qmax=f['qmax']), coeficientes=co),
@@ -1209,6 +1320,7 @@ def casos_biaxiais(dados, esforcos):
     eixo fraco da mesma placa (``dados_no_eixo``). esforcos: N, V (módulo no plano), My (ou M), Mz e os opcionais
     (sismo, inclinada...). → [(eixo, dados, esforcos uniaxiais)]; a solda recebe os mesmos N, V, M."""
     base = {k: v for k, v in esforcos.items() if k not in ('M', 'My', 'Mz')}
+    base.update(M_forte=esforcos.get('My', esforcos.get('M', 0.)), M_fraco=esforcos.get('Mz', 0.))   # pilar: os dois eixos
     out = []
     for eixo, M, fraco in (('forte (My)', esforcos.get('My', esforcos.get('M', 0.)), False),
                            ('fraco (Mz)', esforcos.get('Mz', 0.), True)):

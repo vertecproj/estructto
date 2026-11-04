@@ -80,15 +80,27 @@ namespace NovoFtool
         const double LargDir = 440;    // coluna dos 3 passos
         const double LargRot = 66;     // coluna dos rótulos dentro dos passos (alinha os campos dos 3 passos)
 
-        // Solda do pilar na placa com os esforços da combinação/eixo que governa a solda no motor; perna digitada ou, com 0, a mínima.
+        // Solda do pilar na placa com os esforços da combinação/eixo que governa a solda no motor; perna digitada ou, com 0, a
+        // mínima que cabe na parede (nenhuma passa: a maior que cabe, e o passo 3 oferece penetração total). Penetração total:
+        // null (o passo 3 mostra as verificações do motor, metal-base da parede; docs/PLACA-BASE-PILAR-SOLDA.md).
         ResSolda SoldaPilar(ResPlaca r)
         {
             var p = nb.Solda;
-            if (!r.TemEsforcos || r.Sec == null || !nb.Valido || double.IsNaN(p.N)) return null;
+            if (edit.SoldaPenetracao || !r.TemEsforcos || r.Sec == null || !nb.Valido || double.IsNaN(p.N)) return null;
             bool deitado = r.Deitado != p.Fraco;
-            double h = edit.Solda > 0 ? edit.Solda : Solda.Minima(r.Sec, deitado, p.N, p.V, p.M, edit.Eletrodo, edit.Esp);
-            if (h <= 0) h = 25;
+            double h = edit.Solda > 0 ? edit.Solda : Solda.Minima(r.Sec, deitado, p.N, p.V, p.M, edit.Eletrodo, edit.Esp, true);
+            if (h <= 0) { double[] cabem = Solda.PernasAte(ParedeMm(r.Sec)); h = cabem[cabem.Length - 1]; }
             return Solda.Calcular(r.Sec, deitado, p.N, p.V, p.M, h, edit.Eletrodo, edit.Esp);
+        }
+
+        static double ParedeMm(Secao s) { return (s.Forma == "I" || s.Forma == "U" ? Math.Min(s.Tf, s.Tw) : s.Tw) * 1000; }
+
+        // Aplica na placa em edição o resultado do motor (Dimensionar tudo / Sugerir): fixação, tamanho, chapa e solda.
+        void Usar(PlacaBase p)
+        {
+            edit.Chumbador = p.Chumbador; edit.Diametro = p.Diametro; edit.Classe = p.Classe; edit.Fileiras = p.Fileiras; edit.PorFileira = p.PorFileira;
+            edit.Hef = p.Hef; edit.PeloPerfil = p.PeloPerfil; edit.H = p.H; edit.B = p.B;
+            edit.Esp = p.Esp; edit.Solda = p.Solda; edit.Eletrodo = p.Eletrodo; edit.SoldaPenetracao = p.SoldaPenetracao;
         }
 
         static string NomeCurtoCh(Chumbador c)
@@ -153,9 +165,7 @@ namespace NovoFtool
             try { var corpo = Corpo(edit, membros); corpo["preferencia"] = prefFuroMenor ? "furo" : "leve"; res = Chamar("/api/placa_base/dimensionar", corpo); }
             catch (Exception ex) { msgDim = "Dimensionar: " + PlacaMotor.Mensagem(ex); return; }
             if (!Bool(res, "achou")) { msgDim = S(res, "descricao"); return; }
-            var p = PlacaMotor.Placa(res["dados"]);
-            edit.Chumbador = p.Chumbador; edit.Diametro = p.Diametro; edit.Classe = p.Classe; edit.Fileiras = p.Fileiras; edit.PorFileira = p.PorFileira;
-            edit.Esp = p.Esp; edit.Solda = p.Solda; edit.Eletrodo = p.Eletrodo;
+            Usar(PlacaMotor.Placa(res["dados"]));
             int nm = (membros ?? Membros).Count;
             msgDim = "Escolhido pelo motor (NBR, pior combinação" + (nm > 1 ? " de " + nm + " bases" : "") + "): " + S(res, "descricao") + ".";
         }
@@ -356,6 +366,7 @@ namespace NovoFtool
 
             Nivel nv; string titulo, glifo;
             if (!r.TemEsforcos) { nv = Nivel.Neutro; titulo = "Sem verificação"; glifo = "–"; }
+            else if (nb.PilarReprovado) { nv = Nivel.Erro; titulo = nb.PilarMsg; glifo = "✕"; }   // nenhuma placa resolve
             else if (falhas.Count > 0) { nv = Nivel.Erro; titulo = "Não passa — " + string.Join(", ", falhas); glifo = "✕"; }
             else if (r.Inclinada) { nv = Nivel.Alerta; titulo = "Placa resolvida — falta detalhar a ligação inclinada"; glifo = "!"; }
             else { nv = Nivel.Ok; titulo = "Passa · usa " + Pct(nb.Taxa) + " no item mais carregado"; glifo = "✓"; }
@@ -439,6 +450,10 @@ namespace NovoFtool
                            "(modelo do perfil perpendicular à placa) não valem para barra inclinada. Detalhe a ligação (gusset/cantoneira) à parte.";
                 l.Add(Chip("⚠ Ligação inclinada " + Num.Fmt(r.AngNormal, 0) + "°: detalhar", Nivel.Alerta, t, () => { abaAtiva = 1; Recalcular(); }));
             }
+            if (nb.PilarVerificado)
+                l.Add(Chip("Pilar " + Pct(nb.PilarTaxa), nb.PilarOk ? Nivel.Info : Nivel.Erro,
+                           "Seção do pilar na base, NBR 8800 5.5.1.2 (flexo-compressão, NRd sem flambagem, MRd pela classe do perfil, fy do material do pilar)." +
+                           (nb.PilarOk ? "" : "\n" + nb.PilarMsg)));
             if (nb.Fraco) l.Add(Chip("Governa o eixo fraco (Mz)", Nivel.Info, NotaBiaxial()));
             if (nb.Avisos.Count > 0)
                 l.Add(Chip("⚠ " + Pl.N(nb.Avisos.Count, "aviso do motor", "avisos do motor"), Nivel.Alerta, "• " + string.Join("\n• ", nb.Avisos) + "\nClique para ver o cálculo.", () => { abaAtiva = 4; Recalcular(); }));
@@ -930,6 +945,18 @@ namespace NovoFtool
         Border MontarPassoSolda(ResPlaca r, ResSolda sd)
         {
             var corpo = new StackPanel();
+            corpo.Children.Add(Linha("Tipo", Segmentado(new List<(string, bool, Action, string)>
+            {
+                ("Filete", !edit.SoldaPenetracao, () => { edit.SoldaPenetracao = false; Recalcular(); }, "Filete em todo o contorno, perna ≤ parede do perfil (tensão admissível do eletrodo)."),
+                ("Penetração total", edit.SoldaPenetracao, () => { edit.SoldaPenetracao = true; Recalcular(); },
+                 "Penetração total em todo o contorno: resistência do metal-base da parede do pilar (NBR 8800 6.2.5.1, tabela 8), |N|/NRd + |M|/MRd ≤ 1 e V ≤ VRd.")
+            }, 26, 11.5), 0));
+            if (edit.SoldaPenetracao)
+            {
+                var tp = Tx(r.TemEsforcos ? "Penetração total em todo o contorno do perfil · metal-base da parede do pilar (NBR 8800 6.2.5.1, tab. 8)" : "Sem esforços: calcule a estrutura.", 11.5, TemaPlant.BTexto2, null, true);
+                corpo.Children.Add(Linha("", tp, 6));
+                return Passo(3, "Solda pilar–placa", nb.Solda.Taxa, nb.Solda.Ok, r.TemEsforcos, maisSd, () => { maisSd = !maisSd; Recalcular(); }, corpo, () => TabelaCompacta(CalcNbr("solda")));
+            }
             bool sdOk = sd == null || sd.Passa;
             double hEf = sd != null ? sd.H : (edit.Solda > 0 ? edit.Solda : 3);
             int idxP = edit.Solda <= 0 ? -1 : Array.FindIndex(Solda.Pernas, p => Math.Abs(p - edit.Solda) < 1e-4);
@@ -940,15 +967,15 @@ namespace NovoFtool
                 else if (idxP >= 0 && idxP + 1 < Solda.Pernas.Length) edit.Solda = Solda.Pernas[idxP + 1];
                 Recalcular();
             };
-            var st = Stepper(edit.Solda <= 0 ? "auto (" + Num.Fmt(hEf, 0) + " mm)" : Num.Fmt(edit.Solda, 0) + " mm", menos, mais, 96, () => { edit.Solda = 0; Recalcular(); },
-                "Perna do filete em todo o contorno do perfil. Auto = a menor perna da tabela que passa (respeitando o mínimo de norma). Clique no valor para voltar ao automático.");
+            var st = Stepper(edit.Solda <= 0 ? "auto (" + Solda.Mm(hEf) + " mm)" : Solda.Mm(edit.Solda) + " mm", menos, mais, 96, () => { edit.Solda = 0; Recalcular(); },
+                "Perna do filete em todo o contorno do perfil. Auto = a menor perna da tabela que passa, até a parede do perfil (respeitando o mínimo de norma). Clique no valor para voltar ao automático.");
             string elAt = string.IsNullOrEmpty(edit.Eletrodo) ? "E70" : edit.Eletrodo;
             var cbEl = Combo(Solda.Eletrodos.Select(e => e + "XX"), elAt + "XX", s => { edit.Eletrodo = s.Replace("XX", ""); Recalcular(); }, 98, "Eletrodo AWS (tensão admissível no filete pela tabela do eletrodo).");
             var cont = Tx(sd != null && sd.Erro == "" ? "contorno " + Num.Fmt(sd.L, 0) + " mm" : "", 11.5, TemaPlant.BTexto2);
             var dp = new DockPanel();
             DockPanel.SetDock(cont, Dock.Right); dp.Children.Add(cont);
             dp.Children.Add(Horiz(st, Gap(8), cbEl));
-            corpo.Children.Add(Linha("Perna", dp, 0));
+            corpo.Children.Add(Linha("Perna", dp, 6));
 
             if (sd == null)
                 corpo.Children.Add(Linha("", Tx(r.TemEsforcos ? "Perfil do pilar sem medidas para a solda." : "Sem esforços: calcule a estrutura.", 11.5, TemaPlant.BTexto2, null, true), 6));
@@ -977,7 +1004,13 @@ namespace NovoFtool
                 {
                     string el2 = dg.Eletrodo;
                     double p2 = dg.Perna;
-                    var bt = Botao("Usar " + (el2 != elAt ? el2 + "XX, " : "") + "perna " + Num.Fmt(p2, 0) + " mm", null, () => { edit.Solda = p2; edit.Eletrodo = el2; Recalcular(); }, "Aplica a sugestão (o cálculo é refeito).", 26);
+                    var bt = Botao("Usar " + (el2 != elAt ? el2 + "XX, " : "") + "perna " + Solda.Mm(p2) + " mm", null, () => { edit.Solda = p2; edit.Eletrodo = el2; Recalcular(); }, "Aplica a sugestão (o cálculo é refeito).", 26);
+                    bt.HorizontalAlignment = HorizontalAlignment.Left; bt.Margin = new Thickness(0, 6, 0, 0);
+                    box.Children.Add(bt);
+                }
+                else if (dg.Penetracao)
+                {
+                    var bt = Botao("Usar penetração total", null, () => { edit.SoldaPenetracao = true; edit.Solda = 0; Recalcular(); }, "Troca o filete por solda de penetração total (metal-base da parede; o cálculo é refeito).", 26);
                     bt.HorizontalAlignment = HorizontalAlignment.Left; bt.Margin = new Thickness(0, 6, 0, 0);
                     box.Children.Add(bt);
                 }
@@ -1079,7 +1112,9 @@ namespace NovoFtool
 
             var esq = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             esq.Children.Add(Botao("Dimensionar tudo", "dimens", () => { Dimensionar(); Recalcular(); },
-                "O motor escolhe a menor fixação que passa em todas as combinações (e nos dois eixos), a chapa comercial ≥ t do CBCA e a perna da solda.", 28));
+                "O motor procura a placa mais leve que passa em tudo em todas as combinações (e nos dois eixos): cresce H e B de 50 em 50 mm até 700 mm, arranjos até 3 × 3, " +
+                "tenta o tipo de fixação atual primeiro e depois os outros (inclusive pré-concretado), chapa comercial ≥ t do CBCA e solda (filete ≤ parede ou penetração total). " +
+                "Se o pilar não resiste na base, avisa que nenhuma placa resolve.", 28));
             esq.Children.Add(Gap(8));
             esq.Children.Add(Segmentado(new List<(string, bool, Action, string)>
             {
@@ -1118,7 +1153,7 @@ namespace NovoFtool
             sp.Children.Add(Tx("Preferência: " + (prefFuroMenor ? "furo menor" : "mais leve") + " · motor, pior combinação, com as condições atuais", 11, TemaPlant.BTexto3));
             if (ops.Count == 0)
             {
-                var t = Tx(r.TemEsforcos ? "Nenhuma combinação do catálogo passa. Aumente a placa (Ajustar tamanho) ou a quantidade." : "Sem esforços: calcule a estrutura.", 12, TemaPlant.BAlerta, null, true);
+                var t = Tx(r.TemEsforcos ? (msgSugerir != "" ? msgSugerir : "Nenhuma placa passa.") : "Sem esforços: calcule a estrutura.", 12, TemaPlant.BAlerta, null, true);
                 t.Margin = new Thickness(0, 10, 0, 0);
                 sp.Children.Add(t);
             }
@@ -1126,7 +1161,8 @@ namespace NovoFtool
             foreach (var o in ops)
             {
                 i++;
-                bool atual = DescFix(o.pl, 0) == DescFix(edit, 0) && o.pl.Fileiras == edit.Fileiras && o.pl.PorFileira == edit.PorFileira && Math.Abs(o.pl.Esp - edit.Esp) < 1e-4;
+                bool atual = DescFix(o.pl, 0) == DescFix(edit, 0) && o.pl.Fileiras == edit.Fileiras && o.pl.PorFileira == edit.PorFileira && Math.Abs(o.pl.Esp - edit.Esp) < 1e-4 &&
+                             Math.Abs(o.pl.H - r.H) < 1e-4 && Math.Abs(o.pl.B - r.B) < 1e-4 && o.pl.SoldaPenetracao == edit.SoldaPenetracao;
                 var lin = new Border
                 {
                     Background = atual ? TemaPlant.BAcentoSutil : TemaPlant.BSup2, BorderBrush = atual ? TemaPlant.BAcento : TemaPlant.BBordaSutil, BorderThickness = new Thickness(1),
@@ -1138,7 +1174,8 @@ namespace NovoFtool
                 else
                 {
                     var pl = o.pl;
-                    acao = Botao("Usar", null, () => { edit.Chumbador = pl.Chumbador; edit.Diametro = pl.Diametro; edit.Classe = pl.Classe; edit.Fileiras = pl.Fileiras; edit.PorFileira = pl.PorFileira; edit.Esp = pl.Esp; overlaySugerir.Visibility = Visibility.Collapsed; msgDim = "Sugestão aplicada: " + DescFix(pl, pl.Fileiras * pl.PorFileira) + " · chapa " + FmtEsp(pl.Esp) + " mm."; Recalcular(); }, "Troca a fixação e a chapa por esta combinação.", 26);
+                    string txtO = o.txt;
+                    acao = Botao("Usar", null, () => { Usar(pl); overlaySugerir.Visibility = Visibility.Collapsed; msgDim = "Sugestão aplicada: " + txtO + "."; Recalcular(); }, "Troca a fixação, o tamanho, a chapa e a solda por esta combinação.", 26);
                 }
                 DockPanel.SetDock(acao, Dock.Right); ((FrameworkElement)acao).Margin = new Thickness(10, 0, 0, 0); dp.Children.Add(acao);
                 var num = Tx(i.ToString(), 12, TemaPlant.BRealce, FontWeights.Bold); num.Width = 16; num.VerticalAlignment = VerticalAlignment.Top;
@@ -1635,8 +1672,13 @@ namespace NovoFtool
             sp.Children.Add(TabelaCalc(forcas, 260));
             sp.Children.Add(TituloSecao("2 · Chapa " + FmtEsp(edit.Esp) + " mm e concreto — pior: " + nb.Chapa.Comb + (nb.Chapa.Fraco ? " (eixo fraco)" : ""), Cab(nb.Chapa.Taxa, nb.Chapa.Ok), 16));
             sp.Children.Add(TabelaCalc(CalcNbr("chapa"), 260));
-            sp.Children.Add(TituloSecao("3 · Solda pilar–placa" + (sd != null ? " — filete " + Num.Fmt(sd.H, 0) + " mm, " + (string.IsNullOrEmpty(edit.Eletrodo) ? "E70" : edit.Eletrodo) + "XX" : "") + " — pior: " + nb.Solda.Comb, Cab(nb.Solda.Taxa, nb.Solda.Ok), 16));
-            sp.Children.Add(TabelaCalc(CalcSolda(sd)));
+            sp.Children.Add(TituloSecao("3 · Solda pilar–placa" + (edit.SoldaPenetracao ? " — penetração total" : sd != null ? " — filete " + Solda.Mm(sd.H) + " mm, " + (string.IsNullOrEmpty(edit.Eletrodo) ? "E70" : edit.Eletrodo) + "XX" : "") + " — pior: " + nb.Solda.Comb, Cab(nb.Solda.Taxa, nb.Solda.Ok), 16));
+            sp.Children.Add(TabelaCalc(edit.SoldaPenetracao ? CalcNbr("solda") : CalcSolda(sd)));
+            if (nb.PilarVerificado)
+            {
+                sp.Children.Add(TituloSecao("Pilar na base — NBR 8800 5.5.1.2" + (nb.PilarOk ? "" : " — nenhuma placa resolve"), Cab(nb.PilarTaxa, nb.PilarOk), 16));
+                sp.Children.Add(TabelaCalc(CalcNbr("pilar"), 260));
+            }
             var combs = Lista(nb.J?["combinacoes"]).Take(12).Select(c => (S(c, "combinacao") + (Membros.Count > 1 ? " · " + S(c, "barra") : ""), "eixo " + S(c, "eixo") + " · N = " + Num.Fmt(D(c, "N"), 1) + ", My = " + Num.Fmt(D(c, "My"), 1) + ", Mz = " + Num.Fmt(D(c, "Mz"), 1), Pct(D(c, "taxa")), Bool(c, "ok") ? 1 : -1)).ToList();
             sp.Children.Add(TituloSecao("4 · Combinações (as " + combs.Count + " piores de " + nb.NCombs + ")", null, 16));
             sp.Children.Add(TabelaCalc(combs, 260));
@@ -1703,11 +1745,17 @@ namespace NovoFtool
             fix.Add(("Maior tração / corte", Num.Fmt(r.Tmax, 2) + " kN / " + Num.Fmt(r.Fv, 2) + " kN por fixação"));
             fix.Add(("Aproveitamento (motor)", Pct(nb.Fix.Taxa) + (nb.Fix.Ok ? " · passa" : " · NÃO PASSA") + " (" + nb.Fix.Criterio + ")"));
             var solda = new List<(string, string)>();
-            if (sd != null && sd.Erro == "")
+            if (edit.SoldaPenetracao && r.TemEsforcos)
+            {
+                solda.Add(("Tipo", "penetração total (chanfro) em todo o contorno do perfil"));
+                solda.Add(("Resistência", "metal-base da parede do pilar (NBR 8800 6.2.5.1, tabela 8)"));
+                solda.Add(("Situação", (nb.Solda.Ok ? "passa" : "NÃO PASSA") + " · " + Pct(nb.Solda.Taxa) + " (" + nb.Solda.Criterio + ")"));
+            }
+            else if (sd != null && sd.Erro == "")
             {
                 solda.Add(("Tipo", "filete contínuo em todo o contorno do perfil (" + sd.Grupo + ")"));
                 solda.Add(("Eletrodo", (string.IsNullOrEmpty(edit.Eletrodo) ? "E70" : edit.Eletrodo) + "XX · τ adm " + Num.Fmt(sd.TauAdm, 0) + " MPa"));
-                solda.Add(("Perna / garganta", Num.Fmt(sd.H, 0) + " mm / " + Num.Fmt(0.707 * sd.H, 1) + " mm" + (sd.HMinNorma > 0 ? " · mínima de norma " + Num.Fmt(sd.HMinNorma, 0) + " mm" : "")));
+                solda.Add(("Perna / garganta", Solda.Mm(sd.H) + " mm / " + Num.Fmt(0.707 * sd.H, 1) + " mm" + (sd.HMinNorma > 0 ? " · mínima de norma " + Num.Fmt(sd.HMinNorma, 0) + " mm" : "")));
                 solda.Add(("Comprimento", Num.Fmt(sd.L, 0) + " mm de cordão (necessário " + Num.Fmt(sd.LNec, 0) + " mm)"));
                 solda.Add(("Metal depositado", "≈ " + Num.Fmt(sd.Massa, 2) + " kg"));
                 solda.Add(("Situação", sd.Passa ? "passa (τ = " + Num.Fmt(sd.Tau, 0) + " MPa)" : "NÃO PASSA — ver passo 3"));
@@ -1740,31 +1788,20 @@ namespace NovoFtool
             return qt + " × " + (c != null ? NomeCurtoCh(c) : "Ø" + Num.Fmt(p.Diametro, 0) + " cl. " + p.Classe);
         }
 
+        // Pelo motor (/api/placa_base/dimensionar com opcoes = 3): a mesma busca do Dimensionar tudo — todos os tipos de
+        // fixação (o atual primeiro), pré-concretado e a placa crescendo; só soluções que passam em tudo (docs/PLACA-BASE-PILAR-SOLDA.md).
+        string msgSugerir = "";
         List<(PlacaBase pl, string txt, double kg, double ap)> MelhoresOpcoes(ResPlaca r)
         {
             var res = new List<(PlacaBase, string, double, double)>();
+            msgSugerir = "";
             if (!r.TemEsforcos) return res;
-            var cands = new List<PlacaBase>();
-            if (!string.IsNullOrEmpty(edit.Chumbador))
-            {
-                var chs = (prefFuroMenor ? Chumbadores.Lista.OrderBy(c => c.Furo).ThenBy(c => c.Rosca) : Chumbadores.Lista.OrderBy(c => c.Rosca)).ThenBy(c => c.Hef).ToList();
-                foreach (int[] arr in new[] { new[] { 2, 2 }, new[] { 2, 3 }, new[] { 3, 3 } })
-                    foreach (Chumbador c in chs) { var pl = edit.Copiar(); pl.Chumbador = c.Nome; pl.Fileiras = arr[0]; pl.PorFileira = arr[1]; cands.Add(pl); }
-            }
-            else
-                foreach (double d in Parafusos.D) foreach (string cl in Parafusos.Classes) { var pl = edit.Copiar(); pl.Diametro = d; pl.Classe = cl; cands.Add(pl); }
-            var v = Variantes(cands);
-            var vistos = new HashSet<string>();
-            for (int i = 0; i < Math.Min(v.Count, cands.Count) && res.Count < 3; i++)
-            {
-                var pl = cands[i];
-                string chave = string.IsNullOrEmpty(pl.Chumbador) ? "d" + pl.Diametro : pl.Chumbador;
-                if (!v[i].FixOk || double.IsNaN(v[i].TNec) || !vistos.Add(chave)) continue;
-                double esp = PlacaCalc.Chapas.FirstOrDefault(e => e >= v[i].TNec - 1e-9);
-                if (esp <= 0) continue;
-                pl.Esp = esp;
-                res.Add((pl, DescFix(pl, pl.Fileiras * pl.PorFileira) + " · chapa " + FmtEsp(esp) + " mm", r.H * r.B * esp * 7850e-9, v[i].FixTaxa));
-            }
+            JsonNode j;
+            try { var corpo = Corpo(edit); corpo["preferencia"] = prefFuroMenor ? "furo" : "leve"; corpo["opcoes"] = 3; j = Chamar("/api/placa_base/dimensionar", corpo); }
+            catch (Exception ex) { msgSugerir = "Motor: " + PlacaMotor.Mensagem(ex); return res; }
+            msgSugerir = S(j, "descricao");
+            foreach (var o in Lista(j["opcoes"]))
+                res.Add((PlacaMotor.Placa(o["dados"]), S(o, "descricao"), D(o, "massa_kg"), D(o, "taxa_fixacao")));
             return res;
         }
 
@@ -1802,7 +1839,7 @@ namespace NovoFtool
             if (nf == 1) h = Math.Max(h, r.RefIn + 2 * borda);
             edit.PeloPerfil = false;
             edit.H = Math.Ceiling(h / 10) * 10; edit.B = Math.Ceiling(b / 10) * 10; edit.Borda = borda;
-            msgDim = "Tamanho ajustado: " + Num.Fmt(edit.H, 0) + " × " + Num.Fmt(edit.B, 0) + " mm, borda " + Num.Fmt(borda, 0) + " mm (d = " + Num.Fmt(d, 1) + " mm, passo ≥ " + Num.Fmt(passo, 0) + " mm).";
+            msgDim = "Tamanho ajustado: " + Num.Fmt(edit.H, 0) + " × " + Num.Fmt(edit.B, 0) + " mm, borda " + Num.Fmt(borda, 0) + " mm (d = " + Num.Fmt(d, 1) + " mm, passo ≥ " + Num.Fmt(passo, 0) + " mm) — é o MÍNIMO pelos espaçamentos; para achar uma placa que passa, use Dimensionar tudo.";
         }
     }
 }

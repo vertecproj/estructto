@@ -302,3 +302,6 @@ Base com arrancamento (`exemplos/base-com-arrancamento.json`, nó N0-0-0, 4 × �
 | Chapa (19 mm) | 35,8 mm | CBCA 27,4 mm (144%) |
 
 "Dimensionar tudo" pelo motor dá 4 × Ø24 8.8, chapa 31,5 mm e solda 5 mm E90. Taxa máxima 89% (solda); passa.
+
+> 04/11/2026: verificação do pilar na base, solda automática ≤ parede / penetração total e o "Dimensionar tudo" que
+> cresce a placa e troca o tipo de fixação: [../PLACA-BASE-PILAR-SOLDA.md](../PLACA-BASE-PILAR-SOLDA.md).

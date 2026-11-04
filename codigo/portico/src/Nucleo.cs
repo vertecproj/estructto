@@ -1026,6 +1026,7 @@ namespace Portico
         public string ClasseBarra { get; set; }  // classe da barra roscada do chumbador quimico (vazio = 4.6, lado seguro)
         public double Solda { get; set; }        // perna do filete pilar-placa, mm (0 = dimensionar)
         public string Eletrodo { get; set; }     // "E70" etc. (vazio = E70)
+        public bool SoldaPenetracao { get; set; } // solda pilar-placa de penetracao total (motor: solda_tipo = penetracao); falso = filete
         public double Seguranca { get; set; }    // coeficiente da placa (chapa, parafuso, aco da barra); 0 = o do modelo (aba Analise)
         // metodo NBR do motor (aco/placa_base.py, docs/v3/PLACA-BASE-V2.md); 0 = nao informado
         public double BlocoH { get; set; }       // mm, bloco de concreto na direcao H (A2); 0 = A2 = A1, sem bordas

@@ -1156,6 +1156,14 @@ namespace NovoFtool
                     string dev = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "motor"));
                     if (Environment.GetEnvironmentVariable("ESTRUCTTO_MOTOR") == null && Directory.Exists(dev)) Environment.SetEnvironmentVariable("ESTRUCTTO_MOTOR", dev);
                 }
+                if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "placatubo")
+                {   // só o caso do Tubo 175 na placa de base (CapturasPlaca.cs), sem as telas iniciais
+                    var lt = new System.Text.StringBuilder();
+                    w.TelaInicial.Visibility = Visibility.Collapsed;
+                    try { CapturasPlacaTubo(w, caminhoModelo, lt); }
+                    finally { File.WriteAllText(Path.Combine(pastaSaida, "55-placa-tubo175.txt"), lt.ToString(), new System.Text.UTF8Encoding(false)); }
+                    w.alterado = false; w.Close(); Environment.Exit(0);
+                }
                 CapturasInicio(w);
                 if (Environment.GetEnvironmentVariable("ESTRUCTTO_CAPTURAS") == "inicio")
                 {
