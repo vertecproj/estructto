@@ -1,6 +1,9 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 04/11/2026 — v0.6.21, motor (decisão do usuário: "Sim, ligar por padrão"):
+  - Imperfeições geométricas iniciais (NBR 8800 4.9.7.1.1) ligadas por padrão: cada ELU só gravitacional ganha as variantes "+ imperf. ±X/±Y" com forças nocionais de 0,3 % das cargas gravitacionais de cálculo, nó a nó (casos temporários, nada fica no modelo). `config.imperfeicoes = false` desliga. Fora: NBR 8400, modelo só de concreto e a redução 0,8·EI (4.9.7.2). Detalhe em [MEMBROS.md](MEMBROS.md) e no manual, cap. 11.
+  - B2 passa a sair também das ELU gravitacionais (com as nocionais), que têm o maior ΣN; o Δh delas vem só das forças nocionais (estrutura lt). Modelo flexível pode mudar de classe: o edifício do fluxo B dá B2 ≈ 2,5 em Y (antes só o sismo dava B2).
 - 04/11/2026 — v0.6.20, motor (pedido do usuário: revisão geral de cálculo e usabilidade, testada com a torre do elevador do F6 e o PLATAFORMA_REV4 do CYPE; relatório em [REVISAO-2026-11-04.md](REVISAO-2026-11-04.md), critério em [MEMBROS.md](MEMBROS.md)):
   - Membro (`params.membro`): barra dividida continua uma peça. Flambagem, FLT, Cb e flecha pelos trechos entre nós travados por eixo (antes pelo pedaço: pilar de 6 m dividido passava com 0,78, inteiro reprova com 1,67). Nó interno do membro não é mais emenda. Gerador, "ligar nó" e importação CYPE (peças) gravam o membro.
   - `validar`: aviso `no_solto_sobre_barra`. Dividir não copia mais o trecho rígido para os pedaços do meio.

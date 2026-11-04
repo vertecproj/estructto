@@ -28,6 +28,7 @@ Este manual descreve a implementação da v3. A referência por item e edição 
 - Um motor da interface mantém um modelo ativo; ao alternar abas, o histórico de desfazer pode reiniciar. Painéis de edição sem seleção podem atuar no modelo inteiro.
 - Existem molas e recalques no motor; confira unidades, direções, caso REC e coeficientes. O coeficiente γε de recalque da tabela 3 da NBR 8681 consta entre os pontos a conferir no texto oficial.
 - Indicadores de estabilidade não substituem análise completa de segunda ordem. Avalie o domínio dos critérios, incluindo o de γz para edifícios com quatro pavimentos ou mais.
+- Imperfeições geométricas iniciais (NBR 8800 4.9.7.1.1): ligadas por padrão (`config.imperfeicoes`), como forças nocionais de 0,3 % das cargas gravitacionais de cálculo, nó a nó, em ±X e ±Y, só nas ELU sem vento, sismo ou ação excepcional (variantes "+ imperf." de cada uma). A redução de rigidez a 0,8·EI das imperfeições de material (4.9.7.2) para média deslocabilidade não é aplicada.
 - A suíte de fluxo ponta a ponta está documentada como parcial na entrega da v3; os testes existentes não significam validação integral de todos os fluxos.
 
 ## Ações

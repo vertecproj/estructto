@@ -129,6 +129,7 @@
   "armadura": "CA-50",
   "cobrimento_m": null,
   "caa": "II",
-  "tipo_edificacao": null
+  "tipo_edificacao": null,
+  "imperfeicoes": false
  }
 }

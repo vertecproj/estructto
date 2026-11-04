@@ -66,7 +66,8 @@ class TestApiWeb(unittest.TestCase):
         self.assertEqual((r["n_nos"], r["n_barras"], r["n_casos"], r["n_cargas"]), (2, 1, 2, 2))
         self.assertEqual(self.ok("GET", "/api/validar"), [])
         self.assertEqual([c["nome"] for c in self.ok("GET", "/api/combinacoes")],
-                         [c["nome"] for c in referencia("viga_biapoiada")[1].combinacoes])   # mesmo modelo do exemplo
+                         [c["nome"] for c in referencia("viga_biapoiada")[1].combinacoes
+                          if not c.get("imperfeicao")])   # mesmo modelo do exemplo; sem as variantes nocionais (4.9.7)
         geo = self.ok("GET", "/api/geometria")
         self.assertAlmostEqual(geo["barras"][0]["L"], 6.0)
         self.assertEqual({c["id"] for c in self.ok("GET", "/api/modelo/carga_distribuida")}, {"cd1", "cd2"})

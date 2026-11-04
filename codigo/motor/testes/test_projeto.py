@@ -390,6 +390,7 @@ class TestAcoes(unittest.TestCase):
 class TestAnalises(unittest.TestCase):
     def setUp(self):
         self.m = portico()
+        P.configurar(self.m, {"imperfeicoes": False})   # conferências à mão sem as forças nocionais (4.9.7)
         self.c = P.calcular(self.m)
 
     def test_portico_conferido_a_mao(self):
@@ -399,6 +400,7 @@ class TestAnalises(unittest.TestCase):
         H, V, M_vao = M_no / h, w * L / 2, w * L**2 / 8 - M_no
         m = portico()
         P.editar(m, "secao", "W310x38.7", {"A": 20.0})  # axialmente quase rígida: a fórmula fechada ignora a deformação axial
+        P.configurar(m, {"imperfeicoes": False})   # fórmula fechada sem forças nocionais (4.9.7)
         c = P.calcular(m)
         reac = P.resultados(c, "reacoes", combinacao="ELU G")
         self.assertAlmostEqual(reac["n1"][2], V, delta=1e-6)
@@ -702,6 +704,7 @@ class TestIntegracaoEdificio(unittest.TestCase):
 
     def test_b2_do_edificio_de_aco(self):
         m = edificio_aco()
+        P.configurar(m, {"imperfeicoes": False})   # B2 refeito com o solver: sem os casos nocionais temporários
         c = P.calcular(m)
         est = c.estabilidade
         self.assertTrue(est["aplicavel"])

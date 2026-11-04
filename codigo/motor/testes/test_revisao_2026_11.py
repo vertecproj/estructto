@@ -124,3 +124,44 @@ class TestPainelInclinadoCype(unittest.TestCase):
             sum(cp.F[2] for cp in m.cargas_pontuais)
         self.assertAlmostEqual(fz, -2.0 * L * 1.0, delta=1e-6)
         self.assertTrue(all(abs(cd.q[0]) < 1e-12 for cd in m.cargas_distribuidas))
+
+
+class TestImperfeicoesNocionais(unittest.TestCase):
+    """NBR 8800 4.9.7.1.1, ligado por padrão (decisão do usuário, 04/11/2026): ELU só gravitacional ganha ±X/±Y com
+    0,3 % das cargas gravitacionais de cálculo; nada fica no modelo depois do cálculo."""
+
+    def _portico(self):
+        m = P.novo_modelo()
+        P.adicionar(m, "material", {"aco": ACO})
+        P.adicionar(m, "secao", {"perfil": "W200x46.1"})
+        for nid, x, z in (("A", 0, 0), ("B", 6, 0), ("C", 0, 4), ("D", 6, 4)):
+            m.add(No(nid, x, 0, z, ENG if z == 0 else LIV))
+        for bid, a, b in (("P1", "A", "C"), ("P2", "B", "D"), ("V", "C", "D")):
+            m.add(Barra(bid, a, b, "W200x46.1", ACO))
+        m.add(CasoCarga("G1", "G"))
+        m.add(CasoCarga("Q1", "Q"))
+        m.add(CargaNodal("G1", "C", (0, 0, -100.0, 0, 0, 0)))
+        m.add(CargaNodal("Q1", "D", (0, 0, -50.0, 0, 0, 0)))
+        return m
+
+    def test_equilibrio_e_modelo_intacto(self):
+        m = self._portico()
+        casos, nodais = set(m.casos), len(m.cargas_nodais)
+        c = P.calcular(m)
+        self.assertEqual((set(m.casos), len(m.cargas_nodais)), (casos, nodais))
+        nomes = [x["nome"] for x in c.combinacoes if x.get("imperfeicao") == "+X"]
+        self.assertTrue(nomes)
+        comb = next(x for x in c.combinacoes if x["nome"] == nomes[0])
+        f = comb["fatores"]
+        pp = m.peso_proprio
+        peso = sum(m.materiais[b.material].peso * m.secoes[b.secao].A * P._comprimento(m, b) for b in m.barras.values())
+        grav = f.get("G1", 0) * 100 + f.get("Q1", 0) * 50 + (f.get(pp, 0) * peso if pp else 0)
+        rx = sum(r[0] for r in c.resultados[nomes[0]].reacoes.values())
+        self.assertAlmostEqual(abs(rx), 0.003 * grav, delta=1e-6 * grav)
+        self.assertIn("imperfeicoes_nocionais", [a["codigo"] for a in c.avisos])
+
+    def test_desligado(self):
+        m = self._portico()
+        P.configurar(m, {"imperfeicoes": False})
+        c = P.calcular(m)
+        self.assertFalse(any(x.get("imperfeicao") for x in c.combinacoes))

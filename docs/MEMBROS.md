@@ -55,6 +55,11 @@ continuidade até um ponto fixo não trava de verdade: nesse caso informe `Lb`/`
 - Cantoneira simples fletida: AISC 360-16 F10 por analogia (a NBR 8800:2008 não tem item); antes a diagonal em L com
   peso próprio reprovava como "não verificada".
 - `papel` aceita `diagonal` (só aço).
+- v0.6.21: imperfeições geométricas iniciais (NBR 8800 4.9.7.1.1) **ligadas por padrão** (decisão do usuário): cada ELU
+  sem vento/sismo/excepcional ganha 4 variantes "+ imperf. ±X/±Y" com forças nocionais = 0,3 % das cargas
+  gravitacionais de cálculo levadas aos nós (nodais, distribuídas e pontuais como reações de biapoiada, peso próprio
+  meio a meio). A combinação original continua. Os casos "Nocional X/Y: <caso>" só existem durante o `calcular`.
+  `config.imperfeicoes = false` desliga; não se aplica à NBR 8400 nem a modelo só de concreto. Não feito: 0,8·EI (4.9.7.2).
 - Importação CYPE: painel de carga **inclinado** (escada, rampa) com caso que não é de vento recebe a carga gravitacional
   (−Z) na área real. Antes ia pela normal com componente dominante positiva e a carga da escada **subia**: no
   PLATAFORMA_REV4 a sobrecarga PESSOAS somava −109 kN contra −145 kN do CYPE; agora as reações batem a ~2 %.

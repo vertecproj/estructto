@@ -46,6 +46,7 @@ class TestCombinacaoDeterminante(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.m = _ex("portico_aco")
+        P.configurar(cls.m, {"imperfeicoes": False})   # combinações montadas à mão, sem as forças nocionais (4.9.7)
         cls.c = P.calcular(cls.m)
         cls.caso = {k: S.analisar(cls.m, k, False, 13) for k in ("G1", "Q1", "V1")}
 
@@ -135,6 +136,8 @@ class TestPDelta(unittest.TestCase):
         lin, pd = P.calcular(m), P.calcular(m, {"pdelta": True})
         for c in pd.combinacoes:
             r = pd.resultados[c["nome"]]
+            if c.get("imperfeicao"):
+                continue   # forças nocionais: casos temporários do calcular (não existem no modelo)
             if c["estado"] in ("ELU", "ELU_EXC"):
                 ref = S.analisar(m, c["fatores"], True, 13)
             else:
@@ -320,6 +323,7 @@ class TestB2(unittest.TestCase):
             nos = [n for n in m.nos.values() if abs(n.z - pv.z) < 1e-6]
             for n in nos:
                 P.adicionar(m, "carga_nodal", {"caso": "V1", "no": n.id, "F": [F / len(nos), 0, 0, 0, 0, 0]})
+        P.configurar(m, {"imperfeicoes": False})   # B2 refeito à mão com o solver: sem os casos nocionais temporários
         c = P.calcular(m)
         B2 = c.estabilidade["B2"]["X"]
         f = _comb(c, B2["combinacao"])["fatores"]

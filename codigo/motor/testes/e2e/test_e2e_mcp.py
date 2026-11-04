@@ -209,7 +209,8 @@ class TestFluxoManual(BaseMCP):
         val, comb, q1, calc, lista, rel = rodar(cena, self.pasta)
         self.assertTrue(val["ok"])
         _, ref = referencia("viga_biapoiada")                           # o mesmo modelo montado à mão = exemplo
-        self.assertEqual([c["nome"] for c in comb["itens"]], [c["nome"] for c in ref.combinacoes])
+        # o calcular acrescenta as variantes com forças nocionais (4.9.7); a lista de combinações não as tem
+        self.assertEqual([c["nome"] for c in comb["itens"]], [c["nome"] for c in ref.combinacoes if not c.get("imperfeicao")])
         for r in q1["reacoes"].values():
             self.assertAlmostEqual(r[2], 30.0, places=6)               # qL/2
         self.assertAlmostEqual(max(abs(x) for x in q1["esforcos"]["b1"]["My"]), 45.0, places=6)   # qL²/8

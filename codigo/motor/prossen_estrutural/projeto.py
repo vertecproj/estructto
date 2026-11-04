@@ -57,6 +57,8 @@ CONFIG_PADRAO = {"tipo_uso": "comercial", "variabilidade": "grandes", "pdelta": 
                  # Conjunto de combinações: "nbr8681" (padrão) ou "nbr8400" (equipamentos de levantamento, casos I/II/III,
                  # acoes/nbr8400.py); `nbr8400` = {grupo 1-6 (Mx, tab. 10), psi (tab. 5)}.
                  "combinacoes": "nbr8681", "nbr8400": {"grupo": 3, "psi": _nbr8400.PSI_PADRAO},
+                 # NBR 8800 4.9.7.1.1: forças nocionais (0,3 % das cargas gravitacionais de cálculo) nas ELU só gravitacionais
+                 "imperfeicoes": True,
                  # Dados do projeto (tela de novo projeto do Estructto, docs/v3/INICIO.md): só informativos, não entram no cálculo.
                  "projeto": {},  # {cliente, engenheiro, empresa, normas: ["NBR 8800", ...], pasta}
                  "grade": None}  # {"x": [espaçamentos m], "y": [...], "nomes_x": ["1", ...], "nomes_y": ["A", ...]} | None
@@ -947,6 +949,8 @@ def configurar(modelo, dados):
         err("variabilidade", "use 'grandes' ou 'pequenas'")
     if "pdelta" in dados and not isinstance(dados["pdelta"], bool):
         err("pdelta", "true/false")
+    if "imperfeicoes" in dados and not isinstance(dados["imperfeicoes"], bool):
+        err("imperfeicoes", "true/false (forças nocionais da NBR 8800 4.9.7.1.1)")
     if dados.get("tipo_edificacao") not in _TIPOS_EDIFICACAO:
         err("tipo_edificacao", "use null, 'tipo1', 'tipo2' ou 'separadas'")
     if "armadura" in dados and dados["armadura"] not in _mat.ARMADURAS:
@@ -1586,6 +1590,96 @@ def analisar_caso(modelo, caso, pdelta=False, n_pontos=N_PONTOS):
     return _resultado_dict(caso, _sol.analisar(modelo, caso, bool(pdelta), n_pontos), pdelta)
 
 
+NOCIONAL = 0.003   # NBR 8800:2008 4.9.7.1.1: força nocional = 0,3 % das cargas gravitacionais de cálculo
+_PFX_NOC = "Nocional "
+
+
+def _cargas_verticais_nos(m, caso):
+    """Carga vertical do caso levada aos nós ({nó: Fz}, Fz < 0 para baixo): nodais, distribuídas e pontuais como
+    reações de biapoiada, e o peso próprio (caso `m.peso_proprio`) metade em cada ponta."""
+    out = {}
+
+    def som(n, fz):
+        out[n] = out.get(n, 0.0) + fz
+    for c in m.cargas_nodais:
+        if c.caso == caso:
+            som(c.no, c.F[2])
+    for c in m.cargas_distribuidas:
+        if c.caso == caso:
+            b = m.barras[c.barra]
+            L = _comprimento(m, b)
+            qi, qj = c.q[2], (c.q2 or c.q)[2]
+            som(b.ni, (2 * qi + qj) * L / 6)
+            som(b.nj, (qi + 2 * qj) * L / 6)
+    for c in m.cargas_pontuais:
+        if c.caso == caso:
+            b = m.barras[c.barra]
+            L = _comprimento(m, b)
+            t = c.a / L if L > 0 else 0.5
+            som(b.ni, c.F[2] * (1 - t))
+            som(b.nj, c.F[2] * t)
+    if caso == m.peso_proprio:
+        for b in m.barras.values():
+            if b.secao in m.secoes and b.material in m.materiais:
+                w = m.materiais[b.material].peso * m.secoes[b.secao].A * _comprimento(m, b) / 2
+                som(b.ni, -w)
+                som(b.nj, -w)
+    return out
+
+
+def _imperfeicoes(m, combs, cfg):
+    """NBR 8800 4.9.7.1.1 (imperfeições geométricas iniciais): cada ELU só gravitacional (sem vento, sismo nem
+    excepcional) ganha 4 variantes ("<nome> + imperf. ±X/±Y") com forças nocionais horizontais de 0,3 % das cargas
+    gravitacionais de cálculo, nó a nó; a combinação original continua (nomes estáveis para a interface e o relatório;
+    a favor). As combinações com vento já têm ação horizontal maior. Cria no modelo um caso
+    'Nocional X: <caso>' e 'Nocional Y: <caso>' por caso gravitacional (o chamador remove: `_tirar_imperfeicoes`).
+    → (combinações, [ids de cargas criadas], [casos criados]) ou (combs, [], []) se desligado / NBR 8400 / só concreto."""
+    if not cfg.get("imperfeicoes", True) or cfg.get("combinacoes") == "nbr8400" or             not any(b.tipo in ("aco", "pff") for b in m.barras.values()):
+        return combs, [], []
+    horiz = {k for k, c in m.casos.items() if c.tipo in ("V", "S", "E")}
+    alvo = [c for c in combs if c["estado"] == "ELU" and not (set(c["fatores"]) & horiz)]
+    grav = sorted({k for c in alvo for k in c["fatores"] if k not in horiz})
+    novos_casos, novas_cargas = [], []
+    for k in grav:
+        fz = _cargas_verticais_nos(m, k)
+        for d, g in (("X", 0), ("Y", 1)):
+            nome = f"{_PFX_NOC}{d}: {k}"
+            m.add(CasoCarga(nome, "G"))
+            novos_casos.append(nome)
+            for no, f in fz.items():
+                if abs(f) > 1e-12:
+                    F = [0.0] * 6
+                    F[g] = -NOCIONAL * f
+                    novas_cargas.append(m.add(CargaNodal(nome, no, tuple(F))))
+    if not novos_casos:
+        return combs, [], []
+    saida = []
+    for c in combs:
+        saida.append(c)
+        if c not in alvo:
+            continue
+        for d in ("X", "Y"):
+            for sinal, rot in ((1.0, "+"), (-1.0, "−")):
+                f = dict(c["fatores"])
+                for k, v in c["fatores"].items():
+                    f[f"{_PFX_NOC}{d}: {k}"] = sinal * v
+                det = dict(c.get("detalhe") or {})
+                det.update({f"{_PFX_NOC}{d}: {k}": {"gamma": sinal * v, "psi": 1.0, "produto": sinal * v}
+                            for k, v in c["fatores"].items()})
+                saida.append({**c, "nome": f"{c['nome']} + imperf. {rot}{d}", "fatores": f, "detalhe": det,
+                              "imperfeicao": f"{rot}{d}"})
+    return saida, novas_cargas, novos_casos
+
+
+def _tirar_imperfeicoes(m, cargas, casos):
+    if not casos:
+        return
+    ids = {id(c) for c in cargas}
+    m.cargas_nodais[:] = [c for c in m.cargas_nodais if id(c) not in ids]
+    for k in casos:
+        m.casos.pop(k, None)
+
+
 def _resultado_comb(modelo, fatores, estado, pdelta, res_caso, n_pontos):
     """Combinação linear dos casos já analisados; com P-Δ, ELU/ELU_EXC são analisadas como caso único."""
     if pdelta and estado in ("ELU", "ELU_EXC"):
@@ -2180,6 +2274,11 @@ def _estabilidade(m, pavs, combs, res_caso, resultados, pdelta, tipos, n_pontos,
         Pc = sum(v * P[kk] for kk, v in f.items())
         # 1ª ordem: com P-Δ, `resultados` são de 2ª ordem; `_resultado_comb(pdelta=False)` completa os casos que faltam
         lin = resultados[c["nome"]] if not pdelta else _resultado_comb(m, f, c["estado"], False, res_caso, n_pontos)
+        if c.get("imperfeicao"):
+            # variante nocional: Δh só das forças nocionais (estrutura lt do anexo D); com ΣH de 0,3 % a deriva da
+            # gravidade em estrutura assimétrica dominaria Δh/ΣH e inflaria o B2
+            lin = _resultado_comb(m, {kc: v for kc, v in f.items() if kc.startswith(_PFX_NOC)}, c["estado"], False,
+                                  res_caso, n_pontos)
         delta = np.array([lin.pavimentos[p][k] if p in lin.pavimentos else 0.0 for p, _ in pavs])
         Hd = Hc[:, k]
         info = por_comb[c["nome"]] = {"direcao": d, "gama_z": None, "B2": None, "instavel": False}
@@ -2413,6 +2512,19 @@ def calcular(modelo, opcoes=None):
     snapshot = Modelo.from_dict(m.to_dict())
     snapshot._ultimo_id = dict(m._ultimo_id)
 
+    # forças nocionais (4.9.7.1.1): casos temporários no modelo enquanto dura a análise e a 2ª ordem global
+    combs, noc_cargas, noc_casos = _imperfeicoes(m, combs, cfg)
+    try:
+        return _calcular_com(m, opcoes, cfg, pdelta, npt, sel, avisos, combs, snapshot, t0, bool(noc_casos))
+    finally:
+        _tirar_imperfeicoes(m, noc_cargas, noc_casos)
+
+
+def _calcular_com(m, opcoes, cfg, pdelta, npt, sel, avisos, combs, snapshot, t0, nocionais):
+    if nocionais:
+        avisos.append(_aviso("imperfeicoes_nocionais", "imperfeições geométricas iniciais (NBR 8800 4.9.7.1.1): forças "
+                             "nocionais de 0,3 % das cargas gravitacionais de cálculo em ±X e ±Y nas ELU sem ação "
+                             "horizontal (desligue em config.imperfeicoes)", nivel="info"))
     res_caso = {}  # análises lineares por caso (base das combinações e do δ de 1ª ordem)
     resultados = {c["nome"]: _resultado_comb(m, c["fatores"], c["estado"], pdelta, res_caso, npt) for c in combs}
     por_estado = {}
@@ -2426,6 +2538,7 @@ def calcular(modelo, opcoes=None):
     pavs = _pavimentos_acima(m)
     tipos = {b.tipo for b in m.barras.values()}
     H, fora = _forcas_horizontais(m, pavs)
+    fora = {k: v for k, v in fora.items() if not str(k).startswith(_PFX_NOC)}   # nocionais fora das cotas: ruído
     est = _estabilidade(m, pavs, combs, res_caso, resultados, pdelta, tipos, npt, H, fora)
     avisos += _amplificar(m, combs, est, H, res_caso, resultados, pdelta, npt)
     if not pavs and not pdelta and any(b.tipo != "concreto" for b in m.barras.values()):

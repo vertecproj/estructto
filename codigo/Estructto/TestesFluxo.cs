@@ -746,7 +746,9 @@ namespace NovoFtool
             r.L("estabilidade: " + est?.ToJsonString().Substring(0, Math.Min(400, est?.ToJsonString().Length ?? 0)));
             // aço: o motor usa B2 (NBR 8800 anexo D) no lugar do γz (NBR 6118, só concreto)
             var b2 = (est?["B2"] as JsonObject)?.Select(kv => (kv.Key, UiAnalise.D(kv.Value, "max"))).Where(x => !double.IsNaN(x.Item2)).ToList() ?? new List<(string, double)>();
-            r.Checar((bool?)est?["aplicavel"] == true && gz.Count == 0 && b2.Count == 2 && b2.All(x => x.Item2 >= 1 && x.Item2 < 2),
+            // v0.6.21: as ELU só gravitacionais com forças nocionais (NBR 8800 4.9.7) também dão B2, com o maior ΣN; este
+            // edifício é flexível em Y (B2 ≈ 2,5, grande deslocabilidade) — antes só vento/sismo davam B2 (< 2)
+            r.Checar((bool?)est?["aplicavel"] == true && gz.Count == 0 && b2.Count == 2 && b2.All(x => x.Item2 >= 1 && x.Item2 < 50),
                      "estabilidade global do edifício de aço: B2 (NBR 8800 D.2.3) por direção " + string.Join(", ", b2.Select(x => x.Item1 + " " + Nf(x.Item2))) + "; γz vazio (só concreto)");
             var je = new JanelaEstabilidade(est); PrepararDialogoForaDaTela(je); je.Owner = w; je.Show(); EsperarIdle();
             FotoDialogo(je, "B-06-estabilidade"); je.Close();
