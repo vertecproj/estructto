@@ -35,7 +35,12 @@ namespace NovoFtool
         public string Title { get; set; }                     // ponytail: o cabeçalho da aba usa NomeAba; Title só por compatibilidade
         public Action Fechou;                                 // Close(): a aba sai (MainWindow.FecharLigacao)
         public Action AbaMudou;                               // biblioteca ↔ padrão: o nome da aba muda
-        public string NomeAba => (tipo == null ? "Biblioteca de ligações" : "Ligação · " + NomeTipo(Tipo())) + (grupo != null ? " · grupo " + S(grupo, "nome") : "");
+        public Func<Task<(JsonNode g, JsonNode dim)>> Recarregar;   // F5/Calcular com grupo do modelo: recalcula o modelo se preciso e devolve grupo + dimensionar (MainWindow.CarregarGrupo)
+        string erroGrupo;                                     // /dimensionar falhou: erro na própria aba, sem esforços de exemplo em silêncio
+        public string ErroGrupo => erroGrupo;
+        public bool Ocupado => ocupado || calculando;
+        public bool TipoSugerido { get; private set; }        // o tipo veio do motor (grupo sem projeto), não de uma escolha
+        public string NomeAba => (erroGrupo != null && tipo == null ? "Ligação" : tipo == null ? "Biblioteca de ligações" : "Ligação · " + NomeTipo(Tipo())) + (grupo != null ? " · grupo " + S(grupo, "nome") : "");
         public void Close() { espera.Stop(); Fechou?.Invoke(); }
         Window Dono => Window.GetWindow(this) ?? Application.Current.MainWindow;   // diálogos: a janela que hospeda a aba
         bool carregou;
@@ -108,7 +113,7 @@ namespace NovoFtool
             {
                 if (carregou || Capturas.Ativo) return;
                 carregou = true;
-                if (tipo != null) await CalcularAgora(); else await CarregarMiniaturas();
+                if (tipo != null) await CalcularAgora(); else if (erroGrupo == null) await CarregarMiniaturas();
             };
         }
 
@@ -198,18 +203,31 @@ namespace NovoFtool
         string TipoNoGrupo => S(grupo, "tipo");
 
         // contexto do grupo: esforços do membro que governa, perfis pela assinatura, filtro pelo tipo de nó
-        public void UsarGrupo(JsonNode g, JsonNode dim)
+        // tipo de nó → tipo de ligação sugerido (espelho de TIPOS em aco/ligacoes_modelo.py; o motor só o grava como projeto padrão
+        // em alguns nós). ponytail: tabela copiada; se o motor passar a expor "sugerido" na lista de grupos, ler de lá.
+        static readonly Dictionary<string, string> Sugeridos = new Dictionary<string, string>
         {
+            ["viga_pilar_mesa"] = "chapa_simples", ["viga_pilar_alma"] = "chapa_simples", ["viga_viga"] = "chapa_simples", ["emenda"] = "parafuso",
+            ["gusset_contraventamento"] = "ligacao_tracao", ["no_trelica"] = "ligacao_tracao", ["tubo_tubo_soldado"] = "tubo_tubo_soldado", ["perfil_tubo_soldado"] = "perfil_tubo_soldado"
+        };
+
+        // recarga = F5/Calcular com a aba já aberta: só atualiza o dimensionar e os esforços do membro (dados e tipo editados ficam)
+        public void UsarGrupo(JsonNode g, JsonNode dim, string falha = null, bool recarga = false)
+        {
+            if (erroGrupo != null) recarga = false;   // saiu do erro: aplica o projeto/tipo sugerido como na abertura
             grupo = g; dimGrupo = dim;
+            erroGrupo = dim == null ? (falha ?? "O motor não devolveu os esforços do grupo.") : null;
+            if (dim == null) { Title = "Projetar ligação — grupo " + S(g, "nome"); if (!recarga) tipo = null; Montar(); return; }
+            if (recarga && membroSel == "") { Montar(); return; }   // esforços digitados: nada a recarregar
             var gov = dim?["governante"] ?? dim?["por_demanda"];
-            membroSel = gov != null ? Chave(gov) : MembrosGrupo().Select(Chave).FirstOrDefault() ?? "";
+            if (!recarga || Membro(membroSel) == null) membroSel = gov != null ? Chave(gov) : MembrosGrupo().Select(Chave).FirstOrDefault() ?? "";
             Title = "Projetar ligação — grupo " + S(g, "nome");
             var p = S(g, "assinatura").Split('|');
             foreach (var t in tipos)
             {
                 string id = S(t, "tipo");
                 var cs = Campos(t).ToList();
-                foreach (var c in cs)
+                foreach (var c in recarga ? new List<JsonNode>() : cs)
                 {
                     string n = S(c, "nome");
                     if (n == "perfil_viga" && p.Length > 1 && p[1] != "") dados[id][n] = p[1];
@@ -226,11 +244,13 @@ namespace NovoFtool
                 if (m != null) esforcos[id] = EsforcosDoMembro(m["esforcos"], t);
             }
             string tl = S(g["projeto"], "tipo_ligacao");
-            if (Tipo(tl) != null)
+            if (recarga) { }
+            else if (Tipo(tl) != null)
             {
                 foreach (var kv in (g["projeto"]?["dados"] as JsonObject) ?? new JsonObject()) dados[tl][kv.Key] = kv.Value?.DeepClone();
                 tipo = tl;
             }
+            else if (tl == "" && Sugeridos.TryGetValue(TipoNoGrupo, out var sug) && Tipo(sug) != null) { tipo = sug; TipoSugerido = true; }   // sem projeto: o tipo do motor já abre calculado (Trocar padrão leva à biblioteca)
             Montar();
         }
 
@@ -252,6 +272,29 @@ namespace NovoFtool
             catch (Exception ex) { if (meu != seq) return; erro = ComandosAnalise.MensagemMotor(ex); }
             finally { if (meu == seq) { calculando = false; resultadoVelho = false; } }
             Atualizar();
+        }
+
+        // F5 / botão Calcular / Calcular da faixa. Grupo do modelo: recalcula o modelo (se desatualizado), redimensiona o grupo e
+        // recarrega os esforços; calculadora solta ou .pcon: só verifica. Nunca "nada para calcular".
+        public async Task CalcularTudo()
+        {
+            if (ocupado) return;
+            if (Recarregar != null)
+            {
+                ocupado = true; MontarRodape(); calculando = true; MontarStatus();
+                try { var (g, dim) = await Recarregar(); ocupado = false; UsarGrupo(g, dim, null, true); }
+                catch (Exception ex)
+                {
+                    ocupado = false; calculando = false;
+                    string m = ComandosAnalise.MensagemMotor(ex);
+                    if (tipo == null) { erroGrupo = m; Montar(); }
+                    else { erro = "Não foi possível recalcular o modelo: " + m; Atualizar(); }
+                    return;
+                }
+                finally { ocupado = false; }
+            }
+            if (tipo == null) { status = erroGrupo == null ? "Escolha um padrão na biblioteca para calcular." : status; MontarRodape(); return; }
+            await CalcularAgora();
         }
 
         JsonObject Corpo() => new JsonObject { ["tipo"] = tipo, ["dados"] = Dados.DeepClone(), ["esforcos"] = Esf.DeepClone() };
@@ -465,7 +508,8 @@ namespace NovoFtool
         // ================================================================ montagem
         void Montar()
         {
-            if (tipo == null) MontarBiblioteca(); else MontarProjeto();
+            if (erroGrupo != null && tipo == null) MontarErroGrupo();
+            else if (tipo == null) MontarBiblioteca(); else MontarProjeto();
             MontarRodape();
             AbaMudou?.Invoke();
         }
@@ -474,6 +518,21 @@ namespace NovoFtool
         {
             if (tipo == null) return;
             MontarCabecalho(); MontarDesenho(); MontarResultados(); MontarStatus(); MontarRodape();
+        }
+
+        // /dimensionar falhou: o erro fica aqui (não só no toast); esforços de exemplo só se o usuário escolher na biblioteca
+        void MontarErroGrupo()
+        {
+            hostCab.Child = Cabecalho(Nivel.Erro, "✕", "Não foi possível dimensionar o grupo " + S(grupo, "nome"), "Sem os esforços do modelo não há o que verificar.");
+            var tentar = Botao("Tentar de novo", "calc", () => _ = CalcularTudo(), "Recalcula o modelo e pede os esforços do grupo ao motor outra vez (F5).");
+            var bib = Botao("Biblioteca", "tabela", () => { erroGrupo = null; Montar(); _ = CarregarMiniaturas(); }, "Abre a biblioteca com esforços de exemplo (não são os do modelo).");
+            bib.Margin = new Thickness(8, 0, 0, 0);
+            var bs = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+            bs.Children.Add(tentar); bs.Children.Add(bib);
+            var sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            sp.Children.Add(Vazio("verif", "Sem esforços do modelo", erroGrupo));
+            sp.Children.Add(bs);
+            hostCorpo.Child = sp;
         }
 
         // ---------------------------------------------------------------- biblioteca
@@ -1178,14 +1237,19 @@ namespace NovoFtool
         {
             if (tipo == null) return;
             var sp = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            // estado legível: calculando / erro / atualizado (a ligação recalcula sozinha a cada mudança; o botão força agora)
             if (calculando || resultadoVelho)
             {
                 var br = Anim.Brilho(70, 3); br.VerticalAlignment = VerticalAlignment.Center; br.Margin = new Thickness(0, 0, 8, 0);
                 sp.Children.Add(br);
-                sp.Children.Add(Tx("recalculando…", 11, TemaPlant.BTexto3));
+                sp.Children.Add(Tx("calculando…", 11.5, TemaPlant.BTexto2));
             }
+            else if (erro != null) sp.Children.Add(Tx("erro · corrija os dados", 11.5, TemaPlant.BAlertaClaro));
             else if (resultado != null)
-                sp.Children.Add(Tx("ao vivo · " + Lista(resultado["verificacoes"]).Count() + " verificações · arraste o 3D para girar", 11, TemaPlant.BTexto3));
+                sp.Children.Add(Tx("atualizado · ao vivo · " + Lista(resultado["verificacoes"]).Count() + " verificações", 11.5, TemaPlant.BTexto2));
+            var calc = Botao("Calcular", "calc", () => _ = CalcularTudo(), "Calcula agora (F5). A ligação já recalcula sozinha 250 ms depois de cada mudança; com grupo do modelo, também refaz o cálculo do modelo e recarrega os esforços.");
+            calc.IsEnabled = !ocupado; calc.Opacity = calc.IsEnabled ? 1 : 0.45; calc.Margin = new Thickness(10, 0, 0, 0);
+            sp.Children.Add(calc);
             hostStatusDes.Child = sp;
         }
 
@@ -1411,19 +1475,25 @@ namespace NovoFtool
             if (j != null) { MostrarLigacao(j); Activate(); }   // a aba fica na janela principal (o gerenciador continua por cima)
         }
 
+        // modelo calculado (recalcula se desatualizado) → /dimensionar do grupo; releitura = F5 na aba (grupo relido: ids e membros podem ter mudado)
+        internal async Task<(JsonNode g, JsonNode dim)> CarregarGrupo(DocumentoEspacial d, JsonNode g, bool reler)
+        {
+            if (!d.Calculado) await CalcularEspacial();
+            if (!d.Calculado) throw new InvalidOperationException("o cálculo do modelo não terminou" + (StatusMsg.Text.Contains("⚠") ? " (" + StatusMsg.Text.TrimStart('⚠', ' ') + ")" : "") + ".");
+            string id = S(g, "id");
+            if (reler) g = Lista(await d.Ligacoes("GET", "/api/ligacoes/grupos")).FirstOrDefault(x => S(x, "id") == id) ?? throw new InvalidOperationException("o grupo " + S(g, "nome") + " não existe mais no modelo.");
+            return (g, await d.Ligacoes("POST", "/api/ligacoes/grupos/" + Uri.EscapeDataString(id) + "/dimensionar"));
+        }
+
         internal async Task<JanelaLigacaoProjeto> CriarProjetistaGrupo(DocumentoEspacial d, JsonNode g, JanelaLigacoesGrupos ger)
         {
             var tipos = await ComandosAnalise.BuscarTipos(ger ?? (Window)this);
             if (tipos == null) return null;
-            JsonNode dim = null;
-            try
-            {
-                if (!d.Calculado) await CalcularEspacial();
-                dim = await d.Ligacoes("POST", "/api/ligacoes/grupos/" + Uri.EscapeDataString(S(g, "id")) + "/dimensionar");
-            }
-            catch (Exception ex) { MostrarToast("Projetar: " + ComandosAnalise.MensagemMotor(ex), true); }
-            var j = new JanelaLigacaoProjeto(tipos) { ApiGrupo = (m, r, c) => d.Ligacoes(m, r, c) };
-            j.UsarGrupo(g, dim);
+            JsonNode dim = null; string falha = null;
+            try { dim = (await CarregarGrupo(d, g, false)).dim; }
+            catch (Exception ex) { falha = ComandosAnalise.MensagemMotor(ex); MostrarToast("Projetar: " + falha, true); }
+            var j = new JanelaLigacaoProjeto(tipos) { ApiGrupo = (m, r, c) => d.Ligacoes(m, r, c), Recarregar = async () => await CarregarGrupo(d, g, true) };
+            j.UsarGrupo(g, dim, falha);
             j.Aplicado = () => { if (Esp == d) { alterado = true; AtualizarTitulo(); } if (ger != null) _ = ger.Carregar(false); };
             j.AbrirPlaca = jp => { jp.Close(); if (ger != null) { ger.Escolher(S(g, "id")); _ = ger.DimensionarSelecionado(); } };
             return j;
@@ -1599,6 +1669,7 @@ namespace NovoFtool
             var t2 = w.CriarProjetistaGrupo(d, g, ger); Esperar(t2);
             var jg = t2.Result ?? throw new InvalidOperationException("projetista do grupo não abriu");
             w.MostrarLigacao(jg); EsperarIdle();
+            if (jg.TemTipo) { Esperar(jg.CalcularAgora()); EsperarIdle(); }   // W7-CALC: grupo sem projeto já abre no tipo sugerido (a captura não dispara o Loaded)
             CapturarDialogo(jg, "51-projetista-grupo-biblioteca.png");
             Esperar(jg.Escolher("chapa_simples_alma")); EsperarIdle();
             CapturarDialogo(jg, "51-projetista-grupo-projeto.png");

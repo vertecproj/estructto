@@ -62,11 +62,12 @@ namespace NovoFtool
         }
 
         // teclas da janela (Acoes.cs Tecla) com uma aba de ligação na frente: true = a janela não trata (a tecla segue para a aba).
-        // Só Ctrl+K/S/O/N valem; Ctrl+F4 fecha a aba.
+        // Só Ctrl+K/S/O/N valem; Ctrl+F4 fecha a aba; F5 calcula a ligação da aba.
         bool TeclaLigacao(Key k, bool ctrl, KeyEventArgs e)
         {
             if (LigacaoAtiva == null) return false;
             if (ctrl && k == Key.F4) { LigacaoAtiva.Close(); e.Handled = true; return true; }
+            if (k == Key.F5) { e.Handled = true; Calcular(); return true; }   // calcula a ligação da aba (Calcular() sabe: Acoes/Comandos3D)
             if (ctrl && (k == Key.O || k == Key.N)) { MostrarLigacao(null); return false; }   // abre/cria modelo: volta ao modelo antes
             return !(ctrl && (k == Key.K || k == Key.S));
         }
