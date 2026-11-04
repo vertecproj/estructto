@@ -141,3 +141,17 @@ cálculo; divide o grupo quando ele tem outros membros, grava o projeto só no g
 reais, todas as combinações ELU). Não passa → `modelo.ligacoes` volta como estava e o erro diz "troca não aplicada (...): <verificação
 que reprova> (taxa ...)". Membro com `barra_curta` no verificador sai com `ok = False`, `sem_ligacao_valida = True` e uma linha
 "sem ligação válida" em `erros` (gerenciador e memorial).
+
+## Reidentificação automática (gerenciador)
+
+O gerenciador (`JanelaLigacoesGrupos`) roda `POST /api/ligacoes/identificar` sozinho; o botão **Re-identificar** continua, só para forçar.
+- Gatilhos: ao abrir (`Loaded`), ao reativar a janela (`Activated`) e quando o modelo muda ou termina de calcular
+  (`MainWindow.AtualizarEspacial3D` chama `ModeloMudou()`; passam por ali edição, desfazer/refazer, "Ligar nó" e `CalcularEspacial`).
+  `ModeloMudou()` tem debounce de 400 ms e espera o gerenciador sair de `ocupado`.
+- Sem laço: a reidentificação só chama `Mudou` (título "*") e só grava o JSON local, nunca `AtualizarEspacial3D`.
+- Não suja o documento: `DocumentoEspacial.Ligacoes` compara `ligacoes` do motor antes e depois do `identificar`. Igual → não
+  atualiza `Json`, não marca `TemHistorico` e a resposta leva `mudou: false` (o gerenciador não chama `Mudou`). O motor já só
+  empilha desfazer se mudou (`servidor._ligacoes`). Chamada automática sem mudança também não remonta a tela.
+- "Projetar no projetista…" e "Dimensionar pela pior" gravam antes os campos editados e ainda não enviados (`GravarPendentes`).
+- Prova: `ESTRUCTTO_CAPTURAS=ligacoes` (`CapturasLigacoes`): remove uma barra, reidentifica pelo gatilho e confere grupos; segunda
+  chamada sem mudança não suja o documento.

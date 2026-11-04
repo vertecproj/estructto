@@ -664,6 +664,7 @@ namespace NovoFtool
             ListarSecoes3D();
             AplicarGradeNaVista();   // eixos da grade estrutural do documento (Comandos3D.cs)
             SincronizarEsp();
+            if (janLig != null && janLig.IsVisible) janLig.ModeloMudou();   // gerenciador de ligações reidentifica sozinho (debounce)
         }
 
         void DepoisDeMudarEspacial(string msg)

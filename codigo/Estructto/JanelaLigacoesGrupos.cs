@@ -127,9 +127,23 @@ namespace NovoFtool
             nota.TextTrimming = TextTrimming.CharacterEllipsis;
             Content = Raiz(hostCab, corpo, Rodape(Dica(nota, nota.Text), B("Fechar", Close, false, "Fecha o gerenciador (Esc). As edições dos grupos já estão no modelo.")));
             Montar();
-            Loaded += async (s, e) => { if (grupos.Count == 0 && !Capturas.Ativo) await Carregar(true); };
-            Closed += (s, e) => Destacar?.Invoke(new string[0], new string[0]);
+            // Reidentifica sozinho: ao abrir, ao reativar a janela e quando o modelo muda/termina de calcular (ModeloMudou, chamado
+            // por MainWindow.AtualizarEspacial3D). Debounce de 400 ms; "identificar" sem mudança não grava nem suja o documento.
+            deb = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            deb.Tick += async (s, e) =>
+            {
+                deb.Stop();
+                if (ocupado) { deb.Start(); return; }
+                try { await Reidentificar(); } catch { }
+            };
+            Loaded += async (s, e) => { if (!Capturas.Ativo) await Carregar(true, true); };
+            Activated += (s, e) => { if (!Capturas.Ativo) ModeloMudou(); };
+            Closed += (s, e) => { deb.Stop(); Destacar?.Invoke(new string[0], new string[0]); };
         }
+
+        readonly System.Windows.Threading.DispatcherTimer deb;
+        public void ModeloMudou() { if (Api != null && IsLoaded) { deb.Stop(); deb.Start(); } }
+        public Task Reidentificar() => Carregar(true, true);
 
         // ---------------------------------------------------------------- dados
 
@@ -137,9 +151,11 @@ namespace NovoFtool
         JsonNode Grupo(string id) => grupos.FirstOrDefault(g => S(g, "id") == id);
 
         // identificar = re-identifica (guarda as edições) antes de ler os grupos
-        public async Task Carregar(bool identificar)
+        // auto = chamada automática: se nada mudou não remonta a tela, e erro passageiro não aparece (a tela já tinha dados).
+        public async Task Carregar(bool identificar, bool auto = false)
         {
             if (Api == null) return;
+            string antes = auto ? grupos.ToJsonString() + semTipo.ToJsonString() + ajustes.ToJsonString() : null;
             await Rodar(async () =>
             {
                 if (identificar)
@@ -147,11 +163,16 @@ namespace NovoFtool
                     var idr = await Api("POST", "/api/ligacoes/identificar", new JsonObject());
                     semTipo = idr?["sem_tipo"]?.DeepClone() as JsonObject ?? new JsonObject();
                     ajustes = idr?["ajustes"]?.DeepClone() as JsonObject ?? new JsonObject();
-                    Mudou?.Invoke();
+                    if (!(idr?["mudou"] is JsonValue mv && mv.TryGetValue(out bool mb) && !mb)) Mudou?.Invoke();   // só se gravou algo
                 }
                 if (tipos == null) tipos = await Api("GET", "/api/ligacoes/tipos", null);
                 grupos = (await Api("GET", "/api/ligacoes/grupos", null)) as JsonArray ?? new JsonArray();
             });
+            if (auto && antes.Length > 20)
+            {
+                if (erro != null) { erro = null; return; }
+                if (antes == grupos.ToJsonString() + semTipo.ToJsonString() + ajustes.ToJsonString()) return;
+            }
             if (Grupo(gSel) == null && !(gSel == SemLig && semTipo.Count > 0)) { gSel = S(grupos.FirstOrDefault(), "id") ?? (semTipo.Count > 0 ? SemLig : null); mSel.Clear(); dim = null; }
             Montar(); Realcar();
         }
@@ -176,16 +197,21 @@ namespace NovoFtool
         }
 
         // API das capturas e do botão: dimensiona o grupo escolhido pela pior ligação
-        public async Task DimensionarSelecionado()
+        // Grava os campos editados no painel e ainda não enviados ao motor (antes de dimensionar ou abrir o projetista).
+        public async Task GravarPendentes()
         {
             var g = Grupo(gSel);
             if (g == null) return;
             string tl = S(g["projeto"], "tipo_ligacao");
             if (tipoEdit != null && gEdit == gSel && (tipoEdit != tl || dadosEdit?.ToJsonString() != g["projeto"]?["dados"]?.ToJsonString()) && tipoEdit != "placa_base")
-            {
                 await Editar(new JsonObject { ["acao"] = "projeto", ["grupo"] = gSel, ["tipo_ligacao"] = tipoEdit == "" ? null : tipoEdit, ["dados"] = dadosEdit?.DeepClone() }, false);
-                g = Grupo(gSel);
-            }
+        }
+
+        public async Task DimensionarSelecionado()
+        {
+            if (Grupo(gSel) == null) return;
+            await GravarPendentes();
+            var g = Grupo(gSel);
             if (Calcular != null && grupos.All(x => x["governante"] == null))   // sem cálculo: F5 antes
             {
                 await Calcular(); await Carregar(false); g = Grupo(gSel);
@@ -640,7 +666,7 @@ namespace NovoFtool
             sp.Children.Add(bDim);
             if (Projetar != null)
             {
-                var bProj = Botao("Projetar no projetista…", "unir", async () => await Projetar(this, g), "Abre o projetista de ligações com os esforços da pior ligação do grupo: escolha o padrão, ajuste vendo o desenho e as verificações e aplique ao grupo.", 30);
+                var bProj = Botao("Projetar no projetista…", "unir", async () => { await GravarPendentes(); await Projetar(this, Grupo(gSel) ?? g); }, "Abre o projetista de ligações com os esforços da pior ligação do grupo: escolha o padrão, ajuste vendo o desenho e as verificações e aplique ao grupo.", 30);
                 bProj.Margin = new Thickness(0, -2, 0, 10); bProj.HorizontalAlignment = HorizontalAlignment.Stretch;
                 sp.Children.Add(bProj);
             }
@@ -733,9 +759,17 @@ namespace NovoFtool
         {
             await Garantir();
             bool le = metodo == "GET" || rota.EndsWith("/dimensionar");
+            bool ident = rota.EndsWith("/identificar");   // só grava/suja se mudou (o motor só empilha desfazer se mudou)
             if ((le || rota.EndsWith("/aplicar_troca")) && Calculado && await Motor.Get("/api/calculo") == null) await Motor.Post("/api/calcular", new JsonObject());
+            string antes = ident ? ((await Motor.Get("/api/modelo"))?["ligacoes"])?.ToJsonString() : null;
             var r = await Motor.Chamar(metodo, rota, corpo);
-            if (!le) { Json = (JsonObject)await Motor.Get("/api/modelo"); TemHistorico = true; }
+            if (!le)
+            {
+                var novo = (JsonObject)await Motor.Get("/api/modelo");
+                bool mudou = !ident || antes != novo["ligacoes"]?.ToJsonString();
+                if (ident && r is JsonObject ro) ro["mudou"] = mudou;
+                if (mudou) { Json = novo; TemHistorico = true; }
+            }
             return r;
         });
     }
@@ -853,6 +887,21 @@ namespace NovoFtool
             j.Escolher(vp); EsperarIdle();
             Esperar(j.DimensionarSelecionado()); EsperarIdle();
             CapturarDialogo(j, "49-ligacoes-viga-pilar-dimensionada.png");
+
+            // reidentificação automática: nada mudou → não suja o documento; modelo mudou → grupos atualizam sem clicar
+            w.alterado = false; d.TemHistorico = false;
+            Esperar(j.Reidentificar()); EsperarIdle();
+            if (w.alterado || d.TemHistorico) throw new InvalidOperationException("reidentificar sem mudança sujou o documento");
+            string antesRes = j.Resumo;
+            string barraRem = (string)((JsonObject)gs.First().Value)["membros"]?[0]?["barra"];
+            Esperar(d.Remover("barra", barraRem)); w.alterado = false; d.TemHistorico = false;
+            j.ModeloMudou();   // o mesmo gatilho que AtualizarEspacial3D usa
+            Esperar(System.Threading.Tasks.Task.Delay(1500)); EsperarIdle();
+            if (j.Resumo == antesRes) throw new InvalidOperationException("modelo mudou e o gerenciador não reidentificou: " + antesRes);
+            if (!w.alterado) throw new InvalidOperationException("mudança de ligações não marcou o documento");
+            w.alterado = false; d.TemHistorico = false;
+            Esperar(j.Reidentificar()); EsperarIdle();
+            if (w.alterado || d.TemHistorico) throw new InvalidOperationException("2ª reidentificação sem mudança sujou o documento");
             j.Close();
             w.FecharEspaciaisSemPerguntar();
             EsperarIdle();

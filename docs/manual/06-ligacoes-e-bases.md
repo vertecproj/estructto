@@ -16,7 +16,7 @@ O desenho se atualiza com os campos e oferece planta, elevação, lateral e vist
 
 ## Grupos: dimensionar pela pior ligação
 
-Abra **Ligações e bases › Grupos › Gerenciar ligações** e **Identificar/Re-identificar**. O programa reúne pontas de barras semelhantes por tipo de nó, perfis da barra e apoio, material, ângulo e condição rígida/rotulada.
+Abra **Ligações e bases › Grupos › Gerenciar ligações** . O programa identifica as ligações sozinho ao abrir, ao voltar para a janela e quando o modelo muda ou termina de calcular; o botão **Re-identificar** só força de novo. Ele reúne pontas de barras semelhantes por tipo de nó, perfis da barra e apoio, material, ângulo e condição rígida/rotulada.
 
 1. Revise membros e assinatura de cada grupo; selecione-o para localizar os elementos na vista.
 2. Renomeie, separe, mova ou una membros conforme o detalhe construtivo. Trave grupos que devem preservar a composição. Grupos manuais conservam membros existentes ao re-identificar.
@@ -24,7 +24,7 @@ Abra **Ligações e bases › Grupos › Gerenciar ligações** e **Identificar/
 4. Escolha o tipo, ajuste o projeto e clique em **Aplicar ao grupo**. O mesmo detalhe é verificado para todos os membros em todas as combinações ELU abrangidas pelo cálculo.
 5. Revise a aba **Grupo**, taxas, erros e combinação de cada membro. A ligação governante é a de maior taxa; ela pode mudar ao alterar o detalhe.
 
-Antes de existir projeto, a indicação de pior ligação é uma estimativa pela demanda. Só a verificação do projeto permite identificar a pior taxa. Erros em membros precisam ser resolvidos mesmo que outros passem. Após alterar geometria, perfis ou ações, recalcule e re-identifique/reverifique os grupos.
+Antes de existir projeto, a indicação de pior ligação é uma estimativa pela demanda. Só a verificação do projeto permite identificar a pior taxa. Erros em membros precisam ser resolvidos mesmo que outros passem. Após alterar geometria, perfis ou ações, recalcule e reverifique os grupos (a identificação é automática).
 
 O agrupamento é geométrico e deve ser revisto pelo projetista: uma terça pode ser classificada pelo pilar que chega ao nó, embora seu apoio construtivo seja a viga. Esforços vêm da ponta da barra; ações diretamente no nó de apoio não são automaticamente incorporadas como esforço da barra.
 
