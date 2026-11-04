@@ -1,0 +1,135 @@
+{
+ "versao_formato": 1,
+ "nome": "Pilar Tubo 175×175×9,50 engastado (placa de base do usuário), A36",
+ "nos": {
+  "N0-0-0": {
+   "id": "N0-0-0",
+   "x": 0.0,
+   "y": 0.0,
+   "z": 0.0,
+   "apoio": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "N1-0-0": {
+   "id": "N1-0-0",
+   "x": 0.0,
+   "y": 0.0,
+   "z": 1.0,
+   "apoio": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  }
+ },
+ "materiais": {
+  "A36": {
+   "nome": "A36",
+   "E": 200000000.0,
+   "G": 77000000.0,
+   "peso": 77.0,
+   "fy": 250000.0,
+   "fu": 400000.0,
+   "fck": null
+  }
+ },
+ "secoes": {
+  "Tubo 175x175x9,50": {
+   "nome": "Tubo 175x175x9,50",
+   "A": 0.006134057473972953,
+   "Iy": 2.7678330330418626e-05,
+   "Iz": 2.7678330330418626e-05,
+   "J": 4.3064320562499986e-05,
+   "props": {
+    "tipo": "tubo_retangular",
+    "A": 0.006134057473972953,
+    "Ix": 2.7678330330418626e-05,
+    "Iy": 2.7678330330418626e-05,
+    "J": 4.3064320562499986e-05,
+    "Wx": 0.00031632377520478434,
+    "Wy": 0.00031632377520478434,
+    "Zx": 0.0003907397499999997,
+    "Zy": 0.0003907397499999997,
+    "Cw": 0.0,
+    "rx": 0.06717319782271428,
+    "ry": 0.06717319782271428,
+    "x0": 0.0,
+    "y0": 0.0,
+    "h": 0.175,
+    "b": 0.175,
+    "t": 0.0095,
+    "bt_mesa": 15.421052631578947,
+    "ht_alma": 15.421052631578947,
+    "Ay": 0.003325,
+    "Az": 0.003325,
+    "r0": 0.09499724738885339,
+    "massa": 48.15,
+    "A_catalogo": 0.0061341
+   }
+  }
+ },
+ "barras": {
+  "P1-0-0": {
+   "id": "P1-0-0",
+   "ni": "N0-0-0",
+   "nj": "N1-0-0",
+   "secao": "Tubo 175x175x9,50",
+   "material": "A36",
+   "rot": 0.0,
+   "tipo": "aco",
+   "params": {
+    "papel": "pilar"
+   }
+  }
+ },
+ "casos": {
+  "G1": {
+   "nome": "G1",
+   "tipo": "G",
+   "subtipo": ""
+  }
+ },
+ "cargas_nodais": [
+  {
+   "caso": "G1",
+   "no": "N1-0-0",
+   "F": [
+    0,
+    0,
+    -45.15714285714286,
+    0,
+    63.93571428571429,
+    0
+   ],
+   "id": "cn1"
+  }
+ ],
+ "cargas_distribuidas": [],
+ "cargas_pontuais": [],
+ "pavimentos": {
+  "P1": {
+   "nome": "P1",
+   "z": 1.0,
+   "diafragma": false
+  }
+ },
+ "peso_proprio": null,
+ "config": {
+  "tipo_uso": "comercial",
+  "variabilidade": "grandes",
+  "pdelta": false,
+  "armadura": "CA-50",
+  "cobrimento_m": null,
+  "caa": "II",
+  "tipo_edificacao": null
+ }
+}

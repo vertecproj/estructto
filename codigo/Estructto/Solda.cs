@@ -140,13 +140,29 @@ namespace NovoFtool
             return t <= 6.35 ? 3 : t <= 12.5 ? 5 : t <= 19 ? 6 : 8;
         }
 
-        // Perna minima de tabela para os esforcos dados (0 = nem 25 mm passa).
-        public static double Minima(Secao sec, bool deitado, double N, double V, double M, string eletrodo, double tChapa = 0)
+        // Perna em mm com a casa decimal só quando existe (9,5 mm; 8 mm).
+        public static string Mm(double h) { return Math.Abs(h - Math.Round(h)) < 1e-6 ? Num.Fmt(h, 0) : Num.Fmt(h, 1); }
+
+        // Pernas candidatas para a parede t (mm): as da tabela <= t e a propria t arredondada para baixo a 0,5 mm
+        // (tubo 9,5 -> ..., 8, 9,5). Sem t: a tabela inteira. Igual a placa_base.pernas_filete do motor.
+        public static double[] PernasAte(double t)
+        {
+            if (t <= 0) return Pernas;
+            var l = new List<double>();
+            foreach (double p in Pernas) if (p <= t + 1e-9) l.Add(p);
+            double tt = Math.Floor(Math.Round(t * 2, 6)) / 2;
+            if (tt > 0 && !l.Exists(p => Math.Abs(p - tt) < 1e-9)) l.Add(tt);
+            return l.ToArray();
+        }
+
+        // Perna minima de tabela para os esforcos dados (0 = nenhuma passa). ateParede: so pernas <= parede do perfil
+        // (escolha automatica do pilar na placa; motor: perna_minima_contorno(..., ate_parede=True)).
+        public static double Minima(Secao sec, bool deitado, double N, double V, double M, string eletrodo, double tChapa = 0, bool ateParede = false)
         {
             double adm = Admissivel(eletrodo);
             double tw = (sec.Forma == "I" || sec.Forma == "U" ? Math.Min(sec.Tf, sec.Tw) : sec.Tw) * 1000;
             double hn = PernaMinimaNorma(Math.Min(tw > 0 ? tw : 1e9, tChapa > 0 ? tChapa : 1e9));
-            foreach (double p in Pernas) if (p >= hn - 1e-9 && CalcularSimples(sec, deitado, N, V, M, p, adm) <= 1) return p;
+            foreach (double p in ateParede ? PernasAte(tw) : Pernas) if (p >= hn - 1e-9 && CalcularSimples(sec, deitado, N, V, M, p, adm) <= 1) return p;
             return 0;
         }
 
@@ -164,35 +180,39 @@ namespace NovoFtool
             if (t > 0 && hn > t + 1e-9)
             {
                 d.Porque = "parede do perfil " + Num.Fmt(t, 2) + " mm < perna mínima de norma " + Num.Fmt(hn, 0) + " mm (NBR 8800 Tab. 10).";
-                d.OQueFazer = "perna máx. ≈ " + Num.Fmt(t, 1) + " mm. Use perfil com parede ≥ " + Num.Fmt(hn, 0) +
-                              " mm, chapa de reforço/luva no pé do pilar ou detalhe a ligação à parte.";
+                d.OQueFazer = "perna máx. ≈ " + Mm(t) + " mm. Use perfil com parede ≥ " + Num.Fmt(hn, 0) +
+                              " mm, chapa de reforço/luva no pé do pilar, solda de penetração total ou detalhe a ligação à parte.";
                 d.PernaMax = t;
                 d.SemSolucao = true;
                 return d;
             }
-            if (r.MaiorQueParede) d.Porque = "perna de " + Num.Fmt(h, 0) + " mm maior que a parede do perfil (" + Num.Fmt(t, 1) + " mm).";
-            else if (r.AbaixoMinimo) d.Porque = "perna de " + Num.Fmt(h, 0) + " mm abaixo do mínimo de norma (" + Num.Fmt(hn, 0) + " mm pela peça mais fina).";
-            else d.Porque = "τ = " + Num.Fmt(r.Tau, 0) + " MPa passa do admissível do " + el + "XX (" + Num.Fmt(r.TauAdm, 0) + " MPa) com perna de " + Num.Fmt(h, 0) + " mm.";
+            if (r.MaiorQueParede) d.Porque = "perna de " + Mm(h) + " mm maior que a parede do perfil (" + Mm(t) + " mm).";
+            else if (r.AbaixoMinimo) d.Porque = "perna de " + Mm(h) + " mm abaixo do mínimo de norma (" + Num.Fmt(hn, 0) + " mm pela peça mais fina).";
+            else d.Porque = "τ = " + Num.Fmt(r.Tau, 0) + " MPa passa do admissível do " + el + "XX (" + Num.Fmt(r.TauAdm, 0) + " MPa) com perna de " + Mm(h) + " mm.";
             int ie = Array.IndexOf(Eletrodos, el);
             if (ie < 0) ie = 1;
             for (int k = ie; k < Eletrodos.Length; k++)
             {
-                foreach (double p in Pernas)
+                foreach (double p in PernasAte(t))
                 {
-                    if (p < hn - 1e-9 || (t > 0 && p > t + 1e-9)) continue;
+                    if (p < hn - 1e-9) continue;
                     if (CalcularSimples(sec, deitado, N, V, M, p, TauAdm[k]) <= 1)
                     {
                         d.Perna = p;
                         d.Eletrodo = Eletrodos[k];
-                        d.OQueFazer = k == ie ? "use perna de " + Num.Fmt(p, 0) + " mm." : "nenhuma perna que cabe passa com " + el + "XX: use " + Eletrodos[k] + "XX com perna de " + Num.Fmt(p, 0) + " mm.";
+                        d.OQueFazer = k == ie ? "use perna de " + Mm(p) + " mm." : "nenhuma perna que cabe passa com " + el + "XX: use " + Eletrodos[k] + "XX com perna de " + Mm(p) + " mm.";
                         return d;
                     }
                 }
             }
-            double pm = t > 0 ? Math.Min(t, Pernas[Pernas.Length - 1]) : Pernas[Pernas.Length - 1];
+            double[] cabem = PernasAte(t);
+            double pm = cabem[cabem.Length - 1];
             d.PernaMax = pm;
             d.SemSolucao = true;
-            d.OQueFazer = "nem a maior perna que cabe (" + Num.Fmt(pm, 0) + " mm) com " + Eletrodos[Eletrodos.Length - 1] + "XX passa: use pilar maior, nervuras (enrijecedores) no pé ou detalhe a ligação à parte.";
+            d.Penetracao = true;
+            d.Porque = "sem filete possível: nem a maior perna que cabe na parede (" + Mm(pm) + " mm) passa com " + Eletrodos[Eletrodos.Length - 1] +
+                       "XX — filete ≤ parede não desenvolve a parede (garganta 0,707·t).";
+            d.OQueFazer = "use solda de penetração total (resistência do metal-base da parede), nervuras (enrijecedores) no pé ou pilar maior.";
             return d;
         }
     }
@@ -202,7 +222,7 @@ namespace NovoFtool
     {
         public string Porque = "", OQueFazer = "", Eletrodo = "";
         public double Perna, PernaMax;
-        public bool SemSolucao;
+        public bool SemSolucao, Penetracao;   // Penetracao: nenhum filete cabe e passa -> oferecer penetracao total
         public bool Passa { get { return Porque == ""; } }
     }
 }

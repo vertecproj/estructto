@@ -69,8 +69,44 @@ namespace NovoFtool
                 var rd = jd.ResultadoMotor;
                 log.AppendLine("dimensionada: " + jd.Mensagem + " → taxa " + F(rd.Taxa, 3) + " · ok = " + rd.Ok + " (fixação " + F(rd.Fix.Taxa, 3) + ", chapa " + F(rd.Chapa.Taxa, 3) + ", solda " + F(rd.Solda.Taxa, 3) + " " + rd.Solda.Criterio + ")");
                 jd.Close(); EsperarIdle();
+
+                CapturasPlacaTubo(w, guincho, log);
             }
             finally { File.WriteAllText(Path.Combine(pastaSaida, "55-placa.txt"), log.ToString(), new UTF8Encoding(false)); }
+        }
+
+        // Caso do usuário (docs/PLACA-BASE-PILAR-SOLDA.md), também sozinho: ESTRUCTTO_CAPTURAS=placatubo (55-placa-tubo175.txt).
+        static void CapturasPlacaTubo(MainWindow w, string guincho, StringBuilder log)
+        {
+            string F(double v, int c = 2) => Num.Fmt(v, c);
+            // caso do usuário (docs/PLACA-BASE-PILAR-SOLDA.md): Tubo 175×175×9,50, N = −63,22, M = 89,51; placa 300 × 230 × 19 com
+            // 4 × WB 5/8" hef 59. fy 250: o pilar reprova (nenhuma placa resolve); fy 300: Dimensionar tudo acha a placa.
+            foreach (string fy in new[] { "250", "300" })
+            {
+                w.FecharEspaciaisSemPerguntar();
+                Esperar(w.AbrirArquivo(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(guincho), "base-tubo175-fy" + fy + ".json"))));
+                Esperar(w.CalcularEspacial());
+                w.placaAberta = null;
+                Esperar(w.AbrirPlacaEsp("N0-0-0"));
+                var jt = w.placaAberta;
+                PrepararDialogoForaDaTela(jt); jt.Show(); EsperarIdle();
+                var pu = jt.Placa;
+                pu.PeloPerfil = false; pu.H = 300; pu.B = 230; pu.Esp = 19; pu.Borda = 50; pu.Fileiras = 2; pu.PorFileira = 2; pu.Chumbador = "WB 58312";
+                pu.Fck = 20; pu.FyChapa = 250; pu.Eletrodo = "E70"; pu.Solda = 0; pu.SoldaPenetracao = false; pu.Hef = 0;
+                string pre = "55-placa-tubo175-fy" + fy;
+                RenderizarJanela(jt, 1600, 900, pre + ".png", () => jt.MostrarAba(0));
+                RenderizarJanela(jt, 1600, 900, pre + "-calculo.png", () => jt.MostrarAba(4));
+                var ru = jt.ResultadoMotor;
+                log.AppendLine("== " + pre + " ==  pilar " + (ru.PilarVerificado ? F(ru.PilarTaxa, 3) + (ru.PilarOk ? " ok" : " REPROVA: " + ru.PilarMsg) : "não verificado") +
+                               " · fixação " + F(ru.Fix.Taxa, 3) + " · chapa " + F(ru.Chapa.Taxa, 3) + " · solda " + F(ru.Solda.Taxa, 3) + " (" + ru.Solda.Criterio + ")");
+                jt.DimensionarTudo();
+                RenderizarJanela(jt, 1600, 900, pre + "-dimensionada.png", () => jt.MostrarAba(0));
+                ru = jt.ResultadoMotor;
+                log.AppendLine("  dimensionar: " + jt.Mensagem + " → ok = " + ru.Ok + " (fixação " + F(ru.Fix.Taxa, 3) + ", chapa " + F(ru.Chapa.Taxa, 3) + ", solda " + F(ru.Solda.Taxa, 3) + ")");
+                jt.AbrirSugerir();
+                RenderizarJanela(jt, 1600, 900, pre + "-sugerir.png", () => { });
+                jt.Close(); EsperarIdle();
+            }
         }
     }
 }

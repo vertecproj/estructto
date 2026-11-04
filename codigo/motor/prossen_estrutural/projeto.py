@@ -2997,6 +2997,8 @@ def _passo_placa(nome):
     """Passo da janela: fixação (chumbadores, concreto ACI, corte), chapa (espessura, furo, pressão no concreto), solda."""
     if nome.startswith("solda"):
         return "solda"
+    if nome.startswith("pilar"):
+        return "pilar"   # seção do pilar na base (placa_base.verificar_pilar_base): nenhuma placa resolve
     return "chapa" if nome.startswith("chapa") or nome.startswith("concreto: pressão de contato") else "fixacao"
 
 
@@ -3019,17 +3021,21 @@ def _casos_placa(modelo, calculo, c):
             esf = lm.esforcos_ponta(calculo, b.id, ponta)
             if not esf:
                 raise ErroEntrada(f"barra {b.id}: sem esforços ELU no cálculo (calcule de novo)", "membros")
-            sec = modelo.secoes[b.secao].props
+            so = modelo.secoes[b.secao]
+            sec = dict(so.props, A=so.props.get("A") or so.A)   # A para a verificação do pilar na base
+            mat = modelo.materiais.get(b.material)
+            fy = getattr(mat, "fy", None) or 0.0
             for nome, e in esf.items():
                 casos.append(dict(barra=b.id, ponta=ponta, no=b.ni if ponta == "i" else b.nj, combinacao=nome,
-                                  esf=lm.esforcos_placa(modelo, e), secao=sec))
+                                  esf=lm.esforcos_placa(modelo, e), secao=sec, fy=fy))
         return casos
     esf = c.get("esforcos")
     if not esf:
         raise ErroEntrada("informe membros (com cálculo) ou esforcos + secao", "esforcos")
     s = c.get("secao")
     if isinstance(s, str):
-        sec = modelo.secoes[s].props if modelo is not None and s in modelo.secoes else None
+        sec = (dict(modelo.secoes[s].props, A=modelo.secoes[s].props.get("A") or modelo.secoes[s].A)
+               if modelo is not None and s in modelo.secoes else None)
         if sec is None:
             try:
                 sec = _sec.catalogo(s).props
@@ -3061,7 +3067,8 @@ def _placa_pior(dados, casos, primeiro=None, passo=None):
     for k, i in enumerate(ordem):
         cs = casos[i]
         pior_caso, ok_c = None, True
-        for eixo, d, e in pb.casos_biaxiais(dados, cs["esf"]):
+        dc = dados if float(dados.get("fy_pilar") or 0) > 0 or not cs.get("fy") else dict(dados, fy_pilar=cs["fy"])
+        for eixo, d, e in pb.casos_biaxiais(dc, cs["esf"]):
             try:
                 r = pb.verificar_placa_base(d, e, cs["secao"])
             except (ValueError, KeyError, TypeError) as ex:
@@ -3118,10 +3125,23 @@ def _placa_pior(dados, casos, primeiro=None, passo=None):
     t, ok, r, e, onde = gov
     for x in passos.values():
         x.pop("_k", None)
-    return dict(ok=ok_total and k is None, parcial=k is not None, taxa_max=t,
+    pilar = passos.pop("pilar", None)   # fora dos 3 passos da janela: a seção do pilar não é a placa (resumo em `pilar`)
+    return dict(ok=ok_total and k is None, parcial=k is not None, taxa_max=t, pilar=pilar,
                 governante=dict(onde, N=e["N"], V=e["V"], M=e["M"]), resultado=r, passos=passos,
                 combinacoes=sorted(linhas, key=lambda x: -x["taxa"]), membros=list(membros.values()),
                 biaxial=dict(eixos=eixos, nota=_NOTA_BIAXIAL))
+
+
+def _resumo_pilar(s):
+    """Pilar na base (passo 'pilar' de _placa_pior) → {ok, taxa, combinacao, eixo, mensagem} ou None (fy do pilar
+    desconhecido: sem material no modelo e sem dados.fy_pilar). Reprovado = nenhuma placa resolve."""
+    p = s.get("pilar")
+    if not p:
+        return None
+    taxa = p["taxa"]
+    msg = "" if p["ok"] else _pb().MSG_PILAR.format(f"{taxa:.2f}".replace(".", ","))
+    return dict(ok=p["ok"], taxa=taxa, combinacao=p.get("combinacao"), eixo=p.get("eixo"), mensagem=msg,
+                verificacoes=p.get("verificacoes", []))
 
 
 def placa_base_verificar(modelo, calculo, corpo):
@@ -3135,6 +3155,7 @@ def placa_base_verificar(modelo, calculo, corpo):
     c = corpo or {}
     casos = _casos_placa(modelo, calculo, c)
     out = _placa_pior(c.get("dados") or {}, casos)
+    out["pilar"] = _resumo_pilar(out)
     if c.get("variantes") is not None:
         gi = out["governante"]["caso"]
         out["variantes"] = []
@@ -3176,69 +3197,177 @@ def placa_base_gravar(modelo, corpo):
     return dict(grupo=gid)
 
 
+_DIM_PASSO, _DIM_MAX = .05, .70   # placa_base_dimensionar: H e B crescem de 50 em 50 mm até 700 mm
+_DIM_ARRANJOS = ((2, 2), (2, 3), (3, 3))
+_COBRIMENTO_HEF = .075            # hef pré-concretado ≤ altura do bloco − 75 mm (ACI 318-19 20.5.1.3, concreto contra o solo)
+
+
+def _familias_fixacao(d0, pad, furo):
+    """Fixações candidatas em famílias, na ordem de preferência: o tipo atual primeiro (mecânico, químico ou
+    pré-concretado), depois os outros; nenhuma é descartada. Cada item: (força, dados parciais); força ordena o
+    'mais forte' da família para a triagem rápida. Pré-concretado: tabela métrica a partir da classe atual, hef = o
+    informado ou 12·Ø e, com a altura do bloco informada, também hef até o bloco (altura − 75 mm)."""
+    pb = _pb()
+    cats = pb.carregar_chumbadores()
+    chave = (lambda x: ((x["furo_mm"] or 0) if furo else 0, x["rosca_mm"], x["hef_mm"]))
+    fam = {q: [((x["rosca_mm"], x["hef_mm"], 0), dict(chumbador=x["codigo"] or x["nome"]))
+               for x in sorted((x for x in cats if x["quimico"] == q), key=chave)] for q in (False, True)}
+    cl = str(d0.get("classe", pad["classe"]))
+    i0 = pb.CLASSES.index(cl) if cl in pb.CLASSES else 0
+    pares = ([(dm, k) for dm in pb.DIAMETROS_MM for k in pb.CLASSES[i0:]] if furo
+             else [(dm, k) for k in pb.CLASSES[i0:] for dm in pb.DIAMETROS_MM])
+    hef0 = float(d0.get("hef") or 0)
+    lim = float(d0.get("bloco_altura") or 0) - _COBRIMENTO_HEF
+    pre = []
+    for dm, k in pares:
+        hefs = [hef0] + ([lim] if lim > max(hef0, 12 * dm / 1000) + 1e-9 else [])
+        pre += [((dm, h or 12 * dm / 1000, pb.CLASSES.index(k)), dict(chumbador="", diametro_mm=dm, classe=k, hef=h))
+                for h in hefs]
+    atual = pb.achar_chumbador(d0["chumbador"]) if d0.get("chumbador") else None
+    if atual is None:
+        return [pre, fam[False], fam[True]]
+    return [fam[atual["quimico"]], fam[not atual["quimico"]], pre]
+
+
+def _geometrias_dim(d0, pad, g0):
+    """(H, B, fileiras, por_fileira): a placa atual e as maiores, H e B de 50 em 50 mm até 700 mm; arranjos 2×2, 2×3,
+    3×3 com pelo menos as fixações atuais (e o arranjo atual)."""
+    H0, B0 = g0["H"], g0["B"]
+    f0, q0 = int(d0.get("fileiras", pad["fileiras"])), int(d0.get("por_fileira", pad["por_fileira"]))
+    def serie(x0):
+        k = math.ceil(round(x0 / _DIM_PASSO, 9))
+        return [x0] + [round(i * _DIM_PASSO, 3) for i in range(k, round(_DIM_MAX / _DIM_PASSO) + 1) if i * _DIM_PASSO > x0 + 1e-9]
+    arrs = [(f0, q0)] + [a for a in _DIM_ARRANJOS if a[0] * a[1] >= f0 * q0 and a != (f0, q0)]
+    return [(H, B, nf, nq) for H in serie(H0) for B in serie(B0) for nf, nq in arrs]
+
+
+def _completar_placa(cand, casos):
+    """Chapa comercial ≥ t_CBCA de todos os casos e solda: filete automático (≤ parede; eletrodo mais forte se preciso)
+    e, sem filete possível, penetração total. → (dados, resumo de _placa_pior) se passa em tudo, senão None."""
+    pb = _pb()
+    cand = dict(cand, esp=pb.CHAPAS[-1], solda=0, solda_tipo="filete")
+    t = _placa_pior(cand, casos)["passos"]["chapa"]["t_nec"]
+    esp = next((x for x in pb.CHAPAS if x >= t - 1e-9), None)
+    if esp is None:
+        return None
+    cand["esp"] = esp
+    s = _placa_pior(cand, casos)
+    sd = s["passos"].get("solda", {})
+    if sd.get("ok") and sd.get("h_max", 0) > 0:
+        cand["solda"] = sd["h_max"]
+        s = _placa_pior(cand, casos)
+        sd = s["passos"]["solda"]
+    if not sd.get("ok") and sd.get("caso") is not None:   # eletrodo mais forte com perna que cabe na parede
+        cs = casos[sd["caso"]]
+        _, de, e = next(x for x in pb.casos_biaxiais(cand, cs["esf"]) if x[0] == sd["eixo"])
+        dg = pb.diagnosticar_solda(cs["secao"], dict(de, solda=max(sd.get("h_max", 0), pb.PERNAS[0])),
+                                   dict(N=e["N_barra"], V=e["V_barra"], M=e["M_barra"]))
+        if dg["perna"] > 0:
+            s = _placa_pior(dict(cand, eletrodo=dg["eletrodo"], solda=dg["perna"]), casos)
+            if s["passos"]["solda"]["ok"]:
+                cand.update(eletrodo=dg["eletrodo"], solda=dg["perna"])
+        if not s["passos"]["solda"]["ok"]:
+            cand.update(solda=0, solda_tipo="penetracao")
+            s = _placa_pior(cand, casos)
+    return (cand, s) if s["ok"] and not s["parcial"] else None
+
+
+def _desc_placa(cand, n):
+    mm = lambda x: f"{x * 1000:g}".replace(".", ",")  # noqa: E731
+    fix = (f"{n} × {cand['chumbador']}" if cand.get("chumbador")
+           else f"{n} × Ø{cand['diametro_mm']:g} mm classe {cand['classe']} (pré-concretado"
+                + (f", hef {mm(cand['hef'])} mm)" if cand.get("hef") else ", hef 12·Ø)"))
+    sd = (" · solda de penetração total" if cand.get("solda_tipo") == "penetracao"
+          else f" · solda {mm(cand['solda'])} mm {cand.get('eletrodo', 'E70')}" if cand.get("solda") else "")
+    return f"placa {mm(cand['H'])} × {mm(cand['B'])} × {mm(cand['esp'])} mm · {fix}" + sd
+
+
 def placa_base_dimensionar(modelo, calculo, corpo):
-    """Menor fixação que passa em todos os casos (preferencia 'leve': menor diâmetro/classe; 'furo': menor furo), depois
-    a chapa comercial ≥ t_CBCA e a perna de solda ≥ a maior mínima. Chumbador de catálogo (dados.chumbador preenchido):
-    mesmo tipo (mecânico/químico), arranjos 2×2, 2×3, 3×3 (≥ o atual). Pré-concretado (chumbador vazio): diâmetro e
-    classe da tabela métrica. → {achou, descricao, dados, verificacao (como placa_base_verificar)}"""
+    """Placa mais leve que passa em TODOS os casos (docs/PLACA-BASE-PILAR-SOLDA.md §3). Antes: o pilar na base
+    (NBR 8800 5.5.1.2); reprovado → achou=False com a mensagem "nenhuma placa resolve". Busca: geometrias (a atual e as
+    maiores, H e B de 50 em 50 mm até 700 mm, arranjos 2×2/2×3/3×3 ≥ o atual) em ordem de massa da chapa H·B·t (t =
+    comercial ≥ t_CBCA, que não depende da fixação; concreto sob a placa tem de passar); em cada uma, as famílias de
+    fixação com o tipo atual primeiro (preferência, não trava), depois os outros tipos de catálogo e o pré-concretado;
+    dentro da família a primeira que passa (preferencia 'leve': menor diâmetro/classe; 'furo': menor furo). Depois a
+    chapa e a solda (_completar_placa). Triagem no caso governante, verificação final em todos. corpo.opcoes = n: até n
+    soluções com fixações diferentes (Sugerir). → {achou, descricao, dados, verificacao, opcoes, pilar}"""
     pb = _pb()
     c = corpo or {}
     casos = _casos_placa(modelo, calculo, c)
     d0 = dict(c.get("dados") or {})
     pad = {x["nome"]: x["padrao"] for x in pb.esquema_placa_base()}
-    gi = _placa_pior(d0, casos)["governante"]["caso"]
-    furo = c.get("preferencia") == "furo"
-    f0, q0 = int(d0.get("fileiras", pad["fileiras"])), int(d0.get("por_fileira", pad["por_fileira"]))
-    cands = []
-    if d0.get("chumbador"):
-        atual = pb.achar_chumbador(d0["chumbador"])
-        itens = [x for x in pb.carregar_chumbadores() if atual is None or x["quimico"] == atual["quimico"]]
-        itens.sort(key=lambda x: ((x["furo_mm"] or 0) if furo else 0, x["rosca_mm"], x["hef_mm"]))
-        arrs = [(nf, nq) for nf, nq in ((2, 2), (2, 3), (3, 3)) if nf * nq >= f0 * q0] or [(f0, q0)]
-        pares = [(x, a) for x in itens for a in arrs] if furo else [(x, a) for a in arrs for x in itens]
-        for x, (nf, nq) in pares:
-            cands.append(dict(d0, chumbador=x["codigo"] or x["nome"], fileiras=max(nf, f0), por_fileira=max(nq, q0)))
-    else:
-        cl = str(d0.get("classe", pad["classe"]))
-        i0 = pb.CLASSES.index(cl) if cl in pb.CLASSES else 0
-        pares = ([(dm, k) for dm in pb.DIAMETROS_MM for k in pb.CLASSES[i0:]] if furo
-                 else [(dm, k) for k in pb.CLASSES[i0:] for dm in pb.DIAMETROS_MM])
-        cands = [dict(d0, diametro_mm=dm, classe=k) for dm, k in pares]
-    escolhido = None
-    for cand in cands:
+    v0 = placa_base_verificar(modelo, calculo, dict(c, dados=d0))
+    pil = v0.get("pilar")
+    if pil and not pil["ok"]:
+        return dict(achou=False, dados=None, descricao=pil["mensagem"], verificacao=v0, opcoes=[], pilar=pil)
+    # a solda de penetração total não depende da placa: se nem ela passa, nenhuma placa resolve (e a busca seria inútil)
+    sp = _placa_pior(dict(d0, solda_tipo="penetracao"), casos)["passos"].get("solda", {})
+    if sp and not sp["ok"] and str(sp.get("criterio", "")).startswith("solda: penetração"):
+        msg = ("A solda pilar–placa não resiste nem com penetração total (metal-base da parede, taxa "
+               + f"{sp['taxa']:.2f}".replace(".", ",") + "): troque o perfil ou o aço — nenhuma placa resolve.")
+        return dict(achou=False, dados=None, descricao=msg, verificacao=v0, opcoes=[], pilar=pil)
+    nops = max(1, int(c.get("opcoes") or 1))
+    gi = v0["governante"]["caso"]
+    gov = [casos[gi]]
+    fams = _familias_fixacao(d0, pad, c.get("preferencia") == "furo")
+    base = dict(d0, pelo_perfil=False)
+    geos = []
+    for H, B, nf, nq in _geometrias_dim(d0, pad, v0["resultado"]["geometria"]):
+        g = dict(base, H=H, B=B, fileiras=nf, por_fileira=nq, esp=pb.CHAPAS[-1], chumbador="", diametro_mm=16, classe="8.8")
         try:
-            s = _placa_pior(cand, casos, gi, "fixacao")
+            ps = _placa_pior(g, gov)["passos"]["chapa"]
         except ErroEntrada:
             continue
-        if not s["parcial"] and s["passos"]["fixacao"]["ok"]:
-            escolhido = (cand, s)
+        esp = next((x for x in pb.CHAPAS if x >= ps["t_nec"] - 1e-9), None)
+        if esp is None or any(x["taxa"] > 1 for x in ps.get("verificacoes", []) if x["nome"].startswith("concreto")):
+            continue
+        geos.append((H * B * esp, nf * nq, H, B, nf, nq))
+    geos.sort()
+
+    def passa_fix(cand):
+        try:
+            s = _placa_pior(cand, gov)
+        except ErroEntrada:
+            return False
+        return s["passos"]["fixacao"]["ok"]
+
+    sols, vistos = [], set()
+    for _, _, H, B, nf, nq in geos:
+        g = dict(base, H=H, B=B, fileiras=nf, por_fileira=nq)
+        for fam in fams:
+            # ponytail: triagem pela mais forte da família (cones/bordas podem fugir da ordem; aí perde-se a família nesta placa)
+            if not fam or not passa_fix(dict(g, **max(fam, key=lambda x: x[0])[1])):
+                continue
+            for _, x in fam:
+                cand = dict(g, **x)
+                k = (x.get("chumbador"), x.get("diametro_mm"), x.get("classe"))
+                if k in vistos or not passa_fix(cand):
+                    continue
+                try:
+                    r = _completar_placa(cand, casos)
+                except ErroEntrada:
+                    r = None
+                if r:
+                    vistos.add(k)
+                    sols.append(r[0])
+                    break
+            if sols and len(sols) >= nops:
+                break
+        if sols and len(sols) >= nops:
             break
-    if escolhido is None:
-        return dict(achou=False, dados=None, descricao="Nenhuma fixação da tabela passa em todas as combinações nesta placa: "
-                    "aumente a placa ou o arranjo.", verificacao=placa_base_verificar(modelo, calculo, dict(c, dados=d0)))
-    cand, s = escolhido
-    t = s["passos"]["chapa"]["t_nec"]
-    cand["esp"] = next((x for x in pb.CHAPAS if x >= t - 1e-9), pb.CHAPAS[-1])
-    cand["solda"] = 0
-    ps = _placa_pior(cand, casos)["passos"].get("solda", {})
-    h = ps.get("h_max", 0.0)
-    if h > 0:
-        cand["solda"] = h
-        sd = _placa_pior(cand, casos)["passos"]["solda"]
-        if not sd["ok"] and sd.get("caso") is not None:   # perna > parede etc.: eletrodo mais forte com perna que cabe
-            cs = casos[sd["caso"]]
-            eixo, de, e = next(x for x in pb.casos_biaxiais(cand, cs["esf"]) if x[0] == sd["eixo"])
-            dg = pb.diagnosticar_solda(cs["secao"], de, dict(N=e["N_barra"], V=e["V_barra"], M=e["M_barra"]))
-            if dg["perna"] > 0:
-                cand.update(eletrodo=dg["eletrodo"], solda=dg["perna"])
-                h = dg["perna"]
-    v = placa_base_verificar(modelo, calculo, dict(c, dados=cand))
-    n = v["resultado"]["geometria"]["coordenadas"]
-    fix = (f"{len(n)} × {cand['chumbador']}" if cand.get("chumbador")
-           else f"{len(n)} × Ø{cand['diametro_mm']:g} mm classe {cand['classe']} (pré-concretado)")
-    mm = lambda x: f"{x * 1000:g}".replace(".", ",")
-    desc = f"{fix} · chapa {mm(cand['esp'])} mm" + (f" · solda {mm(h)} mm {cand.get('eletrodo', 'E70')}" if h > 0 else "")
-    return dict(achou=True, dados=_puro(cand), verificacao=v, descricao=desc)
+    if not sols:
+        return dict(achou=False, dados=None, opcoes=[], pilar=pil, verificacao=v0,
+                    descricao="Nenhuma placa até 700 × 700 mm passa em todas as combinações (fixações de catálogo e "
+                              "pré-concretadas, arranjos até 3 × 3): aumente o bloco de concreto ou reveja o pilar.")
+    ops = []
+    for cand in sols:
+        v = placa_base_verificar(modelo, calculo, dict(c, dados=cand))
+        n = len(v["resultado"]["geometria"]["coordenadas"])
+        ops.append(dict(dados=_puro(cand), descricao=_desc_placa(cand, n), verificacao=v,
+                        massa_kg=cand["H"] * cand["B"] * cand["esp"] * 7850, taxa_fixacao=v["passos"]["fixacao"]["taxa"]))
+    o = ops[0]
+    return dict(achou=True, dados=o["dados"], verificacao=o["verificacao"], descricao=o["descricao"], pilar=pil,
+                opcoes=[{k: x[k] for k in ("dados", "descricao", "massa_kg", "taxa_fixacao")} for x in ops])
 
 
 def _norm(s):

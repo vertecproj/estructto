@@ -20,7 +20,7 @@ namespace NovoFtool
             ["fileiras"] = p.Fileiras, ["por_fileira"] = p.PorFileira, ["diametro_mm"] = p.Diametro, ["classe"] = p.Classe ?? "8.8", ["rosca_no_corte"] = p.RoscaNoCorte,
             ["pivo_na_mesa"] = p.PivoNaMesa, ["fy_chapa"] = p.FyChapa * 1000, ["fck"] = p.Fck * 1000, ["seguranca"] = p.Seguranca, ["chumbador"] = p.Chumbador ?? "",
             ["classe_barra"] = p.ClasseBarra ?? "4.6", ["tipo_carga"] = p.TipoCarga ?? "", ["risco"] = p.Risco ?? "", ["coef_chumbador"] = p.CoefChumbador,
-            ["solda"] = p.Solda / 1000, ["eletrodo"] = string.IsNullOrEmpty(p.Eletrodo) ? "E70" : p.Eletrodo,
+            ["solda"] = p.Solda / 1000, ["eletrodo"] = string.IsNullOrEmpty(p.Eletrodo) ? "E70" : p.Eletrodo, ["solda_tipo"] = p.SoldaPenetracao ? "penetracao" : "filete",
             ["bloco_H"] = p.BlocoH / 1000, ["bloco_B"] = p.BlocoB / 1000, ["bloco_altura"] = p.BlocoAltura / 1000, ["hef"] = p.Hef / 1000,
             ["fissurado"] = !p.NaoFissurado, ["lug_b"] = p.LugB / 1000, ["lug_t"] = p.LugT / 1000, ["lug_h"] = p.LugH / 1000, ["graute"] = p.Graute / 1000,
             ["arruela_soldada"] = p.ArruelaSoldada, ["eixo_fraco"] = p.EixoFraco
@@ -38,7 +38,7 @@ namespace NovoFtool
                 Classe = Sx("classe", "8.8"), RoscaNoCorte = Bx("rosca_no_corte", true), PivoNaMesa = Bx("pivo_na_mesa", false),
                 FyChapa = Nn("fy_chapa", 250000) / 1000, Fck = Nn("fck", 20000) / 1000, Seguranca = Nn("seguranca", 0), Chumbador = Sx("chumbador", ""),
                 ClasseBarra = Sx("classe_barra", "4.6"), TipoCarga = Sx("tipo_carga", ""), Risco = Sx("risco", ""), CoefChumbador = Nn("coef_chumbador", 0),
-                Solda = Nn("solda", 0) * 1000, Eletrodo = Sx("eletrodo", "E70"),
+                Solda = Nn("solda", 0) * 1000, Eletrodo = Sx("eletrodo", "E70"), SoldaPenetracao = Sx("solda_tipo", "filete").StartsWith("penetra"),
                 BlocoH = Nn("bloco_H", 0) * 1000, BlocoB = Nn("bloco_B", 0) * 1000, BlocoAltura = Nn("bloco_altura", 0) * 1000, Hef = Nn("hef", 0) * 1000,
                 NaoFissurado = !Bx("fissurado", true), LugB = Nn("lug_b", 0) * 1000, LugT = Nn("lug_t", 0) * 1000, LugH = Nn("lug_h", 0) * 1000,
                 Graute = Nn("graute", 0) * 1000, ArruelaSoldada = Bx("arruela_soldada", false), EixoFraco = Bx("eixo_fraco", false)
@@ -104,6 +104,8 @@ namespace NovoFtool
         public string Modelo = "", Mecanismo = "";
         public int NEf, NCombs;
         public List<string> Avisos = new List<string>();
+        public bool PilarVerificado, PilarOk = true, SoldaPenetracao; public double PilarTaxa; public string PilarMsg = "";   // docs/PLACA-BASE-PILAR-SOLDA.md
+        public bool PilarReprovado => PilarVerificado && !PilarOk;
         public JsonNode R => J?["resultado"];
 
         public static ResNbr ComErro(string e) => new ResNbr { Erro = e };
@@ -128,6 +130,9 @@ namespace NovoFtool
             r.N = D(g, "N"); r.V = D(g, "V"); r.M = D(g, "M");
             var ps = j["passos"];
             r.Fix = LerPasso(ps?["fixacao"]); r.Chapa = LerPasso(ps?["chapa"]); r.Solda = LerPasso(ps?["solda"]);
+            var pil = j["pilar"];   // pilar na base (NBR 8800 5.5.1.2); null = aço do pilar desconhecido
+            if (pil != null) { r.PilarVerificado = true; r.PilarOk = Bool(pil, "ok"); r.PilarTaxa = Tx(D(pil, "taxa")); r.PilarMsg = S(pil, "mensagem"); }
+            r.SoldaPenetracao = S(ps?["solda"]?["solda"], "tipo") == "penetracao";
             r.TNec = D(ps?["chapa"], "t_nec") * 1000; r.HSolda = D(ps?["solda"], "h_max") * 1000;
             r.NCombs = Lista(j["combinacoes"]).Count();
             var res = j["resultado"]; var f = res?["forcas"]; var geo = res?["geometria"];
@@ -147,12 +152,12 @@ namespace NovoFtool
         }
 
         // Verificações do governante por passo da janela (o motor agrupa igual em projeto._passo_placa).
-        public static string PassoDe(string nome) => nome.StartsWith("solda") ? "solda" : nome.StartsWith("chapa") || nome.StartsWith("concreto: pressão de contato") ? "chapa" : "fixacao";
+        public static string PassoDe(string nome) => nome.StartsWith("solda") ? "solda" : nome.StartsWith("pilar") ? "pilar" : nome.StartsWith("chapa") || nome.StartsWith("concreto: pressão de contato") ? "chapa" : "fixacao";
         // Cada passo traz as verificações da SUA pior combinação (motor, passos[p].verificacoes; pedido do Bruno, be0a9e2);
         // resposta antiga sem o campo: as do governante.
         public IEnumerable<JsonNode> Verificacoes(string passo)
         {
-            var a = J?["passos"]?[passo]?["verificacoes"];
+            var a = passo == "pilar" ? J?["pilar"]?["verificacoes"] : J?["passos"]?[passo]?["verificacoes"];
             return a != null ? Lista(a) : Lista(R?["verificacoes"]).Where(v => PassoDe(S(v, "nome")) == passo);
         }
 

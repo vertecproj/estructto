@@ -585,6 +585,14 @@ namespace Portico
             Sim("solda diag: tubo 30x20x1,06 -> parede 1,06 mm < perna minima 3 mm, sem solucao, perna max ~1,06", dg2.SemSolucao && Math.Abs(dg2.PernaMax - 1.06) < 1e-9 && dg2.Porque.Contains("1,06"));
             var dg3 = NovoFtool.Solda.Diagnosticar(sc, false, -8.87, 0.5, 2.32, 5, "E70", 8);
             Sim("solda diag: solda que passa nao tem diagnostico", dg3.Passa && dg3.OQueFazer == "");
+            // placa de base: perna automatica nunca acima da parede; tubo 175x9,5 com M = 89,51 kN.m -> sem filete possivel (penetracao total)
+            Secao t175 = Biblioteca.AcharSecao("Tubo 175x175x9,50");
+            double[] pt = NovoFtool.Solda.PernasAte(9.5);
+            Sim("solda: PernasAte(9,5) termina em 9,5 e nenhuma passa da parede", Math.Abs(pt[pt.Length - 1] - 9.5) < 1e-9 && pt.All(x => x <= 9.5 + 1e-9));
+            Sim("solda: Mm(9,5) = \"9,5\" e Mm(8) = \"8\"", NovoFtool.Solda.Mm(9.5) == "9,5" && NovoFtool.Solda.Mm(8) == "8");
+            Sim("solda: Minima(ateParede) do tubo 175x9,5 com M = 89,51 = 0 (nenhum filete <= parede passa)", NovoFtool.Solda.Minima(t175, false, -63.22, 0, 89.51, "E70", 19, true) == 0);
+            var dg4 = NovoFtool.Solda.Diagnosticar(t175, false, -63.22, 0, 89.51, 9.5, "E70", 19);
+            Sim("solda diag: tubo 175x9,5 -> sem filete possivel, oferece penetracao total, perna max 9,5", dg4.SemSolucao && dg4.Penetracao && Math.Abs(dg4.PernaMax - 9.5) < 1e-9 && dg4.Porque.Contains("9,5"));
             // 7: interacao N + M com amplificacao
             Modelo m3 = m.PosicaoOposta(); Solver.Resolver(m3);
             Verif vi = Verificador.Barra(m3, m3.Barras[0], sc);
