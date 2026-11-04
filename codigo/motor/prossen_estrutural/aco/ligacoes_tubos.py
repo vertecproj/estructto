@@ -518,6 +518,7 @@ def _verificar_pt(dados, esforcos):
         r.res(nome_b, math.inf, 1.0, "-", "geometria")
         r.avisos.append(str(ex))
         return r.resultado(vazio)
+    beta = round(beta, 9)   # perfil da largura do tubo: β = 1,0000000000000002 por arredondamento virava "no limite"
     r.val.update(beta=beta)
     r.res(nome_b, beta, 1.0, "-", "geometria (perfil apoiado no tubo)")
     fyr, fur = F._aco(d["aco_ramal"])

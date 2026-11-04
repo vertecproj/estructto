@@ -23,7 +23,7 @@ from .ligacoes import (cisalhamento_parafuso, interacao_tracao_cisalhamento, pre
 from .nbr8800 import GA1, GA2
 from .pontas import pontas_locais
 
-METODO = 'legado simplificado Nucleo.cs / Solda.cs'
+METODO = 'método legado simplificado do Estructto (planilha de bases)'
 METODO_NBR = ('NBR 8800:2008 6.6.5 + bloco retangular (DG1) + chapa CBCA + ACI 318-19 cap. 17; '
               'esforços de cálculo (ELU), sem coeficiente global')
 GC = GN = 1.4   # NBR 8800 6.6.5: γc e γn
@@ -608,7 +608,7 @@ def verificar_solda_contorno(secao, dados, esforcos):
     r = _solda(secao, d, esforcos, d['solda'])
     v = [_v('solda: tensão admissível', r['tau'], r['tau_adm'], 'kN/m²')]
     if r['h_min_norma'] > 0:
-        v.append(_v('solda: perna mínima', r['h_min_norma'], r['h'], 'm'))
+        v.append(_v('solda: perna mínima', r['h_min_norma'], r['h'], 'm', 'NBR 8800 6.2.6.2.1 / tabela 10'))
     if r['espessura'] > 0:
         v.append(_v('solda: limite prático da parede', r['h'], r['espessura'], 'm'))
     r.update(_resultado(v))

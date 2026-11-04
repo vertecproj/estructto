@@ -433,6 +433,16 @@ namespace NovoFtool
                     Padding = new Thickness(6, 3, 6, 3), Cursor = objs.Count > 0 ? System.Windows.Input.Cursors.Hand : null,
                     ToolTip = objs.Count > 0 ? texto + " (clique para selecionar os itens envolvidos na vista)." : texto
                 };
+                // aviso com ação (Action no fim da lista de objetos): botão ao lado do texto ("Ligar todos")
+                if (objs.OfType<Action>().FirstOrDefault() is Action acao)
+                {
+                    var dp = new DockPanel { LastChildFill = true };
+                    var bt = JanelaEscura.B("Ligar todos", () => acao(), false, "Liga cada nó na barra em que encosta (divide a barra ali, mantendo a peça como um membro).");
+                    bt.Margin = new Thickness(8, 0, 0, 0); bt.Padding = new Thickness(8, 0, 8, 0); bt.MinWidth = 0;
+                    DockPanel.SetDock(bt, Dock.Right); dp.Children.Add(bt);
+                    dp.Children.Add(new TextBlock { Text = (string)it.Content, TextWrapping = TextWrapping.Wrap, Foreground = it.Foreground, VerticalAlignment = VerticalAlignment.Center });
+                    it.Content = dp; it.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                }
                 ListaAvisos.Items.Add(it);
             }
             if (lista.Count == 0) ListaAvisos.Items.Add(new ListBoxItem { Content = "✓  Nenhum problema encontrado.", Foreground = TemaPlant.BSucesso, Padding = new Thickness(6, 3, 6, 3), ToolTip = "A geometria, os apoios, as cargas e as verificações não apresentam alertas." });

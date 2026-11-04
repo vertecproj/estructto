@@ -94,6 +94,7 @@ namespace NovoFtool
         public static readonly HashSet<string> Locais = new HashSet<string>();   // G6: barras com chapa de proposta local (sem ligação do motor), para o gerenciador
         public static Dictionary<(Barra3D, bool), Corte> CortesColeta; public static Dictionary<(int, bool), Ligacao3D> LigsColeta;   // diagnóstico do teste
         public int Propostas { get; private set; }   // ligações propostas desenhadas (chip na vista)
+        public int Reprovadas { get; private set; }  // delas, as que o motor verificou e não passam (Ligacao3D.Reprovada)
         public const int MaxPropostas = 600;         // ponytail: modelos enormes ficam com as 600 primeiras; subir se pedirem
 
         static readonly Vector3D Luz = Norm(new Vector3D(0.45, 0.5, -0.74));          // chave: a mesma do Realista nativo (esquerda-alto da Iso)
@@ -278,13 +279,13 @@ namespace NovoFtool
         public static Color CorBase(bool concreto) => concreto ? TemaPlant.CorConcreto3D : CorAco;
 
         public sealed class ParafPick { public Ligacao3D Lig; public string Campo; public Point3D A; public Vector3D V; public double R; }
-        public sealed class Montagem { public readonly List<ParafPick> Parafs = new List<ParafPick>(); public MalhaDx Aco, Conc, Sel, Arestas, Paraf, Solda, Prop, PropDet; public int Propostas, NLig; public double LargSecao = 0.3; }
+        public sealed class Montagem { public readonly List<ParafPick> Parafs = new List<ParafPick>(); public MalhaDx Aco, Conc, Sel, Arestas, Paraf, Solda, Prop, PropDet; public int Propostas, Reprovadas, NLig; public double LargSecao = 0.3; }
 
         public void Montar(Cena3D c)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var g = Construir(c, Coleta);
-            Propostas = g.Propostas; nLig = g.NLig; largSecao = g.LargSecao;
+            Propostas = g.Propostas; Reprovadas = g.Reprovadas; nLig = g.NLig; largSecao = g.LargSecao;
             MalhaDx mallAco = g.Aco, mallConc = g.Conc, mallSel = g.Sel, arestas = g.Arestas, mallParaf = g.Paraf, mallSolda = g.Solda, mallProp = g.Prop, mallPropDet = g.PropDet;
             var mallChao = new MalhaDx(); var mallDecal = new MalhaDx(); var gP = new List<Vector3>(); var gC = new List<Color4>(); Chao(c, mallChao, mallDecal, gP, gC);
 
@@ -367,7 +368,7 @@ namespace NovoFtool
             bool todas = mod.Ligacoes.Any(l => l.Pendente == "*");
             if (ligs.Count == 0 && (c.Amostras || todas))
                 foreach (Ligacao3D q in LigacoesAmostra.Gerar(mod, cortes, forma, FolgaPadrao).Take(c.Amostras ? int.MaxValue : MaxPropostas)) { q.Proposta = !c.Amostras; ligs.Add(q); }
-            g.Propostas = ligs.Count(l => l.Proposta);
+            g.Propostas = ligs.Count(l => l.Proposta); g.Reprovadas = ligs.Count(l => l.Reprovada != null);
             var porPonta = new Dictionary<(int, bool), Ligacao3D>();
             foreach (Ligacao3D l in ligs) if (barras.TryGetValue(l.Barra, out Barra3D bl)) porPonta[(l.Barra, l.No == bl.Ni)] = l;
             // referencial local da ligação na ponta (b, emI) sem o ajuste da viga inclinada: origem no eixo do perfil deslocado, x saindo do nó, z = altura
@@ -569,8 +570,9 @@ namespace NovoFtool
             foreach (Ligacao3D l in ligs)
             {
                 // proposta: chapas, parafusos e soldas numa cor fria e fosca, em malhas próprias
-                MalhaDx mallChapas = l.Proposta ? mallProp : mallAco, mallP = l.Proposta ? mallPropDet : mallParaf, mallS = l.Proposta ? mallPropDet : mallSolda;
-                Color4 corChapa = l.Proposta ? corProp : corChapaP, corParaf = l.Proposta ? corProp : corParafP, corSolda = l.Proposta ? corProp : corSoldaP;
+                bool esm = l.Proposta || l.Reprovada != null;   // proposta ou reprovada pelo motor: esmaecida, nunca como ligação válida
+                MalhaDx mallChapas = esm ? mallProp : mallAco, mallP = esm ? mallPropDet : mallParaf, mallS = esm ? mallPropDet : mallSolda;
+                Color4 corChapa = esm ? corProp : corChapaP, corParaf = esm ? corProp : corParafP, corSolda = esm ? corProp : corSoldaP;
                 if (!barras.TryGetValue(l.Barra, out Barra3D b)) continue;
                 var (a, d) = c.Pontos(b); Vector3D e = d - a; if (e.Length < 1e-9) continue; e.Normalize();
                 bool emI = l.No == b.Ni;

@@ -141,7 +141,7 @@ namespace NovoFtool
             try
             {
                 var ids = await d.DesenharBarras(segs, SecaoDesenho3D(d), ApoioBase3D, MaterialDesenho3D(d), giro3D * Math.PI / 180, cardinal3D);
-                if (Esp == d) DepoisDeMudarEspacial(ids.Count == 1 ? "Barra " + ids[0] + " desenhada." : Pl.N(ids.Count, "barra desenhada", "barras desenhadas") + ".");
+                if (Esp == d) DepoisDeMudarEspacial((ids.Count == 1 ? "Barra " + ids[0] + " desenhada" : Pl.N(ids.Count, "barra desenhada", "barras desenhadas")) + (d.UltimaDivisao != null ? "; " + d.UltimaDivisao : "") + ".");
             }
             catch (Exception ex) { StatusMsg.Text = "⚠ Motor: " + ex.Message; Log(StatusMsg.Text); }
             AvisarHistorico(d);
@@ -271,6 +271,8 @@ namespace NovoFtool
     public partial class DocumentoEspacial
     {
         // Modelo espacial em branco (para desenhar na Vista3D).
+        public string UltimaDivisao;   // "B3 dividida em B7/B8 (mesmo membro)" do último DesenharBarras que caiu no vão de outra barra
+
         public static Task<DocumentoEspacial> Vazio(string titulo) => Criar(() => Motor.Post("/api/modelo/novo", new JsonObject { ["nome"] = titulo }), titulo, null);
 
         // Barras desenhadas na Vista3D: um POST /api/modelo/lote (atômico, um passo de desfazer). Ponta a até 1 mm de um nó
@@ -283,6 +285,7 @@ namespace NovoFtool
         public Task<List<string>> DesenharBarras(IList<(Point3D A, Point3D B)> segs, string secao = null, bool apoioBase = false, string materialEscolhido = null, double rot = 0, int cardinal = 5) => Motor.Exclusivo(async () =>
         {
             await Garantir();
+            UltimaDivisao = null;
             var nos = Json["nos"].AsObject();
             var itens = new JsonArray(); var novos = new List<(string Id, Point3D P)>();
             var ult = (Json["barras"] as JsonObject)?.LastOrDefault().Value;
@@ -291,6 +294,27 @@ namespace NovoFtool
             double zBase = Niveis.Lista(Json).Min(n => n.Z);
             if (Json["secoes"]?[secao] == null) itens.Add(new JsonObject { ["tipo"] = "secao", ["dados"] = new JsonObject { ["perfil"] = secao } });
             if (material == null) { material = "A-572 GR.50"; itens.Add(new JsonObject { ["tipo"] = "material", ["dados"] = new JsonObject { ["aco"] = material } }); }
+            if (itens.Count == 0 && Json["materiais"]?[material] != null)
+            {
+                // ponta no vão de outra barra (snap Próximo/Médio/Perpendicular/Interseção): divide a hospedeira (trechos no mesmo
+                // membro) e desenha tudo num PUT só = um Ctrl+Z. Sem vão tocado, segue o lote de sempre.
+                // ponytail: com seção/material novos (lote) não divide; DIVIDIR ou "Ligar todos" (Validar) resolvem depois.
+                var m = JsonNode.Parse(Json.ToJsonString()).AsObject();
+                var divs = new List<string>();
+                foreach (var p in segs.SelectMany(s => new[] { s.A, s.B }))
+                    if (GeometriaEdicao.LigarNoVao(m, new[] { p.X, p.Y, p.Z }) is { } dv) divs.Add(dv.Barra + " dividida em " + dv.T1 + "/" + dv.T2);
+                if (divs.Count > 0)
+                {
+                    var criadas = GeometriaEdicao.AdicionarBarras(m, segs.Select(s => (new[] { s.A.X, s.A.Y, s.A.Z }, new[] { s.B.X, s.B.Y, s.B.Z })).ToList(),
+                        secao, material, rot, cardinal, apoioBase ? zBase : (double?)null);
+                    await Motor.Chamar("PUT", "/api/modelo", m);
+                    Motor.Dono = this;   // PUT troca o modelo e zera o dono: é o mesmo documento (Aplicar)
+                    TemHistorico = true;
+                    UltimaDivisao = string.Join("; ", divs) + " (mesmo membro)";
+                    await Recarregar();
+                    return criadas;
+                }
+            }
             int k = 0;
             string No(Point3D p)
             {

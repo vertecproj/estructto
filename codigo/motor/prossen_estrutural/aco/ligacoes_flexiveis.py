@@ -1508,7 +1508,8 @@ def _com_folga(minimo_mm):
 
 def _tentar(tipo, candidatos, esforcos, perfis=None):
     """W8-FLEX (critério do W8-RIG): a primeira candidata com taxa ≤ ALVO em todas as verificações (inclusive as
-    disposições construtivas); senão a primeira que passa; senão a última verificável (como antes)."""
+    disposições construtivas); senão a primeira que passa; senão a PRIMEIRA verificável (a menor: a maior também
+    reprovava e virava o "tamanho absurdo" no Realista; a verificação mostra o motivo)."""
     ctx = {k: perfis[k] for k in _CTX if (perfis or {}).get(k) is not None}
     candidatos = [dict(c, **ctx) for c in candidatos]
     ult = passa = None
@@ -1522,8 +1523,8 @@ def _tentar(tipo, candidatos, esforcos, perfis=None):
         if r["ok"]:
             passa = passa or c
         else:
-            ult = c
-    return passa or ult or candidatos[-1]
+            ult = ult or c
+    return passa or ult or candidatos[0]
 
 
 def _furos_viga(vg, pd, n, rec_sup=0.0, rec_inf=0.0):

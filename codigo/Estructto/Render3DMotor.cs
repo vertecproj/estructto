@@ -26,10 +26,13 @@ namespace NovoFtool
         public Task<List<Ligacao3D>> LigacoesParaVista(Modelo3D vista)
         {
             var json = (JsonObject)Json.DeepClone();
+            // identidade do cálculo na chave do cache: calcular de novo (ou editar, que descarta) pede as geometrias outra vez
+            string calc = Calculo == null ? "" : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Calculo).ToString();
+            _ = SeletorSecao.Carregar();   // catálogo: gusset vai pelo nome do perfil (perfil_diagonal) quando ele está lá
             return Motor.Exclusivo(async () =>
             {
                 var props = new List<JsonObject>(); var avisos = new List<string>(); List<Ligacao3D> r;
-                try { await Garantir(); r = await LigacoesDe(json, vista, props, avisos); }
+                try { await Garantir(); r = await LigacoesDe(json, vista, props, avisos, calc); }
                 catch (Exception ex) { avisos.Add("ligações do Realista: " + ComandosAnalise.MensagemMotor(ex)); r = new List<Ligacao3D>(); }
                 lock (TrocasPropostas) { TrocasPropostas.Clear(); TrocasPropostas.AddRange(props); AvisosLigacoes.Clear(); AvisosLigacoes.AddRange(avisos); }
                 return r;
@@ -60,7 +63,8 @@ namespace NovoFtool
                 case "perfil_tubo_soldado": return "perfil_tubo_soldado";   // perfil soldado em tubo: recorte + filete, sem chapa (LIGACOES-TUBO-PERFIL.md)
                 case "tubo_tubo_soldado": return "tubo_tubo_soldado";   // v0.6 A3: boca de peixe + filete na sela
                 case "emenda": return a.Length > 3 && int.TryParse(a[3], out int ang) && ang <= 5 ? (vertical ? "emenda_pilar" : "emenda_viga")
-                                      : "chapa_simples_alma";   // G6: canto (> 5°) = viga–viga na outra barra (o membro traz o apoio), não proposta local
+                                      : rigida ? null   // cumeeira/joelho rígido (> 5°): chapa de topo na esquadria (proposta local LigacoesAmostra.Cumeeira)
+                                      : "chapa_simples_alma";   // G6: canto (> 5°) flexível = viga–viga na outra barra (o membro traz o apoio)
             }
             return null;
         }
@@ -69,7 +73,7 @@ namespace NovoFtool
         internal static JsonObject PedidoAplicarTroca(JsonObject p) => new JsonObject
         { ["grupo"] = (string)p["grupo"], ["barra"] = (string)p["barra"], ["no"] = (string)p["no"], ["tipo_ligacao"] = (string)p["tipo"], ["dados"] = p["dados"]?.DeepClone() ?? new JsonObject() };
 
-        static async Task<List<Ligacao3D>> LigacoesDe(JsonObject Json, Modelo3D vista, List<JsonObject> propostas, List<string> avisos)
+        static async Task<List<Ligacao3D>> LigacoesDe(JsonObject Json, Modelo3D vista, List<JsonObject> propostas, List<string> avisos, string calc = "")
         {
             var r = new List<Ligacao3D>();
             JsonNode grupos;
@@ -151,6 +155,8 @@ namespace NovoFtool
                 int ang = a.Length > 4 && int.TryParse(a[4], out int g) ? g : 45;
                 string apoio = papel == "base" ? "base" : papel == "viga" ? "viga" : papel.StartsWith("pilar termina") ? "viga-pilar" : "pilar";
                 double theta = Math.Max(5, Math.Min(85, apoio == "viga" ? 90 - ang : ang));
+                // perfil do catálogo: o motor lê medidas, área e ec dele (esquema novo); senão as medidas soltas (esquema antigo)
+                if (SeletorSecao.NoCatalogo(sec)) return new JsonObject { ["perfil_diagonal"] = sec, ["apoio"] = apoio, ["theta"] = theta };
                 var o = new JsonObject { ["secao"] = forma, ["dim_a"] = h, ["t_perfil"] = tt, ["apoio"] = apoio, ["theta"] = theta };
                 if (forma != "tubo_circular") o["dim_b"] = b;
                 if (forma == "U" && Prop(sec, "tf") > 0) o["tf_perfil"] = Prop(sec, "tf") * 1000;
@@ -158,12 +164,14 @@ namespace NovoFtool
             }
             // G6: uma passada coleta os pedidos que faltam no cache, um POST /api/ligacoes/geometrias resolve todos, a segunda
             // passada monta as ligações (sem teto de chamadas)
-            Dictionary<string, (string tl, JsonObject dados, JsonObject perfis)> pedidos = null;
-            Task<JsonObject> Geometria(string tl, JsonObject dados, JsonObject perfis)
+            // membros = pontas {barra, ponta} do grupo (com cálculo): o motor propõe e verifica com a envoltória ELU real delas;
+            // eles e a identidade do cálculo entram na chave (sem cálculo: chave sem membros, uma por (tipo, dados, perfis))
+            Dictionary<string, (string tl, JsonObject dados, JsonObject perfis, JsonArray membros)> pedidos = null;
+            Task<JsonObject> Geometria(string tl, JsonObject dados, JsonObject perfis, JsonArray membros = null)
             {
-                string chave = tl + "|" + dados.ToJsonString() + "|" + (perfis?.ToJsonString() ?? "");
+                string chave = tl + "|" + dados.ToJsonString() + "|" + (perfis?.ToJsonString() ?? "") + (membros != null ? "|" + membros.ToJsonString() + "|" + calc : "");
                 lock (cacheGeo) if (cacheGeo.TryGetValue(chave, out JsonObject g0)) return Task.FromResult(g0);
-                if (pedidos != null) pedidos[chave] = (tl, (JsonObject)dados.DeepClone(), (JsonObject)perfis?.DeepClone());
+                if (pedidos != null) pedidos[chave] = (tl, (JsonObject)dados.DeepClone(), (JsonObject)perfis?.DeepClone(), (JsonArray)membros?.DeepClone());
                 return Task.FromResult<JsonObject>(null);
             }
             async Task Lote()
@@ -172,7 +180,12 @@ namespace NovoFtool
                 foreach (var parte in pedidos.Chunk(MaxLote))
                 {
                 var itens = new JsonArray();
-                foreach (var p in parte) itens.Add(new JsonObject { ["tipo"] = p.Value.tl, ["dados"] = p.Value.dados.DeepClone(), ["perfis"] = p.Value.perfis?.DeepClone() });
+                foreach (var p in parte)
+                {
+                    var item = new JsonObject { ["tipo"] = p.Value.tl, ["dados"] = p.Value.dados.DeepClone(), ["perfis"] = p.Value.perfis?.DeepClone() };
+                    if (p.Value.membros != null) item["membros"] = p.Value.membros.DeepClone();
+                    itens.Add(item);
+                }
                 JsonArray res;
                 try { res = await Motor.Post("/api/ligacoes/geometrias", new JsonObject { ["itens"] = itens }) as JsonArray; }
                 catch (Exception ex) { avisos.Add("geometrias das ligações: " + ComandosAnalise.MensagemMotor(ex)); return; }   // não guarda: tenta na próxima carga
@@ -187,6 +200,15 @@ namespace NovoFtool
                     bool Flag(string k) => it?[k] is JsonValue fv && fv.TryGetValue(out bool fb) && fb;
                     if (geo != null && (Flag("barra_curta") || Flag("excluir_interferencia"))) { geo["excluir_interferencia"] = true; geo["_sem_valida"] = (string)it["motivo"] ?? "barra curta demais para a ligação"; }
                     if (geo != null && it["troca"] is JsonObject tr) geo["_troca"] = tr.DeepClone();   // G6 r5: o motor trocou o tipo
+                    // proposta/projeto que não passa na verificação do motor com a envoltória ELU real: não é desenhada como
+                    // válida (esmaecida + aviso). Sem cálculo (esforços típicos N 50, V 50, M 30) não marca: seria ruído.
+                    bool tip = Flag("esforcos_tipicos");
+                    if (geo != null && !tip && it["ok"] is JsonValue okv && okv.TryGetValue(out bool okb) && !okb)
+                    {
+                        string tx = it["taxa"] is JsonValue tv && tv.TryGetValue(out double td) ? " (taxa " + Portico.Num.Fmt(td * 100, 0) + "%)" : "";
+                        geo["_reprovada"] = "não passa na verificação" + tx + (tip ? " com esforços típicos N 50, V 50, M 30 (calcule para usar os reais)" : " com a envoltória ELU")
+                                            + ((string)it["motivo"] is string mo && mo != "" ? ": " + mo : "");
+                    }
                     if (geo != null && !(geo["chapas"] is JsonArray ca && ca.Count > 0) && !(geo["cantoneiras"] is JsonArray cc && cc.Count > 0) && !(geo["soldas"] is JsonArray sc && sc.Count > 0)) geo = null;   // sem peças: proposta local
                     geo?.Parent?.AsObject().Remove("geometria");
                     lock (cacheGeo) cacheGeo[chave] = geo;
@@ -194,7 +216,7 @@ namespace NovoFtool
                 }
             }
             static string p0Tipo(string chave) => chave.Split('|')[0];
-            pedidos = new Dictionary<string, (string, JsonObject, JsonObject)>();
+            pedidos = new Dictionary<string, (string, JsonObject, JsonObject, JsonArray)>();
             await Passo();
             await Lote();
             pedidos = null;
@@ -211,6 +233,11 @@ namespace NovoFtool
                 var proj = g["projeto"] as JsonObject; string tipoNo = (string)g["tipo"] ?? "";
                 string[] assin = ((string)g["assinatura"] ?? "").Split('|');
                 bool proposta = proj == null || (string)proj["tipo_ligacao"] == null;
+                JsonArray membrosG = calc == "" ? null : new JsonArray((g["membros"]?.AsArray() ?? new JsonArray())
+                    .Where(x => bj[(string)x["barra"] ?? ""] != null)
+                    .Select(x => (JsonNode)new JsonObject { ["barra"] = (string)x["barra"], ["ponta"] = (string)x["ponta"] ?? ((string)bj[(string)x["barra"]]["ni"] == (string)x["no"] ? "i" : "j") }).ToArray());
+                // apoio das ligações flexíveis pelo tipo de nó (como JanelaLigacaoProjeto.UsarGrupo); sem ele o motor supõe mesa de pilar
+                string apoioFlex = tipoNo == "viga_pilar_mesa" ? "mesa_pilar" : tipoNo == "viga_pilar_alma" ? "alma_pilar" : tipoNo is "viga_viga" or "emenda" ? "alma_viga" : null;
                 foreach (JsonNode mb in g["membros"]?.AsArray() ?? new JsonArray())
                 {
                     string no = (string)mb["no"], bid = (string)mb["barra"];
@@ -262,7 +289,7 @@ namespace NovoFtool
                         double th = Math.Acos(Math.Min(1, Vector3D.DotProduct(sa, x))) * 180 / Math.PI;
                         double Tw(string s) => Prop(s, "t") > 0 ? Prop(s, "t") : Prop(s, "tw");
                         var dt = new JsonObject { ["d_ramal"] = Prop(sec, "h") * 1000, ["t_ramal"] = Tw(sec) * 1000, ["D_receptor"] = Prop(sup, "h") * 1000, ["t_receptor"] = Tw(sup) * 1000, ["theta"] = Math.Round(Math.Max(1, th), 3) };
-                        JsonObject geo = await Geometria(tl, dt, null);
+                        JsonObject geo = await Geometria(tl, dt, null, membrosG);
                         if (geo != null)
                         {
                             lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]); lig.Grupo = (string)g["id"];
@@ -316,10 +343,16 @@ namespace NovoFtool
                             if (sup != null) { dados["perfil_pilar"] = PerfilMotor(sup); dados["perfil_suporte"] = PerfilMotor(sup); }
                             if (tl == "emenda_pilar" && sec != null) dados["perfil_pilar"] = PerfilMotor(sec);
                             if (ehU) dados["abertura_y"] = emINo ? -1 : 1;
+                            if (Flexiveis.Contains(tl) && apoioFlex != null && dados["apoio"] == null) dados["apoio"] = apoioFlex;
                             if (proposta) { perfis = new JsonObject(); foreach (var kv in dados) perfis[kv.Key] = kv.Value?.DeepClone(); dados = new JsonObject(); }
                         }
-                        JsonObject geo = proposta && perfis == null ? null : await Geometria(tl, dados, perfis);
+                        JsonObject geo = proposta && perfis == null ? null : await Geometria(tl, dados, perfis, membrosG);
                         if (geo != null) { lig = Ligacao3D.DoJson(idN, b.Id, geo, (string)g["nome"]); lig.Grupo = (string)g["id"]; }
+                        if (lig != null && geo["_reprovada"] is JsonValue rv)
+                        {
+                            lig.Reprovada = (string)rv; lig.Nome += " · não passa";
+                            if (pedidos == null) avisos.Add("sem ligação válida: " + ((string)g["nome"] ?? "") + " · barra " + bid + " no nó " + no + " — " + lig.Reprovada);
+                        }
                         if (lig != null && proposta && pedidos == null && geo["_troca"] is JsonObject trc && (string)g["id"] is string gid)
                         {   // onda final: só proposta (nada gravado); o gerenciador aplica por membro e re-verifica com os esforços reais
                             propostas.Add(new JsonObject { ["grupo"] = gid, ["nome"] = (string)g["nome"] ?? gid, ["barra"] = bid, ["no"] = no, ["tipo"] = (string)trc["tipo"],
@@ -339,7 +372,7 @@ namespace NovoFtool
                         if (!proposta) continue;   // projeto que o motor não desenha: nada (como antes)
                         lig = new Ligacao3D { No = idN, Barra = b.Id, Nome = (string)g["nome"] ?? "", Pendente = tipoNo + "|" + string.Join("|", assin) };
                     }
-                    lig.Proposta = proposta;
+                    lig.Proposta = proposta;   // reprovada (Reprovada != null): o Render3D pinta na cor da proposta; o clique continua indo ao projetista
                     if (mb["excluir_interferencia"] is JsonValue ev && ev.TryGetValue(out bool ex) && ex) lig.Excluir = true;   // G5: barra curta marcada no membro
                     if (proposta) nProp++;
                     r.Add(lig);

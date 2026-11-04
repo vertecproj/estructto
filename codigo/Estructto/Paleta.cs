@@ -94,7 +94,8 @@ namespace NovoFtool
             ["Mapa de aproveitamento"] = "CALOR", ["Mover"] = "MOVER", ["Copiar"] = "COPIAR", ["Espelhar"] = "ESPELHAR", ["Reações"] = "REAC",
             ["Engaste"] = "ENGASTE", ["Fixo"] = "FIXO", ["Móvel"] = "MOVEL", ["Rótula"] = "ROTULA", ["Aplicar no nó"] = "CARGA", ["Gerar estrutura"] = "ASSISTENTE",
             ["Tabelas"] = "TABELAS", ["Exportar CSV"] = "CSV", ["Atalhos e ajuda"] = "AJUDA", ["Relatório"] = "RELATORIO", ["Dimensionar"] = "DIMENSIONAR",
-            ["Verificar barra"] = "COMPARAR", ["Placa de base"] = "PLACA"
+            ["Verificar barra"] = "COMPARAR", ["Placa de base"] = "PLACA",
+            ["Unir em membro"] = "MEMBRO", ["Separar membro"] = "SEPARARMEMBRO", ["Dimensionar seleção"] = "DIMSEL"
         };
 
         static readonly Dictionary<string, string> SinDe = new Dictionary<string, string>

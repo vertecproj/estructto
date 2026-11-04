@@ -940,6 +940,35 @@ namespace NovoFtool
                 linha("Material", combo(d.Json["materiais"].AsObject().Select(x => x.Key), (string)el["material"], v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["material"] = v }), "Barra " + id + ": material " + v + ".")));
                 linha("Giro (°)", num((double)(el["rot"] ?? 0.0) * 180 / Math.PI, v => _ = Espacial(dd => dd.Editar("barra", id, new JsonObject { ["rot"] = v * Math.PI / 180 }), "Barra " + id + ": giro " + Num.Fmt(v, 1) + "°.")));
                 linha("Papel", leitura((string)el["params"]?["papel"] ?? "—"));
+                // membro (docs/MEMBROS.md): os trechos da mesma peça; kx, ky, Lb e Cb valem para o membro inteiro (vazio = automático)
+                var trechos = GeometriaEdicao.Trechos(d.Json, id);
+                string mb = GeometriaEdicao.Membro(el);
+                if (mb != null)
+                {
+                    var (nt, lt) = GeometriaEdicao.InfoMembro(d.Json, id);
+                    linha("Membro", leitura(mb + " · " + nt + " trechos · " + Num.Fmt(lt, 2) + " m"));
+                }
+                else linha("Membro", leitura("— (peça própria; Editar › Unir em membro)"));
+                secao("Flambagem e FLT" + (mb != null ? " (membro " + mb + ")" : ""));
+                foreach (var (chave, rot, dica) in new[] { ("kx", "kx", "Coeficiente de flambagem em torno do eixo x local."), ("ky", "ky", "Coeficiente de flambagem em torno do eixo y local."),
+                                                          ("Lb", "Lb (m)", "Comprimento destravado da mesa comprimida (FLT)."), ("Cb", "Cb", "Fator de modificação do momento (FLT).") })
+                {
+                    double? atual = el["params"]?[chave] is JsonValue pv && pv.TryGetValue(out double dv) ? dv : (double?)null;
+                    var tb = JanelaEscura.Campo(atual == null ? "" : Num.Fmt(atual.Value, 3), 120, "Vazio = automático (o motor calcula entre os travamentos do membro). " + dica);
+                    tb.HorizontalAlignment = HorizontalAlignment.Left;
+                    string orig = tb.Text, ch = chave;
+                    Action ok = () =>
+                    {
+                        if (tb.Text.Trim() == orig) return;
+                        double? x = null;
+                        if (tb.Text.Trim() != "") { if (!Num.Ler(tb.Text, out double xv) || xv <= 0) { tb.Text = orig; StatusMsg.Text = "⚠ " + ch + ": número positivo, ou vazio para automático."; return; } x = xv; }
+                        orig = tb.Text.Trim();
+                        _ = Espacial(dd => dd.Aplicar(m => GeometriaEdicao.Parametro(m, trechos, ch, x)), (mb != null ? "Membro " + mb : "Barra " + id) + ": " + ch + (x == null ? " automático." : " = " + Num.Fmt(x.Value, 3) + "."));
+                    };
+                    tb.KeyDown += (s, e) => { if (e.Key == Key.Enter) { ok(); e.Handled = true; } };
+                    tb.LostKeyboardFocus += (s, e) => ok();
+                    linha(rot, tb);
+                }
                 if (d.PiorPorBarra.TryGetValue(id, out var v0))
                 {
                     secao("Verificação (" + (string)v0["norma"] + ")");
@@ -947,6 +976,9 @@ namespace NovoFtool
                     linha("Taxa", new TextBlock { Text = t < 0 ? "—" : Num.Fmt(t * 100, 0) + "%", FontWeight = FontWeights.SemiBold, Foreground = t > 1 ? TemaPlant.BErro : t > 0.9 ? TemaPlant.BAlerta : TemaPlant.BSucesso });
                     linha("Critério", leitura((string)v0["criterio"] + " · " + (string)v0["item"]));
                     linha("Combinação", leitura((string)v0["combinacao"] ?? "—"));
+                    if (v0["Lfl_x_m"] is JsonValue lx && lx.TryGetValue(out double lfx))
+                        linha("Lfl x / y", leitura(Num.Fmt(lfx, 2) + " / " + (v0["Lfl_y_m"] is JsonValue ly && ly.TryGetValue(out double lfy) ? Num.Fmt(lfy, 2) : "—") + " m"
+                            + (v0["L_membro_m"] is JsonValue lm && lm.TryGetValue(out double lmv) ? " (membro " + Num.Fmt(lmv, 2) + " m)" : "")));
                 }
                 else if (d.Calculado) { secao("Verificação"); sp.Children.Add(leitura("Barra não verificada pelo motor.")); }
                 botoes(("Disposição do perfil…", () => AbrirDisposicao(new List<string> { id })),
@@ -1080,6 +1112,18 @@ namespace NovoFtool
             sincronizando = false;
         }
 
+        // Avisos › "Ligar todos": cada nó solto no vão vai ao eixo da barra e ela divide ali (mesmo membro). Um passo de desfazer por nó.
+        internal Task LigarTodosEsp(IReadOnlyList<string> nos) => Espacial(async d =>
+        {
+            int ok = 0; var falhas = new List<string>();
+            foreach (string n in nos)
+            {
+                try { await d.LigarNo(n); ok++; }
+                catch (MotorErro ex) { falhas.Add(n + ": " + ex.Message); }
+            }
+            Log(Pl.N(ok, "nó ligado", "nós ligados") + " (barras divididas no mesmo membro; calcule de novo)." + (falhas.Count > 0 ? " Não ligou: " + string.Join("; ", falhas) : ""));
+        }, null);
+
         // validação do motor + avisos da importação + barras reprovadas
         List<(string, string, List<object>)> AvisosEspaciais()
         {
@@ -1092,6 +1136,11 @@ namespace NovoFtool
                 var objs = tipo == "no" || tipo == "barra" ? new List<object> { d.Ref(tipo, id) } : new List<object>();
                 lista.Add(((string)a["nivel"] == "erro" ? "erro" : "aviso", (string)a["mensagem"], objs));
             }
+            // nós que encostam no vão de outra barra sem nó ali: um clique liga todos (POST /api/ligacoes/ligar_no por nó)
+            var soltos = d.Validacao.Where(a => (string)a?["codigo"] == "no_solto_sobre_barra").Select(a => (string)a["ref"]?["id"]).Where(x => x != null).Distinct().ToList();
+            if (soltos.Count > 0)
+                lista.Insert(0, ("aviso", Pl.N(soltos.Count, "nó encosta", "nós encostam") + " no vão de outra barra sem ligação (" + string.Join(", ", soltos.Take(6)) + (soltos.Count > 6 ? "…" : "") + ").",
+                                 soltos.Select(n => (object)d.Ref("no", n)).Append((Action)(() => _ = LigarTodosEsp(soltos))).ToList()));
             foreach (string a in d.Avisos) lista.Add(("info", "Importação: " + a, new List<object>()));
             if (d.Calculado)
             {

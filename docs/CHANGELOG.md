@@ -1,6 +1,24 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
+- 04/11/2026 — v0.6.20, motor (pedido do usuário: revisão geral de cálculo e usabilidade, testada com a torre do elevador do F6 e o PLATAFORMA_REV4 do CYPE; relatório em [REVISAO-2026-11-04.md](REVISAO-2026-11-04.md), critério em [MEMBROS.md](MEMBROS.md)):
+  - Membro (`params.membro`): barra dividida continua uma peça. Flambagem, FLT, Cb e flecha pelos trechos entre nós travados por eixo (antes pelo pedaço: pilar de 6 m dividido passava com 0,78, inteiro reprova com 1,67). Nó interno do membro não é mais emenda. Gerador, "ligar nó" e importação CYPE (peças) gravam o membro.
+  - `validar`: aviso `no_solto_sobre_barra`. Dividir não copia mais o trecho rígido para os pedaços do meio.
+  - Ligações: sem opção que passe, a proposta é a menor (antes a maior: gusset 617x639x25 para L 1.1/2"); o mínimo de 45 kN vale para a ligação, e a barra usa a força real; Realista com a envoltória ELU real por grupo.
+  - Importação CYPE: painel de carga inclinado (escada) com carga gravitacional; antes subia (PESSOAS −109 contra −145 kN).
+  - Cantoneira simples fletida pelo AISC 360-16 F10 (análogo); B1 em 1ª ordem; H/300 do topo de pilares de galpão sem pavimentos e aviso de 2ª ordem; viga sobre apoio externo não vira base de pilar; `papel` aceita `diagonal`.
+  - Pendente (decisão do usuário): imperfeições iniciais 4.9.7 (forças nocionais); 2ª ordem obrigatória com B2 > 1,4; taxas do PLATAFORMA 31 % abaixo do CYPE; 2UPN em caixão com s > 0 sem verificação. Lista completa no relatório.
+- 04/11/2026 — v0.6.20, interface (pedido do usuário: "dividir a viga para ligar a secundária quebra as ligações" e "ligações propostas com tamanhos absurdos"; detalhe em [MEMBROS.md](MEMBROS.md), seção Interface):
+  - Desenho: ponta no vão de outra barra divide a hospedeira ali, com os dois trechos no mesmo membro, num só Ctrl+Z.
+  - Aparar/Estender até o vão do limite divide o limite, no mesmo membro.
+  - DIVIDIR: os trechos ganham `params.membro` (membro da original ou o id dela).
+  - Comandos novos: `MEMBRO` (Unir em membro) e `SEPARARMEMBRO`, com botões em Editar › Modificar. O JUNTARBARRAS recusado sugere Unir em membro.
+  - Propriedades da barra: linha Membro (id, trechos, comprimento) e kx, ky, Lb e Cb editáveis (vazio = automático). O LOTE também edita esses campos.
+  - Avisos: `no_solto_sobre_barra` com o botão "Ligar todos". O gerenciador de ligações também tem "Ligar todos".
+  - Realista: manda os `membros` do grupo (envoltória ELU real) e o `apoio` das flexíveis. O gusset vai pelo perfil do catálogo. Ligação que não passa sai esmaecida, com aviso. A emenda rígida acima de 5° vira cumeeira.
+  - Proposta local: viga inclinada não vira mais gusset. Chapa de topo, chapa simples, gusset, cumeeira e placa de base agora escalam com o perfil. Viga de 150 mm leva chapa de 10 mm com 4 M12, e não mais 16 mm com 8 parafusos.
+  - Verificação de barras: botão "Selecionar na vista" e comando `SELREPROV`. A dica da linha mostra o membro e Lfl x / y.
+  - Dimensionar: os trechos do mesmo membro ficam com o mesmo perfil, e o pior trecho governa. Várias rodadas viram um passo só de desfazer. Botão novo "Dimensionar seleção".
 - 29/10/2026 (pedido do usuário: testar o Estructto com mouse e teclado reais procurando bugs; corrigir os achados 1, 2 e 3):
   - Novo projeto com nome repetido: o aviso "Já existe …" aparece já no passo Projeto, e o Criar volta com a mensagem. Antes, o usuário voltava ao passo 2 sem aviso.
   - Linha de comando: o histórico quebra linhas longas, e o `AJUDA` abre o histórico com a lista inteira. A barra de status cortada mostra o texto inteiro na dica.

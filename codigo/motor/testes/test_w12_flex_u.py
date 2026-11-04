@@ -117,7 +117,8 @@ class TestApoioU(unittest.TestCase):
         t, mot, _d, r = _sug_ver("viga_viga_recorte", dict(perfil_viga="U 150x50x3,75", perfil_suporte="UPN 200"),
                                  {"V": 20})
         self.assertEqual(t, "solda_direta_alma")
-        self.assertIn("folga de aperto até as mesas do U", mot)
+        # revisão 04/11/2026: sem candidata que passe, o motivo é o da MENOR (antes, o da maior da lista)
+        self.assertIn("não passa com viga U", mot)
         self.assertTrue(r["ok"])
 
     def test_solda_direta_viga_mais_larga_que_a_mesa_u(self):

@@ -698,6 +698,8 @@ def ler_ed3(caminho):
         giros |= {giro} - {0.0}
         barra = modelo.add(Barra(f"B{b[1]}", ni.id, nj.id, sec, mat, rot=rot, tipo=tipo))
         barra.params["cortante"] = True  # o CYPE considera a deformação por cortante (Timoshenko)
+        if len(pc[2]) > 1:   # peça do CYPE com várias barras = um membro contínuo (docs/MEMBROS.md)
+            barra.params["membro"] = f"P{pc[1]}"
     _trechos_rigidos(d, cab, obra, modelo, avisos)
     if giros:
         avisos.append("peças giradas no CYPE: o sentido do giro (+/-) não muda a análise, mas não foi confirmado "
@@ -1010,15 +1012,20 @@ def _paineis(paineis, modelo, caso_de, avisos):
                 continue
             q = c[3] * T_KN
             dist, perdida = distribuir_painel(poly, t, q, barras2d)
+            # painel inclinado (escada, rampa) com carga que não é de vento: gravitacional (−Z) na área real, como o CYPE
+            # (ΣFz do PLATAFORMA_REV4 bate só assim); antes ia pela normal "positiva" e a carga da escada subia
+            dc = dr
+            if not horizontal and abs(n[2]) >= 0.1 and modelo.casos[caso].tipo != "V":
+                dc = (0.0, 0.0, -1.0)
             for bid, forcas in dist.items():
-                _cargas_na_barra(modelo, caso, bid, forcas, dr)
+                _cargas_na_barra(modelo, caso, bid, forcas, dc)
             if abs(perdida) > 1e-6 * max(abs(q), 1e-12):
                 avisos.append(f"painel de carga {k} ({caso}): {perdida:.3f} kN sem barra que receba na direção de "
                               "transmissão (perdidos).")
     if paineis:
         avisos.append(f"{len(paineis)} painel(éis) de carga superficial distribuído(s) às barras em uma direção "
-                      "(faixas biapoiadas entre barras); sentido da carga em painel não horizontal pela normal com "
-                      "componente dominante positiva — confira.")
+                      "(faixas biapoiadas entre barras); painel inclinado: carga gravitacional (−Z) na área real, exceto "
+                      "vento; painel vertical: pela normal com componente dominante positiva — confira.")
 
 
 # ---------------------------------------------------------------- resultados gravados pelo CYPE

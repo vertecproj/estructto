@@ -344,23 +344,27 @@ namespace NovoFtool
             try { cat = (await Motor.Get("/api/catalogo")).AsArray(); } catch (Exception ex) { ErroMotor(ex); return; }
             var info = cat.ToDictionary(x => (string)x["nome"], x => (Fam: (string)x["familia"], Massa: (double)(x["massa_kg_m"] ?? 0.0)));
             var porFam = info.GroupBy(kv => kv.Value.Fam).ToDictionary(g => g.Key, g => g.OrderBy(kv => kv.Value.Massa).Select(kv => kv.Key).ToList());
+            // os trechos do mesmo membro (params.membro, docs/MEMBROS.md) vão juntos: um perfil para a peça, o pior trecho governa
             var alvo = (soSelecao && vista3D.Selecao.Barras.Count > 0 ? vista3D.Selecao.Barras.ToList() : d.Json["barras"].AsObject().Select(kv => kv.Key).ToList())
-                       .Where(b => d.Json["barras"][b] != null && info.ContainsKey((string)d.Json["barras"][b]["secao"])).ToList();
+                       .Where(b => d.Json["barras"][b] != null).SelectMany(b => GeometriaEdicao.Trechos(d.Json, b)).Distinct()
+                       .Where(b => info.ContainsKey((string)d.Json["barras"][b]["secao"])).ToList();
             if (alvo.Count == 0) { Log("Dimensionar: nenhuma barra com perfil do catálogo do motor."); return; }
-            int trocas = 0;
+            int trocas = 0, rodadas = 0;
             for (int it = 0; it < 8; it++)
             {
                 var novo = new Dictionary<string, string>();
-                foreach (string b in alvo)
+                foreach (var peca in alvo.GroupBy(b => GeometriaEdicao.Membro(d.Json["barras"][b]) ?? b))
                 {
-                    string s = (string)d.Json["barras"][b]["secao"];
-                    double t = d.PiorPorBarra.TryGetValue(b, out var l) ? DocumentoEspacial.Taxa(l) : -1;
+                    string gov = peca.OrderByDescending(b => d.PiorPorBarra.TryGetValue(b, out var lb) ? DocumentoEspacial.Taxa(lb) : -1).First();
+                    string s = (string)d.Json["barras"][gov]["secao"];
+                    double t = d.PiorPorBarra.TryGetValue(gov, out var l) ? DocumentoEspacial.Taxa(l) : -1;
                     if (t < 0 || !info.TryGetValue(s, out var inf)) continue;
                     var fam = porFam[inf.Fam]; int i = fam.IndexOf(s);
                     string esc = null;
                     if (t > 1) esc = fam.Skip(i + 1).FirstOrDefault(x => info[x].Massa >= inf.Massa * t / 0.9) ?? (i + 1 < fam.Count ? fam[fam.Count - 1] : null);
                     else if (t < 0.75 && it < 4) esc = fam.Take(i).FirstOrDefault(x => info[x].Massa >= inf.Massa * t / 0.9);
-                    if (esc != null && esc != s) novo[b] = esc;
+                    esc ??= s;   // o governante fica: os outros trechos do membro alinham nele
+                    foreach (string b in peca) if ((string)d.Json["barras"][b]["secao"] != esc) novo[b] = esc;
                 }
                 if (novo.Count == 0) break;
                 var secoes = new Dictionary<string, JsonNode>();
@@ -372,7 +376,16 @@ namespace NovoFtool
                     foreach (var kv in novo) m["barras"][kv.Key]["secao"] = kv.Value;
                     return m;
                 }), null);
-                trocas += novo.Count;
+                trocas += novo.Count; rodadas++;
+                await CalcularEspacial();
+                if (Esp != d || !d.Calculado) return;
+            }
+            // várias rodadas = um passo de desfazer só: volta as rodadas no motor e grava o resultado final num PUT (recalcula)
+            if (rodadas > 1)
+            {
+                var final = JsonNode.Parse(d.Json.ToJsonString()).AsObject();
+                bool ok = true;
+                await Espacial(async dd => { for (int k = 0; k < rodadas && ok; k++) ok = await dd.Trocar(true); await dd.Aplicar(_ => final); }, null);
                 await CalcularEspacial();
                 if (Esp != d || !d.Calculado) return;
             }

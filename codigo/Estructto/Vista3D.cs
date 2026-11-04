@@ -1325,9 +1325,9 @@ namespace NovoFtool
                 }
                 // chip das ligações propostas (grupos sem projeto, desenhados na cor CorProposta3D): canto inferior direito,
                 // acima da legenda do aproveitamento
-                if (v.Dx && v.render != null && v.render.Propostas > 0)
+                if (v.Dx && v.render != null && v.render.Propostas + v.render.Reprovadas > 0)
                 {
-                    var ft = Txt("Ligação proposta (sem projeto) · " + v.render.Propostas, TemaPlant.BTexto1, 11);
+                    var ft = Txt("Ligação proposta (sem projeto) · " + v.render.Propostas + (v.render.Reprovadas > 0 ? " · " + v.render.Reprovadas + " não passam" : ""), TemaPlant.BTexto1, 11);
                     bool leg = v.MostrarLegenda && v.MostrarAproveitamento && v.mod.Barras.Any(b => b.Aprov.HasValue);
                     double w = ft.Width + 40, h = 24, x = ActualWidth - w - 14, y = ActualHeight - h - 14 - (leg ? 26 + 4 * 18 + 8 : 0);
                     dc.DrawRoundedRectangle(TemaPlant.B(TemaPlant.CorCaixaHud), new Pen(TemaPlant.BBordaSutil, 1), new Rect(x, y, w, h), 6, 6);

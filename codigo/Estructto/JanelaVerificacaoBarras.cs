@@ -18,6 +18,7 @@ namespace NovoFtool
     public class JanelaVerificacaoBarras : JanelaEscura
     {
         public Action<string> AbrirDetalhe;   // id da barra
+        public Action<List<string>> SelecionarNaVista;   // ids das barras a selecionar na vista 3D
         readonly List<JsonNode> todas;
         readonly Border hostFiltros = new Border(), hostTabela = new Border();
         readonly TextBlock lblConta = new TextBlock();
@@ -66,9 +67,19 @@ namespace NovoFtool
             var dica = Tx("Duplo clique numa barra abre a verificação detalhada, critério a critério.", 11.5, TemaPlant.BTexto3);
             Content = Raiz(cab, corpo, Rodape(dica,
                 B("Fechar", Close, false, "Fecha a janela (Esc)."),
+                B("Selecionar na vista", () => SelecionarNaVista?.Invoke(ParaSelecionar()), false, "Seleciona na vista 3D as barras da lista filtrada (Só reprovadas, tipo ou busca); sem filtro, todas as reprovadas (ou a linha escolhida, se nenhuma reprova). Comando SELREPROV."),
                 B("Verificar barra", () => { if (selId != null) AbrirDetalhe?.Invoke(selId); }, true, "Abre a verificação detalhada da barra selecionada.")));
             selId = S(pior, "barra");
             Montar();
+        }
+
+        // lista filtrada; sem filtro, as reprovadas; sem reprovadas, a linha escolhida
+        internal List<string> ParaSelecionar()
+        {
+            bool filtro = soReprovadas || tipo != "" || busca != "";
+            var ids = (filtro ? vis : todas.Where(Reprovada)).Select(n => S(n, "barra")).ToList();
+            if (ids.Count == 0 && selId != null) ids.Add(selId);
+            return ids;
         }
 
         // API das capturas
@@ -123,8 +134,19 @@ namespace NovoFtool
                 i => { selId = S(vis[i], "barra"); gv.Selecionar(i); },
                 i => { selId = S(vis[i], "barra"); gv.Selecionar(i); AbrirDetalhe?.Invoke(selId); },
                 c => { if (colOrd == c) desc = !desc; else { colOrd = c; desc = c == 3 || c == 6; } Montar(); }, colOrd, desc,
-                i => string.Join("\n", Lista(vis[i]["avisos"]).Select(a => "⚠ " + a)) is string av && av != "" ? av : null);
+                i => string.Join("\n", Membro(vis[i]).Concat(Lista(vis[i]["avisos"]).Select(a => "⚠ " + a))) is string av && av != "" ? av : null);
             hostTabela.Child = gv;
+        }
+
+        // membro (docs/MEMBROS.md) e comprimentos de flambagem do motor, na dica da linha
+        static IEnumerable<string> Membro(JsonNode n)
+        {
+            var r = new List<string>();
+            string mb = S(n, "membro");
+            if (mb != "" && mb != S(n, "barra")) r.Add("Membro " + mb + (double.IsNaN(D(n, "L_membro_m")) ? "" : " · " + F(D(n, "L_membro_m"), 2) + " m"));
+            else if (!double.IsNaN(D(n, "L_membro_m"))) r.Add("Membro " + S(n, "barra") + " · " + F(D(n, "L_membro_m"), 2) + " m");
+            if (!double.IsNaN(D(n, "Lfl_x_m"))) r.Add("Lfl x / y = " + F(D(n, "Lfl_x_m"), 2) + " / " + F(D(n, "Lfl_y_m"), 2) + " m");
+            return r;
         }
 
         UIElement[] Linha(int i)

@@ -27,6 +27,7 @@ import numpy as np
 from . import __version__
 from . import importar_cype as _ed3
 from . import materiais as _mat
+from . import membros as _membros
 from . import secoes as _sec
 from . import solver as _sol
 from .acoes import cargas as _cargas
@@ -191,7 +192,7 @@ _PARAMS_BARRA = {"kx", "ky", "kz", "Lb", "Cb", "rotula_i", "rotula_j", "trelica"
                  "t0_meses", "ligacao_uma_aba", "fator_EI", "emenda", "Lv", "tubo_com_costura", "Ndist", "Mdist",
                  "trecho_rigido_i", "trecho_rigido_j", "cortante", "l0_x", "l0_y", "t_alvenaria_meses",
                  "fracao_qp_pos_alvenaria", "ponto_aplicacao", "C2",
-                 "cardinal", "espelho"}  # espelho: seção refletida no desenho (secoes.espelhar: resistências invariantes); cardinal: justificação do desenho (1..9 da caixa, 10 = centroide); a análise usa o eixo
+                 "cardinal", "espelho", "membro"}  # espelho: seção refletida no desenho (secoes.espelhar: resistências invariantes); cardinal: justificação do desenho (1..9 da caixa, 10 = centroide); a análise usa o eixo
 _AUTO = ("V+X", "V-X", "V+Y", "V-Y", "SX", "SY")
 _RE_AUTO_V = re.compile(r"V[SM]?[+-][XY]( Cpi=.*)?")  # vento de edifício/barras ("V+X"), galpão ("V+X Cpi=-0.3"), NBR 8400 ("VS+X", "VM+X")
 _RE_AUTO_S = re.compile(r"S[XY](" + re.escape(_comb.TORCAO) + ")?")  # sismo e torção acidental
@@ -356,6 +357,8 @@ def _val_params(p, err):
     fr = p.get("fracao_qp_pos_alvenaria")
     if fr is not None and not (_ok_num(fr) and 0.0 <= fr <= 1.0):
         err("params.fracao_qp_pos_alvenaria", "número entre 0 e 1 (NBR 6118 13.3)")
+    if p.get("membro") is not None and not isinstance(p["membro"], str):
+        err("params.membro", "texto: id da peça (barras colineares com o mesmo id = um membro contínuo)")
     if p.get("ponto_aplicacao") not in (None, *_nbr8800._PONTOS):
         err("params.ponto_aplicacao", f"use {', '.join(_nbr8800._PONTOS)} (altura da carga na mesa, NBR 8800 G.1/SN003b)")
     # faixas da norma (VC-guia-002): o motor também limita, mas o erro aparece já na edição
@@ -369,8 +372,8 @@ def _val_params(p, err):
     for k in ("rotula_i", "rotula_j", "trelica", "tubo_com_costura"):
         if k in p and not isinstance(p[k], bool):
             err(f"params.{k}", "true/false")
-    if p.get("papel") not in (None, "viga", "pilar"):
-        err("params.papel", "use 'viga' ou 'pilar'")
+    if p.get("papel") not in (None, "viga", "pilar", "diagonal"):
+        err("params.papel", "use 'viga', 'pilar' ou 'diagonal' (diagonal: contraventamento/escora; só aço)")
     card = p.get("cardinal")
     if card is not None and (isinstance(card, bool) or not isinstance(card, int) or not 1 <= card <= 10):
         err("params.cardinal", "inteiro de 1 a 10 (ponto cardinal da seção; 5 = centro, 10 = centroide)")
@@ -1127,6 +1130,19 @@ def validar(modelo):
         if not any(abs(n.z - p.z) <= _sol.TOL_PAV for n in m.nos.values()):
             add("aviso", "pavimento_sem_nos", f"nenhum nó na cota do pavimento {p.nome} (z = {p.z:g} m)",
                 {"tipo": "pavimento", "id": p.nome})
+    # barra desenhada até o vão de outra sem nó ali: na análise ela fica solta (balanço), sem aviso nenhum antes
+    from .aco import ligacoes_modelo as _lm
+    grau = {}
+    for b in m.barras.values():
+        for n in (b.ni, b.nj):
+            grau[n] = grau.get(n, 0) + 1
+    for nid, g in grau.items():
+        if g == 1 and nid in m.nos:
+            enc = _lm.encosto(m, nid)
+            if enc:
+                add("aviso", "no_solto_sobre_barra", f"nó {nid} encosta em {enc['barra']} a {enc['distancia'] * 1000:.0f} mm "
+                    f"do eixo, mas {enc['barra']} não tem nó ali: as barras não estão ligadas (ligue o nó: divide "
+                    f"{enc['barra']} mantendo a peça como um membro contínuo)", {"tipo": "no", "id": nid})
     return out
 
 
@@ -1720,17 +1736,49 @@ def _balanco(m, b):
     return sum(_livre(m, b, nid) for nid in (b.ni, b.nj)) == 1
 
 
-def _aco_comb(m, b, L, res, tipo, balanco=False):
-    """Verifica uma barra de aço/PFF numa combinação (uma chamada ao motor; todos os pontos)."""
+def _b1(sec, mat, esf, Lx, Ly):
+    """NBR 8800 anexo D (D.2.2): efeito P-δ local quando a análise é de 1ª ordem (P-Δ desligado). B1 = Cm/(1 − NSd/Ne)
+    ≥ 1 por eixo, Ne = π²EI/(KL)² com os comprimentos de flambagem da verificação. ponytail: Cm = 1,0 sempre (a favor;
+    0,6 − 0,4·M1/M2 só sem carga transversal, e o vento por barra entra depois); B1 aplicado ao momento total.
+    → (esforços com Mx/My amplificados, {Mx|My: {B1, Ne}} ou None)."""
+    Nc = max((-e["N"] for e in esf), default=0.0)
+    if Nc <= 0:
+        return esf, None
+    info, fat = {}, {}
+    for M, I, Lk in (("Mx", sec.Iy, Lx), ("My", sec.Iz, Ly)):
+        if not I or Lk <= 0:
+            continue
+        Ne = math.pi ** 2 * mat.E * I / Lk ** 2
+        fat[M] = max(1.0, 1.0 / (1 - Nc / Ne)) if Nc < Ne else 1e3   # N ≥ Ne: a barra flamba (compressão já reprova)
+        info[M] = dict(B1=fat[M], Ne_kN=Ne)
+    if all(f == 1.0 for f in fat.values()):
+        return esf, info or None
+    return [dict(e, **{k: e[k] * f for k, f in fat.items()}) for e in esf], info
+
+
+def _aco_comb(m, b, L, res, tipo, balanco=False, tr=None, b1=False):
+    """Verifica uma barra de aço/PFF numa combinação (uma chamada ao motor; todos os pontos). `tr`: trechos dos
+    membros (membros.trechos): barra de membro usa os comprimentos entre os nós travados por eixo (docs/MEMBROS.md)."""
     linhas = res.esforcos[b.id]
     esf = [_nbr8800.esforcos_nbr(l) for l in linhas]
     p = b.params
-    Lx, Ly, Lz = (float(p.get(k, 1.0)) * L for k in ("kx", "ky", "kz"))
+    t = (tr or {}).get(b.id)
+    Lt = None
+    if t is None:
+        Lx, Ly, Lz = (float(p.get(k, 1.0)) * L for k in ("kx", "ky", "kz"))
+    else:   # KLx: eixo forte (y local) flamba deslocando em z local; KLy, Lz e Lb: deslocamento em y local
+        Lsz, Lsy = t["z"][1] - t["z"][0], t["y"][1] - t["y"][0]
+        Lx, Ly, Lz = float(p.get("kx", 1.0)) * Lsz, float(p.get("ky", 1.0)) * Lsy, float(p.get("kz", 1.0)) * Lsy
+        Lt = (Lsz, Lsy)
     # trecho destravado padrão = trecho flexível [trecho_rigido_i, L − trecho_rigido_j]: os esforços do solver
     # começam na face do trecho rígido (xs[0] e xs[-1]); sem trecho rígido é a barra toda
     xa, xb = float(linhas[0][0]), float(linhas[-1][0])
-    Lb = float(p.get("Lb", xb - xa))
-    if balanco:
+    Lb = float(p.get("Lb", xb - xa if t is None or len(t["y"][2]) == 1 else t["y"][1] - t["y"][0]))
+    if t is not None and "Lb" not in p and not p.get("Cb") and not balanco and len(t["y"][2]) > 1:
+        # Cb do trecho destravado inteiro do membro (diagramas das barras do trecho, em sequência)
+        xs, ms = _membros.concatenar(tr, t["y"], lambda i: res.esforcos[i], lambda l: float(l[5]))
+        Cb = _nbr8800.cb_de_diagrama(xs, ms, xs[0], xs[-1])   # trechos rígidos: o diagrama começa na face
+    elif balanco:
         Cb = _nbr8800.cb_de_diagrama([l[0] for l in linhas], [e["Mx"] for e in esf], balanco=True)  # 5.4.2.3: 1,0; prevalece sobre params.Cb
     elif p.get("Cb"):
         Cb = float(p["Cb"])
@@ -1742,20 +1790,30 @@ def _aco_comb(m, b, L, res, tipo, balanco=False):
         Cb = _nbr8800.cb_de_diagrama([l[0] for l in linhas], [e["Mx"] for e in esf], xa, xb)
     sec, mat = m.secoes[b.secao], m.materiais[b.material]
     An, Ct = p.get("An"), float(p.get("Ct", 1.0))
+    b1info = None
+    if b1:
+        esf, b1info = _b1(sec, mat, esf, Lx, Ly)
     if tipo == "pff":
         if _nbr14762 is None:
             raise ValueError("NBR 14762 indisponível")
-        return _nbr14762.verificar_pff(sec, mat, esf, Lx, Ly, Lz, Lb, Cb, An, Ct, p.get("Ndist"), p.get("Mdist"))
-    return _nbr8800.verificar_barra_aco(sec, mat, esf, Lx, Ly, Lb, Cb, Lz, An, Ct, p.get("ligacao_uma_aba"),
-                                        L=L, Lv=p.get("Lv"), tubo_com_costura=bool(p.get("tubo_com_costura", False)),
-                                        ponto_aplicacao=p.get("ponto_aplicacao") or "centro", C2=p.get("C2"), Lt=p.get("Lt"))
+        r = _nbr14762.verificar_pff(sec, mat, esf, Lx, Ly, Lz, Lb, Cb, An, Ct, p.get("Ndist"), p.get("Mdist"))
+    else:
+        r = _nbr8800.verificar_barra_aco(sec, mat, esf, Lx, Ly, Lb, Cb, Lz, An, Ct, p.get("ligacao_uma_aba"),
+                                         L=L, Lv=p.get("Lv"), tubo_com_costura=bool(p.get("tubo_com_costura", False)),
+                                         ponto_aplicacao=p.get("ponto_aplicacao") or "centro", C2=p.get("C2"), Lt=p.get("Lt") or Lt)
+    if b1info:
+        r.setdefault("detalhes", {})["B1"] = b1info
+        amp = [f"{k} × {v['B1']:.3f}" for k, v in b1info.items() if v["B1"] > 1.0]
+        if amp:
+            r.setdefault("avisos", []).append("P-δ local pelo B1 (NBR 8800 anexo D, análise de 1ª ordem): " + ", ".join(amp))
+    return r
 
 
-def _aco_barra(m, b, L, resultados, elu, so=None):
+def _aco_barra(m, b, L, resultados, elu, so=None, tr=None, b1=False):
     """Pior combinação de uma barra de aço/PFF. → (resultado, combinação, [{combinacao, taxa, criterio}])."""
     pior, esb, por, balanco = None, None, [], _balanco(m, b)
     for nome in ([so] if so else elu):
-        r = _aco_comb(m, b, L, resultados[nome], b.tipo, balanco)
+        r = _aco_comb(m, b, L, resultados[nome], b.tipo, balanco, tr, b1)
         por.append({"combinacao": nome, "taxa": r["taxa_max"], "criterio": r["criterio"]})
         if pior is None or r["taxa_max"] > pior[0]["taxa_max"]:
             pior = (r, nome)
@@ -1790,6 +1848,8 @@ def _args_concreto(m, b, resultados, elu, qp, freq):
 
 
 def _concreto_barra(m, b, L, resultados, elu, qp, freq):
+    if _papel(m, b) == "diagonal":
+        raise ValueError("papel 'diagonal' só vale para barra de aço (concreto: viga ou pilar)")
     elu_l, els, params = _args_concreto(m, b, resultados, elu, qp, freq)
     return _nbr6118.verificar_barra_concreto(m.secoes[b.secao], m.materiais[b.material], elu_l, els, L,
                                              _papel(m, b), params)
@@ -1824,7 +1884,7 @@ def _linha_de(m, b, L, r, comb, resultados):
     return linha
 
 
-def _verificar_uma(m, b, resultados, elu, qp, freq):
+def _verificar_uma(m, b, resultados, elu, qp, freq, tr=None, b1=False):
     """→ (linha, por_combinacao, ResultadoNorma | None). Erros de dados viram linha `nao_verificada`."""
     L = _comprimento(m, b)
     if b.tipo == "pff" and _nbr14762 is None:
@@ -1833,8 +1893,13 @@ def _verificar_uma(m, b, resultados, elu, qp, freq):
         if b.tipo == "concreto":
             r = _concreto_barra(m, b, L, resultados, elu, qp, freq)
             return _linha_de(m, b, L, r, r["combinacao"], resultados), [], r
-        r, comb, por = _aco_barra(m, b, L, resultados, elu)
-        return _linha_de(m, b, L, r, comb, resultados), por, r
+        r, comb, por = _aco_barra(m, b, L, resultados, elu, tr=tr, b1=b1)
+        linha = _linha_de(m, b, L, r, comb, resultados)
+        if b.id in (tr or {}):
+            t = tr[b.id]
+            linha.update(membro=t["membro"], L_membro_m=t["L"], Lfl_x_m=t["z"][1] - t["z"][0],
+                         Lfl_y_m=t["y"][1] - t["y"][0])
+        return linha, por, r
     except (ValueError, KeyError, TypeError) as e:
         motivo = f"{type(e).__name__}: {e}" if isinstance(e, (KeyError, TypeError)) else str(e)
         (log.exception if isinstance(e, TypeError) else log.info)("barra %s não verificada: %s", b.id, motivo)
@@ -1857,6 +1922,31 @@ def _flecha_max(cache, resultados, comb, bid, ponta=None):
     return cache[k]
 
 
+def _flecha_membro(cache, m, resultados, comb, tr, bid, ponta=None):
+    """Flecha de barra de membro: trecho entre nós que travam o eixo z local (apoios reais da peça), deslocamentos das
+    barras do trecho em sequência, relativos à corda do trecho (ou, em balanço, à ponta apoiada). → (flecha, L)."""
+    seg = tr[bid]["z"]
+    k = (comb, "membro", seg[0], tuple(seg[2]), ponta)
+    if k not in cache:
+        pts = []
+        for i in seg[2]:
+            ex, ey, ez = (np.asarray(v, float) for v in _sol.eixos_locais(m, i))
+            t, Lb = tr[i], tr[i]["s1"] - tr[i]["s0"]
+            for row in np.asarray(resultados[comb].flechas[i], float):
+                pts.append((t["s0"] + (row[0] if t["sentido"] > 0 else Lb - row[0]), row[1] * ex + row[2] * ey + row[3] * ez))
+        pts.sort(key=lambda p: p[0])
+        s = np.array([p[0] for p in pts])
+        u = np.array([p[1] for p in pts])
+        _ex, ey, ez = (np.asarray(v, float) for v in _sol.eixos_locais(m, seg[2][0]))
+        if ponta is None:
+            w = (s - s[0]) / (s[-1] - s[0]) if s[-1] > s[0] else np.zeros_like(s)
+            rel = u - (u[0] + np.outer(w, u[-1] - u[0]))
+        else:   # balanço: ponta livre em relação ao nó travado do trecho
+            rel = u[[0, -1]] - u[[-1, 0]]
+        cache[k] = float(max(np.abs(rel @ ey).max(), np.abs(rel @ ez).max()))
+    return cache[k], seg[1] - seg[0]
+
+
 def _ponta_livre(m, b):
     """Índice (0 ou -1) da extremidade livre de um balanço; None se a barra não é balanço."""
     if not _balanco(m, b):
@@ -1867,8 +1957,11 @@ def _ponta_livre(m, b):
 def _desloc_verticais(m, barras, resultados, por_estado, linhas, avisos):
     out, cache = [], {}
     por_barra = {l["barra"]: l for l in linhas}
+    tr = _membros.trechos(m)
     for b in barras:
         L = _comprimento(m, b)
+        if b.id in tr and b.tipo != "concreto":
+            L = tr[b.id]["z"][1] - tr[b.id]["z"][0]   # vão do membro entre apoios reais (docs/MEMBROS.md)
         if b.tipo == "concreto":
             l = por_barra.get(b.id)
             if not l or not l.get("armadura") or _papel(m, b) != "viga":
@@ -1894,7 +1987,10 @@ def _desloc_verticais(m, barras, resultados, por_estado, linhas, avisos):
         nomes = por_estado.get(lim["estado"]) or por_estado.get("ELS_QP") or por_estado.get("ELS_RARA", [])  # NBR 8400: só RARA
         if not nomes:
             continue
-        vals = {n: _flecha_max(cache, resultados, n, b.id, ponta) for n in nomes}
+        if b.id in tr:
+            vals = {n: _flecha_membro(cache, m, resultados, n, tr, b.id, ponta)[0] for n in nomes}
+        else:
+            vals = {n: _flecha_max(cache, resultados, n, b.id, ponta) for n in nomes}
         n = max(vals, key=vals.get)
         out.append({"barra": b.id, "elemento": elem, "flecha_m": vals[n], "limite_m": lim["limite_m"],
                     "razao": lim["razao"], "taxa": vals[n] / lim["limite_m"], "combinacao": n,
@@ -1954,11 +2050,47 @@ def _grupo_predominante(m):
     return "concreto" if tot["concreto"] > tot["aco"] else "aco"
 
 
+def _desloc_topo_pilares(m, resultados, freq_vento):
+    """Galpão sem pavimentos: deslocamento horizontal do topo de cada prumada de pilares (cadeia de barras verticais)
+    em relação à base dela, por direção, limite H/300 (NBR 8800 tabela C.1, galpões em geral)."""
+    pil = [b for b in m.barras.values() if b.tipo != "concreto" and _papel(m, b) == "pilar" and _vertical(m, b)]
+    sobe = {}
+    for b in pil:
+        lo, hi = (b.ni, b.nj) if m.nos[b.ni].z < m.nos[b.nj].z else (b.nj, b.ni)
+        sobe[lo] = hi
+    topos = set(sobe.values()) - set(sobe)
+    desce = {hi: lo for lo, hi in sobe.items()}
+    out = []
+    for top in sorted(topos):
+        if any(m.nos[top].apoio[:2]):
+            continue
+        base = top
+        while base in desce:
+            base = desce[base]
+        Hh = m.nos[top].z - m.nos[base].z
+        if Hh <= 0:
+            continue
+        lim = _nbr8800.limite_deslocamento("galpao_topo", Hh)
+        for k, d in ((0, "X"), (1, "Y")):
+            vals = {n: abs(float(resultados[n].deslocamentos[top][k] - resultados[n].deslocamentos[base][k]))
+                    for n in freq_vento}
+            n = max(vals, key=vals.get)
+            if vals[n] <= 1e-9:
+                continue
+            out.append({"pavimento": None, "no": top, "direcao": d, "tipo": "topo_pilar", "valor_m": vals[n],
+                        "limite_m": lim["limite_m"], "razao": lim["razao"], "taxa": vals[n] / lim["limite_m"],
+                        "combinacao": n, "item": lim["item"], "ok": vals[n] <= lim["limite_m"]})
+    return out
+
+
 def _desloc_horizontais(m, pavs, resultados, freq_vento, H):
     """Deslocamento horizontal do topo e entre pisos, ELS frequente com vento (NBR 8800 anexo C / NBR 6118 13.3).
-    `freq_vento`: {combinação: fatores}; a direção de cada uma vem das suas forças horizontais `H`."""
-    if not pavs or not freq_vento:
+    `freq_vento`: {combinação: fatores}; a direção de cada uma vem das suas forças horizontais `H`.
+    Sem pavimentos (galpão): topo de cada pilar em relação à base dele, H/300 (tabela C.1), nas ELS frequentes com vento."""
+    if not freq_vento:
         return []
+    if not pavs:
+        return _desloc_topo_pilares(m, resultados, freq_vento) if _grupo_predominante(m) == "aco" else []
     grupo, npav, out = _grupo_predominante(m), len(pavs), []
     dirs = {n: _direcoes(sum(v * H[k] for k, v in f.items() if k in H)) for n, f in freq_vento.items()}
     for k, d in ((0, "X"), (1, "Y")):
@@ -2296,11 +2428,22 @@ def calcular(modelo, opcoes=None):
     H, fora = _forcas_horizontais(m, pavs)
     est = _estabilidade(m, pavs, combs, res_caso, resultados, pdelta, tipos, npt, H, fora)
     avisos += _amplificar(m, combs, est, H, res_caso, resultados, pdelta, npt)
+    if not pavs and not pdelta and any(b.tipo != "concreto" for b in m.barras.values()):
+        avisos.append(_aviso("segunda_ordem_sem_pavimentos", "modelo sem pavimentos: B2/γz não calculados e a análise é de "
+                             "1ª ordem (só o B1 local entra) — ative o P-Δ (config pdelta) para os efeitos globais de 2ª "
+                             "ordem (NBR 8800 4.9.4 e anexo D)"))
 
     barras = [m.barras[i] for i in (sel if sel is not None else m.barras)]
     linhas, por_comb, motores = [], {}, {}
+    invalidos = []
+    _membros.cadeias(m, invalidos)
+    for mid in invalidos:
+        avisos.append(_aviso("membro_invalido", f"membro {mid}: as barras não formam uma cadeia reta contínua; "
+                             "verificadas uma a uma", {"tipo": "barra", "id": next(
+                                 b.id for b in m.barras.values() if b.params.get("membro") == mid)}))
+    tr = _membros.trechos(m)
     for b in barras:
-        linha, por, r = _verificar_uma(m, b, resultados, elu, qp, freq)
+        linha, por, r = _verificar_uma(m, b, resultados, elu, qp, freq, tr, not pdelta)
         linhas.append(linha)
         if por:
             por_comb[b.id] = por
@@ -2415,7 +2558,8 @@ def verificacao_barra(calculo, barra):
             ri = _concreto_barra(m, b, _comprimento(m, b), res, [n], None, [])
             por.append({"combinacao": n, "taxa": ri["taxa_max"], "criterio": ri["criterio"]})
     else:
-        r, _, _ = _aco_barra(m, b, _comprimento(m, b), res, elu, so=linha["combinacao"])
+        r, _, _ = _aco_barra(m, b, _comprimento(m, b), res, elu, so=linha["combinacao"], tr=_membros.trechos(m),
+                              b1=not calculo.opcoes.get("pdelta"))
         por = calculo.por_combinacao.get(barra, [])
     return _puro({**linha, "detalhes": r["detalhes"], "por_combinacao": por})
 
@@ -2581,20 +2725,60 @@ def sugerir_ligacao(tipo, perfis, esforcos):
 MAX_LOTE_LIGACOES = 500   # itens por POST /api/ligacoes/geometrias (o WPF divide em lotes)
 
 
-def geometrias_ligacoes(itens):
-    """Lote para o Realista do WPF: cada item {tipo, dados, perfis?} -> sugerir (se há perfis, esforços típicos N 50, V 50,
-    M 30) + verificar com esforços nulos. Devolve, na mesma ordem, {geometria, motivo, avisos} ou {erro}; um item ruim
-    não derruba o lote."""
+_ESF_TIPICOS = dict(N=50, V=50, M=30)
+
+
+def _esforcos_item(modelo, calculo, it):
+    """Esforços para propor a ligação do item: com cálculo e `grupo` (id) ou `membros` [{barra, ponta}], a envoltória
+    das pontas nas combinações ELU (N com sinal do maior |N|, V e M resultantes máximos); senão None."""
+    if calculo is None or modelo is None:
+        return None
+    mbs = it.get("membros")
+    if not mbs and it.get("grupo"):
+        g = ((modelo.ligacoes or {}).get("grupos") or {}).get(str(it["grupo"])) or {}
+        mbs = g.get("membros")
+    if not mbs:
+        return None
+    from .aco import ligacoes_modelo as lm
+    N = V = M = 0.0
+    for mb in mbs:
+        if mb.get("barra") not in modelo.barras or mb.get("ponta") not in ("i", "j"):
+            continue
+        for e in lm.esforcos_ponta(calculo, mb["barra"], mb["ponta"]).values():
+            N = e["N"] if abs(e["N"]) > abs(N) else N
+            V, M = max(V, math.hypot(e["Vy"], e["Vz"])), max(M, math.hypot(e["My"], e["Mz"]))
+    return dict(N=N, V=V, M=M) if (N or V or M) else None
+
+
+def _terca(modelo, it):
+    """Ligação de barra de perfil formado a frio (terça/travessa): isenta do mínimo de 45 kN (6.1.5.2)."""
+    mbs = it.get("membros")
+    if not mbs and it.get("grupo") and modelo is not None:
+        mbs = (((modelo.ligacoes or {}).get("grupos") or {}).get(str(it["grupo"])) or {}).get("membros")
+    return bool(mbs) and modelo is not None and all(
+        modelo.barras[mb["barra"]].tipo == "pff" for mb in mbs if mb.get("barra") in modelo.barras)
+
+
+def geometrias_ligacoes(itens, modelo=None, calculo=None):
+    """Lote para o Realista do WPF: cada item {tipo, dados, perfis?, grupo? | membros?} -> sugerir (se há perfis) +
+    verificar. Esforços: com cálculo e o grupo/membros do item, a envoltória ELU real das pontas; senão os típicos
+    N 50, V 50, M 30 (`esforcos_tipicos` = True na resposta). Devolve, na mesma ordem, {geometria, motivo, avisos, ok}
+    ou {erro}; um item ruim não derruba o lote."""
     if len(itens or []) > MAX_LOTE_LIGACOES:
         raise ErroEntrada(f"lote com {len(itens)} itens: máximo {MAX_LOTE_LIGACOES}", "itens")
     nulos = dict(N=0, V=0, Vz=0, M=0, Mz=0, T=0)
+    campos = {t["tipo"]: {c["nome"] for c in t["campos"]} for t in tipos_ligacao()}
     saida = []
     for it in itens or []:
         try:
             tipo, dados, perfis = it.get("tipo"), dict(it.get("dados") or {}), it.get("perfis")
+            esf = _esforcos_item(modelo, calculo, it)
+            tipicos = esf is None
+            if perfis and "terca_ou_travessa" in campos.get(tipo, ()) and _terca(modelo, it):
+                perfis = dict(perfis, terca_ou_travessa=True)
             if perfis:
                 dados.update(perfis)
-                sug = dict(sugerir_ligacao(tipo, perfis, dict(N=50, V=50, M=30)) or {})
+                sug = dict(sugerir_ligacao(tipo, perfis, esf or _ESF_TIPICOS) or {})
                 pedido = tipo
                 tipo, mot_sug = sug.pop("tipo_ligacao", None) or tipo, sug.pop("motivo", None)   # G6 r4: troca (solda direta)
                 dados.update({k: v for k, v in sug.items() if v is not None})
@@ -2603,7 +2787,7 @@ def geometrias_ligacoes(itens):
                                                       ("x_max", "x_face", "abertura_y")})
             else:
                 mot_sug = troca = None
-            r = verificar_ligacao(tipo, dados, nulos)
+            r = verificar_ligacao(tipo, dados, esf or nulos)
             mot = r.get("motivo") or mot_sug
             cab = next((v for v in r.get("verificacoes") or [] if v.get("nome", "").startswith("geometria: comprimento disponível")), None)
             curta = bool(r.get("barra_curta")) or bool(cab and not cab["ok"])
@@ -2611,6 +2795,7 @@ def geometrias_ligacoes(itens):
                 mot = (f"barra curta demais para a ligação: precisa {cab['solicitante']:.0f} mm, "
                        f"disponível {cab['resistente']:.0f} mm")
             saida.append(dict(geometria=r.get("geometria"), motivo=mot, avisos=r.get("avisos") or [], ok=bool(r.get("ok")),
+                              taxa=r.get("taxa"), esforcos_tipicos=tipicos, esforcos=esf or (_ESF_TIPICOS if perfis else nulos),
                               **({"barra_curta": True, "excluir_interferencia": True} if curta else {}),
                               **({"troca": troca} if troca else {})))
         except Exception as e:   # noqa: BLE001 - o lote continua; o WPF cai na proposta local

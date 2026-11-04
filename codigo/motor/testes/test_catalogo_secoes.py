@@ -75,9 +75,10 @@ class TestCatalogoSecoes(unittest.TestCase):
         self.assertTrue(projeto.catalogo_perfis("W200"))  # lista antiga intacta
 
     def test_T_e_L_em_projeto_calcular_nao_verificados(self):
-        """T e L desigual fletidos: sem exceção; a flexão não coberta vira aviso e a barra nunca é aprovada."""
+        """T fletido: sem exceção; a flexão não coberta vira aviso e a barra nunca é aprovada. (L desigual fletida passou
+        a ser verificada pelo AISC 360-16 F10 análogo — revisão 04/11/2026.)"""
         from testes.test_projeto import portico  # noqa: PLC0415
-        for nome in ('T 3/4 x 1/8"', "L 250x90x16"):
+        for nome in ('T 3/4 x 1/8"',):
             calc = projeto.calcular(portico(secao=nome))
             linhas = projeto.verificacao(calc)
             self.assertTrue(linhas, nome)

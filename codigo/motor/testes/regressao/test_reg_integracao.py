@@ -61,6 +61,7 @@ class TestCombinacaoDeterminante(unittest.TestCase):
         Mmax = max(M)
         Cb = min(12.5 * Mmax / (2.5 * Mmax + 3 * M[3] + 4 * M[6] + 3 * M[9]), 3.0) if Mmax > 1e-9 else 1.0
         sec, mat = self.m.secoes[b.secao], self.m.materiais[b.material]
+        esf, _ = P._b1(sec, mat, esf, L, L)   # 1ª ordem: o projeto aplica o B1 (anexo D; docs/MEMBROS.md)
         return nbr8800.verificar_barra_aco(sec, mat, esf, L, L, L, Cb, L)
 
     def test_combinacoes_iguais_as_da_mao(self):

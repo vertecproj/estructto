@@ -134,6 +134,7 @@ namespace NovoFtool
 
         // Divide cada barra em `partes` iguais, ou em duas a `distancia` (m) do nó inicial. Cargas distribuídas seguem
         // (trapezoidal reinterpolada); pontuais vão ao trecho onde caem. params "_i" ficam no 1º trecho e "_j" no último.
+        // Os trechos continuam a mesma peça: params.membro = membro da original ?? id dela (docs/MEMBROS.md).
         public static JsonObject Dividir(JsonObject m, IEnumerable<string> barras, int partes, double distancia = 0)
         {
             var (_, sb) = Selecao(m, new string[0], barras);
@@ -158,13 +159,15 @@ namespace NovoFtool
                 var cortes = new List<double> { 0 }; cortes.AddRange(ts); cortes.Add(1);
                 var cd = Lista(m, "cargas_distribuidas").Where(x => (string)x["barra"] == id).ToList();
                 var cp = Lista(m, "cargas_pontuais").Where(x => (string)x["barra"] == id).ToList();
+                string membro = Membro(b) ?? id;
                 for (int k = 0; k + 1 < cadeia.Count; k++)
                 {
                     string nova = idB.Novo();
                     var o = b.DeepClone().AsObject(); o["id"] = nova; o["ni"] = cadeia[k]; o["nj"] = cadeia[k + 1];
-                    if (o["params"] is JsonObject pr)
-                        foreach (string chave in pr.Select(kv => kv.Key).ToList())
-                            if ((chave.EndsWith("_i") && k > 0) || (chave.EndsWith("_j") && k + 2 < cadeia.Count)) pr.Remove(chave);
+                    var pr = o["params"] as JsonObject ?? (JsonObject)(o["params"] = new JsonObject());
+                    foreach (string chave in pr.Select(kv => kv.Key).ToList())
+                        if ((chave.EndsWith("_i") && k > 0) || (chave.EndsWith("_j") && k + 2 < cadeia.Count)) pr.Remove(chave);
+                    pr["membro"] = membro;
                     B[nova] = o;
                     double t0 = cortes[k], t1 = cortes[k + 1];
                     foreach (var q in cd)
@@ -206,36 +209,14 @@ namespace NovoFtool
                 if (Math.Abs((double)(r["rot"] ?? 0) - (double)(r0["rot"] ?? 0)) > 1e-9) throw new ArgumentException("barras " + ids[0] + " e " + id + " têm giros diferentes.");
                 if (Card(r) != Card(r0)) throw new ArgumentException("barras " + ids[0] + " e " + id + " têm pontos cardinais diferentes.");
             }
-            var grau = new Dictionary<string, int>();
-            foreach (string id in ids) foreach (string n in new[] { Ni(id), Nj(id) }) grau[n] = grau.GetValueOrDefault(n) + 1;
-            var pontas = grau.Where(kv => kv.Value == 1).Select(kv => kv.Key).ToList();
-            if (grau.Any(kv => kv.Value > 2) || pontas.Count != 2 || grau.Count != ids.Count + 1)
-                throw new ArgumentException("as barras escolhidas não formam uma cadeia contínua (cada junção liga só duas delas).");
-            if (!pontas.Contains(Ni(ids[0])) && pontas.Contains(Nj(ids[0]))) pontas.Reverse();   // começa pela ponta da 1ª barra escolhida, se for ponta da cadeia
-            if (pontas.Contains(Ni(ids[0])) && pontas[0] != Ni(ids[0])) pontas.Reverse();
-            var ordem = new List<(string Id, bool Inv)>(); string atual = pontas[0]; var resto = ids.ToList();
-            while (resto.Count > 0)
-            {
-                string b = resto.FirstOrDefault(x => Ni(x) == atual || Nj(x) == atual);
-                if (b == null) throw new ArgumentException("as barras escolhidas não formam uma cadeia contínua.");
-                bool inv = Nj(b) == atual; ordem.Add((b, inv)); atual = inv ? Ni(b) : Nj(b); resto.Remove(b);
-            }
-            string ini = pontas[0], fim = atual;
-            var pa = Xyz(N[ini]); var pb = Xyz(N[fim]); double Lt = Dist(pa, pb);
-            if (Lt < Tol) throw new ArgumentException("a cadeia volta ao ponto de partida.");
-            var u = new[] { (pb[0] - pa[0]) / Lt, (pb[1] - pa[1]) / Lt, (pb[2] - pa[2]) / Lt };
-            var Ls = new List<double>(); var off = new List<double>(); double acum = 0;
-            foreach (var (id, inv) in ordem)
-            {
-                var a = Xyz(N[inv ? Nj(id) : Ni(id)]); var c = Xyz(N[inv ? Ni(id) : Nj(id)]); double L = Dist(a, c);
-                double cos = ((c[0] - a[0]) * u[0] + (c[1] - a[1]) * u[1] + (c[2] - a[2]) * u[2]) / L;
-                if (cos < Math.Cos(0.5 * Math.PI / 180)) throw new ArgumentException("a barra " + id + " não é colinear com a cadeia (mais de 0,5° de desvio).");
-                off.Add(acum); Ls.Add(L); acum += L;
-            }
+            var (ordem, ini, fim, Ls) = Cadeia(m, ids);
+            double Lt = Dist(Xyz(N[ini]), Xyz(N[fim]));
+            var off = new List<double>(); double acum = 0;
+            foreach (double L in Ls) { off.Add(acum); acum += L; }
             var inter = ordem.Take(ordem.Count - 1).Select(o => o.Inv ? Ni(o.Id) : Nj(o.Id)).ToList();
             foreach (string n in inter)
             {
-                if (B.Any(kv => !ids.Contains(kv.Key) && (Ni(kv.Key) == n || Nj(kv.Key) == n))) throw new ArgumentException("o nó " + n + " tem outra barra ligada.");
+                if (B.Any(kv => !ids.Contains(kv.Key) && (Ni(kv.Key) == n || Nj(kv.Key) == n))) throw new ArgumentException("o nó " + n + " tem outra barra ligada: use Unir em membro (MEMBRO), que mantém o nó e faz dos trechos uma peça só.");
                 var no = N[n];
                 if (no["apoio"] is JsonArray ap && ap.Any(x => (bool)x)) throw new ArgumentException("o nó " + n + " é apoio.");
                 foreach (string k in new[] { "molas", "recalques" }) if (no[k] is JsonArray v && v.Any(x => (double)x != 0)) throw new ArgumentException("o nó " + n + " tem " + (k == "molas" ? "mola" : "recalque") + ".");
@@ -290,6 +271,152 @@ namespace NovoFtool
             foreach (string id in ids) RemoverBarra(m, id);
             foreach (string n in inter) N.Remove(n);
             return m;
+        }
+
+        // Cadeia simples de barras (cada junção liga só duas) e colinear (±0,5°): ordem de ponta a ponta (Inv = barra ao
+        // contrário), nós das pontas e comprimento de cada trecho. Começa pela ponta da 1ª barra dada, se ela for ponta.
+        static (List<(string Id, bool Inv)> Ordem, string Ini, string Fim, List<double> Ls) Cadeia(JsonObject m, List<string> ids)
+        {
+            var N = Col(m, "nos"); var B = Col(m, "barras");
+            string Ni(string b) => (string)B[b]["ni"]; string Nj(string b) => (string)B[b]["nj"];
+            var grau = new Dictionary<string, int>();
+            foreach (string id in ids) foreach (string n in new[] { Ni(id), Nj(id) }) grau[n] = grau.GetValueOrDefault(n) + 1;
+            var pontas = grau.Where(kv => kv.Value == 1).Select(kv => kv.Key).ToList();
+            if (grau.Any(kv => kv.Value > 2) || pontas.Count != 2 || grau.Count != ids.Count + 1)
+                throw new ArgumentException("as barras escolhidas não formam uma cadeia contínua (cada junção liga só duas delas).");
+            if (!pontas.Contains(Ni(ids[0])) && pontas.Contains(Nj(ids[0]))) pontas.Reverse();   // começa pela ponta da 1ª barra escolhida, se for ponta da cadeia
+            if (pontas.Contains(Ni(ids[0])) && pontas[0] != Ni(ids[0])) pontas.Reverse();
+            var ordem = new List<(string Id, bool Inv)>(); string atual = pontas[0]; var resto = ids.ToList();
+            while (resto.Count > 0)
+            {
+                string b = resto.FirstOrDefault(x => Ni(x) == atual || Nj(x) == atual);
+                if (b == null) throw new ArgumentException("as barras escolhidas não formam uma cadeia contínua.");
+                bool inv = Nj(b) == atual; ordem.Add((b, inv)); atual = inv ? Ni(b) : Nj(b); resto.Remove(b);
+            }
+            var pa = Xyz(N[pontas[0]]); var pb = Xyz(N[atual]); double Lt = Dist(pa, pb);
+            if (Lt < Tol) throw new ArgumentException("a cadeia volta ao ponto de partida.");
+            var u = new[] { (pb[0] - pa[0]) / Lt, (pb[1] - pa[1]) / Lt, (pb[2] - pa[2]) / Lt };
+            var Ls = new List<double>();
+            foreach (var (id, inv) in ordem)
+            {
+                var a = Xyz(N[inv ? Nj(id) : Ni(id)]); var c = Xyz(N[inv ? Ni(id) : Nj(id)]); double L = Dist(a, c);
+                double cos = ((c[0] - a[0]) * u[0] + (c[1] - a[1]) * u[1] + (c[2] - a[2]) * u[2]) / L;
+                if (cos < Math.Cos(0.5 * Math.PI / 180)) throw new ArgumentException("a barra " + id + " não é colinear com a cadeia (mais de 0,5° de desvio).");
+                Ls.Add(L);
+            }
+            return (ordem, pontas[0], atual, Ls);
+        }
+
+        // ---------- membro (peça física com vários trechos entre nós: params.membro; docs/MEMBROS.md) ----------
+
+        public static string Membro(JsonNode barra) => barra?["params"]?["membro"] is JsonValue v && v.TryGetValue(out string s) && s != "" ? s : null;
+
+        // Trechos do membro da barra (ela mesma se não tiver membro), na ordem do modelo.
+        public static List<string> Trechos(JsonObject m, string barra)
+        {
+            var B = Col(m, "barras"); string mm = Membro(B[barra]);
+            return mm == null ? new List<string> { barra } : B.Where(kv => Membro(kv.Value) == mm).Select(kv => kv.Key).ToList();
+        }
+
+        // Trechos e comprimento total (m) do membro da barra.
+        public static (int N, double L) InfoMembro(JsonObject m, string barra)
+        {
+            var B = Col(m, "barras"); var N = Col(m, "nos"); var t = Trechos(m, barra);
+            return (t.Count, t.Sum(b => Dist(Xyz(N[(string)B[b]["ni"]]), Xyz(N[(string)B[b]["nj"]]))));
+        }
+
+        // MEMBRO: barras em cadeia, colineares e de mesma seção viram uma peça (mesmo params.membro). Os trechos dos membros
+        // que já tocam a seleção entram juntos; o id é o membro existente (ou a 1ª barra). Recusa com o motivo (o modelo não muda).
+        public static JsonObject UnirMembro(JsonObject m, IEnumerable<string> barras, out string id)
+        {
+            var B = Col(m, "barras");
+            var ids = (barras ?? new string[0]).Where(B.ContainsKey).SelectMany(b => Trechos(m, b)).Distinct().ToList();
+            if (ids.Count < 2) throw new ArgumentException("Unir em membro: escolha 2 ou mais barras em cadeia.");
+            foreach (string b in ids.Skip(1))
+                if ((string)B[b]["secao"] != (string)B[ids[0]]["secao"])
+                    throw new ArgumentException("barras " + ids[0] + " e " + b + " têm seções diferentes (" + (string)B[ids[0]]["secao"] + " e " + (string)B[b]["secao"] + "): um membro tem perfil único.");
+            Cadeia(m, ids);
+            id = ids.Select(b => Membro(B[b])).FirstOrDefault(x => x != null) ?? ids[0];
+            foreach (string b in ids) { var o = B[b].AsObject(); (o["params"] as JsonObject ?? (JsonObject)(o["params"] = new JsonObject()))["membro"] = id; }
+            return m;
+        }
+
+        // params numérico (kx, ky, Lb, Cb…) nas barras dadas; null tira (o motor volta ao automático).
+        public static JsonObject Parametro(JsonObject m, IEnumerable<string> barras, string chave, double? valor)
+        {
+            var B = Col(m, "barras");
+            foreach (string b in (barras ?? new string[0]).Where(B.ContainsKey))
+            {
+                var o = B[b].AsObject(); var p = o["params"] as JsonObject ?? (JsonObject)(o["params"] = new JsonObject());
+                if (valor == null) p.Remove(chave); else p[chave] = valor.Value;
+            }
+            return m;
+        }
+
+        // SEPARARMEMBRO: tira params.membro das barras dadas (cada uma volta a ser peça própria).
+        public static JsonObject SepararMembro(JsonObject m, IEnumerable<string> barras)
+        {
+            var B = Col(m, "barras");
+            foreach (string b in (barras ?? new string[0]).Where(B.ContainsKey)) (B[b]["params"] as JsonObject)?.Remove("membro");
+            return m;
+        }
+
+        // Ponto p no vão de uma barra (a até 1 mm do eixo, longe das pontas) e sem nó lá: divide essa barra em p (os dois
+        // trechos ficam no mesmo membro) e devolve (barra, trecho 1, trecho 2); null se não cair no vão de nenhuma.
+        public static (string Barra, string T1, string T2)? LigarNoVao(JsonObject m, double[] p, Func<string, bool> aceita = null)
+        {
+            var N = Col(m, "nos"); var B = Col(m, "barras");
+            if (Achar(N, p, _ => true) != null) return null;
+            foreach (var kv in B.ToList())
+            {
+                if (aceita != null && !aceita(kv.Key)) continue;
+                var a = Xyz(N[(string)kv.Value["ni"]]); var c = Xyz(N[(string)kv.Value["nj"]]);
+                double L = Dist(a, c); if (L < 3 * Tol) continue;
+                double t = ((p[0] - a[0]) * (c[0] - a[0]) + (p[1] - a[1]) * (c[1] - a[1]) + (p[2] - a[2]) * (c[2] - a[2])) / (L * L);
+                if (t * L <= Tol || (1 - t) * L <= Tol) continue;
+                if (Dist(p, new[] { a[0] + t * (c[0] - a[0]), a[1] + t * (c[1] - a[1]), a[2] + t * (c[2] - a[2]) }) > Tol) continue;
+                var antes = B.Select(x => x.Key).ToHashSet();
+                Dividir(m, new[] { kv.Key }, 2, t * L);
+                var novas = B.Select(x => x.Key).Where(x => !antes.Contains(x)).ToList();
+                string n = Achar(N, p, _ => true);   // no eixo da barra (a ponta desenhada a ≤ 1 mm reaproveita o nó)
+                string t1 = novas.First(x => (string)B[x]["nj"] == n);
+                return (kv.Key, t1, novas.First(x => x != t1));
+            }
+            return null;
+        }
+
+        // Barras desenhadas direto no JSON (o PUT do desenho que divide uma hospedeira; Desenho3D.DesenharBarras): ponta a
+        // 1 mm de um nó reaproveita; nó novo na cota zBase nasce engastado. tipo = o de outra barra com a mesma seção e
+        // material, senão a regra do motor (_tipo_padrao: fck → concreto, U/Ue formado a frio → pff). Devolve os ids novos.
+        public static List<string> AdicionarBarras(JsonObject m, IList<(double[] A, double[] B)> segs, string secao, string material, double rot, int cardinal, double? zBase)
+        {
+            var N = Col(m, "nos"); var B = Col(m, "barras"); var idN = new Ids(N, "N"); var idB = new Ids(B, "B");
+            string tipo = B.Select(kv => kv.Value).FirstOrDefault(b => (string)b["secao"] == secao && (string)b["material"] == material)?["tipo"]?.GetValue<string>();
+            if (tipo == null)
+            {
+                var pr = m["secoes"]?[secao]?["props"]; string forma = pr?["tipo"] is JsonValue fv && fv.TryGetValue(out string fs) ? fs : null;
+                tipo = m["materiais"]?[material]?["fck"] is JsonValue v && v.GetValueKind() == System.Text.Json.JsonValueKind.Number ? "concreto"
+                     : forma == "Ue" || (forma == "U" && pr["t"] != null && pr["tw"] == null) ? "pff" : "aco";   // ponytail: perfil duplo PFF sai "aco"
+            }
+            string No(double[] p)
+            {
+                string n = Achar(N, p, _ => true);
+                if (n != null) return n;
+                n = idN.Novo(); var o = new JsonObject { ["id"] = n }; Pos(o, p);
+                o["apoio"] = new JsonArray(Enumerable.Repeat(zBase != null && Math.Abs(p[2] - zBase.Value) <= Niveis.Tol, 6).Select(x => (JsonNode)x).ToArray());
+                N[n] = o; return n;
+            }
+            var ids = new List<string>();
+            foreach (var (a, b) in segs)
+            {
+                string ni = No(a), nj = No(b);
+                if (ni == nj || AcharBarra(B, ni, nj) != null) continue;
+                string id = idB.Novo();
+                var o = new JsonObject { ["id"] = id, ["ni"] = ni, ["nj"] = nj, ["secao"] = secao, ["material"] = material, ["rot"] = rot, ["tipo"] = tipo, ["params"] = new JsonObject() };
+                if (cardinal != 5) o["params"]["cardinal"] = cardinal;
+                B[id] = o; ids.Add(id);
+            }
+            return ids;
         }
 
         // Funde os nós a `tol` (m) ou menos um do outro (só entre os escolhidos; nada escolhido = todos). Fica o primeiro;
@@ -835,9 +962,19 @@ namespace NovoFtool
                     p = new PainelEdicao("Propriedades em lote", "Só muda o que não estiver em (manter) ou vazio. Seções e materiais do modelo.", f, async x =>
                     {
                         string s = x.Texto("secao"), mt = x.Texto("material"); double? r = x.Vazio("rot") ? (double?)null : x.D("rot");
-                        await rodar("Propriedades em lote", m => GeometriaEdicao.Propriedades(m, nos(), bs(), s == manter ? null : s, mt == manter ? null : mt, r, apoios[x.Texto("apoio")]));
+                        // kx, ky, Lb, Cb: vazio = manter; "auto" = tira (o motor calcula no membro)
+                        var flamb = new[] { "kx", "ky", "Lb", "Cb" }.Where(k => !x.Vazio(k)).Select(k => (k, v: x.Texto(k).Equals("auto", StringComparison.OrdinalIgnoreCase) ? (double?)null : x.D(k))).ToList();
+                        if (flamb.Any(f => f.v <= 0)) throw new FormatException("kx, ky, Lb e Cb: número positivo, \"auto\" ou vazio");
+                        await rodar("Propriedades em lote", m =>
+                        {
+                            GeometriaEdicao.Propriedades(m, nos(), bs(), s == manter ? null : s, mt == manter ? null : mt, r, apoios[x.Texto("apoio")]);
+                            foreach (var (k, v) in flamb) GeometriaEdicao.Parametro(m, bs().SelectMany(b => GeometriaEdicao.Trechos(m, b)).Distinct(), k, v);
+                            return m;
+                        });
                     });
                     p.Lista("secao", "Seção", secoes); p.Lista("material", "Material", mats); p.Campo("rot", "Giro da seção (°)", "", "Vazio = manter.");
+                    foreach (var (k, rk) in new[] { ("kx", "kx"), ("ky", "ky"), ("Lb", "Lb (m)"), ("Cb", "Cb") })
+                        p.Campo(k, rk, "", "Vazio = manter; auto = o motor calcula entre os travamentos do membro. Vale para o membro inteiro.");
                     p.Lista("apoio", "Apoio dos nós", apoios.Keys); break;
                 default: return;
             }
@@ -927,6 +1064,32 @@ namespace NovoFtool
                && (string)m8["barras"].AsObject().First(kv => kv.Value["params"]?["rotula_j"] != null).Value["nj"] == "N4");
             var m9 = GeometriaEdicao.Dividir(Portico(), new[] { "B3" }, 2, 1.5);
             Ok("dividir a 1,5 m: nó em (1,5; 0; 3)", Nb(m9) == 4 && NoEm(m9, 1.5, 0, 3) != null);
+            Ok("dividir: os 3 trechos ficam no membro B3 (params.membro)", m8["barras"].AsObject().Count(kv => GeometriaEdicao.Membro(kv.Value) == "B3") == 3 && GeometriaEdicao.Membro(m8["barras"]["B1"]) == null);
+            var m9b = GeometriaEdicao.Dividir(JsonNode.Parse(m9.ToJsonString()).AsObject(), m9["barras"].AsObject().Where(kv => GeometriaEdicao.Membro(kv.Value) == "B3").Select(kv => kv.Key).Take(1).ToList(), 2);
+            Ok("dividir um trecho de novo: continua membro B3 (3 trechos)", m9b["barras"].AsObject().Count(kv => GeometriaEdicao.Membro(kv.Value) == "B3") == 3);
+
+            // ligar no vão (desenho/aparar que termina no meio de outra barra): a hospedeira divide no ponto, mesmo membro
+            var mv = Portico();
+            var lv = GeometriaEdicao.LigarNoVao(mv, new[] { 2.0, 0, 3.0005 });
+            Ok("ligar no vão: B3 dividida em 2 trechos do membro B3, nó em (2; 0; 3)", lv != null && lv.Value.Barra == "B3" && Nb(mv) == 4 && NoEm(mv, 2, 0, 3) != null
+               && GeometriaEdicao.Membro(mv["barras"][lv.Value.T1]) == "B3" && GeometriaEdicao.Membro(mv["barras"][lv.Value.T2]) == "B3" && (string)mv["barras"][lv.Value.T1]["nj"] == NoEm(mv, 2, 0, 3));
+            Ok("ligar no vão: rotula_i só no 1º trecho, rotula_j só no 2º", mv["barras"][lv.Value.T1]["params"]["rotula_j"] == null && mv["barras"][lv.Value.T2]["params"]["rotula_i"] == null && (bool)mv["barras"][lv.Value.T2]["params"]["rotula_j"]);
+            Ok("ligar no vão: ponto num nó, fora do eixo (2 mm) ou na ponta não divide", GeometriaEdicao.LigarNoVao(Portico(), new[] { 6.0, 0, 3 }) == null && GeometriaEdicao.LigarNoVao(Portico(), new[] { 2.0, 0.002, 3 }) == null && GeometriaEdicao.LigarNoVao(Portico(), new[] { 6.0005, 0, 3 }) == null);
+
+            // membro: unir trechos em cadeia (mesma seção) e separar
+            var mm1 = GeometriaEdicao.UnirMembro(Viga3(), new[] { "B1", "B2" }, out string idm1);
+            Ok("membro: B1 + B2 = membro B1; B3 fica fora", idm1 == "B1" && GeometriaEdicao.Membro(mm1["barras"]["B2"]) == "B1" && GeometriaEdicao.Membro(mm1["barras"]["B3"]) == null);
+            GeometriaEdicao.UnirMembro(mm1, new[] { "B3", "B2" }, out string idm2);
+            Ok("membro: B3 + um trecho do membro B1 = os 3 no B1", idm2 == "B1" && GeometriaEdicao.Trechos(mm1, "B3").Count == 3);
+            GeometriaEdicao.SepararMembro(mm1, new[] { "B2" });
+            Ok("separar membro: B2 sem membro, B1 e B3 continuam", GeometriaEdicao.Membro(mm1["barras"]["B2"]) == null && GeometriaEdicao.Membro(mm1["barras"]["B3"]) == "B1");
+            bool RecusaM(JsonObject x, params string[] bs) { var antes = x.ToJsonString(); try { GeometriaEdicao.UnirMembro(x, bs, out _); return false; } catch (ArgumentException) { return x.ToJsonString() == antes; } }
+            var mx0 = Viga3(); mx0["barras"]["B2"]["secao"] = "V"; Ok("membro recusa: seção diferente", RecusaM(mx0, "B1", "B2"));
+            mx0 = Viga3(); mx0["nos"]["C"]["z"] = 0.2; Ok("membro recusa: não colinear", RecusaM(mx0, "B1", "B2"));
+            Ok("membro recusa: não encadeadas ou uma só", RecusaM(Viga3(), "B1", "B3") && RecusaM(Viga3(), "B1"));
+            mx0 = Viga3(); mx0["nos"]["E"] = JsonNode.Parse(@"{""id"":""E"",""x"":2,""y"":3,""z"":0}");
+            mx0["barras"]["B4"] = JsonNode.Parse(@"{""id"":""B4"",""ni"":""B"",""nj"":""E"",""secao"":""V"",""material"":""A"",""rot"":0,""tipo"":""aco"",""params"":{}}");
+            Ok("membro aceita nó do meio com outra barra (viga secundária)", !RecusaM(mx0, "B1", "B2") && GeometriaEdicao.Membro(mx0["barras"]["B2"]) == "B1");
 
             // unir nós: N5 a 0,5 mm de N3 com barra até N4 → funde e a barra repetida some; a 2 mm fica
             var m10 = Portico();

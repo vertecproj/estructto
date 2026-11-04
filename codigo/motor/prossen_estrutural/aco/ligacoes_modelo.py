@@ -127,6 +127,8 @@ def _motivo_vazio(m, nid, ends):
             return (f"{ends[0]['b'].id} chega em {b} a {enc['distancia'] * 1000:.0f} mm do eixo, mas {b} não tem nó "
                     f"aqui: as barras não estão ligadas na análise — ajuste: ligar {nid} em {b} (divide {b} no ponto)")
         return "ponta livre: 1 barra, sem apoio"
+    if _par_membro(ends):
+        return f"peça contínua (membro {ends[0]['b'].params.get('membro')}): o nó é interno da barra, sem ligação"
     papeis = sorted(e.get("papel", "?") for e in ends)
     return f"só barras contínuas ou pilar que termina ({', '.join(papeis)}): sem ligação a dimensionar"
 
@@ -181,6 +183,20 @@ def _em_tubo(m, b, ap):
             and sb.props.get("tipo", "I") in _P.FORMAS_RAMAL and not _tubo_em_tubo(m, b, ap))
 
 
+def _par_membro(ends):
+    """Par de pontas do mesmo membro (params.membro), colineares e de mesma seção: a peça passa pelo nó
+    (docs/MEMBROS.md). Seção diferente no mesmo membro = emenda de verdade (não é par)."""
+    for i, a in enumerate(ends):
+        ma = a["b"].params.get("membro")
+        if not ma:
+            continue
+        for c in ends[i + 1:]:
+            if (c["b"].params.get("membro") == ma and c["b"].secao == a["b"].secao
+                    and _dot(a["d"], c["d"]) <= -_COS_COLINEAR):
+                return (a, c)
+    return None
+
+
 def _classificar(m, nid, ends, recusas):
     no = m.nos[nid]
     apoiado = _apoiado(no)
@@ -189,6 +205,9 @@ def _classificar(m, nid, ends, recusas):
     for e in ends:
         e["papel"] = _classe(m, e["b"])
         e["d"] = _dir(m, e["b"], e["ponta"])
+    par_m = _par_membro(ends)
+    if par_m and len(ends) == 2:
+        return []   # nó interno da peça (carga, divisão): sem ligação
     # emenda: só duas barras da mesma classe, sem apoio (reta, cumeeira, joelho de mesma classe)
     if not apoiado and len(ends) == 2 and ends[0]["papel"] == ends[1]["papel"]:
         return [_emenda(m, nid, *ends)]
@@ -205,6 +224,8 @@ def _classificar(m, nid, ends, recusas):
                 continue
             if continuo is None or _PRIORIDADE[a["papel"]] < _PRIORIDADE[continuo[0]["papel"]]:
                 continuo = (a, c)
+    if par_m:   # a peça declarada passa pelo nó, mesmo com pilar no nó ou rótula nas pontas internas
+        continuo = par_m
     pilares = [e for e in ends if e["papel"] == "pilar"]
     out = []
     # cumeeira/joelho com terças ou diagonais chegando: as duas vigas rígidas formam uma emenda e apoiam as outras
@@ -229,6 +250,11 @@ def _classificar(m, nid, ends, recusas):
         if not apoiado and tubo_ap is not None and tubo_ap is not e and _em_tubo(m, b, tubo_ap["b"]):
             # viga ou diagonal encostada num pilar/banzo tubular: filete no contorno com recorte (sem chapa)
             _anexar(m, nid, e, "perfil_tubo_soldado", tubo_ap, out, recusas)
+            continue
+        if apoiado and papel == "viga" and not pilares:
+            # viga apoiada direto num apoio (estrutura existente, consolo, parede): não é placa de base de pilar
+            recusas.append(f"{b.id}: viga sobre apoio externo — ligação com a estrutura de apoio (fora do modelo): "
+                           "detalhe à parte (chapa de apoio/consolo)")
             continue
         if apoiado and (papel != "diagonal" or so_trelica and not b.params.get("trelica")):
             # barra inclinada única sobre apoio (classe "diagonal" pela geometria) também é base

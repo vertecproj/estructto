@@ -317,6 +317,39 @@ def _flm(p, E, fy):
     return lm, lpm, 0.83 * math.sqrt(E / (fy - sr)), 0.69 * E / lm ** 2
 
 
+def _flexao_cantoneira(sec, mat, eixo, Lb=0.0, cb=1.0):
+    """Cantoneira simples fletida num eixo geométrico. A NBR 8800:2008 não tem item (fora da tabela G.1): usado o
+    AISC 360-16 F10 por analogia (como o cortante de cantoneira), com γa1 = 1,10 e a favor da segurança:
+    - escoamento F10-1: Mn = 1,5·My (My = W mínimo · fy);
+    - flambagem local da aba F10.3 com a aba mais larga (λp = 0,54√(E/fy), λr = 0,91√(E/fy));
+    - FLT F10.2 de abas iguais sem contenção lateral, ponta da aba comprimida (F10-5a, sinal −), My = 0,80·W·fy;
+      abas desiguais: a fórmula com a aba MENOR (Mcr menor). Lb = 0: sem FLT.
+    O momento de peso próprio de diagonais e contraventamentos em L deixa de reprovar a barra como 'não verificada'."""
+    p, E, fy = sec.props, mat.E, mat.fy
+    W = p["Wx" if eixo == "x" else "Wy"]
+    t, bmax, bmin = p["t"], max(p["h"], p["b"]), min(p["h"], p["b"])
+    My = W * fy
+    Mn_esc = 1.5 * My
+    lam, lp, lr = bmax / t, 0.54 * math.sqrt(E / fy), 0.91 * math.sqrt(E / fy)
+    if lam <= lp:
+        Mn_fla = math.inf
+    elif lam <= lr:
+        Mn_fla = fy * W * (2.43 - 1.72 * lam * math.sqrt(fy / E))
+    else:
+        Mn_fla = 0.71 * E / lam ** 2 * W
+    Mn_flt, Mcr = math.inf, math.inf
+    if Lb > 0:
+        Mcr = 0.58 * E * bmin ** 4 * t * cb / Lb ** 2 * (math.sqrt(1 + 0.88 * (Lb * t / bmin ** 2) ** 2) - 1)
+        Me = 0.80 * My
+        Mn_flt = (min((1.92 - 1.17 * math.sqrt(Me / Mcr)) * Me, 1.5 * Me) if Me / Mcr <= 1
+                  else (0.92 - 0.17 * Mcr / Me) * Mcr)
+    Mn = min(Mn_esc, Mn_fla, Mn_flt)
+    return dict(MRd=Mn / GA1, Mn_escoamento=Mn_esc, Mn_FLA=Mn_fla, Mn_FLT=Mn_flt, Mcr_FLT=Mcr,
+                lambda_aba=(lam, lp, lr), item="AISC 360-16 F10 (análogo)",
+                aviso="cantoneira simples fletida: NBR 8800:2008 sem item; usado AISC 360-16 F10 nos eixos geométricos "
+                      "(escoamento 1,5My, aba local, FLT de abas iguais com a aba menor), a favor da segurança")
+
+
 def _fora_g1(tipo):
     if tipo == "L":
         return NotImplementedError("flexão de cantoneira simples não implementada (fora da tabela G.1 da "
@@ -355,6 +388,8 @@ def flexao_x(sec, mat, Lb, cb=1.0, ponto_aplicacao="centro", C2=None):
             r = _flexao_tubo_circular(sec, mat, "x")
         elif tipo == "circular":
             r = _flexao_compacta(sec, mat, "x")
+        elif tipo == "L":
+            r = _flexao_cantoneira(sec, mat, "x", Lb, cb)
         else:
             raise _fora_g1(tipo)
         if ponto_aplicacao != "centro":
@@ -398,7 +433,7 @@ def flexao_x(sec, mat, Lb, cb=1.0, ponto_aplicacao="centro", C2=None):
     return r
 
 
-def flexao_y(sec, mat):
+def flexao_y(sec, mat, Lb=0.0, cb=1.0):
     """Momento resistente em torno de y (menor inércia), tabela G.1: I e U (FLM; U também FLA da alma),
     tubos e barras retangulares, tubos circulares, barra circular maciça. Fora da G.1 → NotImplementedError."""
     p, E, fy = sec.props, mat.E, mat.fy
@@ -420,6 +455,8 @@ def flexao_y(sec, mat):
         return _flexao_tubo_circular(sec, mat, "y")
     if tipo == "circular":
         return _flexao_compacta(sec, mat, "y")
+    if tipo == "L":   # Lb/cb só entram na cantoneira (FLT nos dois eixos geométricos)
+        return _flexao_cantoneira(sec, mat, "y", Lb, cb)
     if tipo not in ("I", "U"):
         raise _fora_g1(tipo)
     sr = 0.3 * fy
@@ -778,7 +815,7 @@ def verificar_barra_aco(secao, material, esforcos, Lx, Ly, Lb, Cb=1.0, Lz=None, 
     if tem_compr:
         calc("compressao", compressao, Lx, Ly, Lz, ligacao_uma_aba)
     calc("flexao_x", flexao_x, Lb, Cb, ponto_aplicacao, C2)
-    calc("flexao_y", flexao_y)
+    calc("flexao_y", flexao_y, Lb, Cb)
     calc("cortante_y", cortante_y, 5.0, Lv or L)
     calc("cortante_x", cortante_x, Lv or L)
     Tmax = max(abs(g(e, "T")) for e in pontos)

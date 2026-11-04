@@ -437,10 +437,11 @@ class TestCorrecoes018(unittest.TestCase):
         self.assertLess(rel(n.flexao_x(T, self.a36, 0.0)["MRd"], 23.63), 0.005)
 
     def test_secoes_fora_da_G1_reprovam(self):
-        # cantoneira simples fletida: sem item na tabela G.1 (2008) → nao_verificado, ok = False
+        # cantoneira simples fletida: sem item na tabela G.1 (2008) → AISC 360-16 F10 por analogia, com aviso
+        # (revisão 04/11/2026; antes nao_verificado, o que reprovava toda diagonal em L com peso próprio)
         r = n.verificar_barra_aco(self.L, self.a36, dict(Mx=1.0), 2, 2, 2)
-        self.assertFalse(r["ok"])
-        self.assertEqual(r["criterio"], "nao_verificado")
+        self.assertNotEqual(r["criterio"], "nao_verificado")
+        self.assertTrue(any("F10" in a for a in r["avisos"]))
         # cortante de cantoneira: Aw = b·t, kv = 1,2 → 0,6·100·10·0,25/1,1 = 136,4 kN, com aviso
         v = n.cortante_y(self.L, self.a36)
         self.assertLess(rel(v["VRd"], 136.36), 0.001)
@@ -507,8 +508,8 @@ class TestFicha026(unittest.TestCase):
         self.assertNotEqual(r["criterio"], "nao_verificado")
         self.assertTrue(r["ok"])
         r = n.verificar_barra_aco(self.L, self.a36, dict(N=-10, Mx=1.0), 2, 2, 2)
-        self.assertEqual(r["criterio"], "nao_verificado")
-        self.assertTrue(any("cantoneira" in a and "não implementada" in a for a in r["avisos"]))
+        self.assertEqual(r["criterio"], "interacao")   # flexão da cantoneira pelo AISC F10 (análogo)
+        self.assertTrue(any("cantoneira" in a and "F10" in a for a in r["avisos"]))
 
     def test_resultados_json_estrito(self):
         estrito = lambda r: json.dumps(r, allow_nan=False)  # noqa: E731

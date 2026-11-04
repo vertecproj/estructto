@@ -58,6 +58,7 @@ namespace NovoFtool
             if (d == null) return;
             var j = new JanelaVerificacaoBarras(d);
             j.AbrirDetalhe = id => _ = AbrirVerificarBarra(j, id);
+            if (dono is MainWindow w) j.SelecionarNaVista = ids => w.SelecionarBarrasEsp(ids);
             Mostrar(dono, j);
         }
 

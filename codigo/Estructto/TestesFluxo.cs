@@ -913,6 +913,9 @@ namespace NovoFtool
             var pc = m["barras"][corte];
             r.Checar(pc != null && new[] { Pos(m, (string)pc["ni"]), Pos(m, (string)pc["nj"]) }.Any(p => (p - Q(3, 0, 3)).Length < 1e-6) && NoEm(m, 3, 1.5, 3) == null, "APARAR: o lado clicado (y > 0) saiu; a barra termina em (3; 0; 3)");
             Desfaz("APARAR", () => NoEm(J(w), 3, 1.5, 3) != null, () => NoEm(J(w), 3, 1.5, 3) == null);
+            m = J(w);
+            r.Checar(m["barras"][viga] == null && m["barras"].AsObject().Count(kv => GeometriaEdicao.Membro(kv.Value) == viga) == 2, "APARAR no vão: a viga limite dividiu em (3; 0; 3), 2 trechos do mesmo membro");
+            viga = BarraEntre(m, NoEm(m, 0, 0, 3), NoEm(m, 3, 0, 3)) ?? viga;   // limite do ESTENDER: o trecho 0..3 (o motor procura o vão em todo o membro)
             Comando(w, "EX");
             Esperar(v.EscolherPorCodigo(v.ObjetoPorId("barra", viga), Q(1, 0, 3)));
             v.Tecla(Key.Enter);   // limites escolhidos: Enter (docs/v3/FLUXO-COMANDOS.md)
@@ -920,6 +923,7 @@ namespace NovoFtool
             AteCond(() => NoEm(J(w), 4, 0, 3) != null, 20, w);
             v.Tecla(Key.Enter);
             r.Checar(NoEm(J(w), 4, 0, 3) != null && NoEm(J(w), 4, -1, 3) == null, "ESTENDER: a ponta perto do clique foi até a viga (4; 0; 3)");
+            r.Checar(J(w)["barras"].AsObject().Count(kv => (string)kv.Value["ni"] == NoEm(J(w), 4, 0, 3) || (string)kv.Value["nj"] == NoEm(J(w), 4, 0, 3)) == 3, "ESTENDER no vão: a viga (outro trecho do membro) dividiu em (4; 0; 3) e a barra liga no nó");
             Desfaz("ESTENDER", () => NoEm(J(w), 4, -1, 3) != null, () => NoEm(J(w), 4, 0, 3) != null);
             Foto(w, "D-03-aparar-estender", () => v.MostrarVista(VistaPadrao.Topo, false));
 
@@ -976,6 +980,24 @@ namespace NovoFtool
             r.Checar((string)jm["peso_proprio"] == "PP", "peso próprio ligado por padrão no arquivo novo (peso_proprio = " + (string)jm["peso_proprio"] + ")");
             Esperar(w.CalcularEspacial());
             r.Checar(w.EspacialAtivo.Calculado, "calcula só com o peso próprio (" + w.StatusMsg.Text + ")");
+
+            // ligar no vão (docs/MEMBROS.md): secundária de (3; 0; 3) a (3; 4; 3) termina no vão da viga (0..6; 0; 3): a viga
+            // divide em 2 trechos do mesmo membro e um Ctrl+Z desfaz tudo; SEPARARMEMBRO e MEMBRO nos trechos
+            Esperar(w.NovoDocumento(null, "Ligar no vão"));
+            Esperar(w.OperarEspacial(dd => dd.DesenharBarras(new[] { (Q(0, 0, 3), Q(6, 0, 3)) }, null), "teste: viga"));
+            string vg = J(w)["barras"].AsObject().First().Key;
+            Esperar(w.OperarEspacial(dd => dd.DesenharBarras(new[] { (Q(3, 0, 3), Q(3, 4, 3)) }, null), "teste: secundária no vão"));
+            jm = J(w);
+            var tr = jm["barras"].AsObject().Where(kv => GeometriaEdicao.Membro(kv.Value) == vg).Select(kv => kv.Key).ToList();
+            r.Checar(NBarras(w) == 3 && jm["barras"][vg] == null && tr.Count == 2 && BarraEntre(jm, NoEm(jm, 3, 0, 3), NoEm(jm, 3, 4, 3)) != null && w.EspacialAtivo.UltimaDivisao?.Contains("mesmo membro") == true,
+                     "ligar no vão: viga " + vg + " dividida em " + string.Join("/", tr) + " (mesmo membro), secundária no nó (3; 0; 3)");
+            Desfaz("ligar no vão", () => NBarras(w) == 1 && J(w)["barras"][vg] != null, () => NBarras(w) == 3);
+            v = w.vista3D;
+            v.Selecionar(null, tr); EsperarIdle(); Comando(w, "SEPARARMEMBRO");
+            r.Checar(AteCond(() => tr.All(b => J(w)["barras"][b] != null && GeometriaEdicao.Membro(J(w)["barras"][b]) == null), 20, w), "SEPARARMEMBRO: os trechos ficam sem membro");
+            v.Selecionar(null, tr); EsperarIdle(); Comando(w, "MEMBRO");
+            r.Checar(AteCond(() => tr.All(b => GeometriaEdicao.Membro(J(w)["barras"][b]) != null), 20, w), "MEMBRO: os 2 trechos voltam a ser uma peça");
+            v.LimparSelecao();
         }
 
         // ================================================================ E) robustez

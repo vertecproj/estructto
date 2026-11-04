@@ -533,7 +533,31 @@ def _comum(d):
                 lim=d["deformacao_limitada"], rosca=d["rosca_no_plano"])
 
 
-def _membro(d, s, N, c, v, av, rot=""):
+def _n_minimo(d, s, N, aviso, av, rot=""):
+    """Força de cálculo da ligação com o mínimo de 6.1.5.2: 45 kN, limitado à resistência ao escoamento da seção bruta da
+    própria barra (Ag·fy/γa1). Diagonal leve que não resiste a 45 kN não tem como ter ligação de 45 kN: a ligação fica
+    dimensionada para a capacidade da barra (ligação de resistência total), com aviso."""
+    if not aviso:
+        return N
+    try:
+        g_ = lambda k: d.get(f"{k}{s}") or 0.0  # noqa: E731
+        a, t = g_("dim_a") * MM, g_("t_perfil") * MM
+        b, tf = (g_("dim_b") or g_("dim_a")) * MM, (g_("tf_perfil") or g_("t_perfil")) * MM
+        A = g_("A_perfil") * MM ** 2 or _area_ec(d[f"secao{s}"], a, b, t, tf)[0]
+        fy = L._aco(d.get(f"aco_perfil{s}"))[0]
+        cap = (2 if d[f"secao{s}"] == "2L" else 1) * A * fy / GA1
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        cap = math.inf
+    F = min(N_MINIMO, cap) if cap > abs(N) else abs(N)
+    if F < N_MINIMO:
+        av.append(f"barra{rot}: {aviso.split(':')[0]}: a barra resiste só a {cap:.1f} kN (Ag·fy/γa1) < 45 kN — ligação "
+                  f"dimensionada para a capacidade da barra ({F:.1f} kN), não para 45 kN")
+    else:
+        av.append((f"barra{rot.strip()}: " if rot else "") + aviso)
+    return math.copysign(F, N or 1.0)
+
+
+def _membro(d, s, N, c, v, av, rot="", N_barra=None):
     """Verifica a ligação de uma barra ao gusset (lado da barra, parafusos/soldas, gusset: Whitmore, bloco,
     flambagem fica para quem conhece o comprimento livre). Retorna info p/ geometria e gusset."""
     sec = d[f"secao{s}"]
@@ -553,6 +577,9 @@ def _membro(d, s, N, c, v, av, rot=""):
     A = g_("A_perfil") * MM ** 2 or A
     ec = g_("xg_perfil") * MM or ec
     F = abs(N)
+    # 6.1.5.2 vale para a ligação (parafusos, soldas, gusset); os estados-limites da própria barra (escoamento,
+    # seção líquida, rasgamento na barra) usam a força real dela (N_barra), não o mínimo de 45 kN
+    Fb = F if N_barra is None else abs(N_barra)
     tg, db, dn, dh = c["tg"], c["db"], c["dn"], c["dh"]
     info = dict(sec=sec, a=a, b=b, t=t, tf=tf, A=A, ec=ec, npf=npf, parafusos=[], soldas=[])
     tracao = N > 0
@@ -563,9 +590,9 @@ def _membro(d, s, N, c, v, av, rot=""):
                   "fina por AISI S100 E3/J2.2 (NBR 14762, itens a conferir). Compressão, flambagem local/distorcional e "
                   "esbeltez da barra: verifique à parte (NBR 14762)")
     if tracao:
-        v.append(_vf(f"barra{rot}: escoamento da seção bruta", F, npf * A * fy / GA1, "kN", "5.2.2 a)"))
+        v.append(_vf(f"barra{rot}: escoamento da seção bruta", Fb, npf * A * fy / GA1, "kN", "5.2.2 a)"))
         if frio:
-            v.append(_vf(f"barra{rot}: ruptura da seção bruta fora da ligação", F, npf * A * fu / G14_RUP0, "kN",
+            v.append(_vf(f"barra{rot}: ruptura da seção bruta fora da ligação", Fb, npf * A * fu / G14_RUP0, "kN",
                          "NBR 14762:2010 9.6.2 b)"))
     if g_("ligacao") == "parafusada":
         if sec not in ("L", "2L", "U"):
@@ -609,7 +636,7 @@ def _membro(d, s, N, c, v, av, rot=""):
                 av.append(f"barra{rot}: {nota}")
             An = A - nl * dn * t
             info["Ct"] = ct
-            v.append(_vf(f"barra{rot}: ruptura da seção líquida (Ct = {ct:.3f})", F,
+            v.append(_vf(f"barra{rot}: ruptura da seção líquida (Ct = {ct:.3f})", Fb,
                          npf * ct * An * fu / (G14_RUP if frio else GA2), "kN",
                          "NBR 14762:2010 9.6.2 c) / 9.6.3" if frio else "5.2.2 b) / 5.2.3 / 5.2.5"))
             v.append(_vf(f"barra{rot}: Ct ≥ 0,60", 0.60, ct, "-", "5.2.5"))
@@ -617,10 +644,10 @@ def _membro(d, s, N, c, v, av, rot=""):
             Agv, Anv = Lv * t, (Lv - (np_ - 0.5) * dn) * t
             if sec == "U":
                 if nl > 1:
-                    v.append(_vf(f"barra{rot}: colapso por rasgamento (alma)", F,
+                    v.append(_vf(f"barra{rot}: colapso por rasgamento (alma)", Fb,
                                  L.colapso_rasgamento(2 * Agv, 2 * Anv, (nl - 1) * (gg - dn) * t, fy, fu), "kN", "6.5.6"))
             else:
-                v.append(_vf(f"barra{rot}: colapso por rasgamento (aba)", F,
+                v.append(_vf(f"barra{rot}: colapso por rasgamento (aba)", Fb,
                              npf * L.colapso_rasgamento(Agv, Anv, (a - ga - (nl - 0.5) * dn) * t, fy, fu), "kN", "6.5.6"))
             Lg = eg + lc
             if nl > 1:
@@ -705,7 +732,7 @@ def _membro(d, s, N, c, v, av, rot=""):
                 v.append(_min_mm(f"barra{rot}: comprimento da solda lc ≥ D/H (5.2.5)", a, lc, "5.2.5"))
             else:
                 info["Ct"] = ct
-                v.append(_vf(f"barra{rot}: ruptura da seção líquida (Ct = {ct:.3f})", F, npf * ct * An * fu / GA2,
+                v.append(_vf(f"barra{rot}: ruptura da seção líquida (Ct = {ct:.3f})", Fb, npf * ct * An * fu / GA2,
                              "kN", "5.2.2 b) / 5.2.3 / 5.2.5"))
                 if not sec.startswith("tubo"):
                     v.append(_vf(f"barra{rot}: Ct ≥ 0,60", 0.60, ct, "-", "5.2.5"))
@@ -959,11 +986,9 @@ def verificar_gusset(dados, esforcos):
     v, av = [], list(c["avisos"])
     # 6.1.5.2: mínimo de 45 kN; tirante de barra redonda é exceção
     _k, aviso = L.fator_minimo_6152(N, isenta=d["secao"] == "barra_redonda")
-    if aviso:
-        N = math.copysign(N_MINIMO, N or 1.0)
-        av.append(aviso)
+    N_real, N = N, _n_minimo(d, "", N, aviso, av)
     theta = math.radians(d["theta"])
-    info = _membro(d, "", N, c, v, av)
+    info = _membro(d, "", N, c, v, av, N_barra=N_real)
     pdados = dict(dados or {}, dim_a=d["dim_a"], dim_b=d["dim_b"]) if novo else dados   # pontas.py lê as medidas
     recuo, Lh, Lv, pts = _auto_gusset(d, info, c, theta, _x_ponta("gusset_contraventamento", pdados))
     eb, ec, ap, tg = d["eb"] * MM, d["ec"] * MM, d["apoio"], c["tg"]
@@ -1099,10 +1124,8 @@ def verificar_no_trelica(dados, esforcos):
         Ni = forcas[i]
         # 6.1.5.2: tirante de barra redonda é exceção ao mínimo de 45 kN
         _k, aviso = L.fator_minimo_6152(Ni, isenta=d[f"secao_{i}"] == "barra_redonda" and Ni >= 0)
-        Nd = math.copysign(N_MINIMO, Ni or 1.0) if aviso else Ni
-        if aviso:
-            av.append(f"barra {i}: {aviso}")
-        info = _membro(d, f"_{i}", Nd, c, v, av, rot=f" {i}")
+        Nd = _n_minimo(d, f"_{i}", Ni, aviso, av, rot=f" {i}")
+        info = _membro(d, f"_{i}", Nd, c, v, av, rot=f" {i}", N_barra=Ni)
         th = math.radians(d[f"theta_{i}"])
         # direção a partir do banzo: (cos, sin) no referencial (h ao longo do banzo, v para o gusset)
         dv, pp = (math.cos(th), math.sin(th)), (-math.sin(th), math.cos(th))
@@ -1379,10 +1402,8 @@ def verificar_cantoneira_simples(dados, esforcos):
     c = _comum(d)
     v, av = [], list(c["avisos"])
     _k, aviso = L.fator_minimo_6152(N)                 # 6.1.5.2
-    Nd = math.copysign(N_MINIMO, N or 1.0) if aviso else N
-    if aviso:
-        av.append(aviso)
-    info = _membro(d, "", Nd, c, v, av)
+    Nd = _n_minimo(d, "", N, aviso, av)
+    info = _membro(d, "", Nd, c, v, av, N_barra=N)
     if d["fadiga"]:
         av.append("barra sob fadiga: a excentricidade da ligação NÃO pode ser desprezada (NBR 8800 6.1.8.2) — "
                   "use modelo de pórtico com o momento N·ec")
@@ -1484,7 +1505,9 @@ def _std_parafuso(d, sfx_list):
 
 
 def _buscar(fn, d, passos, esforcos, alvo=None):
-    """Primeiro passo que passa; com `alvo` (W12-OUT, U dobrado: 0,90), o primeiro com taxa ≤ alvo, senão o primeiro que passa."""
+    """Primeiro passo que passa; com `alvo` (W12-OUT, U dobrado: 0,90), o primeiro com taxa ≤ alvo, senão o primeiro que passa.
+    Nenhum passa: o primeiro verificável (o menor), não o último — o maior da lista também reprova e virava o "tamanho
+    absurdo" do Realista; a verificação dele mostra o motivo."""
     ultimo = primeiro_ok = None
     for p in passos:
         cand = dict(d, **p)
@@ -1492,7 +1515,7 @@ def _buscar(fn, d, passos, esforcos, alvo=None):
             r = fn(cand, esforcos)
         except ValueError:
             continue
-        ultimo = cand
+        ultimo = ultimo or cand
         if r["ok"]:
             if alvo is None or r["taxa"] <= alvo:
                 return cand

@@ -97,6 +97,8 @@ namespace NovoFtool
             try { arvore = await Motor.Get("/api/catalogo?formato=arvore"); } catch { }
         });
         public static void Injetar(JsonNode l, JsonNode a) { lista = l; arvore = a; carga = Task.CompletedTask; }
+        // o perfil está no catálogo do motor (já carregado)? falso enquanto a lista não chegou
+        public static bool NoCatalogo(string nome) => nome != null && lista is JsonArray a && a.Any(x => x?["nome"] is JsonValue v && v.TryGetValue(out string s) && s == nome);
 
         public SeletorSecao(Func<IEnumerable<string>> noModelo, string atual, Action<string> escolher)
         {

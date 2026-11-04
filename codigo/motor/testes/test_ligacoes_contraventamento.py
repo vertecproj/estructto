@@ -127,7 +127,11 @@ class TestPfeil871(unittest.TestCase):
     def test_minimo_45kN(self):
         dados = dict(B6, t_gusset=8, aco_gusset="MR-250", eletrodo="E60", e_banzo=60, theta_1=60.0)
         r = C.verificar_no_trelica(dados, {"N": 24.2})
-        self.assertAlmostEqual(linha(r, "barra 1: escoamento")["solicitante"], 45.0)
+        # docs/MEMBROS.md (revisão 04/11/2026): o mínimo de 6.1.5.2 vale para a ligação (parafusos, soldas, gusset); os
+        # estados-limites da própria barra usam a força real dela
+        self.assertAlmostEqual(linha(r, "barra 1: escoamento")["solicitante"], 24.2)
+        self.assertTrue(any(v["solicitante"] >= 45.0 - 1e-9 for v in r["verificacoes"]
+                            if v["nome"].startswith("gusset 1:") and v.get("unidade") == "kN"))
         self.assertTrue(any("45 kN" in a for a in r["avisos"]))
 
 

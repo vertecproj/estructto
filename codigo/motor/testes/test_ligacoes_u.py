@@ -16,7 +16,8 @@ from prossen_estrutural.modelo import Barra, No
 PLATAFORMA = os.path.join(os.path.dirname(__file__), "..", "..", "..", "testes-aceite", "PLATAFORMA.ed3")
 ESF = {"V": 50.0, "N": 0.0}
 DIAG = 'L 2" x 3/16"'
-MIN_OK = 40   # medido: 74 nós com proposta, 40 ok (esforços do WPF: N 50, V 50, M 30)
+MIN_OK = 39   # medido: 74 nós com proposta, 39 ok (esforços do WPF: N 50, V 50, M 30); era 40 antes dos membros
+#              (docs/MEMBROS.md): as peças do CYPE agora são membros e 3 nós de emenda falsa deixaram de ter proposta
 
 
 def _sug_ver(tipo, perfis, esf=ESF):

@@ -142,14 +142,17 @@ class _Obra:
             self.removidas.append(b.id)
         self.pares.discard(frozenset((b.ni, b.nj)))
         novos = []
-        base = {k: x for k, x in b.params.items() if k not in ("rotula_i", "rotula_j", "Lb")}
+        # parâmetros de ponta (*_i / *_j: rótula, trecho rígido) só no 1º / último trecho; os trechos formam um membro
+        # (a peça continua inteira na verificação e nas ligações: docs/MEMBROS.md)
+        base = {k: x for k, x in b.params.items() if k != "Lb" and not k.endswith(("_i", "_j"))}
+        base["membro"] = b.params.get("membro") or b.id
         for k in range(len(cadeia) - 1):
             (t0, n0), (t1, n1) = cadeia[k], cadeia[k + 1]
             params = dict(base)
-            if k == 0 and b.params.get("rotula_i"):
-                params["rotula_i"] = True
-            if k == len(cadeia) - 2 and b.params.get("rotula_j"):
-                params["rotula_j"] = True
+            if k == 0:
+                params.update({c: x for c, x in b.params.items() if c.endswith("_i")})
+            if k == len(cadeia) - 2:
+                params.update({c: x for c, x in b.params.items() if c.endswith("_j")})
             bid = f"{b.id}.{k + 1}"
             while bid in self.m.barras or bid in self.barras:
                 bid += "'"

@@ -420,6 +420,7 @@ class TestAnalises(unittest.TestCase):
         esf = [nbr8800.esforcos_nbr(x) for x in lin]
         L = 6.0
         Cb = nbr8800.cb_de_diagrama([x[0] for x in lin], [e["Mx"] for e in esf])
+        esf, _ = P._b1(self.m.secoes["W310x38.7"], self.m.materiais["A-572 GR.50"], esf, L, L)   # 1ª ordem: B1 (anexo D)
         r = nbr8800.verificar_barra_aco(self.m.secoes["W310x38.7"], self.m.materiais["A-572 GR.50"], esf, L, L, L, Cb, L)
         self.assertAlmostEqual(linha["taxa"], r["taxa_max"], delta=1e-9)
         self.assertEqual((linha["criterio"], linha["item"], linha["ok"]), (r["criterio"], r["item"], r["ok"]))

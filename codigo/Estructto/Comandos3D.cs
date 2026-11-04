@@ -35,7 +35,7 @@ namespace NovoFtool
 
         List<Cmd3D> Cmds3D => cmds3D ??= new List<Cmd3D>
         {
-            C("BARRA", "Barra (perfil das Configurações) em cadeia de cliques no plano de trabalho", w => Ferr(Ferramenta3D.Barra), "L", "B", "LINE", "VG", "VIGA", "MEMBRO"),
+            C("BARRA", "Barra (perfil das Configurações) em cadeia de cliques no plano de trabalho", w => Ferr(Ferramenta3D.Barra), "L", "B", "LINE", "VG", "VIGA"),
             C("NO", "Nó: clique o ponto ou digite x,y,z (vários; Enter termina)", w => CmdNo(), "NÓ", "NODE", "PT"),
             C("PILAR", "Pilar: clique o ponto; a altura vem dos níveis", w => Ferr(Ferramenta3D.Pilar), "PI", "PL", "COLUNA"),
             C("SELECIONAR", "Selecionar (clique, janela, cruzamento)", w => Ferr(Ferramenta3D.Selecionar), "S", "SEL"),
@@ -48,6 +48,8 @@ namespace NovoFtool
             C("ESTENDER", "Estender: barras limite, Enter, e as barras (a ponta perto do clique)", w => CmdApararEstender(false), "EX", "EXTEND"),
             C("DIVIDIR", "Dividir barras: escolha as barras, depois o painel", w => ComEscolha("DIVIDIR", "barra", (n, b) => AbrirEdicaoEsp("dividir")), "DIV"),
             C("JUNTARBARRAS", "Juntar barras: escolha 2 ou mais barras colineares em cadeia; viram uma só de ponta a ponta", w => ComEscolha("JUNTAR BARRAS", "barra", (n, b) => { vista3D.LimparSelecao(); _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.Juntar(m, b)), "Barras juntadas em uma só."); }), "JB", "JUNTAR", "MERGE"),
+            C("MEMBRO", "Unir em membro: barras colineares em cadeia (mesma seção) viram uma peça, sem tirar os nós (flambagem, Lb e flecha no membro)", w => ComEscolha("MEMBRO", "barra", (n, b) => _ = CmdMembro(b)), "UNIRMEMBRO", "PECA"),
+            C("SEPARARMEMBRO", "Separar membro: as barras escolhidas voltam a ser peças independentes", w => ComEscolha("SEPARAR MEMBRO", "barra", (n, b) => _ = Espacial(d => d.Aplicar(m => GeometriaEdicao.SepararMembro(m, b)), Pl.N(b.Count, "barra separada", "barras separadas") + " do membro.")), "SEPMEMBRO"),
             C("TRAVAZ", "Trava a medida digitada na vertical (Z) na barra em andamento; de novo destrava", w => vista3D?.AlternarTravaZ(), "Z"),
             C("UNIR", "Unir nós coincidentes: escolha os nós (Enter sem nada = todos), depois o painel", w => ComEscolha("UNIR", "no", (n, b) => AbrirEdicaoEsp("unir"), null, true), "J", "JOIN"),
             C("APAGAR", "Apagar (escolha antes ou depois)", w => CmdApagar(), "E", "ERASE", "DEL"),
@@ -102,6 +104,7 @@ namespace NovoFtool
             C("SELTODAS", "Selecionar tudo (Ctrl+A)", w => vista3D?.Selecionar(EspIds("nos"), EspIds("barras")), "TODOS"),
             C("SELNOS", "Selecionar todos os nós", w => vista3D?.Selecionar(EspIds("nos"), null)),
             C("SELBASE", "Selecionar os nós da cota mais baixa", w => CmdSelBase()),
+            C("SELREPROV", "Selecionar as barras que não passam na verificação (precisa de cálculo)", w => SelecionarBarrasEsp(Esp?.PiorPorBarra.Where(kv => kv.Value["ok"] is JsonValue o && o.TryGetValue(out bool ok) && !ok).Select(kv => kv.Key).ToList()), "REPROVADAS"),
             C("DESFAZER", "Desfazer (Ctrl+Z)", w => Desfazer(), "U", "UNDO"),
             C("REFAZER", "Refazer (Ctrl+Y)", w => Refazer(), "REDO"),
             C("NOVO", "Modelo em branco (Ctrl+N)", w => Novo(), "NEW").SemModeloOk(),
@@ -433,10 +436,37 @@ namespace NovoFtool
                         esc = (lado.Count > 0 ? lado : fora).OrderBy(c => c.T >= 1 - 1e-6 ? c.T - 1 : -c.T).First();
                         ponta = esc.T >= 1 - 1e-6 ? nj : ni;
                     }
-                    await Espacial(d => d.Aplicar(m => GeometriaEdicao.MoverPonta(m, alvo, ponta, esc.P)), "Barra " + alvo + (aparar ? " aparada" : " estendida") + " na barra " + esc.l + ".");
+                    // ponta no vão do limite: o limite divide ali (trechos no mesmo membro) e a ponta liga no nó novo; os
+                    // trechos substituem o limite na lista (o próximo aparo no mesmo limite continua valendo)
+                    (string Barra, string T1, string T2)? div = null; bool feito = false;
+                    await Espacial(async d => { await d.Aplicar(m => { var irmaos = GeometriaEdicao.Trechos(m, esc.l); div = GeometriaEdicao.LigarNoVao(m, esc.P, irmaos.Contains); return GeometriaEdicao.MoverPonta(m, alvo, ponta, esc.P); }); feito = true; }, null);
+                    if (!feito) return true;
+                    string extra = "";
+                    if (div != null) { var (h, t1, t2) = div.Value; lims.Remove(h); lims.Add(t1); lims.Add(t2); extra = "; " + h + " dividida em " + t1 + "/" + t2 + " (mesmo membro)"; }
+                    Log("Barra " + alvo + (aparar ? " aparada" : " estendida") + " na barra " + esc.l + extra + ".");
                     return true;
                 }, () => { vista3D.LimparSelecao(); Log(fim); }, () => { vista3D.LimparSelecao(); Log(fim); }, "barra");
             }, "as barras limite");
+        }
+
+        // Verificação de barras › "Selecionar na vista" e SELREPROV
+        internal void SelecionarBarrasEsp(List<string> ids)
+        {
+            if (vista3D == null || Esp == null) return;
+            if (!Esp.Calculado && ids == null) { Log("SELREPROV: calcule (F5) antes."); return; }
+            ids = (ids ?? new List<string>()).Where(id => Esp.Json["barras"]?[id] != null).ToList();
+            if (ids.Count == 0) { Log(Esp.Calculado ? "Nenhuma barra reprovada." : "SELREPROV: calcule (F5) antes."); return; }
+            vista3D.Selecionar(null, ids); FocarVista();
+            Log(Pl.N(ids.Count, "barra selecionada", "barras selecionadas") + " na vista (" + string.Join(", ", ids.Take(8)) + (ids.Count > 8 ? "…" : "") + ").");
+        }
+
+        async Task CmdMembro(List<string> b)
+        {
+            string id = null;
+            await Espacial(d => d.Aplicar(m => GeometriaEdicao.UnirMembro(m, b, out id)), null);
+            if (id == null || GeometriaEdicao.Membro(Esp?.Json["barras"]?[b[0]]) != id) return;   // recusado: Espacial já mostrou o motivo
+            var (n, l) = GeometriaEdicao.InfoMembro(Esp.Json, b[0]);
+            Log("Membro " + id + ": " + n + " trechos, " + Num.Fmt(l, 2) + " m (uma peça: flambagem, Lb e flecha no comprimento do membro).");
         }
 
         void CmdApagar()

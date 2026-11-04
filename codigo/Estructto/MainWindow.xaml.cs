@@ -318,6 +318,8 @@ namespace NovoFtool
                 Botao("matriz", "Matriz", () => ExecutarComando("MATRIZ"), "Matriz retangular nx × ny × nz: escolha antes ou depois, depois o painel.", "AR", true),
                 Botao("dividir", "Dividir barra", () => ExecutarComando("DIVIDIR"), "Em partes iguais ou a uma distância: escolha as barras antes ou depois, depois o painel.", "DIV", true),
                 Botao("juntar", "Juntar barras", () => ExecutarComando("JUNTARBARRAS"), "Barras colineares em cadeia viram uma só: escolha antes ou depois. Recusa se mudar seção/material/giro, se o nó do meio tem outra barra, apoio, mola ou carga nodal.", "JN", true),
+                Botao("juntar", "Unir em membro", () => ExecutarComando("MEMBRO"), "Barras colineares em cadeia, de mesma seção, viram uma peça só sem tirar os nós (as secundárias continuam ligadas): flambagem, Lb e flecha valem no membro inteiro.", "MEMBRO", true),
+                Botao("dividir", "Separar membro", () => ExecutarComando("SEPARARMEMBRO"), "As barras escolhidas deixam de ser trechos de um membro (cada uma volta a ser peça própria).", "SEPMEMBRO", true),
                 Botao("aparar", "Aparar", () => ExecutarComando("APARAR"), "Barras limite (escolhidas antes, ou escolha + Enter) e depois as barras: o lado clicado sai.", "TR", true),
                 Botao("estender", "Estender", () => ExecutarComando("ESTENDER"), "Barras limite (escolhidas antes, ou escolha + Enter) e depois as barras: a ponta perto do clique vai até o limite.", "EX", true),
                 Botao("unir", "Unir nós", () => ExecutarComando("UNIR"), "Funde nós coincidentes: escolha os nós (Enter sem nada = todos), depois o painel.", "J", true),
@@ -381,6 +383,7 @@ namespace NovoFtool
                     Botao("comparar", "Verificar barra", () => ExecutarComando("VERIFICAR"), "Verificação detalhada (NBR 8800) da barra escolhida antes ou clicada depois.", "VB", true)),
                 Grupo("Otimizar",
                     Botao("dimens", "Dimensionar", () => DimensionarPerfis(false), "Perfil mais leve da mesma família que passa, por iterações no motor (cada rodada um Ctrl+Z).", "DIMENSIONAR"),
+                    Botao("dimens", "Dimensionar seleção", () => ExecutarComando("DIMSEL"), "Só as barras escolhidas antes ou depois (os outros trechos do mesmo membro vão junto).", "DIMSEL", true),
                     Botao("catalogo", "Catálogo de perfis", () => ComandosAnalise.AbrirCatalogo(this), "Perfis do catálogo do motor com todas as propriedades geométricas (A, I, W, Z, r, J, Cw).")));
             abaDimens.ToolTip = "Verificação de todas as barras, mapa de aproveitamento, verificação de cada barra, perfil mais leve e catálogo.";
 

@@ -398,6 +398,13 @@ namespace NovoFtool
                 var sp = new StackPanel();
                 var t = Tx("Nós sem ligação", 14, TemaPlant.BTexto1, FontWeights.SemiBold); t.Margin = new Thickness(0, 0, 0, 4); sp.Children.Add(t);
                 var sub = Tx("O motor não monta ligação nestes nós. Ajuste o modelo (apoio, rótula, ângulo) e use Re-identificar.", 11.5, TemaPlant.BTexto3); sub.Margin = new Thickness(0, 0, 0, 8); sp.Children.Add(sub);
+                var soltos = semTipo.Select(kv => kv.Key).Where(n => ajustes[n] is JsonObject).OrderBy(n => n, StringComparer.Ordinal).ToList();
+                if (soltos.Count > 1 && LigarNo != null)
+                {
+                    var bt = Botao("Ligar todos (" + soltos.Count + ")", null, async () => { await Rodar(async () => { foreach (string n in soltos) await LigarNo(n); }); await Carregar(true); },
+                                   "Liga cada nó na barra em que encosta (divide a barra ali; os trechos ficam no mesmo membro). Muda a estrutura: calcule de novo.");
+                    bt.HorizontalAlignment = HorizontalAlignment.Left; bt.Margin = new Thickness(0, 0, 0, 8); sp.Children.Add(bt);
+                }
                 int r = 0;
                 foreach (var kv in semTipo.OrderBy(kv => kv.Key, StringComparer.Ordinal))
                 {
