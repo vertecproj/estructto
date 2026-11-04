@@ -1214,6 +1214,7 @@ namespace NovoFtool
                 if (so == "3d") { bool antes3 = Config.Realista3D; so1(() => { CapturasRealista(w); w.DefinirRealista(antes3); }); }   // só as 42)
                 if (so == "projetista") so1(() => CapturasProjetista(w));         // só as 51) do projetista de ligações
                 if (so == "w7aba") so1(() => CapturasW7Aba(w));                   // só as 63) das abas de ligação
+                if (so == "w7calc") so1(() => CapturasW7Calc(w));                 // só as 64) do Calcular/F5 do projetista (W7-CALC)
                 if (so == "w73d") so1(() => CapturasW73d(w));                     // só as w73d-*: 3D do projetista (z-buffer), tubo, teste dos parafusos
                 if (so == "w7lig") so1(() => CapturasW7Lig(w));                   // só as 70) padrões de fábrica de todos os tipos (W7-LIG)
                 if (so == "w8rig") so1(() => CapturasW8Rig(w));                   // só as 80) rígidas e emendas revistas (W8-RIG)
@@ -1451,6 +1452,7 @@ namespace NovoFtool
                 CapturasProjetista(w);
                 CapturasW7Ui(w);
                 CapturasW7Aba(w);   // 63) projetista/biblioteca em aba da janela principal (CapturasW7Aba.cs)
+                CapturasW7Calc(w);  // 64) F5/Calcular do projetista, grupo sem projeto, erro do /dimensionar (CapturasW7Calc.cs)
                 // 50-53) Snap e Medir 3D (marcadores de cada modo, rastreio, polar, medidas)
                 CapturasSnap(w);
                 // 56) Pivô automático da órbita e zoom no cursor

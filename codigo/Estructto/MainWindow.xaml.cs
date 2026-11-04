@@ -482,6 +482,7 @@ namespace NovoFtool
 
         internal void Calcular()
         {
+            if (LigacaoAtiva != null) { _ = LigacaoAtiva.CalcularTudo(); return; }   // aba de ligação na frente: F5/Calcular agem nela (nunca "Nada para calcular")
             if (Esp != null) { _ = CalcularEspacial(); return; }   // modelo espacial: motor Python
             Resolver(true);
             if (cbMotor != null && cbMotor.SelectedIndex == 1 && Vista.Resolvido && !motorRodando) _ = CalcularMotor();
