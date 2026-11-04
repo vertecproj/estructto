@@ -1,7 +1,7 @@
 # Changelog do projeto
 
 Uma entrada por dia de trabalho: o que mudou, quem pediu, onde está o detalhe e o que ficou pendente.
-- 04/11/2026 — interface (pedido do usuário: "essa vista 3d ... quando vou rotacionando ela fica vibrando", emenda flangeada de pilar):
+- 04/11/2026 — v0.6.22 publicada (release com zip, .sha256 e Setup), interface (pedido do usuário: "essa vista 3d ... quando vou rotacionando ela fica vibrando", emenda flangeada de pilar):
   - Vista 3D do projetista de ligações não treme mais ao girar. Causa: câmera ortográfica fixa a 20 m do alvo; o WPF 3D (float) perdia precisão e a imagem pulava ±5 px a cada grau, indo e voltando. Agora a distância sai do raio da cena + 500 mm (`LigacaoDesenho3D.cs`, `Enquadrar`). Medido nas 26 ligações (`ESTRUCTTO_CAPTURAS=vibra`, `VIBRA_QUADROS=1`, `VIBRA_TIPO=<tipo>` opcional): borda renderizada segue a projeção com ≤1 px. Fecha o pendente da v0.6.19.
 - 04/11/2026 — v0.6.21, motor (decisão do usuário: "Sim, ligar por padrão"):
   - Imperfeições geométricas iniciais (NBR 8800 4.9.7.1.1) ligadas por padrão: cada ELU só gravitacional ganha as variantes "+ imperf. ±X/±Y" com forças nocionais de 0,3 % das cargas gravitacionais de cálculo, nó a nó (casos temporários, nada fica no modelo). `config.imperfeicoes = false` desliga. Fora: NBR 8400, modelo só de concreto e a redução 0,8·EI (4.9.7.2). Detalhe em [MEMBROS.md](MEMBROS.md) e no manual, cap. 11.
