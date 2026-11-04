@@ -166,7 +166,9 @@ namespace NovoFtool
         Viewport3D vp; ModelVisual3D cena, arestas; double arestasMm; OrthographicCamera cam; DirectionalLight luzChave, luzEnch; Sobreposicao sobre;
         readonly List<Cena3DLig.Peca> pecas3D = new List<Cena3DLig.Peca>();
         GeoLig construida; Point3D alvo; double largura = 600, zoom = 1;
-        const double Distancia = 20000;   // mm do alvo até a câmera (ortográfica: só a profundidade)
+        // mm do alvo até a câmera (ortográfica: só a profundidade). Pelo raio da cena (Enquadrar), não fixo: a 20 m o WPF 3D (float)
+        // perdia precisão e a vista tremia ±5 px ao girar (medido em CapturasVibra: 3 m = liso, 200 m = caos).
+        double Distancia = 2000;
 
         public double UltimaReconstrucaoMs { get; private set; }
         public int Reconstrucoes { get; private set; }
@@ -229,6 +231,8 @@ namespace NovoFtool
             alvo = new Point3D((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
             double diag = new Vector3D(x1 - x0, y1 - y0, z1 - z0).Length;
             largura = Math.Max(diag * (Miniatura ? 1.5 : 2.3), Miniatura ? 200 : 300);
+            double raio = g.Pontos().Select(p => (p - alvo).Length).DefaultIfEmpty(0).Max();
+            Distancia = raio + 500; cam.FarPlaneDistance = 2 * Distancia;   // câmera fora da cena em qualquer ângulo
         }
 
         void AtualizarCamera() => AtualizarCamera(new Size(ActualWidth, ActualHeight));

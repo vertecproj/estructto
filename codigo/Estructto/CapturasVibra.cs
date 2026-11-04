@@ -53,7 +53,7 @@ namespace NovoFtool
             var ids = (tipos as JsonArray ?? new JsonArray()).Select(t => S(t, "tipo")).Where(s => s != "").ToList();
             Anim.ForcarLigado = true;
             foreach (int vista in new[] { 4 })
-                foreach (var id in ids)
+                foreach (var id in ids.Where(s => Environment.GetEnvironmentVariable("VIBRA_TIPO") is not string so || so == s))
                 {
                     Esperar(j.Escolher(id, true)); EsperarIdle();
                     j.MostrarVista(vista); EsperarIdle(); System.Threading.Thread.Sleep(400); EsperarIdle();
@@ -96,6 +96,17 @@ namespace NovoFtool
             }
             v.Girar(50, 22); Pump();
             log.AppendLine($"   giro 1°/quadro (px que mudam): {g}");
+            // borda esquerda renderizada × prevista pela projeção (tremor de câmera aparece como diferença que oscila)
+            var bgc = ((SolidColorBrush)TemaPlant.BBgCanvas).Color; var mm = new StringBuilder();
+            for (int k = 0; k <= 12; k++)
+            {
+                v.Girar(50 + k * 0.5, 22); Pump(); EsperarIdle(); var p = Px(); int W = (int)v.ActualWidth, H = (int)v.ActualHeight, xmin = W;
+                for (int y = 40; y < H - 60; y++) for (int x = 80; x < W; x++) { int i = (y * W + x) * 4; if (Math.Abs(p[i] - bgc.B) + Math.Abs(p[i + 1] - bgc.G) + Math.Abs(p[i + 2] - bgc.R) > 30) { if (x < xmin) xmin = x; break; } }
+                double prev = v.Geo.Pontos().Min(q => v.Projecao(q).X);
+                mm.Append($"{50 + k * 0.5:0.0}:{xmin}/{prev:0.0} ");
+            }
+            v.Girar(50, 22); Pump();
+            log.AppendLine($"   borda esq. renderizada/prevista: {mm}");
         }
         static BitmapSource Bmp(FrameworkElement v) { var rt = new RenderTargetBitmap((int)v.ActualWidth, (int)v.ActualHeight, 96, 96, PixelFormats.Pbgra32); rt.Render(v); return rt; }
     }
