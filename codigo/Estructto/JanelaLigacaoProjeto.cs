@@ -1456,8 +1456,8 @@ namespace NovoFtool
 
         internal async Task AbrirGerenciadorNoGrupo(DocumentoEspacial d, string grupo)
         {
-            if (janLig == null || !janLig.IsVisible) { janLig = NovoGerenciadorLigacoes(d); await janLig.Carregar(false); janLig.Show(); }
-            else janLig.Activate();
+            if (janLig == null || !(janLig.IsVisible || gerEscondido)) { janLig = NovoGerenciadorLigacoes(d); await janLig.Carregar(false); janLig.Show(); }
+            else { gerEscondido = false; janLig.Show(); janLig.Activate(); }
             if (!string.IsNullOrEmpty(grupo)) janLig.Escolher(grupo);
         }
 
@@ -1465,7 +1465,7 @@ namespace NovoFtool
         internal async Task AbrirProjetistaGrupo(DocumentoEspacial d, JsonNode g, JanelaLigacoesGrupos ger)
         {
             var j = await CriarProjetistaGrupo(d, g, ger);
-            if (j != null) { MostrarLigacao(j); Activate(); }   // a aba fica na janela principal (o gerenciador continua por cima)
+            if (j != null) { EsconderGerenciador(); MostrarLigacao(j); Activate(); }   // uma superfície só: a aba na janela principal, o gerenciador volta ao fechá-la
         }
 
         // modelo calculado (recalcula se desatualizado) → /dimensionar do grupo; releitura = F5 na aba (grupo relido: ids e membros podem ter mudado)

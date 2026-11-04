@@ -31,7 +31,12 @@ namespace NovoFtool
             HostLigacoes.Visibility = j == null ? Visibility.Collapsed : Visibility.Visible;
             RedesenharAbas(); RedesenharAbasLig();
             if (j != null) { HostLigacoes.UpdateLayout(); j.Focus(); }   // Esc e Tab já valem na aba
+            else if (gerEscondido) { gerEscondido = false; if (janLig != null && !janLig.IsVisible && Esp != null) janLig.Show(); }   // voltou ao modelo: o gerenciador reaparece
         }
+
+        // o projetista do grupo abre sem o gerenciador flutuando por cima; ele volta quando a aba fecha ou o usuário volta ao modelo
+        bool gerEscondido;
+        internal void EsconderGerenciador() { if (janLig != null && janLig.IsVisible) { janLig.Hide(); gerEscondido = true; } }
 
         void FecharLigacao(JanelaLigacaoProjeto j)
         {

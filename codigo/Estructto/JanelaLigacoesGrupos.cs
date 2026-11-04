@@ -784,7 +784,7 @@ namespace NovoFtool
         {
             var d = Esp;
             if (d == null) { MostrarToast("Gerenciar ligações: abra ou gere um modelo 3D (espacial) primeiro — Estrutura › Gerar 3D ou Arquivo › Exemplos 3D.", true); return; }
-            if (janLig != null && janLig.IsVisible) { janLig.Activate(); return; }
+            if (janLig != null && (janLig.IsVisible || gerEscondido)) { gerEscondido = false; janLig.Show(); janLig.Activate(); return; }   // escondido pelo projetista: a mesma janela volta
             janLig = NovoGerenciadorLigacoes(d);
             janLig.Show();
         }
