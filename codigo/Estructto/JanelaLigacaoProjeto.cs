@@ -203,13 +203,6 @@ namespace NovoFtool
         string TipoNoGrupo => S(grupo, "tipo");
 
         // contexto do grupo: esforços do membro que governa, perfis pela assinatura, filtro pelo tipo de nó
-        // tipo de nó → tipo de ligação sugerido (espelho de TIPOS em aco/ligacoes_modelo.py; o motor só o grava como projeto padrão
-        // em alguns nós). ponytail: tabela copiada; se o motor passar a expor "sugerido" na lista de grupos, ler de lá.
-        static readonly Dictionary<string, string> Sugeridos = new Dictionary<string, string>
-        {
-            ["viga_pilar_mesa"] = "chapa_simples", ["viga_pilar_alma"] = "chapa_simples", ["viga_viga"] = "chapa_simples", ["emenda"] = "parafuso",
-            ["gusset_contraventamento"] = "ligacao_tracao", ["no_trelica"] = "ligacao_tracao", ["tubo_tubo_soldado"] = "tubo_tubo_soldado", ["perfil_tubo_soldado"] = "perfil_tubo_soldado"
-        };
 
         // recarga = F5/Calcular com a aba já aberta: só atualiza o dimensionar e os esforços do membro (dados e tipo editados ficam)
         public void UsarGrupo(JsonNode g, JsonNode dim, string falha = null, bool recarga = false)
@@ -250,7 +243,7 @@ namespace NovoFtool
                 foreach (var kv in (g["projeto"]?["dados"] as JsonObject) ?? new JsonObject()) dados[tl][kv.Key] = kv.Value?.DeepClone();
                 tipo = tl;
             }
-            else if (tl == "" && Sugeridos.TryGetValue(TipoNoGrupo, out var sug) && Tipo(sug) != null) { tipo = sug; TipoSugerido = true; }   // sem projeto: o tipo do motor já abre calculado (Trocar padrão leva à biblioteca)
+            else if (tl == "" && S(g, "tipo_sugerido") is string sug && sug != "" && Tipo(sug) != null) { tipo = sug; TipoSugerido = true; }   // sem projeto: o tipo sugerido pelo motor (tipo_sugerido do grupo) já abre calculado (Trocar padrão leva à biblioteca)
             Montar();
         }
 

@@ -880,6 +880,7 @@ def resumo_grupos(modelo, calculo=None):
     for gid, g in _grupos(modelo).items():
         mbs = [dict(x, **({"apoio": apoio[_chave(x)]} if apoio.get(_chave(x)) else {})) for x in g["membros"]]
         item = dict(id=gid, nome=g["nome"], tipo=g["tipo"], rotulo=TIPOS.get(g["tipo"], (g["tipo"],))[0],
+                    tipo_sugerido=TIPOS.get(g["tipo"], (None, None))[1],   # o projetista abre um grupo sem projeto já neste tipo
                     assinatura=g.get("assinatura", ""), travado=bool(g.get("travado")), manual=bool(g.get("manual")),
                     projeto=g.get("projeto"), n_membros=len(g["membros"]), membros=mbs,
                     taxa_max=None, ok=None, governante=None, erros=[])
