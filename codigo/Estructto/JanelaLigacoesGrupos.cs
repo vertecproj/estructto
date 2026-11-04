@@ -650,7 +650,7 @@ namespace NovoFtool
                     ("Fixações", (double.IsNaN(D(d, "fileiras")) ? 2 : D(d, "fileiras")) + " × " + (double.IsNaN(D(d, "por_fileira")) ? 2 : D(d, "por_fileira")), null),
                     ("Parafuso", S(d, "chumbador") != "" ? S(d, "chumbador") : "M" + (double.IsNaN(D(d, "diametro_mm")) ? 16 : D(d, "diametro_mm")) + " cl. " + (S(d, "classe") == "" ? "8.8" : S(d, "classe")), null),
                 }, 80));
-                var nota = Tx("“Dimensionar pela pior” abre a janela da placa de base com os esforços da base que governa. Aplicar lá grava a placa para todo o grupo.", 11.5, TemaPlant.BTexto3, null, true);
+                var nota = Tx("“Projetar placa de base…” abre a janela da placa com os esforços da base que governa. Aplicar lá grava a placa para todo o grupo.", 11.5, TemaPlant.BTexto3, null, true);
                 nota.Margin = new Thickness(0, 8, 0, 0); conteudo.Children.Add(nota);
             }
             else if (tipoEdit != "")
@@ -660,11 +660,14 @@ namespace NovoFtool
             }
             else conteudo.Children.Add(Tx("Sem projeto: o pior membro sai pela demanda (|V| nas vigas, |N| nas diagonais, |M| nas bases e emendas). Escolha a ligação para dimensionar.", 11.5, TemaPlant.BTexto3, null, true));
             sp.Children.Add(Cartao("Projeto do grupo", conteudo));
-            var bDim = B("Dimensionar pela pior", async () => await DimensionarSelecionado(), true,
-                         "Verifica o projeto com os esforços de TODAS as ligações do grupo em todas as combinações ELU; a pior governa e o detalhe vale para o grupo.");
+            // base de pilar: um caminho só — o botão abre a janela da placa (o projetista não projeta placa e só mandava de volta para cá)
+            bool ehPlaca = tipoEdit == "placa_base";
+            var bDim = B(ehPlaca ? "Projetar placa de base…" : "Dimensionar pela pior", async () => await DimensionarSelecionado(), true,
+                         ehPlaca ? "Abre a janela da placa de base com os esforços da base que governa o grupo; Aplicar lá grava a placa para todo o grupo."
+                                 : "Verifica o projeto com os esforços de TODAS as ligações do grupo em todas as combinações ELU; a pior governa e o detalhe vale para o grupo.");
             bDim.Height = 32; bDim.Margin = new Thickness(0, 0, 0, 10); bDim.IsEnabled = tipoEdit != "" && !ocupado;
             sp.Children.Add(bDim);
-            if (Projetar != null)
+            if (Projetar != null && !ehPlaca && S(g, "tipo") != "base")
             {
                 var bProj = Botao("Projetar no projetista…", "unir", async () => { await GravarPendentes(); await Projetar(this, Grupo(gSel) ?? g); }, "Abre o projetista de ligações com os esforços da pior ligação do grupo: escolha o padrão, ajuste vendo o desenho e as verificações e aplique ao grupo.", 30);
                 bProj.Margin = new Thickness(0, -2, 0, 10); bProj.HorizontalAlignment = HorizontalAlignment.Stretch;

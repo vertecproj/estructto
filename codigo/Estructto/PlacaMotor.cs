@@ -47,10 +47,23 @@ namespace NovoFtool
 
         // Síncrono: a janela da placa recalcula a cada clique e o motor responde em milissegundos. Task.Run tira as continuações
         // do contexto da UI (sem deadlock); 2 min de limite para não travar a janela se o motor estiver preso em outra operação.
+        // Na thread da interface a espera BOMBEIA as mensagens (como um ShowDialog): uma operação Exclusivo já em curso (ex. ligações
+        // do 3D logo depois do cálculo) precisa da interface para continuar e soltar o motor; com t.Wait seco era deadlock até os 2 min.
         public static JsonNode Esperar(Func<Task<JsonNode>> chamada)
         {
             var t = Task.Run(chamada);
-            try { if (!t.Wait(TimeSpan.FromMinutes(2))) throw new MotorErro(0, "o motor não respondeu (ocupado em outra operação?)"); }
+            var disp = System.Windows.Application.Current?.Dispatcher;
+            bool bombeou = false;
+            if (disp != null && disp.CheckAccess() && !t.IsCompleted)
+            {
+                var quadro = new System.Windows.Threading.DispatcherFrame();
+                void Parar() => disp.BeginInvoke(new Action(() => quadro.Continue = false));   // acorda o laço da interface
+                using var limite = new System.Threading.Timer(_ => Parar(), null, TimeSpan.FromMinutes(2), System.Threading.Timeout.InfiniteTimeSpan);
+                t.ContinueWith(_ => Parar(), TaskScheduler.Default);
+                System.Windows.Threading.Dispatcher.PushFrame(quadro);
+                bombeou = true;
+            }
+            try { if (!t.Wait(t.IsCompleted || bombeou ? TimeSpan.Zero : TimeSpan.FromMinutes(2))) throw new MotorErro(0, "o motor não respondeu (ocupado em outra operação?)"); }
             catch (AggregateException ex) { throw ex.InnerException ?? ex; }
             return t.Result;
         }
