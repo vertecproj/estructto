@@ -27,6 +27,7 @@ sem ele, vem de `ESTRUCTTO_MOTOR` ou de subir a partir do diretório atual.
 | C | Legados: `guincho-*.estructto` e `.ftl` convertidos, F5, salvar no formato novo e reabrir; `.ed3` dos testes do motor: importar, F5, comparar com o CYPE |
 | D | Edição: copiar, espelhar, rotacionar, matriz, aparar, estender, grips; Ctrl+Z/Ctrl+Y de cada; Medir |
 | E | Robustez: motor morto (antes e durante o F5, e antes de editar), entradas inválidas, autosave/recuperação, janela visível em ≤ 10 s com cópia de recuperação, `--capturas` não toca na recuperação do usuário, modelo de 3069 barras (abrir, F5, quadro do Realista) |
+| G | Torre do elevador (F6): grade 2,2×2,4 m e 5 níveis, Pilar por clique em cada nível (PgUp), vigas digitadas, copiar pavimento, passarela, snap no Realista só nos eixos, NÓ no vão divide, DIVIDIR nos nós, JUNTAR 1 trecho, mudar cota do nível leva os nós, F5 ([TORRE-ELEVADOR.md](../v6/TORRE-ELEVADOR.md)) |
 | F | Só o motor empacotado (sem ESTRUCTTO_MOTOR, exige `estructto-motor.exe`): catálogo, 19 tipos de ligação com o próprio exemplo, memorial, cada modelo do novo projeto + F5, desenhar e calcular, `.ed3` real + comparar, os 4 exemplos + F5, dimensionar todos os grupos de ligação, projetista, placa de base, relatório |
 
 ## Resumo por severidade

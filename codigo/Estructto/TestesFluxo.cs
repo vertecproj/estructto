@@ -118,6 +118,7 @@ namespace NovoFtool
             {
                 ("A", "galpão do zero", FluxoGalpao), ("B", "edifício de 4 pavimentos", FluxoEdificio), ("C", "arquivos legados e CYPE", FluxoLegado),
                 ("D", "edição", FluxoEdicao), ("E", "robustez", FluxoRobustez), ("F", "só o motor empacotado (sem ESTRUCTTO_MOTOR)", FluxoEmpacotado),
+                ("G", "torre do elevador (F6)", FluxoTorre),
             };
             try
             {

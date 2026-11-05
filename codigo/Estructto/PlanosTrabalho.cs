@@ -20,7 +20,7 @@ namespace NovoFtool
     // Isolar: só as barras com os dois nós entre zMin e zMax (null, null = tudo).
     public interface IPlanoAlvo
     {
-        void DefinirPlano(char eixo, double valor);
+        void DefinirPlano(char eixo, double valor, bool camera = true);   // camera = false: PgUp/PgDn, a vista fica onde está
         void Isolar(double? zMin, double? zMax);
     }
 
@@ -61,6 +61,24 @@ namespace NovoFtool
                 v["nome"] = novo; if (z != null) v["z"] = z.Value;
                 pav[novo] = v;
             }
+            return m;
+        }
+
+        // Cota nova do pavimento `nome`; os nós que estavam na cota antiga (±1 mm) vão junto. Recusa se outro nível já está lá.
+        public static JsonObject MudarCota(JsonObject m, string nome, double z)
+        {
+            var pav = m["pavimentos"] as JsonObject;
+            if (pav?[nome] == null) throw new ArgumentException("o nível " + nome + " não existe");
+            if (!double.IsFinite(z)) throw new ArgumentException("cota inválida");
+            double z0 = Dz(pav[nome], "z");
+            if (pav.Any(kv => kv.Key != nome && Math.Abs(Dz(kv.Value, "z") - z) <= Tol)) throw new ArgumentException("já existe um nível em z = " + Num.Fmt(z, 3) + " m");
+            var levar = Nos(m).Where(kv => Math.Abs(Dz(kv.Value, "z") - z0) <= Tol).ToList();
+            var ids = levar.Select(kv => kv.Key).ToHashSet();
+            var ocupados = Nos(m).Where(kv => !ids.Contains(kv.Key) && Math.Abs(Dz(kv.Value, "z") - z) <= Tol).Select(kv => Chave(Dz(kv.Value, "x"), Dz(kv.Value, "y"), z)).ToHashSet();
+            if (levar.Any(kv => ocupados.Contains(Chave(Dz(kv.Value, "x"), Dz(kv.Value, "y"), z))))
+                throw new ArgumentException("em z = " + Num.Fmt(z, 3) + " m já há nós nos mesmos pontos (x, y): os nós do nível cairiam sobre eles");
+            pav[nome]["z"] = z;
+            foreach (var kv in levar) kv.Value["z"] = z;
             return m;
         }
 
@@ -219,14 +237,14 @@ namespace NovoFtool
             readonly MainWindow w;
             public PlanoNaVista(MainWindow w) { this.w = w; }
             public void Isolar(double? zMin, double? zMax) { w.isoMin = zMin; w.isoMax = zMax; w.planoDoc = w.Esp; w.AtualizarEspacial3D(false); }
-            public void DefinirPlano(char eixo, double valor)
+            public void DefinirPlano(char eixo, double valor, bool camera = true)
             {
                 w.planoEixo = eixo; w.planoValor = valor; w.planoDoc = w.Esp;
                 string nome = eixo == 'z' ? Niveis.Lista(w.Esp.Json).FirstOrDefault(n => Math.Abs(n.Z - valor) <= Niveis.Tol)?.Nome : null;
                 w.vista3D.PlanoAtual = eixo == 'x' ? PlanoTrabalho.EmX(valor) : eixo == 'y' ? PlanoTrabalho.EmY(valor)
                     : eixo == 'z' ? PlanoTrabalho.Horizontal(valor, nome == null ? null : nome + " (z = " + Num.Fmt(valor, 2) + " m)") : PlanoTrabalho.Horizontal(0);
                 w.AtualizarEspacial3D(false);
-                w.vista3D.MostrarVista(eixo == 'z' ? VistaPadrao.Topo : eixo == 'x' ? VistaPadrao.Lado : eixo == 'y' ? VistaPadrao.Frente : VistaPadrao.Iso, Anim.Ligado);
+                if (camera) w.vista3D.MostrarVista(eixo == 'z' ? VistaPadrao.Topo : eixo == 'x' ? VistaPadrao.Lado : eixo == 'y' ? VistaPadrao.Frente : VistaPadrao.Iso, Anim.Ligado);
             }
         }
 
@@ -275,14 +293,36 @@ namespace NovoFtool
             return false;
         }
 
-        // Ativar um nível: plano de trabalho na cota, só o andar dele (entre ele e o de baixo) e planta animada.
-        internal void AtivarNivel(double z)
+        // Ativar um nível: plano de trabalho na cota + só o andar dele (entre ele e o de baixo); planta animada se camera.
+        // É o ÚNICO caminho para trocar de nível (menu Nível, painel Níveis, PgUp/PgDn, NIVEL +/-): plano, vista isolada e
+        // painel andam juntos (antes o PgUp só trocava o plano e a vista ficava no andar antigo).
+        internal void AtivarNivel(double z, bool camera = true)
         {
             if (!ExigirEspacial()) return;
             var l = Niveis.Lista(Esp.Json);
             Plano.Isolar(Niveis.Abaixo(l, z) ?? z, z);
-            Plano.DefinirPlano('z', z);
-            Log("Plano de trabalho: " + (l.FirstOrDefault(n => Math.Abs(n.Z - z) <= Niveis.Tol)?.Nome ?? "nível") + " (z = " + Num.Fmt(z, 2) + " m).", false);
+            Plano.DefinirPlano('z', z, camera);
+            string nome = l.FirstOrDefault(n => Math.Abs(n.Z - z) <= Niveis.Tol)?.Nome ?? "nível";
+            Log("Nível ativo: " + nome + " (z = " + Num.Fmt(z, 2) + " m).", false);
+            StatusMsg.Text = "Nível ativo: " + nome + " (z = " + Num.Fmt(z, 2) + " m)  ·  PgUp/PgDn troca";
+            janelaNiveis?.Montar();
+        }
+
+        // Cota do nível ativo (null = 3D completo ou elevação).
+        internal double? NivelAtivo => planoDoc != null && planoDoc == Esp && planoEixo == 'z' ? planoValor : (double?)null;
+
+        // Muda a cota do nível e leva junto os nós dessa cota (os pilares esticam), como o nível do CYPE/Revit. Um PUT = um Ctrl+Z.
+        internal async Task MudarCotaNivel(string nome, double z, string novoNome = null)
+        {
+            double? z0 = Niveis.Lista(Esp?.Json ?? new JsonObject()).FirstOrDefault(n => n.Nome == nome)?.Z;
+            bool ativo = z0 != null && NivelAtivo is double a && Math.Abs(a - z0.Value) <= Niveis.Tol;
+            if (novoNome == null && z0 != null && nome == GradeNiveis.NomeZ(z0.Value)) novoNome = GradeNiveis.NomeZ(z);   // nome automático (N+3,50) segue a cota
+            await OperarEspacial(d => d.Aplicar(m =>
+            {
+                Niveis.MudarCota(m, nome, z);
+                return novoNome != null && novoNome != nome ? Niveis.Renomear(m, nome, novoNome) : m;
+            }), "Nível " + (novoNome ?? nome) + ": z = " + Num.Fmt(z, 2) + " m (nós da cota levados junto).");
+            if (ativo) AtivarNivel(z, false);
             janelaNiveis?.Montar();
         }
 
@@ -334,9 +374,7 @@ namespace NovoFtool
                 Lista("eixo", "Elevação X", "Plano vertical X = valor (vista de lado, YZ): só as barras desse plano.", () => Cotas('x')),
                 Lista("eixo", "Elevação Y", "Plano vertical Y = valor (vista de frente, XZ): só as barras desse plano.", () => Cotas('y')),
                 Botao("3dcompleto", "3D completo", Completo3D, "Volta a mostrar o modelo inteiro, em isométrica.", null, true),
-                Botao("niveis", "Níveis", AbrirNiveis, "Painel de níveis (pavimentos): criar, renomear, mudar a cota, apagar, detectar pela geometria, copiar pavimento para cima e gerar pilares.", null, true),
-                Botao("copiarpav", "Copiar pavimento", AbrirNiveis, "Copia barras, nós e cargas de um nível para N níveis acima (painel Níveis; um Ctrl+Z desfaz).", null, true),
-                Botao("pilaresniv", "Pilares entre níveis", AbrirNiveis, "Um pilar sob cada nó de um nível até o nível de baixo (painel Níveis).", null, true));
+                Botao("niveis", "Níveis", AbrirNiveis, "Painel de níveis: criar, renomear, mudar a cota (leva os nós), apagar, detectar pela geometria, copiar pavimento para cima e gerar pilares.", null, true));
         }
 
         // Operação no motor (fila exclusiva + desfazer) a partir do painel.
@@ -356,7 +394,6 @@ namespace NovoFtool
         readonly MainWindow w;
         readonly Border host = new Border();
         readonly TextBlock status = UiAcoes.Status();
-        double? escolhido;          // nível das ações de baixo (copiar, pilares)
         TextBox tVezes, tAltura;
 
         public JanelaNiveis(MainWindow w)
@@ -364,7 +401,7 @@ namespace NovoFtool
             this.w = w;
             Title = "Níveis"; Width = 640; Height = 620; MinWidth = 560; MinHeight = 420; ShowInTaskbar = false;
             var sv = new ScrollViewer { Content = host, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(16, 12, 16, 8) };
-            Content = UiAcoes.Montar(this, UiAcoes.Cabecalho("Níveis", null, "Pavimentos do modelo espacial. Ativar = plano de trabalho em planta, só com o andar do nível (barras entre ele e o de baixo); o resto fica em fantasma."),
+            Content = UiAcoes.Montar(this, UiAcoes.Cabecalho("Níveis", null, "Clique num nível para ativá-lo: vira o plano de trabalho, em planta, com o andar dele (entre ele e o de baixo). PgUp/PgDn sobe e desce. Mudar a cota leva os nós do nível junto."),
                 sv, UiAcoes.Rodape(status, B("3D completo", w.Completo3D, false, "Mostra o modelo inteiro de novo."), B("Fechar", Close)));
             Montar();
         }
@@ -377,7 +414,9 @@ namespace NovoFtool
             var j = Json;
             if (j == null) { host.Child = UiPlaca.Tx("Abra um modelo espacial.", 12, TemaPlant.BTexto2); return; }
             var l = Niveis.Lista(j);
-            if (escolhido == null || !l.Any(n => Math.Abs(n.Z - escolhido.Value) <= Niveis.Tol)) escolhido = l.Last().Z;
+            // um nível escolhido só: o ativo (plano de trabalho); sem nível ativo (3D completo), as ações valem para o mais alto
+            double? escolhido = w.NivelAtivo is double za && l.Any(n => Math.Abs(n.Z - za) <= Niveis.Tol) ? za : l.Last().Z;
+            bool algumAtivo = w.NivelAtivo != null;
             var cotas = Niveis.Cotas(j, "z");
             var detectar = UiPlaca.Botao("Detectar pela geometria", "busca", Detectar, "Cria um nível em cada cota de nós que ainda não tem nível (" + cotas.Count + " cotas).");
             sp.Children.Add(UiPlaca.TituloSecao("Níveis (" + l.Count + ")", detectar, 0));
@@ -388,7 +427,7 @@ namespace NovoFtool
             foreach (var n in l.AsEnumerable().Reverse())
             {
                 var nv = n;
-                bool sel = Math.Abs(n.Z - escolhido.Value) <= Niveis.Tol;
+                bool sel = algumAtivo && Math.Abs(n.Z - escolhido.Value) <= Niveis.Tol;
                 var g = new Grid { Margin = new Thickness(0, 4, 0, 0) }; Colunas(g);
                 var linha = new Border { Child = g, Padding = new Thickness(4, 2, 4, 2), CornerRadius = new CornerRadius(4), Background = sel ? TemaPlant.BSup3 : Brushes.Transparent };
                 var tn = new TextBox { Text = n.Nome, Height = 26, IsReadOnly = n.Terreo, VerticalContentAlignment = VerticalAlignment.Center, Background = TemaPlant.BSup3, Foreground = n.Terreo ? TemaPlant.BTexto2 : TemaPlant.BTexto1, BorderBrush = TemaPlant.BBorda, CaretBrush = TemaPlant.BTexto1, Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(0, 0, 8, 0),
@@ -398,7 +437,7 @@ namespace NovoFtool
                 tz.IsReadOnly = n.Terreo; Cel(g, bz, 1);
                 double? acima = Niveis.Acima(l, n.Z);
                 Cel(g, UiPlaca.Tx(acima == null ? "—" : Num.Fmt(acima.Value - n.Z, 2) + " m", 12, TemaPlant.BTexto2), 2);
-                var ativar = UiPlaca.Link(sel ? "Ativo" : "Ativar", () => { escolhido = nv.Z; w.AtivarNivel(nv.Z); }, "Plano de trabalho neste nível: planta só com o andar dele.", 11.5);
+                var ativar = UiPlaca.Link(sel ? "● Ativo" : "Ativar", () => w.AtivarNivel(nv.Z), "Plano de trabalho neste nível: planta só com o andar dele (clicar na linha faz o mesmo).", 11.5);
                 Cel(g, ativar, 3);
                 if (!n.Terreo)
                 {
@@ -413,9 +452,9 @@ namespace NovoFtool
                         bool mudouNome = nome != "" && nome != nv.Nome, mudouZ = Math.Abs(z - nv.Z) > 1e-9;
                         if (!mudouNome && !mudouZ) return;
                         gravado = true;
-                        if (mudouNome)   // um PUT com o pavimento renomeado (diafragma mantido): atômico, um Ctrl+Z
-                            _ = GravarModelo(m => Niveis.Renomear(m, nv.Nome, nome, mudouZ ? z : (double?)null), "Nível renomeado: " + nv.Nome + " → " + nome + ".");
-                        else _ = Gravar(() => Motor.Chamar("PATCH", "/api/modelo/pavimento/" + Uri.EscapeDataString(nv.Nome), new JsonObject { ["z"] = z }), "Nível " + nv.Nome + ": z = " + Num.Fmt(z, 2) + " m.");
+                        // um PUT só (atômico, um Ctrl+Z): cota nova leva os nós da cota junto; nome novo mantém o diafragma
+                        if (mudouZ) _ = w.MudarCotaNivel(nv.Nome, z, mudouNome ? nome : null);
+                        else _ = GravarModelo(m => Niveis.Renomear(m, nv.Nome, nome), "Nível renomeado: " + nv.Nome + " → " + nome + ".");
                     }
                     foreach (var tb in new[] { tn, tz })
                     {
@@ -423,7 +462,13 @@ namespace NovoFtool
                         tb.KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Enter) Commit(); };
                     }
                 }
-                linha.MouseLeftButtonDown += (s, e) => { if (escolhido != nv.Z) { escolhido = nv.Z; Montar(); } };
+                linha.MouseLeftButtonDown += (s, e) =>   // clique na linha ativa; nos campos (nome, cota) e nos links (Ativar, Apagar), não
+                {
+                    if (sel) return;
+                    for (var o = e.OriginalSource as DependencyObject; o != null && o != linha; o = (o is Visual ? VisualTreeHelper.GetParent(o) : null) ?? LogicalTreeHelper.GetParent(o))   // Run/Hyperlink não são Visual
+                        if (o is TextBox || (o is FrameworkElement fe && fe.Parent == g && Grid.GetColumn(fe) >= 3)) return;
+                    w.AtivarNivel(nv.Z);
+                };
                 sp.Children.Add(linha);
             }
             var novo = UiPlaca.Botao("+ Novo nível", null, () =>
@@ -438,7 +483,7 @@ namespace NovoFtool
             // ações sobre o nível escolhido
             var esc = l.First(n => Math.Abs(n.Z - escolhido.Value) <= Niveis.Tol);
             double lo = Niveis.Abaixo(l, esc.Z) ?? esc.Z;
-            sp.Children.Add(UiPlaca.TituloSecao("Nível escolhido: " + esc.Nome + " (z = " + Num.Fmt(esc.Z, 2) + " m)", null, 18));
+            sp.Children.Add(UiPlaca.TituloSecao((algumAtivo ? "Nível ativo: " : "Nível mais alto (nenhum ativo): ") + esc.Nome + " (z = " + Num.Fmt(esc.Z, 2) + " m)", null, 18));
             var g2 = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
             g2.Children.Add(UiPlaca.Tx("Copiar para", 12, TemaPlant.BTexto1));
             var bv = UiAcoes.Num(out tVezes, 3, "níveis", 90, "Quantos níveis acima recebem a cópia.", 0); bv.Margin = new Thickness(8, 0, 8, 0); g2.Children.Add(bv);

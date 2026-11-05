@@ -148,11 +148,11 @@ namespace NovoFtool
             v.Tecla(System.Windows.Input.Key.F10);   // volta o polar (desliga o orto)
             v.Tecla(System.Windows.Input.Key.Escape);
 
-            // centro: Realista, passando na borda do tubo
+            // Realista: o sólido não atrai (docs/v6/TORRE-ELEVADOR.md). Na borda do tubo vale a ponta do EIXO (9; 0; 3), não o contorno.
             w.DefinirRealista(true);
             EsperarIdle();
-            Modo("centro", "Centro", Q(9.1, 0, 3), 0, 0);
-            if (!(v.UltimoSnap.P is Point3D pc) || (pc - Q(9, 0, 3)).Length > 1e-6) Falha("centro do tubo fora de (9; 0; 3)");
+            Modo("centro", "Extremidade", Q(9.1, 0, 3), 0, 0);
+            if (!(v.UltimoSnap.P is Point3D pc) || (pc - Q(9, 0, 3)).Length > 1e-6) Falha("na borda do tubo o snap saiu fora do eixo (9; 0; 3)");
             Modo("extremidade-realista", "Extremidade", Q(0, 5, 3), 3, 3);
 
             // ---------- Medir ----------

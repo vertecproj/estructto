@@ -26,7 +26,7 @@ namespace NovoFtool
 
     public enum TipoSnap { Nenhum, Extremidade, Medio, Centro, No, Intersecao, Aparente, Perpendicular, Proximo, Extensao, Paralelo, Rastreio, Polar, Ortogonal, Grade, Plano }
 
-    public sealed class SegSnap { public Point3D A, B; public object Dono; public bool Aresta; }          // Aresta: contorno do sólido (Realista)
+    public sealed class SegSnap { public Point3D A, B; public object Dono; }   // eixo da barra (o sólido não atrai)
     public sealed class CirculoSnap { public Point3D C; public Vector3D N; public double R; public object Dono; }
     public sealed class GeoSnap
     {
@@ -359,7 +359,6 @@ namespace NovoFtool
                 foreach (var (pa, _) in Adquiridos)
                     foreach (SegSnap s in g.Segs)
                     {
-                        if (s.Aresta) continue;
                         Point3D outro = (s.A - pa).Length < 1e-9 ? s.B : (s.B - pa).Length < 1e-9 ? s.A : new Point3D(double.NaN, 0, 0);
                         if (double.IsNaN(outro.X)) continue;
                         Vector3D d = pa - outro; if (d.Length < 1e-12) continue; d.Normalize();
@@ -385,12 +384,13 @@ namespace NovoFtool
             if (cs.Count == 0) return null;
             double dmin = cs.Min(x => x.D);
             Cand best = cs.Where(x => x.D <= dmin + Empate).OrderBy(x => Array.IndexOf(Prioridade, x.T)).ThenBy(x => x.D).First();
-            // E2E-04: pontos do mesmo tipo no mesmo pixel (em planta, topo e pé do pilar): vale o do plano de trabalho,
-            // depois o mais perto de quem olha. Antes valia a ordem da lista (a ponta A, o pé).
+            // E2E-04 / torre: pontos no mesmo pixel (em planta, o topo do pilar de baixo e o cruzamento da grade no nível ativo):
+            // vale o do plano de trabalho, de qualquer tipo; depois a prioridade; depois o mais perto de quem olha.
+            // Antes valia a prioridade (Extremidade do andar de baixo ganhava do Nó da grade no plano e o Pilar nascia no andar errado).
             Point pb = tela(best.P); Vector3D oo = olho ?? new Vector3D(0, 0, 1);
             double Fora(Point3D p) => pl == null ? 0 : Math.Round((p - pl.Projetar(p)).Length, 6);
-            return cs.Where(x => x.T == best.T && (tela(x.P) - pb).Length < 0.5)
-                     .OrderBy(x => Fora(x.P)).ThenByDescending(x => Vector3D.DotProduct((Vector3D)x.P, oo)).First();
+            return cs.Where(x => x.D <= dmin + Empate && (tela(x.P) - pb).Length < 0.5)
+                     .OrderBy(x => Fora(x.P)).ThenBy(x => Array.IndexOf(Prioridade, x.T)).ThenByDescending(x => Vector3D.DotProduct((Vector3D)x.P, oo)).First();
         }
 
         // Aquisição por pausa (OTRACK/EXT): cursor parado TempoAquisicao ms sobre o mesmo ponto adquire; de novo, remove.
@@ -403,7 +403,7 @@ namespace NovoFtool
             else if (base0 != null && m.HasFlag(ModoSnap.Paralelo) && (k == null || k.Value.T == TipoSnap.Proximo || k.Value.T == TipoSnap.Perpendicular))
             {
                 double dm = Abertura;
-                foreach (SegSnap s in g.Segs) { if (s.Aresta) continue; double d = DistSeg(c, tela(s.A), tela(s.B), out _); if (d < dm) { dm = d; seg = s; } }
+                foreach (SegSnap s in g.Segs) { double d = DistSeg(c, tela(s.A), tela(s.B), out _); if (d < dm) { dm = d; seg = s; } }
                 if (seg != null) chave = "S" + g.Segs.IndexOf(seg);
             }
             if (chave == null) { pausaChave = null; return; }
@@ -585,7 +585,13 @@ namespace NovoFtool
             Point3D? Pilar(PlanoTrabalho pp) => Novo().Resolver(gp, Tela, NoPlano, pp, Px(20, 20) + new Vector(2, 1), null, 0, false, olho).P;
             Ok("E2E-04 planta, plano z=6: extremidade no topo (20,20,6)", Perto(Pilar(PlanoTrabalho.Horizontal(6)), 20, 20, 6));
             Ok("E2E-04 planta, plano z=0: extremidade no pé (20,20,0)", Perto(Pilar(PlanoTrabalho.Horizontal(0)), 20, 20, 0));
-            Ok("E2E-04 planta, plano z=3 (nenhuma ponta nele): a mais perto do olho (20,20,6)", Perto(Pilar(PlanoTrabalho.Horizontal(3)), 20, 20, 6));
+            // nenhuma ponta no plano z=3, mas o meio do pilar está nele: vale o ponto do plano (antes: a ponta mais perto do olho, fora do plano)
+            Ok("E2E-04 planta, plano z=3: o ponto médio do pilar, que está no plano (20,20,3)", Perto(Pilar(PlanoTrabalho.Horizontal(3)), 20, 20, 3));
+            Ok("planta, plano z=8 (nada nele): a ponta mais perto do olho (20,20,6)", Perto(Pilar(PlanoTrabalho.Horizontal(8)), 20, 20, 6));
+            // torre: plano z=9 com o cruzamento da grade (nó) em (20,20,9): ganha da Extremidade do pilar de baixo no mesmo pixel
+            gp.Nos.Add(new Point3D(20, 20, 9));
+            var rg = Novo().Resolver(gp, Tela, NoPlano, PlanoTrabalho.Horizontal(9), Px(20, 20) + new Vector(2, 1), null, 0, false, olho);
+            Ok("torre: planta no nível z=9, o nó da grade no plano vence a Extremidade do andar de baixo", Perto(rg.P, 20, 20, 9) && rg.Tipo == TipoSnap.No);
             r = R(s1, Px(8, 1.3) + new Vector(4, 0), new Point3D(10, 1, 0));
             Ok("perpendicular de (10,1) em B3: pé (8,1,0)", r.Tipo == TipoSnap.Perpendicular && Perto(r.P, 8, 1, 0));
             var sNea = Novo(); sNea.Modos = ModoSnap.Proximo | ModoSnap.Extremidade;

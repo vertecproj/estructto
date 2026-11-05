@@ -139,14 +139,61 @@ namespace NovoFtool
         {
             var (_, sb) = Selecao(m, new string[0], barras);
             var N = Col(m, "nos"); var B = Col(m, "barras");
-            var idN = new Ids(N, "N"); var idB = new Ids(B, "B");
             foreach (string id in sb)
+            {
+                double L = Dist(Xyz(N[(string)B[id]["ni"]]), Xyz(N[(string)B[id]["nj"]]));
+                var ts = distancia > 0 ? new List<double> { distancia / L } : Enumerable.Range(1, partes - 1).Select(k => (double)k / partes).ToList();
+                if (ts.Count == 0 || ts.Any(x => x <= Tol / L || x >= 1 - Tol / L)) throw new ArgumentException("barra " + id + ": ponto de divisão fora da barra (L = " + Num.Fmt(L, 3) + " m)");
+                DividirEm(m, id, ts);
+            }
+            return m;
+        }
+
+        // Divide cada barra nos nós que já estão sobre ela (a 1 mm do eixo, fora das pontas): o nó solto por cima da linha
+        // vira ligação. Nada escolhido = o modelo inteiro. Recusa se nenhuma barra tem nó sobre ela.
+        public static JsonObject DividirNosNos(JsonObject m, IEnumerable<string> barras)
+        {
+            var (_, sb) = Selecao(m, new string[0], barras);
+            int feitas = 0;
+            foreach (string id in sb)
+            {
+                var ts = NosSobre(m, id);
+                if (ts.Count == 0) continue;
+                DividirEm(m, id, ts); feitas++;
+            }
+            if (feitas == 0) throw new ArgumentException("nenhum nó sobre " + (sb.Count == 1 ? "a barra " + sb[0] : "as barras escolhidas") + " (fora das pontas, a até 1 mm do eixo).");
+            return m;
+        }
+
+        // Parâmetros t (0..1, em ordem) dos nós sobre o vão da barra, fora das pontas, a até 1 mm do eixo.
+        public static List<double> NosSobre(JsonObject m, string barra)
+        {
+            var N = Col(m, "nos"); var b = Col(m, "barras")[barra];
+            string ni = (string)b["ni"], nj = (string)b["nj"];
+            var a = Xyz(N[ni]); var c = Xyz(N[nj]); double L = Dist(a, c);
+            var r = new List<double>();
+            if (L < 3 * Tol) return r;
+            foreach (var kv in N)
+            {
+                if (kv.Key == ni || kv.Key == nj) continue;
+                var p = Xyz(kv.Value);
+                double t = ((p[0] - a[0]) * (c[0] - a[0]) + (p[1] - a[1]) * (c[1] - a[1]) + (p[2] - a[2]) * (c[2] - a[2])) / (L * L);
+                if (t * L <= Tol || (1 - t) * L <= Tol) continue;
+                if (Dist(p, new[] { a[0] + t * (c[0] - a[0]), a[1] + t * (c[1] - a[1]), a[2] + t * (c[2] - a[2]) }) <= Tol) r.Add(t);
+            }
+            r.Sort();
+            return r;
+        }
+
+        // Divide a barra nos parâmetros ts (0..1, crescentes): nó existente a 1 mm é reaproveitado.
+        static void DividirEm(JsonObject m, string id, List<double> ts)
+        {
+            var N = Col(m, "nos"); var B = Col(m, "barras");
+            var idN = new Ids(N, "N"); var idB = new Ids(B, "B");
             {
                 var b = B[id].AsObject();
                 var a = Xyz(N[(string)b["ni"]]); var c = Xyz(N[(string)b["nj"]]);
                 double L = Dist(a, c);
-                var ts = distancia > 0 ? new List<double> { distancia / L } : Enumerable.Range(1, partes - 1).Select(k => (double)k / partes).ToList();
-                if (ts.Count == 0 || ts.Any(x => x <= Tol / L || x >= 1 - Tol / L)) throw new ArgumentException("barra " + id + ": ponto de divisão fora da barra (L = " + Num.Fmt(L, 3) + " m)");
                 var cadeia = new List<string> { (string)b["ni"] };
                 foreach (double x in ts)
                 {
@@ -185,7 +232,6 @@ namespace NovoFtool
                 }
                 RemoverBarra(m, id);
             }
-            return m;
         }
 
         // C4: junta barras em cadeia (nós compartilhados), colineares (±0,5°) e de mesma seção/material/giro/cardinal, numa só do
@@ -196,8 +242,10 @@ namespace NovoFtool
         public static JsonObject Juntar(JsonObject m, IEnumerable<string> barras)
         {
             var N = Col(m, "nos"); var B = Col(m, "barras");
-            var ids = (barras ?? new string[0]).Where(B.ContainsKey).Distinct().ToList();
-            if (ids.Count < 2) throw new ArgumentException("Juntar barras: escolha 2 ou mais barras.");
+            var ids = (barras ?? new string[0]).Where(x => x != null && B.ContainsKey(x)).Distinct().ToList();
+            if (ids.Count == 1) ids = Trechos(m, ids[0]);   // 1 trecho de uma peça dividida (DIVIDIR, NÓ, ligar no vão): junta a peça inteira
+            if (ids.Count < 2) throw new ArgumentException("Juntar barras: escolha 2 ou mais barras em cadeia (ou 1 trecho de uma barra dividida).");
+            string membroTodo = Membro(B[ids[0]]) is string mm && Trechos(m, ids[0]).All(ids.Contains) ? mm : null;   // a peça inteira volta a ser uma barra só
             string Ni(string b) => (string)B[b]["ni"]; string Nj(string b) => (string)B[b]["nj"];
             var r0 = B[ids[0]];
             string Card(JsonNode x) => x["params"]?["cardinal"]?.ToJsonString() ?? "5";
@@ -261,6 +309,7 @@ namespace NovoFtool
                         pr[kv.Key.Substring(0, kv.Key.Length - 2) + (e == 0 ? "_i" : "_j")] = kv.Value?.DeepClone();
                 }
             }
+            if (membroTodo != null) (nb["params"] as JsonObject)?.Remove("membro");
             B[nid] = nb;
             foreach (var q in novasD) Add(m, "cargas_distribuidas", q, x => x["barra"] = nid);
             foreach (var c in Lista(m, "cargas_pontuais").Where(c => ids.Contains((string)c["barra"])).ToList())
@@ -939,13 +988,21 @@ namespace NovoFtool
                     p.Campo("nx", "nx", "2"); p.Campo("ny", "ny", "1"); p.Campo("nz", "nz", "1");
                     p.Campo("ex", "Espaçamento X (m)", "6"); p.Campo("ey", "Espaçamento Y (m)", "6"); p.Campo("ez", "Espaçamento Z (m)", "3"); break;
                 case "dividir":
-                    p = new PainelEdicao("Dividir barra", "Em partes iguais ou, com a distância preenchida, em duas a essa distância do nó inicial.", f, async x =>
+                    const string partes = "Em partes iguais", aDist = "A uma distância", nosNos = "Nos nós sobre a barra";
+                    p = new PainelEdicao("Dividir barra", "Partes iguais, a uma distância do nó inicial (ni) ou nos nós que já estão sobre a barra (o nó solto vira ligação).", f, async x =>
                     {
-                        double dist = x.Vazio("dist") ? 0 : x.D("dist"); int n = dist > 0 ? 2 : x.I("n");
-                        if (dist <= 0 && n < 2) throw new FormatException("Partes: ao menos 2");
+                        string modo = x.Texto("modo");
+                        if (modo == nosNos) { await rodar("Dividido nos nós", m => GeometriaEdicao.DividirNosNos(m, bs())); return; }
+                        double dist = modo == aDist ? x.D("dist") : 0; int n = modo == aDist ? 2 : x.I("n");
+                        if (modo == aDist && dist <= 0) throw new FormatException("Distância: maior que 0");
+                        if (modo == partes && n < 2) throw new FormatException("Partes: ao menos 2");
                         await rodar(dist > 0 ? "Dividido a " + Num.Fmt(dist, 3) + " m" : "Dividido em " + n, m => GeometriaEdicao.Dividir(m, bs(), n, dist));
                     });
-                    p.Campo("n", "Partes", "2"); p.Campo("dist", "ou distância (m)", "", "A partir do nó inicial (ni)."); break;
+                    bool temNo = bs().Any(b => d0.Json["barras"]?[b] != null && GeometriaEdicao.NosSobre(d0.Json, b).Count > 0);   // barra com nó solto em cima: já abre nesse modo
+                    var cbModo = p.Lista("modo", "Dividir", new[] { partes, aDist, nosNos }, temNo ? 2 : 0);
+                    var tN = p.Campo("n", "Partes", "2"); var tDist = p.Campo("dist", "Distância (m)", "", "A partir do nó inicial (ni).");
+                    void Habilitar() { tN.IsEnabled = (string)cbModo.SelectedItem == partes; tDist.IsEnabled = (string)cbModo.SelectedItem == aDist; }
+                    cbModo.SelectionChanged += (s, e) => Habilitar(); Habilitar(); break;
                 case "unir":
                     p = new PainelEdicao("Unir nós coincidentes", "Funde nós próximos (fica o primeiro; apoios somam). Barras que zeram ou repetem somem.", f, async x =>
                     {
@@ -1203,6 +1260,12 @@ namespace NovoFtool
             Ok("renomear nível: nome novo, diafragma false mantido, z 3,2, ordem", pv["P1"] == null && (bool)pv["Mezanino"]["diafragma"] == false && Perto((double)pv["Mezanino"]["z"], 3.2) && pv.First().Key == "Mezanino" && (string)pv["Mezanino"]["nome"] == "Mezanino");
             bool recusou = false; try { Niveis.Renomear(mp, "Mezanino", "P2"); } catch (ArgumentException) { recusou = true; }
             Ok("renomear nível para um nome existente é recusado", recusou && pv["Mezanino"] != null);
+            // mudar a cota do nível leva os nós da cota (torre, docs/v6/TORRE-ELEVADOR.md)
+            var mc = Portico(); mc["pavimentos"] = JsonNode.Parse(@"{""P1"":{""nome"":""P1"",""z"":3,""diafragma"":true}}");
+            Niveis.MudarCota(mc, "P1", 3.6);
+            Ok("mudar cota 3 → 3,6: pavimento e os nós N3/N4 sobem, a base fica", Perto((double)mc["pavimentos"]["P1"]["z"], 3.6) && Perto((double)mc["nos"]["N3"]["z"], 3.6) && Perto((double)mc["nos"]["N4"]["z"], 3.6) && Perto((double)mc["nos"]["N1"]["z"], 0));
+            bool caiu = false; var mc2 = JsonNode.Parse(mc.ToJsonString()).AsObject(); try { Niveis.MudarCota(mc2, "P1", 0); } catch (ArgumentException) { caiu = true; }
+            Ok("mudar cota para cima de nós existentes (z = 0) é recusado e não mexe", caiu && Perto((double)mc2["nos"]["N3"]["z"], 3.6));
 
             // grade estrutural: posições ↔ config.grade (vãos, x0/y0, nomes)
             var gj = GradeEstrutural.Json(new[] { 2.5, -2.5, 0 }, new[] { 0.0, 5 });
@@ -1255,6 +1318,20 @@ namespace NovoFtool
             // desfazer: o modelo é um JSON copiado (Aplicar usa cópia e o motor guarda o passo); o original não muda
             var orig = Viga3(); var txt = orig.ToJsonString(); GeometriaEdicao.Juntar(JsonNode.Parse(txt).AsObject(), new[] { "B1", "B2" });
             Ok("desfazer: o modelo de entrada não é tocado (Aplicar trabalha numa cópia; PUT único = um Ctrl+Z)", orig.ToJsonString() == txt);
+
+            // torre (docs/v6/TORRE-ELEVADOR.md): JUNTAR com 1 trecho junta a peça dividida inteira; DIVIDIR nos nós sobre a barra
+            var jd = GeometriaEdicao.Dividir(Portico(), new[] { "B3" }, 3);
+            string umTrecho = jd["barras"].AsObject().First(kv => GeometriaEdicao.Membro(kv.Value) == "B3").Key;
+            var jd1 = GeometriaEdicao.Juntar(jd, new[] { umTrecho });
+            var vj = jd1["barras"].AsObject().Single(kv => (string)kv.Value["secao"] == "V").Value;
+            Ok("juntar 1 trecho: a viga dividida em 3 volta a ser uma (N3–N4), sem membro, q -10..-20 e pontual em 4,5", Nb(jd1) == 3 && Nn(jd1) == 4 && (string)vj["ni"] == "N3" && (string)vj["nj"] == "N4"
+                && GeometriaEdicao.Membro(vj) == null && jd1["cargas_distribuidas"].AsArray().Count == 1 && Perto((double)jd1["cargas_distribuidas"][0]["q2"][2], -20) && Perto((double)jd1["cargas_pontuais"][0]["a"], 4.5));
+            Ok("juntar: barra nula na escolha não derruba (recusa com motivo)", Recusa(Portico(), null, "B3"));
+            var dn = Portico(); dn["nos"]["N9"] = JsonNode.Parse(@"{""id"":""N9"",""x"":2,""y"":0,""z"":3.0004,""apoio"":[false,false,false,false,false,false]}");
+            dn = GeometriaEdicao.DividirNosNos(dn, new[] { "B3" });
+            Ok("dividir nos nós: o nó solto a 0,4 mm do eixo (2; 0; 3) liga os 2 trechos de B3", Nb(dn) == 4 && Nn(dn) == 5 && dn["barras"].AsObject().Count(kv => (string)kv.Value["ni"] == "N9" || (string)kv.Value["nj"] == "N9") == 2);
+            bool recusouNos; try { GeometriaEdicao.DividirNosNos(Portico(), new[] { "B1" }); recusouNos = false; } catch (ArgumentException) { recusouNos = true; }
+            Ok("dividir nos nós: barra sem nó sobre ela recusa com o motivo", recusouNos);
 
             // salvar atômico: troca o arquivo existente, sem sobrar o temporário
             string arqT = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "estructto-atomico-" + Guid.NewGuid().ToString("N") + ".estructto");

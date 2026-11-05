@@ -236,9 +236,7 @@ namespace NovoFtool
             double z0 = pl.Normal == 'Z' ? pl.Valor : 0;
             var alvo = sentido > 0 ? l.Where(n => n.Z > z0 + Niveis.Tol).Select(n => ((double, string)?)n).FirstOrDefault() : l.Where(n => n.Z < z0 - Niveis.Tol).Select(n => ((double, string)?)n).LastOrDefault();
             if (alvo == null) { Log(sentido > 0 ? "Não há nível acima do plano atual." : "Não há nível abaixo do plano atual."); return; }
-            vista3D.PlanoAtual = PlanoTrabalho.Horizontal(alvo.Value.Item1, alvo.Value.Item2 + " (z = " + Num.Fmt(alvo.Value.Item1, 2) + " m)");
-            Log("Plano de trabalho: " + vista3D.PlanoAtual.Nome + ".", false);
-            StatusMsg.Text = "Plano de trabalho: " + vista3D.PlanoAtual.Nome + "  (PgUp/PgDn troca o nível)";
+            AtivarNivel(alvo.Value.Item1, false);   // o mesmo caminho do painel: plano + andar isolado + painel; a câmera fica
         }
 
         // ---------- grips ----------

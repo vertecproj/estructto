@@ -26,7 +26,7 @@ namespace NovoFtool
         ResultadoSnap snapRes;
         readonly Stopwatch relogioSnap = Stopwatch.StartNew(); double relogioExtra;
         readonly DispatcherTimer timerPausa = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Snap3D.TempoAquisicao + 20) };
-        GeoSnap geo; Modelo3D geoDe; bool geoRealista; Point pxPausa; (double[], double[], double) geoEixos; double[] geoNiveis;
+        GeoSnap geo; Modelo3D geoDe; Point pxPausa; (double[], double[], double) geoEixos; double[] geoNiveis;
         PainelMedir painelMedir;
 
         double AgoraSnap => relogioSnap.Elapsed.TotalMilliseconds + relogioExtra;
@@ -48,44 +48,22 @@ namespace NovoFtool
         // Capturas/testes: simula o cursor parado (aquisição do rastreio sem esperar de verdade).
         public void EsperarSnap(double ms) { relogioExtra += ms; AtualizarCursor(); }
 
-        // Geometria de atração: nós, eixos das barras e, no Realista, as arestas e os centros dos tubos do sólido.
+        // Geometria de atração: nós, eixos das barras e cruzamentos da grade. O Estructto é de linhas: o sólido do Realista é só
+        // desenho e NÃO atrai (antes as arestas do perfil davam Extremidade/Médio fora do eixo; docs/v6/TORRE-ELEVADOR.md).
         GeoSnap Geometria()
         {
             double zEixos = plano.Normal == 'Z' ? plano.Valor : 0;
-            if (geo != null && geoDe == mod && geoRealista == Realista && geoEixos == (EixosX, EixosY, zEixos) && geoNiveis == NiveisEixos) return geo;
+            if (geo != null && geoDe == mod && geoEixos == (EixosX, EixosY, zEixos) && geoNiveis == NiveisEixos) return geo;
             var g = new GeoSnap();
             foreach (No3D n in mod.Nos) g.Nos.Add(P(n));
             g.Nos.AddRange(CruzamentosEixos());   // cruzamentos da grade estrutural em cada nível, o do plano primeiro (Vista3D.Grade.cs)
             geoEixos = (EixosX, EixosY, zEixos); geoNiveis = NiveisEixos;
-            double h = raio * 0.006;
             foreach (Barra3D b in mod.Barras)
             {
                 No3D na = NoPorId(b.Ni), nc = NoPorId(b.Nj); if (na == null || nc == null) continue;
-                Point3D a = P(na), c = P(nc);
-                g.Segs.Add(new SegSnap { A = a, B = c, Dono = b });
-                if (!Realista) continue;
-                Vector3D e = c - a; if (e.Length < 1e-9) continue;
-                Vector3D v = Modelo3D.EixoY(e, b.Rot + b.RotPerfil), u = Vector3D.CrossProduct(v, Norm(e));
-                Forma f = FormaDe(b.Secao, h * 2);
-                for (int li = 0; li < f.Lacos.Count; li++)
-                {
-                    Laco l = f.Lacos[li];
-                    if (l.Liso)   // tubo/redondo: centro nas duas pontas (só o contorno externo)
-                    {
-                        if (li == 0) foreach (Point3D o in new[] { a, c }) g.Circulos.Add(new CirculoSnap { C = o, N = e, R = ((Vector)l.P[0]).Length, Dono = b });
-                        continue;
-                    }
-                    int k = l.P.Length;
-                    for (int i = 0; i < k; i++)
-                    {
-                        Vector3D o1 = u * l.P[i].X + v * l.P[i].Y, o2 = u * l.P[(i + 1) % k].X + v * l.P[(i + 1) % k].Y;
-                        g.Segs.Add(new SegSnap { A = a + o1, B = c + o1, Dono = b, Aresta = true });
-                        g.Segs.Add(new SegSnap { A = a + o1, B = a + o2, Dono = b, Aresta = true });
-                        g.Segs.Add(new SegSnap { A = c + o1, B = c + o2, Dono = b, Aresta = true });
-                    }
-                }
+                g.Segs.Add(new SegSnap { A = P(na), B = P(nc), Dono = b });
             }
-            geo = g; geoDe = mod; geoRealista = Realista;
+            geo = g; geoDe = mod;
             return g;
         }
 
