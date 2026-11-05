@@ -43,6 +43,16 @@ Fora do pacote publicado (sem `motor\` ao lado do exe, como em `dotnet build`) o
 - Limite conhecido: o hash vem da mesma release; protege contra download corrompido/adulterado em trânsito, não contra conta do GitHub comprometida
   (**passo seguinte recomendado, não implementado:** assinar o pacote — Authenticode no `Estructto.exe` ou assinatura destacada com chave pública embutida no app — para o hash deixar de depender só da conta do GitHub).
 
+## Download que falha no GitHub (504)
+05/11/2026, v0.6.24: `github.com/vertecproj/estructto/releases/download/v0.6.24/<zip e .sha256>` dava **504 Gateway Time-out**
+sempre (o Setup.exe da mesma release e as releases antigas respondiam; a API servia os mesmos dois arquivos). A tela mostrava
+"Não foi possível atualizar: Response status code does not indicate success: 504". Correções:
+- **Na release:** apagar e reenviar os dois assets pela API (mesmo arquivo, mesmo hash) fez o github.com voltar a 200. Depois de publicar,
+  conferir: `Invoke-WebRequest <url do .sha256> -Method Head` tem de dar 200 (senão reenviar).
+- **No programa** (`Atualizador.Obter`): 5xx ou falha de rede → repete (2 s), depois baixa o mesmo asset pela API
+  (`api.github.com/repos/vertecproj/estructto/releases/assets/<n>`, `Accept: application/octet-stream`, campo `url` do JSON da release;
+  só asset numérico do repositório oficial, redirecionamento só para host do GitHub). 4xx não repete. O SHA-256 continua obrigatório.
+
 ## Publicar (publicar.ps1)
 `codigo\publicar.ps1 -Versao 0.5` gera `Estructto-0.5-win-x64.zip` **e** `Estructto-0.5-win-x64.zip.sha256` (formato sha256sum). Os dois são assets da release `v0.5`.
 `-Enviar` faz `gh release upload` dos dois (a release precisa existir); sem `-Enviar` nada vai para a rede. A tag tem de ser `v<Versao>`.

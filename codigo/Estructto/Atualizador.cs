@@ -57,6 +57,7 @@ namespace NovoFtool
     public sealed class ReleaseInfo
     {
         public string Tag, Notas, PaginaUrl, ZipNome, ZipUrl, ShaUrl; public Ver Versao; public long ZipBytes; public bool Pre;   // Pre = flag "prerelease" do GitHub
+        public string ZipApiUrl, ShaApiUrl;   // o mesmo asset pela API (reserva quando github.com/…/download dá 5xx)
     }
 
     public static class Atualizador
@@ -114,12 +115,12 @@ namespace NovoFtool
                         {
                             string nome = Str(a, "name"), url = Str(a, "browser_download_url");
                             if (nome.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && r.ZipNome == null && UrlDaRelease(url))
-                            { r.ZipNome = nome; r.ZipUrl = url; r.ZipBytes = a.TryGetProperty("size", out var sz) && sz.TryGetInt64(out long b) ? b : 0; }
+                            { r.ZipNome = nome; r.ZipUrl = url; r.ZipApiUrl = UrlApi(Str(a, "url")); r.ZipBytes = a.TryGetProperty("size", out var sz) && sz.TryGetInt64(out long b) ? b : 0; }
                         }
                     if (r.ZipNome == null) continue;
                     if (e.TryGetProperty("assets", out assets))
                         foreach (var a in assets.EnumerateArray())
-                            if (string.Equals(Str(a, "name"), r.ZipNome + ".sha256", StringComparison.OrdinalIgnoreCase) && UrlDaRelease(Str(a, "browser_download_url"))) r.ShaUrl = Str(a, "browser_download_url");
+                            if (string.Equals(Str(a, "name"), r.ZipNome + ".sha256", StringComparison.OrdinalIgnoreCase) && UrlDaRelease(Str(a, "browser_download_url"))) { r.ShaUrl = Str(a, "browser_download_url"); r.ShaApiUrl = UrlApi(Str(a, "url")); }
                     lista.Add(r);
                 }
             }
@@ -127,15 +128,18 @@ namespace NovoFtool
         }
         // O JSON só vale se os assets forem do repositório oficial; outros hosts só entram como redirecionamento do próprio GitHub.
         const string PrefixoDownload = "https://github.com/vertecproj/estructto/releases/download/";
-        public static bool UrlDaRelease(string url) { return url != null && url.StartsWith(PrefixoDownload, StringComparison.Ordinal); }
+        public static bool UrlDaRelease(string url) { return url != null && (url.StartsWith(PrefixoDownload, StringComparison.Ordinal) || url.StartsWith(PrefixoApi, StringComparison.Ordinal)); }
+        // asset pela API do repositório oficial (".../releases/assets/<número>"); outro endereço = null
+        const string PrefixoApi = "https://api.github.com/repos/vertecproj/estructto/releases/assets/";
+        public static string UrlApi(string url) { return url != null && url.StartsWith(PrefixoApi, StringComparison.Ordinal) && url.Length > PrefixoApi.Length && url.Substring(PrefixoApi.Length).All(char.IsDigit) ? url : null; }
         static string Str(JsonElement e, string k) { return e.TryGetProperty(k, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : ""; }
         static bool Bool(JsonElement e, string k) { return e.TryGetProperty(k, out var p) && p.ValueKind == JsonValueKind.True; }
 
-        static HttpClient Cliente()
+        static HttpClient Cliente(bool json = true)   // json = false: downloads (o Accept vai em cada pedido)
         {
             var c = new HttpClient();
             c.DefaultRequestHeaders.UserAgent.ParseAdd("Estructto-Atualizador/" + VersaoAtual);
-            c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            if (json) c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
             return c;
         }
 
@@ -168,19 +172,41 @@ namespace NovoFtool
         /// <summary>SHA-256 publicado (hex minúsculo): vai no comando do script e é conferido de novo na pasta protegida.</summary>
         public static string HashEsperado(string textoSha) => Tokens(textoSha)[0].ToLowerInvariant();
 
-        /// <summary>Baixa url para destino (.part → renomeia), com progresso 0..1 (ou -1 se tamanho desconhecido).</summary>
-        public static async Task BaixarAsync(string url, string destino, IProgress<double> prog, CancellationToken ct)
+        // GET de um asset: 2 tentativas no endereço normal (github.com/…/download) e 2 no da API (reserva), com 2 s entre elas,
+        // quando a resposta é 5xx ou a rede falha. 05/11/2026: a v0.6.24 deu 504 fixo no github.com para o zip e o .sha256
+        // enquanto a API servia os mesmos arquivos (docs/v3/ATUALIZACAO.md). 4xx não repete. Redirecionamento só para host do GitHub.
+        static async Task<HttpResponseMessage> Obter(HttpClient c, string url, string reserva, CancellationToken ct)
+        {
+            Exception ultimo = null;
+            foreach (string u in new[] { url, url, reserva, reserva }.Where(x => x != null))
+            {
+                if (!UrlDaRelease(u)) throw new InvalidOperationException("endereço de download não permitido: " + u);
+                if (ultimo != null) await Task.Delay(2000, ct).ConfigureAwait(false);
+                var req = new HttpRequestMessage(HttpMethod.Get, u);
+                req.Headers.Accept.ParseAdd(u == reserva ? "application/octet-stream" : "*/*");   // API: octet-stream = o arquivo (senão vem o JSON do asset)
+                HttpResponseMessage r;
+                try { r = await c.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false); }
+                catch (HttpRequestException ex) { ultimo = ex; continue; }
+                catch (TaskCanceledException ex) when (!ct.IsCancellationRequested) { ultimo = ex; continue; }   // tempo esgotado do HttpClient
+                if ((int)r.StatusCode >= 500) { ultimo = new HttpRequestException("o GitHub respondeu " + (int)r.StatusCode + " (" + r.ReasonPhrase + ")"); r.Dispose(); continue; }
+                if (!r.IsSuccessStatusCode) { r.Dispose(); throw new HttpRequestException("o GitHub respondeu " + (int)r.StatusCode + " (" + r.ReasonPhrase + ") para " + u); }
+                if (!HostPermitido(r.RequestMessage.RequestUri)) { r.Dispose(); throw new InvalidOperationException("redirecionamento para host não permitido: " + r.RequestMessage.RequestUri.Host); }
+                return r;
+            }
+            throw new HttpRequestException("download falhou depois de repetir (inclusive pela API do GitHub): " + ultimo?.Message, ultimo);
+        }
+
+        /// <summary>Baixa url (reserva = o mesmo asset pela API) para destino (.part → renomeia), com progresso 0..1 (ou -1 se tamanho desconhecido).</summary>
+        public static async Task BaixarAsync(string url, string destino, IProgress<double> prog, CancellationToken ct, string reserva = null)
         {
             if (!UrlDaRelease(url)) throw new InvalidOperationException("endereço de download não permitido: " + url);
             Directory.CreateDirectory(Path.GetDirectoryName(destino));
             string part = destino + ".part";
-            using (var c = Cliente())
+            using (var c = Cliente(false))
             {
                 c.Timeout = Timeout.InfiniteTimeSpan;
-                using (var r = await c.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
+                using (var r = await Obter(c, url, reserva, ct).ConfigureAwait(false))
                 {
-                    r.EnsureSuccessStatusCode();
-                    if (!HostPermitido(r.RequestMessage.RequestUri)) throw new InvalidOperationException("redirecionamento para host não permitido: " + r.RequestMessage.RequestUri.Host);
                     long total = r.Content.Headers.ContentLength ?? -1, lido = 0;
                     using (var ent = await r.Content.ReadAsStreamAsync().ConfigureAwait(false))
                     using (var sai = File.Create(part))
@@ -195,10 +221,12 @@ namespace NovoFtool
             File.Move(part, destino);
         }
 
-        public static async Task<string> BaixarTextoAsync(string url, CancellationToken ct)
+        public static async Task<string> BaixarTextoAsync(string url, CancellationToken ct, string reserva = null)
         {
             if (!UrlDaRelease(url)) throw new InvalidOperationException("endereço não permitido: " + url);
-            using (var c = Cliente()) return await c.GetStringAsync(url, ct).ConfigureAwait(false);
+            using (var c = Cliente(false))
+            using (var r = await Obter(c, url, reserva, ct).ConfigureAwait(false))
+                return await r.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
 
         /// <summary>Extrai o zip em pasta vazia e devolve a pasta "Estructto" (a que tem Estructto.exe e motor\). Lança se faltar algo.</summary>

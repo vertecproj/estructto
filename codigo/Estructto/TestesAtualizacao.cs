@@ -82,6 +82,15 @@ namespace NovoFtool
                 Ok(Atualizador.MaisNova(FixtureReleases, "0.5-beta.1")?.Tag == "v0.12", "build pré-release vê pré-release (flag do GitHub)");
                 Ok(Atualizador.MaisNova("[]", "0.4") == null, "lista vazia → nada");
                 Ok(Atualizador.HostPermitido(new Uri("https://github.com/a")) && Atualizador.HostPermitido(new Uri("https://objects.githubusercontent.com/a")) && !Atualizador.HostPermitido(new Uri("http://github.com/a")) && !Atualizador.HostPermitido(new Uri("https://github.com.evil.com/a")) && !Atualizador.HostPermitido(new Uri("https://evil.com/a")), "hosts de download permitidos / recusados");
+                // reserva pela API (v0.6.24: 504 fixo no github.com/…/download, a API servia o arquivo)
+                Ok(Atualizador.UrlApi("https://api.github.com/repos/vertecproj/estructto/releases/assets/713681258") != null
+                   && Atualizador.UrlApi("https://api.github.com/repos/outro/estructto/releases/assets/1") == null
+                   && Atualizador.UrlApi("https://api.github.com/repos/vertecproj/estructto/releases/assets/1/../../x") == null
+                   && Atualizador.UrlApi("https://evil.com/repos/vertecproj/estructto/releases/assets/1") == null, "reserva pela API: só asset numérico do repositório oficial");
+                var ra = Atualizador.ParseReleases(@"[{""tag_name"":""v9.1"",""draft"":false,""prerelease"":false,""assets"":[
+                  {""name"":""E-9.1-win-x64.zip"",""url"":""https://api.github.com/repos/vertecproj/estructto/releases/assets/11"",""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v9.1/E-9.1-win-x64.zip""},
+                  {""name"":""E-9.1-win-x64.zip.sha256"",""url"":""https://evil.com/12"",""browser_download_url"":""https://github.com/vertecproj/estructto/releases/download/v9.1/E-9.1-win-x64.zip.sha256""}]}]").Single();
+                Ok(ra.ZipApiUrl == "https://api.github.com/repos/vertecproj/estructto/releases/assets/11" && ra.ShaApiUrl == null && ra.ShaUrl != null, "JSON da release: url da API do zip guardada; url estranha do .sha256 vira null (fica só a normal)");
                 // SHA-256
                 string arq = Path.Combine(tmp, "Estructto-0.10-win-x64.zip");
                 File.WriteAllBytes(arq, Encoding.UTF8.GetBytes("conteudo do pacote"));

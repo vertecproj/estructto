@@ -109,9 +109,9 @@ namespace NovoFtool
                 Directory.CreateDirectory(stage);
                 string nomeZip = Path.GetFileName(r.ZipNome), zip = Path.Combine(stage, nomeZip);
                 MontarFaixaAtualiza("Baixando v" + r.Versao + "…", false, -1);
-                string sha = await Atualizador.BaixarTextoAsync(r.ShaUrl, ctsAtualiza.Token);
+                string sha = await Atualizador.BaixarTextoAsync(r.ShaUrl, ctsAtualiza.Token, r.ShaApiUrl);
                 var prog = new Progress<double>(p => MontarFaixaAtualiza("Baixando v" + r.Versao + (p >= 0 ? " — " + (int)(p * 100) + "%" : "…"), false, p));
-                await Atualizador.BaixarAsync(r.ZipUrl, zip, prog, ctsAtualiza.Token);
+                await Atualizador.BaixarAsync(r.ZipUrl, zip, prog, ctsAtualiza.Token, r.ZipApiUrl);
                 MontarFaixaAtualiza("Conferindo o SHA-256…", false, -1);
                 string erroHash = await System.Threading.Tasks.Task.Run(() => Atualizador.ConferirHash(zip, sha, nomeZip));
                 if (erroHash != null) { try { File.Delete(zip); } catch { } throw new InvalidDataException(erroHash); }
