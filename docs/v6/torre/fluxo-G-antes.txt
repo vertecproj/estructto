@@ -1,0 +1,30 @@
+== Fluxo G: torre do elevador (F6) ==
+ok      novo projeto: grade 2,2 × 2,4 m e níveis 0; 3.5; 7; 10.5; 13.5
+ok      5 níveis: Térreo 0, N+3,50 3.5, N+7,00 7, N+10,50 10.5, N+13,50 13.5
+ok      plano de trabalho no 1º nível (N+3,50 (z = 3,50 m))
+ok      4 pilares de 0 a 3,5 m (4 barras)
+ok      4 vigas de borda em z = 3.5 (4)
+ok      NIVEL + (PgUp): plano em z = 7 (N+7,00 (z = 7,00 m))
+FALHA   NIVEL +: a janela sabe que o nível ativo é o de 7 m ("Nível z = 3,50 m")
+FALHA   Pilar no nível de 7 m desce até 3,5 m (andar 2)
+ok      os pilares recém-desenhados do andar 2 aparecem na vista (12 barras visíveis)
+ok      4 vigas de borda em z = 7 (4)
+FALHA   copiar pavimento: andar 3 (7 → 10,5 m)
+FALHA   Pilar no topo (13,5 m) desce 3 m até 10,5 m
+ok      4 vigas de borda em z = 13.5 (4)
+torre: 34 barras, 26 nós, 0 nós soltos
+FALHA   Realista: snap de objeto só nos eixos/nós (34 atrações, 33 fora do eixo: Ponto médio -0.069;-0.076;1.75 | Ponto médio 0.069;-0.076;1.75 | Ponto médio 0.069;-0.076;1.75 | Ponto médio 0.076;-0.076;1.75)
+FALHA   NÓ no meio da viga (1,1; 0; 3,5): a viga dividiu nele
+FALHA   NÓ no meio do pilar (0; 0; 1,75): o pilar dividiu nele
+FALHA   nenhum nó solto depois do NÓ (2)
+ok      nó solto (2,2; 0,8; 7) sobre a viga b14
+ok      DIVIDIR: painel abriu
+FALHA   DIVIDIR tem a opção de dividir nos nós que já estão sobre a barra
+FALHA   DIVIDIR: a viga dividiu no nó (2,2; 0,8; 7) e ele deixou de ser solto (3 soltos)
+FALHA   JUNTAR com 1 trecho escolhido: a viga volta a ser uma só de 0 a 2,2 m (⚠ Motor: Value cannot be null. (Parameter 'propertyName'))
+FALHA   JUNTAR com os 2 trechos do pilar: pilar inteiro de novo (⚠ Motor: Value cannot be null. (Parameter 'propertyName'))
+ok      nível N+13,50 em 14 m
+FALHA   mudar a cota do nível leva os nós dele: pilares do último andar vão de 10,5 a 14 m
+ok      Ctrl+Z desfaz a cota e os nós de uma vez
+FALHA   torre calcula (⚠ Motor: Mecanismo (estrutura instável): o nó n18 está livre em uz; confira os apoios e as ligações)
+tempo: 57.5 s · 13 ok, 14 falhas, 0 conhecidas

@@ -19,6 +19,17 @@ dirige a janela real como o engenheiro: novo projeto com grade e níveis → Pil
 `#0,0,3.5`, `@2.2,0,0`…) → PgUp → Pilar/vigas do andar 2 → copiar pavimento → topo → passarela → snap no Realista → NÓ no meio
 da viga e do pilar → DIVIDIR num nó solto → JUNTAR → mudar a cota do topo → F5. Fotos: `fluxo-G-*.png`.
 
+Atenção: o F5 do teste roda só com o **peso próprio** (aproveitamento 2%). Cargas do elevador (cabine + 10 pessoas, impacto,
+casa de máquinas), vento NBR 6123 e a passarela ainda não entraram: o teste é da modelagem, não do dimensionamento.
+
+| | |
+|---|---|
+| ![andar 1](torre/fluxo-G-01-andar1.png) | ![torre](torre/fluxo-G-02-torre.png) |
+| ![snap no Realista](torre/fluxo-G-03-realista-snap.png) | ![calculada](torre/fluxo-G-06-calculada.png) |
+| ![dividir nos nós](torre/fluxo-G-04-dividir.png) | ![painel Níveis](torre/fluxo-G-05-niveis.png) |
+
+Relatórios do fluxo: [antes](torre/fluxo-G-antes.txt) · [depois](torre/fluxo-G-depois.txt).
+
 ## Problemas achados (antes: 13 ok, 14 falhas) e correção (depois: 27 ok, 0 falhas)
 
 | # | Problema | Causa | Correção |
