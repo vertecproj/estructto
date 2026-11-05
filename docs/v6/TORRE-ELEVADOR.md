@@ -28,7 +28,7 @@ casa de máquinas), vento NBR 6123 e a passarela ainda não entraram: o teste é
 | ![snap no Realista](torre/fluxo-G-03-realista-snap.png) | ![calculada](torre/fluxo-G-06-calculada.png) |
 | ![dividir nos nós](torre/fluxo-G-04-dividir.png) | ![painel Níveis](torre/fluxo-G-05-niveis.png) |
 
-Relatórios do fluxo: [antes](torre/fluxo-G-antes.txt) · [depois](torre/fluxo-G-depois.txt).
+Arquivo do modelo: [exemplos/torre-elevador-f6-fluxo-g.estructto](../../exemplos/torre-elevador-f6-fluxo-g.estructto) (o fluxo G salva e reabre no fim). Relatórios do fluxo: [antes](torre/fluxo-G-antes.txt) · [depois](torre/fluxo-G-depois.txt).
 
 ## Problemas achados (antes: 13 ok, 14 falhas) e correção (depois: 27 ok, 0 falhas)
 

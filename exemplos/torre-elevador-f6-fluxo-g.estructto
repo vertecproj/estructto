@@ -1,0 +1,908 @@
+{
+  "formato": "estructto",
+  "versao": 3,
+  "modelo": {
+    "versao_formato": 1,
+    "nome": "Torre elevador F6",
+    "nos": {
+      "n1": {
+        "id": "n1",
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "apoio": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "n2": {
+        "id": "n2",
+        "x": 0.0,
+        "y": 0.0,
+        "z": 3.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n3": {
+        "id": "n3",
+        "x": 2.2,
+        "y": 0.0,
+        "z": 0.0,
+        "apoio": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "n4": {
+        "id": "n4",
+        "x": 2.2,
+        "y": 0.0,
+        "z": 3.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n5": {
+        "id": "n5",
+        "x": 2.2,
+        "y": 2.4,
+        "z": 0.0,
+        "apoio": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "n6": {
+        "id": "n6",
+        "x": 2.2,
+        "y": 2.4,
+        "z": 3.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n7": {
+        "id": "n7",
+        "x": 0.0,
+        "y": 2.4,
+        "z": 0.0,
+        "apoio": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "n8": {
+        "id": "n8",
+        "x": 0.0,
+        "y": 2.4,
+        "z": 3.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n9": {
+        "id": "n9",
+        "x": 0.0,
+        "y": 0.0,
+        "z": 7.0,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n10": {
+        "id": "n10",
+        "x": 2.2,
+        "y": 0.0,
+        "z": 7.0,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n11": {
+        "id": "n11",
+        "x": 2.2,
+        "y": 2.4,
+        "z": 7.0,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n12": {
+        "id": "n12",
+        "x": 0.0,
+        "y": 2.4,
+        "z": 7.0,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n13": {
+        "id": "n13",
+        "x": 0.0,
+        "y": 0.0,
+        "z": 10.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n14": {
+        "id": "n14",
+        "x": 2.2,
+        "y": 0.0,
+        "z": 10.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n15": {
+        "id": "n15",
+        "x": 2.2,
+        "y": 2.4,
+        "z": 10.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n16": {
+        "id": "n16",
+        "x": 0.0,
+        "y": 2.4,
+        "z": 10.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n17": {
+        "id": "n17",
+        "x": 0.0,
+        "y": 0.0,
+        "z": 13.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n18": {
+        "id": "n18",
+        "x": 2.2,
+        "y": 0.0,
+        "z": 13.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n19": {
+        "id": "n19",
+        "x": 2.2,
+        "y": 2.4,
+        "z": 13.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n20": {
+        "id": "n20",
+        "x": 0.0,
+        "y": 2.4,
+        "z": 13.5,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "n21": {
+        "id": "n21",
+        "x": 0.0,
+        "y": 4.0,
+        "z": 3.5,
+        "apoio": [
+          true,
+          true,
+          true,
+          false,
+          false,
+          false
+        ]
+      },
+      "n22": {
+        "id": "n22",
+        "x": 2.2,
+        "y": 4.0,
+        "z": 3.5,
+        "apoio": [
+          true,
+          true,
+          true,
+          false,
+          false,
+          false
+        ]
+      },
+      "n23": {
+        "id": "n23",
+        "x": 0.0,
+        "y": 4.0,
+        "z": 7.0,
+        "apoio": [
+          true,
+          true,
+          true,
+          false,
+          false,
+          false
+        ]
+      },
+      "n24": {
+        "id": "n24",
+        "x": 2.2,
+        "y": 4.0,
+        "z": 7.0,
+        "apoio": [
+          true,
+          true,
+          true,
+          false,
+          false,
+          false
+        ]
+      },
+      "n25": {
+        "id": "n25",
+        "x": 0.0,
+        "y": 4.0,
+        "z": 10.5,
+        "apoio": [
+          true,
+          true,
+          true,
+          false,
+          false,
+          false
+        ]
+      },
+      "n26": {
+        "id": "n26",
+        "x": 2.2,
+        "y": 4.0,
+        "z": 10.5,
+        "apoio": [
+          true,
+          true,
+          true,
+          false,
+          false,
+          false
+        ]
+      },
+      "n27": {
+        "id": "n27",
+        "x": 2.2,
+        "y": 0.8,
+        "z": 7.0,
+        "apoio": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    "materiais": {
+      "A-572 GR.50": {
+        "nome": "A-572 GR.50",
+        "E": 200000000.0,
+        "G": 77000000.0,
+        "peso": 77.0,
+        "fy": 345000.0,
+        "fu": 450000.0,
+        "fck": null
+      }
+    },
+    "secoes": {
+      "W150x22.5": {
+        "nome": "W150x22.5",
+        "A": 0.0028972807346410202,
+        "Iy": 1.2291397801018347e-05,
+        "Iz": 3.867507899191975e-06,
+        "J": 3.858935626666666e-08,
+        "props": {
+          "tipo": "I",
+          "A": 0.0028972807346410202,
+          "Ix": 1.2291397801018347e-05,
+          "Iy": 3.867507899191975e-06,
+          "J": 3.858935626666666e-08,
+          "Wx": 0.00016172891843445195,
+          "Wy": 5.088826183147335e-05,
+          "Zx": 0.00017956577430434326,
+          "Zy": 7.785118681020249e-05,
+          "Cw": 2.0417016074752e-08,
+          "rx": 0.06513363977500518,
+          "ry": 0.0365359425242835,
+          "x0": 0.0,
+          "y0": 0.0,
+          "h": 0.152,
+          "b": 0.152,
+          "tw": 0.0058,
+          "tf": 0.0066,
+          "r": 0.01,
+          "hw": 0.1188,
+          "soldado": false,
+          "bt_mesa": 11.515151515151516,
+          "ht_alma": 20.48275862068966,
+          "Ay": 0.001672,
+          "Az": 0.0008816,
+          "r0": 0.07468109617887168,
+          "massa": 22.5,
+          "A_catalogo": 0.0029000000000000002
+        }
+      }
+    },
+    "barras": {
+      "b2": {
+        "id": "b2",
+        "ni": "n3",
+        "nj": "n4",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b3": {
+        "id": "b3",
+        "ni": "n5",
+        "nj": "n6",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b4": {
+        "id": "b4",
+        "ni": "n7",
+        "nj": "n8",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b6": {
+        "id": "b6",
+        "ni": "n4",
+        "nj": "n6",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b7": {
+        "id": "b7",
+        "ni": "n6",
+        "nj": "n8",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b8": {
+        "id": "b8",
+        "ni": "n8",
+        "nj": "n2",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b9": {
+        "id": "b9",
+        "ni": "n2",
+        "nj": "n9",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b10": {
+        "id": "b10",
+        "ni": "n4",
+        "nj": "n10",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b11": {
+        "id": "b11",
+        "ni": "n6",
+        "nj": "n11",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b12": {
+        "id": "b12",
+        "ni": "n8",
+        "nj": "n12",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b13": {
+        "id": "b13",
+        "ni": "n9",
+        "nj": "n10",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b15": {
+        "id": "b15",
+        "ni": "n11",
+        "nj": "n12",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b16": {
+        "id": "b16",
+        "ni": "n12",
+        "nj": "n9",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b17": {
+        "id": "b17",
+        "ni": "n9",
+        "nj": "n13",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b18": {
+        "id": "b18",
+        "ni": "n10",
+        "nj": "n14",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b19": {
+        "id": "b19",
+        "ni": "n11",
+        "nj": "n15",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b20": {
+        "id": "b20",
+        "ni": "n12",
+        "nj": "n16",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b21": {
+        "id": "b21",
+        "ni": "n13",
+        "nj": "n14",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b22": {
+        "id": "b22",
+        "ni": "n14",
+        "nj": "n15",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b23": {
+        "id": "b23",
+        "ni": "n15",
+        "nj": "n16",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b24": {
+        "id": "b24",
+        "ni": "n16",
+        "nj": "n13",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b25": {
+        "id": "b25",
+        "ni": "n13",
+        "nj": "n17",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b26": {
+        "id": "b26",
+        "ni": "n14",
+        "nj": "n18",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b27": {
+        "id": "b27",
+        "ni": "n15",
+        "nj": "n19",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b28": {
+        "id": "b28",
+        "ni": "n16",
+        "nj": "n20",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b29": {
+        "id": "b29",
+        "ni": "n17",
+        "nj": "n18",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b30": {
+        "id": "b30",
+        "ni": "n18",
+        "nj": "n19",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b31": {
+        "id": "b31",
+        "ni": "n19",
+        "nj": "n20",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b32": {
+        "id": "b32",
+        "ni": "n20",
+        "nj": "n17",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b33": {
+        "id": "b33",
+        "ni": "n8",
+        "nj": "n21",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b34": {
+        "id": "b34",
+        "ni": "n6",
+        "nj": "n22",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b35": {
+        "id": "b35",
+        "ni": "n12",
+        "nj": "n23",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b36": {
+        "id": "b36",
+        "ni": "n11",
+        "nj": "n24",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b37": {
+        "id": "b37",
+        "ni": "n16",
+        "nj": "n25",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "b38": {
+        "id": "b38",
+        "ni": "n15",
+        "nj": "n26",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "B5": {
+        "id": "B5",
+        "ni": "n10",
+        "nj": "n27",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {
+          "membro": "b14"
+        }
+      },
+      "B6": {
+        "id": "B6",
+        "ni": "n27",
+        "nj": "n11",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {
+          "membro": "b14"
+        }
+      },
+      "B7": {
+        "id": "B7",
+        "ni": "n2",
+        "nj": "n4",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      },
+      "B1": {
+        "id": "B1",
+        "ni": "n1",
+        "nj": "n2",
+        "secao": "W150x22.5",
+        "material": "A-572 GR.50",
+        "rot": 0.0,
+        "tipo": "aco",
+        "params": {}
+      }
+    },
+    "casos": {
+      "PP": {
+        "nome": "PP",
+        "tipo": "G",
+        "subtipo": ""
+      }
+    },
+    "cargas_nodais": [],
+    "cargas_distribuidas": [],
+    "cargas_pontuais": [],
+    "pavimentos": {
+      "N+3,50": {
+        "nome": "N+3,50",
+        "z": 3.5,
+        "diafragma": true
+      },
+      "N+7,00": {
+        "nome": "N+7,00",
+        "z": 7.0,
+        "diafragma": true
+      },
+      "N+10,50": {
+        "nome": "N+10,50",
+        "z": 10.5,
+        "diafragma": true
+      },
+      "N+13,50": {
+        "nome": "N+13,50",
+        "z": 13.5,
+        "diafragma": true
+      }
+    },
+    "peso_proprio": "PP",
+    "config": {
+      "tipo_uso": "comercial",
+      "variabilidade": "grandes",
+      "pdelta": false,
+      "armadura": "CA-50",
+      "cobrimento_m": null,
+      "caa": "II",
+      "tipo_edificacao": null,
+      "combinacoes": "nbr8681",
+      "nbr8400": {
+        "grupo": 3,
+        "psi": 1.15
+      },
+      "imperfeicoes": true,
+      "projeto": {
+        "cliente": "Bloco F6",
+        "engenheiro": "Equipe",
+        "empresa": "Trabalho",
+        "normas": [
+          "NBR 8800"
+        ],
+        "modelo": "vazio"
+      },
+      "grade": {
+        "x": [
+          2.2
+        ],
+        "y": [
+          2.4
+        ],
+        "nomes_x": [
+          "1",
+          "2"
+        ],
+        "nomes_y": [
+          "A",
+          "B"
+        ]
+      }
+    }
+  },
+  "placas": {}
+}

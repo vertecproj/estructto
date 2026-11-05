@@ -175,6 +175,14 @@ namespace NovoFtool
             r.Checar(w.EspacialAtivo.Calculado, "torre calcula (" + w.StatusMsg.Text + ")");
             w.Completo3D();
             Foto(w, "G-06-calculada", () => { v.MostrarVista(VistaPadrao.Iso, false); v.Enquadrar(false); });
+
+            // --- salvar a torre pronta, fechar e reabrir (o arquivo fica em fluxo-G-projeto; cópia em exemplos/)
+            string arq = System.IO.Path.Combine(pasta, "torre-elevador-f6-fluxo-g.estructto");
+            int nb = NBarras(w), nn = NNos(w);
+            r.Exigir(w.SalvarEspacialEm(arq), "torre salva em " + arq);
+            w.FecharEspaciaisSemPerguntar(); EsperarIdle();
+            Esperar(w.AbrirArquivo(arq));
+            r.Checar(w.EspacialAtivo != null && NBarras(w) == nb && NNos(w) == nn && Niveis.Lista(J(w)).Count == 5, "reaberta: " + NBarras(w) + " barras, " + NNos(w) + " nós, " + Niveis.Lista(J(w)).Count + " níveis");
         }
     }
 }
